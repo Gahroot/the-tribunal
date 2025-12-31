@@ -1,0 +1,495 @@
+"""Campaign worker service for processing SMS campaigns.
+
+This background worker:
+1. Polls for running campaigns
+2. Checks sending hours and rate limits
+3. Gets pending contacts and sends initial messages
+4. Handles follow-up messages
+5. Updates campaign contact status and statistics
+"""
+
+import asyncio
+import contextlib
+import re
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+import pytz
+import structlog
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.core.config import settings
+from app.db.session import AsyncSessionLocal
+from app.models.campaign import Campaign, CampaignContact, CampaignContactStatus, CampaignStatus
+from app.models.contact import Contact
+from app.models.offer import Offer
+from app.services.telephony.telnyx import TelnyxSMSService
+
+logger = structlog.get_logger()
+
+# Worker configuration
+POLL_INTERVAL_SECONDS = settings.campaign_poll_interval
+MAX_MESSAGES_PER_TICK = 20
+
+
+class CampaignWorker:
+    """Background worker for processing SMS campaigns."""
+
+    def __init__(self) -> None:
+        """Initialize the campaign worker."""
+        self.running = False
+        self.logger = logger.bind(component="campaign_worker")
+        self._task: asyncio.Task[None] | None = None
+        self._rate_trackers: dict[str, list[datetime]] = {}
+
+    async def start(self) -> None:
+        """Start the campaign worker background task."""
+        if self.running:
+            self.logger.warning("Campaign worker already running")
+            return
+
+        self.running = True
+        self._task = asyncio.create_task(self._run_loop())
+        self.logger.info("Campaign worker started")
+
+    async def stop(self) -> None:
+        """Stop the campaign worker."""
+        self.running = False
+        if self._task:
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
+            self._task = None
+        self.logger.info("Campaign worker stopped")
+
+    async def _run_loop(self) -> None:
+        """Main worker loop that polls for campaigns to process."""
+        while self.running:
+            try:
+                await self._process_campaigns()
+            except Exception:
+                self.logger.exception("Error in campaign worker loop")
+
+            await asyncio.sleep(POLL_INTERVAL_SECONDS)
+
+    async def _process_campaigns(self) -> None:
+        """Process all running campaigns."""
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(Campaign)
+                .options(
+                    selectinload(Campaign.agent),
+                    selectinload(Campaign.offer),
+                )
+                .where(Campaign.status == CampaignStatus.RUNNING.value)
+            )
+            campaigns = result.scalars().all()
+
+            if not campaigns:
+                return
+
+            self.logger.debug("Processing campaigns", count=len(campaigns))
+
+            for campaign in campaigns:
+                try:
+                    await self._process_campaign(campaign, db)
+                except Exception:
+                    self.logger.exception(
+                        "Error processing campaign",
+                        campaign_id=str(campaign.id),
+                        campaign_name=campaign.name,
+                    )
+
+    async def _process_campaign(self, campaign: Campaign, db: AsyncSession) -> None:
+        """Process a single campaign."""
+        log = self.logger.bind(
+            campaign_id=str(campaign.id),
+            campaign_name=campaign.name,
+        )
+
+        # Check if within sending hours
+        if not self._is_within_sending_hours(campaign):
+            log.debug("Outside sending hours")
+            return
+
+        # Check if campaign has ended
+        if campaign.scheduled_end and datetime.now(UTC) > campaign.scheduled_end:
+            log.info("Campaign scheduled end reached, completing")
+            campaign.status = CampaignStatus.COMPLETED.value
+            campaign.completed_at = datetime.now(UTC)
+            await db.commit()
+            return
+
+        # Get SMS service
+        if not settings.telnyx_api_key:
+            log.warning("No Telnyx API key configured")
+            return
+
+        sms_service = TelnyxSMSService(settings.telnyx_api_key)
+        try:
+            # Process initial messages
+            await self._process_initial_messages(campaign, sms_service, db, log)
+
+            # Process follow-up messages if enabled
+            if campaign.follow_up_enabled:
+                await self._process_follow_ups(campaign, sms_service, db, log)
+
+            # Check if campaign is complete
+            await self._check_completion(campaign, db, log)
+
+            await db.commit()
+        finally:
+            await sms_service.close()
+
+    async def _process_initial_messages(
+        self,
+        campaign: Campaign,
+        sms_service: TelnyxSMSService,
+        db: AsyncSession,
+        log: Any,
+    ) -> None:
+        """Process and send initial messages to pending contacts."""
+        available_slots = self._get_available_message_slots(campaign)
+        if available_slots <= 0:
+            log.debug("Rate limit reached for this minute")
+            return
+
+        messages_to_send = min(available_slots, MAX_MESSAGES_PER_TICK)
+
+        # Get pending contacts with row-level locking
+        pending_result = await db.execute(
+            select(CampaignContact)
+            .options(selectinload(CampaignContact.contact))
+            .where(
+                and_(
+                    CampaignContact.campaign_id == campaign.id,
+                    CampaignContact.status == CampaignContactStatus.PENDING.value,
+                    CampaignContact.opted_out.is_(False),
+                )
+            )
+            .order_by(
+                CampaignContact.priority.desc(),
+                CampaignContact.created_at,
+            )
+            .limit(messages_to_send)
+            .with_for_update(skip_locked=True)
+        )
+        pending_contacts = pending_result.scalars().all()
+
+        if not pending_contacts:
+            return
+
+        log.info(
+            "Sending initial messages",
+            count=len(pending_contacts),
+            available_slots=available_slots,
+        )
+
+        for campaign_contact in pending_contacts:
+            contact = campaign_contact.contact
+            if not contact or not contact.phone_number:
+                log.warning(
+                    "Contact missing phone number",
+                    contact_id=campaign_contact.contact_id,
+                )
+                campaign_contact.status = CampaignContactStatus.FAILED.value
+                campaign_contact.last_error = "missing_phone_number"
+                continue
+
+            try:
+                # Render message template with contact and offer data
+                message_text = self._render_template(
+                    campaign.initial_message,
+                    contact,
+                    campaign.offer,
+                )
+
+                # Send SMS
+                message = await sms_service.send_message(
+                    to_number=contact.phone_number,
+                    from_number=campaign.from_phone_number,
+                    body=message_text,
+                    db=db,
+                    workspace_id=campaign.workspace_id,
+                    agent_id=campaign.agent_id,
+                )
+
+                # Update contact status and link conversation
+                campaign_contact.status = CampaignContactStatus.SENT.value
+                campaign_contact.conversation_id = message.conversation_id
+                campaign_contact.messages_sent += 1
+                campaign_contact.first_sent_at = campaign_contact.first_sent_at or datetime.now(UTC)
+                campaign_contact.last_sent_at = datetime.now(UTC)
+
+                # Schedule follow-up if enabled
+                if campaign.follow_up_enabled and campaign.follow_up_message:
+                    campaign_contact.next_follow_up_at = datetime.now(UTC) + timedelta(
+                        hours=campaign.follow_up_delay_hours
+                    )
+
+                # Update campaign stats
+                campaign.messages_sent += 1
+
+                # Track rate limiting
+                self._track_message_sent(str(campaign.id))
+
+                log.info(
+                    "Initial message sent",
+                    contact_id=contact.id,
+                    phone=contact.phone_number,
+                    message_id=str(message.id),
+                )
+
+            except Exception as e:
+                log.exception(
+                    "Failed to send initial message",
+                    contact_id=contact.id,
+                    phone=contact.phone_number,
+                    error=str(e),
+                )
+                campaign_contact.status = CampaignContactStatus.FAILED.value
+                campaign_contact.last_error = str(e)
+                campaign.messages_failed += 1
+                campaign.error_count += 1
+                campaign.last_error = str(e)
+                campaign.last_error_at = datetime.now(UTC)
+
+    async def _process_follow_ups(
+        self,
+        campaign: Campaign,
+        sms_service: TelnyxSMSService,
+        db: AsyncSession,
+        log: Any,
+    ) -> None:
+        """Process and send follow-up messages."""
+        if not campaign.follow_up_message:
+            return
+
+        available_slots = self._get_available_message_slots(campaign)
+        if available_slots <= 0:
+            return
+
+        now = datetime.now(UTC)
+        followup_result = await db.execute(
+            select(CampaignContact)
+            .options(selectinload(CampaignContact.contact))
+            .where(
+                and_(
+                    CampaignContact.campaign_id == campaign.id,
+                    CampaignContact.status.in_([
+                        CampaignContactStatus.SENT.value,
+                        CampaignContactStatus.DELIVERED.value,
+                    ]),
+                    CampaignContact.next_follow_up_at.is_not(None),
+                    CampaignContact.next_follow_up_at <= now,
+                    CampaignContact.follow_ups_sent < campaign.max_follow_ups,
+                    CampaignContact.messages_sent < campaign.max_messages_per_contact,
+                    CampaignContact.opted_out.is_(False),
+                    CampaignContact.last_reply_at.is_(None),
+                )
+            )
+            .order_by(CampaignContact.next_follow_up_at)
+            .limit(min(available_slots, MAX_MESSAGES_PER_TICK))
+            .with_for_update(skip_locked=True)
+        )
+        followup_contacts = followup_result.scalars().all()
+
+        if not followup_contacts:
+            return
+
+        log.info("Sending follow-up messages", count=len(followup_contacts))
+
+        for campaign_contact in followup_contacts:
+            contact = campaign_contact.contact
+            if not contact or not contact.phone_number:
+                continue
+
+            try:
+                message_text = self._render_template(
+                    campaign.follow_up_message,
+                    contact,
+                    campaign.offer,
+                )
+
+                message = await sms_service.send_message(
+                    to_number=contact.phone_number,
+                    from_number=campaign.from_phone_number,
+                    body=message_text,
+                    db=db,
+                    workspace_id=campaign.workspace_id,
+                    agent_id=campaign.agent_id,
+                )
+
+                campaign_contact.follow_ups_sent += 1
+                campaign_contact.messages_sent += 1
+                campaign_contact.last_sent_at = datetime.now(UTC)
+
+                if campaign_contact.follow_ups_sent < campaign.max_follow_ups:
+                    campaign_contact.next_follow_up_at = datetime.now(UTC) + timedelta(
+                        hours=campaign.follow_up_delay_hours
+                    )
+                else:
+                    campaign_contact.next_follow_up_at = None
+                    if campaign_contact.status != CampaignContactStatus.REPLIED.value:
+                        campaign_contact.status = CampaignContactStatus.COMPLETED.value
+
+                campaign.messages_sent += 1
+                self._track_message_sent(str(campaign.id))
+
+                log.info(
+                    "Follow-up message sent",
+                    contact_id=contact.id,
+                    phone=contact.phone_number,
+                    follow_up_number=campaign_contact.follow_ups_sent,
+                    message_id=str(message.id),
+                )
+
+            except Exception as e:
+                log.exception(
+                    "Failed to send follow-up message",
+                    contact_id=contact.id,
+                    phone=contact.phone_number,
+                    error=str(e),
+                )
+                campaign_contact.last_error = str(e)
+                campaign.messages_failed += 1
+
+    async def _check_completion(
+        self,
+        campaign: Campaign,
+        db: AsyncSession,
+        log: Any,
+    ) -> None:
+        """Check if campaign is complete."""
+        remaining_result = await db.execute(
+            select(func.count(CampaignContact.id)).where(
+                and_(
+                    CampaignContact.campaign_id == campaign.id,
+                    or_(
+                        CampaignContact.status == CampaignContactStatus.PENDING.value,
+                        and_(
+                            CampaignContact.next_follow_up_at.is_not(None),
+                            CampaignContact.follow_ups_sent < campaign.max_follow_ups,
+                        ),
+                    ),
+                )
+            )
+        )
+        remaining = remaining_result.scalar() or 0
+
+        if remaining == 0:
+            log.info("All contacts processed, completing campaign")
+            campaign.status = CampaignStatus.COMPLETED.value
+            campaign.completed_at = datetime.now(UTC)
+
+    def _is_within_sending_hours(self, campaign: Campaign) -> bool:
+        """Check if current time is within campaign sending hours."""
+        if not campaign.sending_hours_start or not campaign.sending_hours_end:
+            return True
+
+        tz = pytz.timezone(campaign.timezone or "UTC")
+        now = datetime.now(tz)
+
+        if campaign.sending_days and now.weekday() not in campaign.sending_days:
+            return False
+
+        start_time = campaign.sending_hours_start
+        end_time = campaign.sending_hours_end
+        current_time = now.time()
+
+        return start_time <= current_time <= end_time
+
+    def _get_available_message_slots(self, campaign: Campaign) -> int:
+        """Calculate how many messages can be sent based on rate limit."""
+        campaign_id = str(campaign.id)
+        now = datetime.now(UTC)
+        cutoff = now - timedelta(minutes=1)
+
+        if campaign_id in self._rate_trackers:
+            self._rate_trackers[campaign_id] = [
+                send_time for send_time in self._rate_trackers[campaign_id] if send_time > cutoff
+            ]
+            sent_in_last_minute = len(self._rate_trackers[campaign_id])
+        else:
+            sent_in_last_minute = 0
+
+        return max(0, campaign.messages_per_minute - sent_in_last_minute)
+
+    def _track_message_sent(self, campaign_id: str) -> None:
+        """Track a sent message for rate limiting."""
+        if campaign_id not in self._rate_trackers:
+            self._rate_trackers[campaign_id] = []
+        self._rate_trackers[campaign_id].append(datetime.now(UTC))
+
+    def _render_template(
+        self,
+        template: str,
+        contact: Contact,
+        offer: Offer | None = None,
+    ) -> str:
+        """Render message template with contact and offer data."""
+        message = template
+        full_name = " ".join(filter(None, [contact.first_name, contact.last_name])) or ""
+
+        replacements: dict[str, str] = {
+            "first_name": contact.first_name or "",
+            "last_name": contact.last_name or "",
+            "full_name": full_name,
+            "company_name": contact.company_name or "",
+            "email": contact.email or "",
+        }
+
+        # Add offer placeholders if offer exists
+        if offer:
+            discount_text = ""
+            if offer.discount_type == "percentage":
+                discount_text = f"{offer.discount_value}% off"
+            elif offer.discount_type == "fixed":
+                discount_text = f"${offer.discount_value} off"
+            elif offer.discount_type == "free_service":
+                discount_text = "Free service"
+
+            replacements.update({
+                "offer_name": offer.name or "",
+                "offer_discount": discount_text,
+                "offer_description": offer.description or "",
+                "offer_terms": offer.terms or "",
+            })
+
+        for placeholder, value in replacements.items():
+            message = re.sub(
+                rf"\{{{placeholder}\}}",
+                value,
+                message,
+                flags=re.IGNORECASE,
+            )
+
+        return message
+
+
+# Global worker instance
+_campaign_worker: CampaignWorker | None = None
+
+
+async def start_campaign_worker() -> CampaignWorker:
+    """Start the global campaign worker."""
+    global _campaign_worker
+    if _campaign_worker is None:
+        _campaign_worker = CampaignWorker()
+        await _campaign_worker.start()
+    return _campaign_worker
+
+
+async def stop_campaign_worker() -> None:
+    """Stop the global campaign worker."""
+    global _campaign_worker
+    if _campaign_worker:
+        await _campaign_worker.stop()
+        _campaign_worker = None
+
+
+def get_campaign_worker() -> CampaignWorker | None:
+    """Get the global campaign worker instance."""
+    return _campaign_worker

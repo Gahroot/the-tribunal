@@ -1,0 +1,77 @@
+[project]
+name = "aicrm-backend"
+version = "0.1.0"
+description = "AI-powered CRM backend with voice agents, SMS campaigns, and Cal.com integration"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    # FastAPI + ASGI
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "gunicorn>=23.0.0",
+
+    # Database
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30.0",
+    "alembic>=1.14.0",
+    "greenlet>=3.1.0",
+
+    # Redis
+    "redis>=5.2.0",
+
+    # Validation
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.6.0",
+    "email-validator>=2.2.0",
+
+    # Authentication
+    "python-jose[cryptography]>=3.3.0",
+    "bcrypt>=4.0.0",
+    "python-multipart>=0.0.17",
+
+    # HTTP Client
+    "httpx>=0.28.0",
+
+    # OpenAI
+    "openai>=1.58.0",
+
+    # Logging
+    "structlog>=24.4.0",
+
+    # Utilities
+    "python-dotenv>=1.0.1",
+    "pytz>=2024.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM", "PLR"]
+ignore = ["PLR0913", "PLR2004"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
