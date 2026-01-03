@@ -58,18 +58,24 @@ async def telnyx_sms_webhook(request: Request) -> dict[str, str]:
     return {"status": "ok"}
 
 
-async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:
+async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:  # noqa: PLR0915
     """Handle inbound SMS message.
 
     Args:
         payload: Telnyx message payload
         log: Logger instance
     """
+    from app.services.telephony.telnyx import normalize_phone_number
+
     # Extract message details
     from_number = payload.get("from", {}).get("phone_number", "")
     to_number = payload.get("to", [{}])[0].get("phone_number", "")
     body = payload.get("text", "")
     message_id = payload.get("id", "")
+
+    # Normalize phone numbers to E.164 format for consistent lookups
+    from_number = normalize_phone_number(from_number)
+    to_number = normalize_phone_number(to_number)
 
     log = log.bind(
         from_number=from_number,
@@ -299,10 +305,16 @@ async def handle_call_initiated(payload: dict[Any, Any], log: Any) -> None:
         payload: Telnyx call event payload
         log: Logger instance
     """
+    from app.services.telephony.telnyx import normalize_phone_number
+
     call_control_id = payload.get("call_control_id", "")
     from_number = payload.get("from", {}).get("phone_number", "")
     to_number = payload.get("to", [{}])[0].get("phone_number", "")
     call_state = payload.get("state", "")
+
+    # Normalize phone numbers to E.164 format for consistent lookups
+    from_number = normalize_phone_number(from_number)
+    to_number = normalize_phone_number(to_number)
 
     log = log.bind(
         call_control_id=call_control_id,

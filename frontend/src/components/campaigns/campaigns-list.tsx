@@ -72,6 +72,7 @@ const typeIcons: Record<CampaignType, React.ElementType> = {
   sms: MessageSquare,
   email: Mail,
   voice: Phone,
+  voice_sms_fallback: Phone,
   multi_channel: Layers,
 };
 
@@ -149,19 +150,21 @@ export function CampaignsList() {
       .includes(searchQuery.toLowerCase());
     const matchesStatus =
       statusFilter === "all" || campaign.status === statusFilter;
-    const matchesType = typeFilter === "all" || campaign.type === typeFilter;
+    const matchesType = typeFilter === "all" || campaign.campaign_type === typeFilter;
     return matchesSearch && matchesStatus && matchesType;
   });
 
   const getDeliveryRate = (campaign: Campaign) => {
-    if (campaign.sent_count === 0) return 0;
-    return Math.round((campaign.delivered_count / campaign.sent_count) * 100);
+    if (campaign.messages_sent === 0) return 0;
+    return Math.round(
+      ((campaign.messages_delivered ?? 0) / campaign.messages_sent) * 100
+    );
   };
 
   const getResponseRate = (campaign: Campaign) => {
-    if (campaign.delivered_count === 0) return 0;
+    if (campaign.messages_sent === 0) return 0;
     return Math.round(
-      (campaign.responded_count / campaign.delivered_count) * 100
+      (campaign.replies_received / campaign.messages_sent) * 100
     );
   };
 
@@ -249,7 +252,7 @@ export function CampaignsList() {
           },
           {
             label: "Total Responses",
-            value: campaigns.reduce((sum, c) => sum + c.responded_count, 0),
+            value: campaigns.reduce((sum, c) => sum + c.replies_received, 0),
           },
         ].map((stat) => (
           <motion.div key={stat.label} variants={itemVariants}>
@@ -329,10 +332,10 @@ export function CampaignsList() {
             <TableBody>
               <AnimatePresence mode="popLayout">
                 {filteredCampaigns.map((campaign) => {
-                  const TypeIcon = typeIcons[campaign.type];
+                  const TypeIcon = typeIcons[campaign.campaign_type];
                   const progress =
                     campaign.total_contacts > 0
-                      ? (campaign.sent_count / campaign.total_contacts) * 100
+                      ? (campaign.messages_sent / campaign.total_contacts) * 100
                       : 0;
 
                   return (
@@ -359,7 +362,7 @@ export function CampaignsList() {
                         <div className="flex items-center gap-2">
                           <TypeIcon className="size-4 text-muted-foreground" />
                           <span className="capitalize">
-                            {campaign.type.replace("_", " ")}
+                            {campaign.campaign_type.replace("_", " ")}
                           </span>
                         </div>
                       </TableCell>
@@ -375,7 +378,7 @@ export function CampaignsList() {
                         <div className="space-y-1">
                           <Progress value={progress} className="h-2 w-24" />
                           <div className="text-xs text-muted-foreground">
-                            {campaign.sent_count.toLocaleString()} /{" "}
+                            {campaign.messages_sent.toLocaleString()} /{" "}
                             {campaign.total_contacts.toLocaleString()}
                           </div>
                         </div>

@@ -340,7 +340,7 @@ class TelnyxSMSService:
         Returns:
             Existing or new conversation
         """
-        # Look for existing conversation
+        # Look for existing conversation by exact normalized match
         result = await db.execute(
             select(Conversation).where(
                 Conversation.workspace_id == workspace_id,
@@ -351,16 +351,48 @@ class TelnyxSMSService:
         conversation = result.scalar_one_or_none()
 
         if conversation:
+            # If conversation exists but has no contact_id, try to link one now
+            if not conversation.contact_id:
+                contact = await self._find_contact_by_phone(
+                    db, workspace_id, contact_phone
+                )
+                if contact:
+                    conversation.contact_id = contact.id
+                    await db.commit()
             return conversation
 
         # Try to find contact by phone number (use first() in case of duplicates)
-        contact_result = await db.execute(
-            select(Contact).where(
-                Contact.workspace_id == workspace_id,
-                Contact.phone_number == contact_phone,
-            )
+        contact = await self._find_contact_by_phone(db, workspace_id, contact_phone)
+
+        log = self.logger.bind(
+            workspace_phone=workspace_phone,
+            contact_phone=contact_phone,
+            contact_found=contact is not None,
         )
-        contact = contact_result.scalars().first()
+
+        if contact:
+            log.info(
+                "contact_found_by_phone",
+                contact_id=contact.id,
+                contact_name=contact.full_name,
+                contact_email=contact.email,
+                contact_phone_in_db=contact.phone_number,
+            )
+        else:
+            # Log all contacts in workspace to help debug phone format mismatch
+            all_contacts_result = await db.execute(
+                select(Contact).where(Contact.workspace_id == workspace_id)
+            )
+            contacts_in_workspace = all_contacts_result.scalars().all()
+            sample_phones = [
+                f"{c.phone_number} ({c.full_name})" for c in contacts_in_workspace[:5]
+            ]
+            log.warning(
+                "contact_not_found_by_phone",
+                looking_for_phone=contact_phone,
+                total_contacts_in_workspace=len(contacts_in_workspace),
+                sample_contact_phones=sample_phones,
+            )
 
         # Create new conversation
         conversation = Conversation(
@@ -381,6 +413,56 @@ class TelnyxSMSService:
         )
 
         return conversation
+
+    async def _find_contact_by_phone(
+        self,
+        db: AsyncSession,
+        workspace_id: uuid.UUID,
+        contact_phone: str,
+    ) -> Contact | None:
+        """Find a contact by phone number with flexible format matching.
+
+        Tries exact match first, then tries normalizing the stored phone numbers
+        and comparing to handle format variations.
+
+        Args:
+            db: Database session
+            workspace_id: Workspace ID
+            contact_phone: Phone number to search for (should already be normalized)
+
+        Returns:
+            Contact if found, None otherwise
+        """
+        # Try exact match first
+        result = await db.execute(
+            select(Contact).where(
+                Contact.workspace_id == workspace_id,
+                Contact.phone_number == contact_phone,
+            )
+        )
+        contact = result.scalars().first()
+        if contact:
+            return contact
+
+        # If no exact match, get all contacts and try normalizing their phone numbers
+        all_contacts_result = await db.execute(
+            select(Contact).where(Contact.workspace_id == workspace_id)
+        )
+        all_contacts = all_contacts_result.scalars().all()
+
+        for candidate in all_contacts:
+            # Normalize both phone numbers and compare
+            candidate_normalized = normalize_phone_number(candidate.phone_number)
+            if candidate_normalized == contact_phone:
+                self.logger.info(
+                    "contact_found_via_normalization",
+                    original_phone=candidate.phone_number,
+                    normalized_phone=candidate_normalized,
+                    contact_id=candidate.id,
+                )
+                return candidate
+
+        return None
 
     async def list_phone_numbers(self) -> list[PhoneNumberInfo]:
         """List all Telnyx phone numbers."""

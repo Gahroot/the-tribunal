@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime, time
 
-from pydantic import BaseModel, field_serializer
+from pydantic import BaseModel, field_serializer, field_validator
 
 
 class CampaignCreate(BaseModel):
@@ -11,6 +11,7 @@ class CampaignCreate(BaseModel):
 
     name: str
     agent_id: uuid.UUID | None = None
+    offer_id: uuid.UUID | None = None
     from_phone_number: str
     initial_message: str
     ai_enabled: bool = True
@@ -32,6 +33,7 @@ class CampaignUpdate(BaseModel):
 
     name: str | None = None
     agent_id: uuid.UUID | None = None
+    offer_id: uuid.UUID | None = None
     initial_message: str | None = None
     ai_enabled: bool | None = None
     qualification_criteria: str | None = None
@@ -52,7 +54,9 @@ class CampaignResponse(BaseModel):
 
     id: uuid.UUID
     workspace_id: uuid.UUID
+    campaign_type: str
     agent_id: uuid.UUID | None
+    offer_id: uuid.UUID | None
     name: str
     status: str
     from_phone_number: str
@@ -78,6 +82,16 @@ class CampaignResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+    @field_validator("sending_hours_start", "sending_hours_end", mode="before")
+    @classmethod
+    def validate_sending_hours(cls, v: time | str | None) -> str | None:
+        """Convert time objects to string format during validation."""
+        if v is None:
+            return None
+        if isinstance(v, time):
+            return v.strftime("%H:%M")
+        return v
 
     @field_serializer("sending_hours_start", "sending_hours_end")
     def serialize_time(self, v: time | str | None) -> str | None:
@@ -263,6 +277,16 @@ class VoiceCampaignResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+    @field_validator("sending_hours_start", "sending_hours_end", mode="before")
+    @classmethod
+    def validate_sending_hours(cls, v: time | str | None) -> str | None:
+        """Convert time objects to string format during validation."""
+        if v is None:
+            return None
+        if isinstance(v, time):
+            return v.strftime("%H:%M")
+        return v
 
     @field_serializer("sending_hours_start", "sending_hours_end")
     def serialize_time(self, v: time | str | None) -> str | None:

@@ -1,5 +1,5 @@
 import { AppSidebar } from "@/components/layout/app-sidebar";
-import { CampaignForm } from "@/components/campaigns/campaign-form";
+import { CampaignDetail } from "@/components/campaigns/campaign-detail";
 
 interface CampaignDetailPageProps {
   params: Promise<{ id: string }>;
@@ -10,7 +10,7 @@ export default async function CampaignDetailPage({ params }: CampaignDetailPageP
 
   return (
     <AppSidebar>
-      <CampaignForm campaignId={id} />
+      <CampaignDetail campaignId={id} />
     </AppSidebar>
   );
 }

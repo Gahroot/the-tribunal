@@ -8,7 +8,7 @@ Handles:
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 import httpx
@@ -83,6 +83,7 @@ class CalComService:
         event_type_id: int,
         start_date: datetime,
         end_date: datetime,
+        timezone: str = "America/New_York",
     ) -> list[dict[str, Any]]:
         """Get available slots for an event type.
 
@@ -90,9 +91,10 @@ class CalComService:
             event_type_id: Cal.com event type ID
             start_date: Start of date range for availability
             end_date: End of date range for availability
+            timezone: Timezone for availability (IANA format)
 
         Returns:
-            List of available slot dictionaries
+            List of available slot dictionaries with 'date' and 'time' keys
 
         Raises:
             CalComError: If API call fails
@@ -100,20 +102,33 @@ class CalComService:
         log = self.logger.bind(
             operation="get_availability",
             event_type_id=event_type_id,
+            timezone=timezone,
         )
 
         try:
             client = await self.get_client()
 
-            # Format dates for Cal.com API
-            start_str = start_date.isoformat()
-            end_str = end_date.isoformat()
+            # Cal.com API v2 /slots/available expects YYYY-MM-DD for startTime/endTime
+            # IMPORTANT: endTime must be > startTime (at least next day) or API returns empty
+            start_str = start_date.strftime("%Y-%m-%d")
+            end_str = end_date.strftime("%Y-%m-%d")
+
+            # If same day, extend end to next day (Cal.com quirk)
+            if start_str == end_str:
+                next_day = end_date + timedelta(days=1)
+                end_str = next_day.strftime("%Y-%m-%d")
 
             params = {
                 "eventTypeId": event_type_id,
                 "startTime": start_str,
                 "endTime": end_str,
             }
+
+            log.info(
+                "fetching_availability",
+                start=start_str,
+                end=end_str,
+            )
 
             response = await self._request_with_retry(
                 "GET",
@@ -122,7 +137,34 @@ class CalComService:
                 client=client,
             )
 
-            slots: list[dict[str, Any]] = response.get("slots", [])
+            # Cal.com v2 response structure:
+            # {"data": {"slots": {"2024-01-15": [{"time": "2024-01-15T15:00:00.000Z"}, ...]}}}
+            slots_data = response.get("data", {}).get("slots", {})
+
+            # Convert to list of slot dicts with date and time
+            slots: list[dict[str, Any]] = []
+            if isinstance(slots_data, dict):
+                for date_key, time_list in slots_data.items():
+                    if not isinstance(time_list, list):
+                        continue
+                    for slot_obj in time_list:
+                        # Each slot is {"time": "2024-01-15T15:00:00.000Z"}
+                        if isinstance(slot_obj, dict) and "time" in slot_obj:
+                            # Parse ISO time to extract date and time components
+                            iso_time = slot_obj["time"]
+                            # Format: "2024-01-15T15:00:00.000Z"
+                            slots.append({
+                                "date": date_key,
+                                "time": iso_time[11:16],  # Extract "15:00" from ISO
+                                "iso": iso_time,
+                            })
+                        elif isinstance(slot_obj, str):
+                            # Fallback if it's just a time string
+                            slots.append({
+                                "date": date_key,
+                                "time": slot_obj,
+                            })
+
             log.info("availability_fetched", slot_count=len(slots))
             return slots
 

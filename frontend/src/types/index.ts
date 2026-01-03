@@ -194,36 +194,53 @@ export type QuickActionType =
 
 // Campaign Types
 export type CampaignStatus = "draft" | "scheduled" | "running" | "paused" | "completed" | "cancelled";
-export type CampaignType = "sms" | "email" | "voice" | "multi_channel";
+export type CampaignType = "sms" | "email" | "voice" | "voice_sms_fallback" | "multi_channel";
 
 export interface Campaign {
   id: string;
-  user_id: number;
   workspace_id?: string;
+  campaign_type: CampaignType;
   name: string;
   description?: string;
-  type: CampaignType;
   status: CampaignStatus;
-  // Message templates
-  sms_template?: string;
-  email_subject?: string;
-  email_template?: string;
-  voice_script?: string;
-  // AI Agent for voice campaigns
+  from_phone_number: string;
+  initial_message?: string;
   agent_id?: string;
   // Scheduling
   scheduled_start?: string;
   scheduled_end?: string;
+  sending_hours_start?: string;
+  sending_hours_end?: string;
+  sending_days?: number[];
+  timezone: string;
   // Rate limiting
+  messages_per_minute: number;
+  follow_up_enabled: boolean;
+  follow_up_delay_hours: number;
+  follow_up_message?: string;
+  max_follow_ups: number;
+  ai_enabled: boolean;
+  qualification_criteria?: string;
+  // Stats
+  total_contacts: number;
+  messages_sent: number;
+  messages_delivered?: number;
+  messages_failed?: number;
+  replies_received: number;
+  contacts_qualified: number;
+  // Backwards compatibility - old field names
+  type?: CampaignType;
+  sent_count?: number;
+  delivered_count?: number;
+  responded_count?: number;
+  failed_count?: number;
+  sms_template?: string;
+  email_subject?: string;
+  email_template?: string;
+  voice_script?: string;
   messages_per_hour?: number;
   max_retries?: number;
   retry_delay_minutes?: number;
-  // Stats
-  total_contacts: number;
-  sent_count: number;
-  delivered_count: number;
-  failed_count: number;
-  responded_count: number;
   // Timestamps
   started_at?: string;
   completed_at?: string;

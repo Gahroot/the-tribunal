@@ -363,16 +363,28 @@ async def execute_book_appointment(  # noqa: PLR0911
             select(Contact).where(Contact.id == conversation.contact_id)
         )
         contact = result.scalar_one_or_none()
+        log.info("contact_lookup", contact_id=conversation.contact_id, found=contact is not None)
+    else:
+        log.warning("no_contact_id_on_conversation", conversation_phone=conversation.contact_phone)
 
     if not contact:
-        log.warning("contact_not_found")
+        log.warning(
+            "contact_not_found",
+            conversation_id=str(conversation.id),
+            contact_phone=conversation.contact_phone,
+        )
         return {
             "success": False,
             "error": "Contact not found for this conversation",
         }
 
     if not contact.email:
-        log.warning("contact_email_missing")
+        log.warning(
+            "contact_email_missing",
+            contact_id=contact.id,
+            contact_name=contact.full_name,
+            contact_phone=contact.phone_number,
+        )
         return {
             "success": False,
             "error": "Contact email is required for booking. Please provide an email address.",
@@ -492,6 +504,7 @@ async def execute_check_availability(
         agent_id=str(agent.id),
         start_date=start_date_str,
         end_date=end_date_str,
+        timezone=timezone,
     )
 
     if not agent.calcom_event_type_id:
@@ -530,21 +543,38 @@ async def execute_check_availability(
             event_type_id=agent.calcom_event_type_id,
             start_date=start_date,
             end_date=end_date,
+            timezone=timezone,
         )
 
         log.info("availability_checked", slot_count=len(slots))
 
-        # Format slots for AI consumption
+        # Format slots for AI consumption with date and time
         formatted_slots = []
-        for slot in slots[:10]:  # Limit to 10 slots
-            slot_time = slot.get("time", slot.get("start"))
-            if slot_time:
+        for slot in slots[:15]:  # Limit to 15 slots
+            slot_date = slot.get("date", "")
+            slot_time = slot.get("time", slot.get("start", ""))
+            if slot_date and slot_time:
+                # Format as "Monday Jan 6 at 2:00 PM" for better AI understanding
+                try:
+                    slot_dt = datetime.strptime(f"{slot_date} {slot_time}", "%Y-%m-%d %H:%M")
+                    formatted = slot_dt.strftime("%A %b %d at %I:%M %p")
+                    formatted_slots.append(formatted)
+                except ValueError:
+                    # Fallback to raw format
+                    formatted_slots.append(f"{slot_date} {slot_time}")
+            elif slot_time:
                 formatted_slots.append(slot_time)
+
+        if not formatted_slots and slots:
+            # Fallback: return raw slot data if formatting failed
+            log.warning("slot_formatting_fallback", raw_slots=slots[:5])
+            formatted_slots = [str(s) for s in slots[:10]]
 
         return {
             "success": True,
             "available_slots": formatted_slots,
             "slot_count": len(slots),
+            "date_range": f"{start_date_str} to {end_date_str or start_date_str}",
         }
 
     except Exception as e:
@@ -682,46 +712,45 @@ async def generate_text_response(  # noqa: PLR0915
 
         booking_instructions = f"""
 
-[APPOINTMENT BOOKING - MANDATORY TOOL USE]
+[APPOINTMENT BOOKING]
 Today's date is {current_date}.
 
-YOU MUST CALL THE book_appointment FUNCTION TO BOOK APPOINTMENTS.
-This is non-negotiable. The function connects to Cal.com to create real bookings.
+CRITICAL RULES - NEVER VIOLATE THESE:
+1. NEVER say "one moment", "let me check", or "checking" - just call the function
+2. NEVER promise to do something without IMMEDIATELY calling the function
+3. If you need availability info, call check_availability IN THIS RESPONSE
+4. If user picks a time, call book_appointment IN THIS RESPONSE
 
-RECOGNIZE BOOKING INTENT - Call book_appointment when the user:
-- Explicitly asks to book: "I'd like to schedule a meeting", "Can we set up a call?"
-- Agrees to a time: "Sure, let's do 3pm", "That works for me", "Sounds good"
-- Mentions specific times: "How about tomorrow at 2?", "Wednesday at 6pm works"
-- Shows interest in scheduling: "What times do you have?", "Are you free Friday?"
-- Confirms availability: "Yes", "Okay", "Perfect", "Let's do it"
-- Uses casual agreement: "Yeah that works", "I'm in", "Count me in"
+WHEN TO CALL check_availability:
+- User asks about availability ("when", "what times", "what's open")
+- User mentions a day ("Monday", "tomorrow", "next week")
+- User wants to schedule/book/meet
+- You need to offer time options
 
-EXAMPLES THAT SHOULD TRIGGER book_appointment:
-- "Sure, let's do tomorrow at 3pm" → book_appointment(tomorrow's date, "15:00")
-- "Wednesday at 6 works" → book_appointment(next Wednesday, "18:00")
-- "Yeah 2pm is good" → book_appointment(discussed date, "14:00")
-- "Sounds good, I'll take the 4 o'clock slot" → book_appointment(date, "16:00")
-- "Ok let's do it" (after discussing a time) → book_appointment with discussed time
+WHEN TO CALL book_appointment:
+- User confirms a specific time you offered
+- User says "yes", "that works", "sounds good" after you offered times
+- User picks "the first one" or "the second option"
 
-RULES:
-- When user agrees to ANY time: IMMEDIATELY call book_appointment function
-- Parse natural language times: "3" = 15:00, "morning" = 10:00, "afternoon" = 14:00
-- If time is ambiguous, use context from conversation or default to afternoon
-- DO NOT say "I'll book that" WITHOUT calling the function first
-- The ONLY way to book is by calling book_appointment - there is no other way
-- If you respond without calling the function, NO BOOKING IS CREATED
+RESPONSE PATTERN:
+1. Call the function FIRST (check_availability or book_appointment)
+2. THEN respond based on the function result
+3. Offer exactly 2 specific time options when presenting availability
 
-HOW TO BOOK:
-1. User agrees to or suggests a time → Call book_appointment immediately
-2. Date format: YYYY-MM-DD (e.g., tomorrow = {current_date} + 1 day)
-3. Time format: HH:MM in 24-hour (e.g., 2pm = "14:00", 5pm = "17:00")
-4. WAIT for function result
-5. If success=true: confirm the booking
-6. If success=false: apologize and offer alternatives
+FUNCTION FORMATS:
+- check_availability: start_date as YYYY-MM-DD (check 3-5 days ahead if not specified)
+- book_appointment: date as YYYY-MM-DD, time as HH:MM (24-hour format)
 
-PROACTIVE BOOKING: If the conversation is about scheduling and the user provides
-enough info (date + time), call book_appointment even if they didn't explicitly
-say "book". Agreement + time info = intent to book."""
+EXAMPLES OF WHAT NOT TO DO:
+❌ "Let me check availability for you. One moment..."  (NO - call the function!)
+❌ "I'll look into that and get back to you"  (NO - call the function NOW!)
+❌ "Checking..."  (NO - just call the function silently!)
+
+CORRECT BEHAVIOR:
+✓ "when are you free?" → Call check_availability → "I have Monday 2pm or Tuesday 10am"
+✓ "Monday works" → Call book_appointment → "You're booked for Monday at 2pm!"
+
+The ONLY way to check times is check_availability. The ONLY way to book is book_appointment."""
 
     system_prompt = build_text_instructions(
         system_prompt=agent.system_prompt + booking_instructions,
@@ -756,7 +785,8 @@ say "book". Agreement + time info = intent to book."""
             # Check if last message mentions booking-related keywords
             last_msg = messages[-1]["content"].lower() if messages else ""
 
-            # Comprehensive list of trigger words for natural booking detection
+            # Trigger words that indicate booking/scheduling context
+            # These force the AI to use tools rather than just responding with text
             booking_words = [
                 # Direct booking words
                 "book", "schedule", "appointment", "meeting", "call", "reserve",
@@ -772,26 +802,20 @@ say "book". Agreement + time info = intent to book."""
 
                 # Relative time expressions
                 "next week", "this week", "next month", "later this",
-                "day after", "coming", "upcoming",
+                "day after", "coming", "upcoming", "other day", "another day",
+                "different day", "different time", "other time", "another time",
 
-                # Availability questions
+                # Availability questions - expanded to catch more patterns
                 "available", "availability", "free", "open", "slot", "opening",
                 "when can", "what time", "any time", "what days",
-
-                # Agreement/confirmation phrases
-                "sounds good", "works for me", "that works", "perfect",
-                "let's do", "lets do", "i'm in", "im in", "count me in",
-                "sign me up", "i'll take", "ill take", "i'd like", "id like",
-                "sure", "yes", "yeah", "yep", "yup", "okay", "ok",
-                "absolutely", "definitely", "for sure",
+                "when are", "when is", "like when", "when then",
+                "what about", "how about", "what else", "other options",
 
                 # Specific time mentions (numbers often indicate times)
-                " 1 ", " 2 ", " 3 ", " 4 ", " 5 ", " 6 ", " 7 ", " 8 ", " 9 ",
-                " 10 ", " 11 ", " 12 ", "1pm", "2pm", "3pm", "4pm", "5pm",
+                "1pm", "2pm", "3pm", "4pm", "5pm",
                 "6pm", "7pm", "8pm", "9am", "10am", "11am", "12pm",
                 "at 1", "at 2", "at 3", "at 4", "at 5", "at 6", "at 7",
                 "at 8", "at 9", "at 10", "at 11", "at 12",
-                "around", "about", "ish",
             ]
             if any(kw in last_msg for kw in booking_words):
                 api_params["tool_choice"] = "required"
