@@ -10,6 +10,9 @@ import {
   Check,
   Plus,
   Calendar,
+  Layers,
+  Eye,
+  FileText,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -32,13 +35,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { Offer, DiscountType } from "@/types";
+import { OfferPreview } from "@/components/offers/offer-preview";
+import type { Offer, DiscountType, LeadMagnet } from "@/types";
 
 interface OfferSelectorProps {
   offers: Offer[];
   selectedId?: string;
   onSelect: (offerId: string | undefined) => void;
   onCreateOffer?: (offer: Partial<Offer>) => Promise<void>;
+  /** Map of offer ID to its lead magnets for preview */
+  offerLeadMagnets?: Record<string, LeadMagnet[]>;
 }
 
 const discountTypeIcons: Record<DiscountType, React.ReactNode> = {
@@ -47,19 +53,15 @@ const discountTypeIcons: Record<DiscountType, React.ReactNode> = {
   free_service: <Gift className="size-4" />,
 };
 
-const discountTypeLabels: Record<DiscountType, string> = {
-  percentage: "Percentage Off",
-  fixed: "Fixed Amount",
-  free_service: "Free Service",
-};
-
 export function OfferSelector({
   offers,
   selectedId,
   onSelect,
   onCreateOffer,
+  offerLeadMagnets = {},
 }: OfferSelectorProps) {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [previewOffer, setPreviewOffer] = useState<Offer | null>(null);
   const [newOffer, setNewOffer] = useState<Partial<Offer>>({
     name: "",
     description: "",
@@ -69,6 +71,19 @@ export function OfferSelector({
     is_active: true,
   });
   const [isCreating, setIsCreating] = useState(false);
+
+  // Calculate total value for an offer
+  const calculateTotalValue = (offer: Offer) => {
+    const valueStackTotal = (offer.value_stack_items || [])
+      .filter((item) => item.included)
+      .reduce((sum, item) => sum + (item.value || 0), 0);
+    const leadMagnets = offerLeadMagnets[offer.id] || offer.lead_magnets || [];
+    const leadMagnetTotal = leadMagnets.reduce(
+      (sum, lm) => sum + (lm.estimated_value || 0),
+      0
+    );
+    return offer.total_value || valueStackTotal + leadMagnetTotal;
+  };
 
   const formatDiscount = (offer: Offer) => {
     switch (offer.discount_type) {
@@ -257,6 +272,11 @@ export function OfferSelector({
           {/* Offer cards */}
           {activeOffers.map((offer) => {
             const isSelected = selectedId === offer.id;
+            const totalValue = calculateTotalValue(offer);
+            const leadMagnets = offerLeadMagnets[offer.id] || offer.lead_magnets || [];
+            const valueStackCount = (offer.value_stack_items || []).filter(
+              (item) => item.included
+            ).length;
 
             return (
               <motion.div
@@ -289,31 +309,73 @@ export function OfferSelector({
                       <Badge variant="secondary" className="bg-green-500/10 text-green-600">
                         {formatDiscount(offer)}
                       </Badge>
+                      {totalValue > 0 && (
+                        <Badge variant="outline" className="text-green-600 border-green-600/30">
+                          <DollarSign className="size-3 mr-0.5" />
+                          {totalValue.toLocaleString()} value
+                        </Badge>
+                      )}
+                      {valueStackCount > 0 && (
+                        <Badge variant="outline" className="gap-1">
+                          <Layers className="size-3" />
+                          {valueStackCount} items
+                        </Badge>
+                      )}
+                      {leadMagnets.length > 0 && (
+                        <Badge variant="outline" className="gap-1 text-blue-600 border-blue-600/30">
+                          <FileText className="size-3" />
+                          {leadMagnets.length} bonus{leadMagnets.length > 1 ? "es" : ""}
+                        </Badge>
+                      )}
                     </div>
 
-                    {offer.description && (
+                    {offer.headline && (
+                      <p className="text-sm font-medium text-muted-foreground mt-1 line-clamp-1">
+                        {offer.headline}
+                      </p>
+                    )}
+
+                    {offer.description && !offer.headline && (
                       <p className="text-sm text-muted-foreground mt-1 line-clamp-1">
                         {offer.description}
                       </p>
                     )}
 
-                    {(offer.valid_from || offer.valid_until) && (
-                      <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
-                        <Calendar className="size-3" />
-                        {offer.valid_from && (
-                          <span>
-                            From {new Date(offer.valid_from).toLocaleDateString()}
-                          </span>
-                        )}
-                        {offer.valid_until && (
-                          <span>
-                            to {new Date(offer.valid_until).toLocaleDateString()}
-                          </span>
-                        )}
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2 mt-2">
+                      {(offer.valid_from || offer.valid_until) && (
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Calendar className="size-3" />
+                          {offer.valid_from && (
+                            <span>
+                              From {new Date(offer.valid_from).toLocaleDateString()}
+                            </span>
+                          )}
+                          {offer.valid_until && (
+                            <span>
+                              to {new Date(offer.valid_until).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+                      )}
 
-                    {offer.terms && (
+                      {/* Preview button */}
+                      {(offer.value_stack_items?.length || leadMagnets.length > 0 || offer.headline) && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPreviewOffer(offer);
+                          }}
+                        >
+                          <Eye className="size-3 mr-1" />
+                          Preview
+                        </Button>
+                      )}
+                    </div>
+
+                    {offer.terms && !offer.headline && (
                       <div className="mt-2 text-xs text-muted-foreground italic line-clamp-1">
                         {offer.terms}
                       </div>
@@ -357,6 +419,25 @@ export function OfferSelector({
           </code>
         </motion.div>
       )}
+
+      {/* Offer Preview Dialog */}
+      <Dialog open={!!previewOffer} onOpenChange={() => setPreviewOffer(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle>Offer Preview</DialogTitle>
+          </DialogHeader>
+          {previewOffer && (
+            <OfferPreview
+              offer={previewOffer}
+              leadMagnets={
+                offerLeadMagnets[previewOffer.id] ||
+                previewOffer.lead_magnets ||
+                []
+              }
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

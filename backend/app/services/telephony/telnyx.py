@@ -105,6 +105,7 @@ class TelnyxSMSService:
         workspace_id: uuid.UUID,
         agent_id: uuid.UUID | None = None,
         campaign_id: uuid.UUID | None = None,
+        phone_number_id: uuid.UUID | None = None,
     ) -> Message:
         """Send an SMS message and store it.
 
@@ -116,6 +117,7 @@ class TelnyxSMSService:
             workspace_id: Workspace ID
             agent_id: Optional agent ID if sent by AI
             campaign_id: Optional campaign ID if part of campaign
+            phone_number_id: Optional phone number ID for tracking
 
         Returns:
             Created Message record
@@ -144,6 +146,7 @@ class TelnyxSMSService:
             status="queued",
             agent_id=agent_id,
             is_ai=agent_id is not None,
+            from_phone_number_id=phone_number_id,
         )
         db.add(message)
         await db.flush()
@@ -260,6 +263,8 @@ class TelnyxSMSService:
         db: AsyncSession,
         provider_message_id: str,
         status: str,
+        error_code: str | None = None,
+        error_message: str | None = None,
     ) -> Message | None:
         """Update message delivery status.
 
@@ -267,6 +272,8 @@ class TelnyxSMSService:
             db: Database session
             provider_message_id: Telnyx message ID
             status: New status
+            error_code: Optional Telnyx error code
+            error_message: Optional error message
 
         Returns:
             Updated message or None if not found
@@ -292,6 +299,17 @@ class TelnyxSMSService:
 
         message.status = status_map.get(status, status)
 
+        # Store error info if provided
+        if error_code:
+            message.error_code = error_code
+        if error_message:
+            message.error_message = error_message
+
+        # Set delivered timestamp
+        if message.status == "delivered":
+            from datetime import UTC, datetime
+            message.delivered_at = datetime.now(UTC)
+
         await db.commit()
         await db.refresh(message)
 
@@ -299,6 +317,7 @@ class TelnyxSMSService:
             "message_status_updated",
             message_id=str(message.id),
             status=message.status,
+            error_code=error_code,
         )
 
         return message

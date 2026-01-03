@@ -1,0 +1,175 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { ArrowLeft, Loader2 } from "lucide-react";
+import Link from "next/link";
+
+import { AppSidebar } from "@/components/layout/app-sidebar";
+import { Button } from "@/components/ui/button";
+import { VoiceCampaignWizard } from "@/components/campaigns/voice-campaign-wizard";
+import {
+  voiceCampaignsApi,
+  type CreateVoiceCampaignRequest,
+} from "@/lib/api/voice-campaigns";
+import { phoneNumbersApi } from "@/lib/api/phone-numbers";
+import { contactsApi } from "@/lib/api/contacts";
+import { agentsApi } from "@/lib/api/agents";
+import { useAuth } from "@/providers/auth-provider";
+import type { VoiceCampaign } from "@/types";
+
+export default function NewVoiceCampaignPage() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const { workspaceId, isLoading: authLoading } = useAuth();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Fetch phone numbers from API - filter to voice-enabled only
+  const { data: phoneNumbersData, isLoading: phoneNumbersLoading } = useQuery({
+    queryKey: ["phone-numbers", workspaceId],
+    queryFn: async () => {
+      if (!workspaceId) return [];
+      const response = await phoneNumbersApi.list(workspaceId);
+      // Filter to voice-enabled only on client side
+      return response.items.filter((p) => p.voice_enabled);
+    },
+    enabled: !!workspaceId,
+  });
+
+  // Fetch contacts from API
+  const { data: contactsData, isLoading: contactsLoading } = useQuery({
+    queryKey: ["contacts", workspaceId],
+    queryFn: async () => {
+      if (!workspaceId) return [];
+      const response = await contactsApi.list(workspaceId, { page_size: 100 });
+      return response.items;
+    },
+    enabled: !!workspaceId,
+  });
+
+  // Fetch agents from API - all active agents
+  const { data: agentsData, isLoading: agentsLoading } = useQuery({
+    queryKey: ["agents", workspaceId, { active_only: true }],
+    queryFn: async () => {
+      if (!workspaceId) return [];
+      const response = await agentsApi.list(workspaceId, { active_only: true });
+      return response.items;
+    },
+    enabled: !!workspaceId,
+  });
+
+  // Create campaign mutation
+  const createCampaignMutation = useMutation({
+    mutationFn: async ({
+      data,
+      contactIds,
+    }: {
+      data: CreateVoiceCampaignRequest;
+      contactIds: number[];
+    }) => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+
+      // Create the campaign
+      const campaign = await voiceCampaignsApi.create(workspaceId, data);
+
+      // Add contacts to the campaign
+      if (contactIds.length > 0) {
+        await voiceCampaignsApi.addContacts(workspaceId, campaign.id, {
+          contact_ids: contactIds,
+        });
+      }
+
+      return campaign;
+    },
+    onSuccess: (campaign) => {
+      toast.success("Voice campaign created successfully!");
+      if (workspaceId) {
+        queryClient.invalidateQueries({ queryKey: ["campaigns", workspaceId] });
+        queryClient.invalidateQueries({
+          queryKey: ["voice-campaigns", workspaceId],
+        });
+      }
+      router.push(`/campaigns/${campaign.id}`);
+    },
+    onError: (error) => {
+      toast.error("Failed to create campaign");
+      console.error("Create campaign error:", error);
+    },
+  });
+
+  const handleSubmit = async (
+    data: CreateVoiceCampaignRequest,
+    contactIds: number[]
+  ): Promise<VoiceCampaign> => {
+    setIsSubmitting(true);
+    try {
+      const campaign = await createCampaignMutation.mutateAsync({
+        data,
+        contactIds,
+      });
+      return campaign;
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const isLoading =
+    authLoading || phoneNumbersLoading || contactsLoading || agentsLoading;
+
+  const contacts = Array.isArray(contactsData) ? contactsData : [];
+  const agents = Array.isArray(agentsData) ? agentsData : [];
+  const phoneNumbers = Array.isArray(phoneNumbersData) ? phoneNumbersData : [];
+
+  // Separate voice and text agents
+  const voiceAgents = agents.filter(
+    (a) => a.channel_mode === "voice" || a.channel_mode === "both"
+  );
+  const textAgents = agents.filter(
+    (a) => a.channel_mode === "text" || a.channel_mode === "both"
+  );
+
+  return (
+    <AppSidebar>
+      <div className="flex flex-col h-[calc(100vh-4rem)]">
+        {/* Header */}
+        <div className="flex items-center gap-4 px-6 py-4 border-b bg-background">
+          <Button variant="ghost" size="icon" asChild>
+            <Link href="/campaigns">
+              <ArrowLeft className="size-5" />
+            </Link>
+          </Button>
+          <div>
+            <h1 className="text-xl font-semibold">
+              Create Voice Campaign with SMS Fallback
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Set up outbound AI calls with automatic SMS when calls fail
+            </p>
+          </div>
+        </div>
+
+        {/* Wizard content */}
+        {isLoading ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-4">
+              <Loader2 className="size-8 animate-spin text-muted-foreground" />
+              <p className="text-muted-foreground">Loading campaign data...</p>
+            </div>
+          </div>
+        ) : (
+          <VoiceCampaignWizard
+            contacts={contacts}
+            voiceAgents={voiceAgents}
+            textAgents={textAgents}
+            phoneNumbers={phoneNumbers}
+            onSubmit={handleSubmit}
+            onCancel={() => router.push("/campaigns")}
+            isSubmitting={isSubmitting}
+          />
+        )}
+      </div>
+    </AppSidebar>
+  );
+}

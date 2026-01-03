@@ -79,6 +79,8 @@ class TelnyxVoiceService:
         workspace_id: uuid.UUID,
         contact_phone: str | None = None,
         agent_id: uuid.UUID | None = None,
+        enable_machine_detection: bool = False,
+        campaign_id: uuid.UUID | None = None,
     ) -> Message:
         """Initiate outbound call via Telnyx Call Control API.
 
@@ -91,6 +93,8 @@ class TelnyxVoiceService:
             workspace_id: Workspace ID
             contact_phone: Contact's phone number for conversation linking
             agent_id: Optional agent ID if call is agent-assisted
+            enable_machine_detection: If True, enables voicemail/machine detection
+            campaign_id: Optional campaign ID for tracking
 
         Returns:
             Created Message record with channel="voice"
@@ -115,6 +119,7 @@ class TelnyxVoiceService:
             status="queued",
             agent_id=agent_id,
             is_ai=agent_id is not None,
+            campaign_id=campaign_id,
         )
         db.add(message)
         await db.flush()
@@ -129,6 +134,15 @@ class TelnyxVoiceService:
                 "webhook_url_method": "POST",
                 "audio_codec": "ulaw",  # μ-law for PSTN compatibility
             }
+
+            # Enable machine detection for voicemail/answering machine
+            if enable_machine_detection:
+                payload["answering_machine_detection"] = "detect"
+                payload["answering_machine_detection_config"] = {
+                    "wait_for_beep_timeout_millis": 3000,  # ms to wait for beep
+                    "total_analysis_time_millis": 5000,  # Total analysis time
+                }
+                log.info("machine_detection_enabled")
 
             response = await self.client.post("/calls", json=payload)
             response_data = response.json()

@@ -41,29 +41,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/providers/auth-provider";
-import { agentsApi, type AgentResponse } from "@/lib/api/agents";
-
-const pricingTierColors: Record<string, string> = {
-  budget: "bg-gray-500/10 text-gray-500 border-gray-500/20",
-  balanced: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-  "premium-mini": "bg-purple-500/10 text-purple-500 border-purple-500/20",
-  premium: "bg-amber-500/10 text-amber-500 border-amber-500/20",
-};
+import { agentsApi } from "@/lib/api/agents";
 
 const channelModeIcons: Record<string, React.ElementType> = {
   voice: Phone,
   text: MessageSquare,
   both: Sparkles,
 };
-
-const voiceOptions = [
-  { value: "alloy", label: "Alloy", description: "Neutral and balanced" },
-  { value: "echo", label: "Echo", description: "Warm and friendly" },
-  { value: "fable", label: "Fable", description: "Expressive and dynamic" },
-  { value: "onyx", label: "Onyx", description: "Deep and authoritative" },
-  { value: "nova", label: "Nova", description: "Young and energetic" },
-  { value: "shimmer", label: "Shimmer", description: "Soft and gentle" },
-];
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -238,7 +222,6 @@ export function AgentsList() {
         <AnimatePresence mode="popLayout">
           {filteredAgents.map((agent) => {
             const ChannelIcon = channelModeIcons[agent.channel_mode] ?? Sparkles;
-            const voiceInfo = voiceOptions.find((v) => v.value === agent.voice_id);
 
             return (
               <motion.div

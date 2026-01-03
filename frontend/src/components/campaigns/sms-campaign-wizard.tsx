@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -104,6 +104,7 @@ interface CampaignFormData {
   // Scheduling
   scheduled_start?: string;
   scheduled_end?: string;
+  sending_hours_enabled: boolean;
   sending_hours_start: string;
   sending_hours_end: string;
   sending_days: number[];
@@ -127,6 +128,7 @@ const initialFormData: CampaignFormData = {
   offer_id: undefined,
   ai_enabled: true,
   qualification_criteria: "",
+  sending_hours_enabled: false,
   sending_hours_start: "09:00",
   sending_hours_end: "17:00",
   sending_days: [1, 2, 3, 4, 5], // Mon-Fri
@@ -245,8 +247,9 @@ export function SMSCampaignWizard({
       qualification_criteria: formData.qualification_criteria || undefined,
       scheduled_start: formData.scheduled_start || undefined,
       scheduled_end: formData.scheduled_end || undefined,
-      sending_hours_start: formData.sending_hours_start,
-      sending_hours_end: formData.sending_hours_end,
+      // When sending hours are disabled, use 24-hour window (no restrictions)
+      sending_hours_start: formData.sending_hours_enabled ? formData.sending_hours_start : "00:00",
+      sending_hours_end: formData.sending_hours_enabled ? formData.sending_hours_end : "23:59",
       sending_days: formData.sending_days,
       timezone: formData.timezone,
       messages_per_minute: formData.messages_per_minute,
@@ -608,50 +611,69 @@ export function SMSCampaignWizard({
             <Separator />
 
             <div className="space-y-4">
-              <h4 className="font-medium flex items-center gap-2">
-                <Clock className="size-4" />
-                Sending Hours
-              </h4>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label>Start Time</Label>
-                  <Input
-                    type="time"
-                    value={formData.sending_hours_start}
-                    onChange={(e) =>
-                      updateFormData("sending_hours_start", e.target.value)
-                    }
-                  />
+              <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Clock className="size-4" />
+                  <div>
+                    <h4 className="font-medium">Restrict Sending Hours</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Only send messages during specific hours
+                    </p>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>End Time</Label>
-                  <Input
-                    type="time"
-                    value={formData.sending_hours_end}
-                    onChange={(e) =>
-                      updateFormData("sending_hours_end", e.target.value)
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Timezone</Label>
-                  <Select
-                    value={formData.timezone}
-                    onValueChange={(v) => updateFormData("timezone", v)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TIMEZONES.map((tz) => (
-                        <SelectItem key={tz} value={tz}>
-                          {tz.replace("_", " ").replace("America/", "")}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <Switch
+                  checked={formData.sending_hours_enabled}
+                  onCheckedChange={(v) => updateFormData("sending_hours_enabled", v)}
+                />
               </div>
+
+              {formData.sending_hours_enabled && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="grid grid-cols-3 gap-4 pl-4 border-l-2 border-muted"
+                >
+                  <div className="space-y-2">
+                    <Label>Start Time</Label>
+                    <Input
+                      type="time"
+                      value={formData.sending_hours_start}
+                      onChange={(e) =>
+                        updateFormData("sending_hours_start", e.target.value)
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>End Time</Label>
+                    <Input
+                      type="time"
+                      value={formData.sending_hours_end}
+                      onChange={(e) =>
+                        updateFormData("sending_hours_end", e.target.value)
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Timezone</Label>
+                    <Select
+                      value={formData.timezone}
+                      onValueChange={(v) => updateFormData("timezone", v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TIMEZONES.map((tz) => (
+                          <SelectItem key={tz} value={tz}>
+                            {tz.replace("_", " ").replace("America/", "")}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </motion.div>
+              )}
             </div>
 
             <div className="space-y-4">
@@ -865,8 +887,9 @@ export function SMSCampaignWizard({
                 <div className="flex items-center gap-2 text-sm">
                   <span className="text-muted-foreground">Sending hours:</span>
                   <span>
-                    {formData.sending_hours_start} - {formData.sending_hours_end} (
-                    {formData.timezone.replace("America/", "")})
+                    {formData.sending_hours_enabled
+                      ? `${formData.sending_hours_start} - ${formData.sending_hours_end} (${formData.timezone.replace("America/", "")})`
+                      : "Anytime (no restrictions)"}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-sm">

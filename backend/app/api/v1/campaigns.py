@@ -1,7 +1,7 @@
 """Campaign management endpoints."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -23,6 +23,17 @@ from app.schemas.campaign import (
 )
 
 router = APIRouter()
+
+
+def _parse_time_string(time_str: str | None) -> time | None:
+    """Parse a time string like '09:00' into a datetime.time object."""
+    if time_str is None:
+        return None
+    try:
+        parts = time_str.split(":")
+        return time(int(parts[0]), int(parts[1]))
+    except (ValueError, IndexError):
+        return None
 
 
 @router.get("", response_model=PaginatedCampaigns)
@@ -84,9 +95,20 @@ async def create_campaign(
                 detail="Agent not found",
             )
 
+    # Convert time strings to datetime.time objects
+    campaign_data = campaign_in.model_dump()
+    if "sending_hours_start" in campaign_data:
+        campaign_data["sending_hours_start"] = _parse_time_string(
+            campaign_data["sending_hours_start"]
+        )
+    if "sending_hours_end" in campaign_data:
+        campaign_data["sending_hours_end"] = _parse_time_string(
+            campaign_data["sending_hours_end"]
+        )
+
     campaign = Campaign(
         workspace_id=workspace_id,
-        **campaign_in.model_dump(),
+        **campaign_data,
     )
     db.add(campaign)
     await db.commit()
@@ -154,6 +176,17 @@ async def update_campaign(
 
     # Update fields
     update_data = campaign_in.model_dump(exclude_unset=True)
+
+    # Convert time strings to datetime.time objects
+    if "sending_hours_start" in update_data:
+        update_data["sending_hours_start"] = _parse_time_string(
+            update_data["sending_hours_start"]
+        )
+    if "sending_hours_end" in update_data:
+        update_data["sending_hours_end"] = _parse_time_string(
+            update_data["sending_hours_end"]
+        )
+
     for field, value in update_data.items():
         setattr(campaign, field, value)
 

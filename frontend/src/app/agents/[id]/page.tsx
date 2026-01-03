@@ -857,7 +857,8 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
                                           field.onChange(current.filter((v) => v !== integration.id));
                                           // Clear tool selection
                                           const currentToolIds = form.getValues("enabledToolIds") ?? {};
-                                          const { [integration.id]: _, ...rest } = currentToolIds;
+                                          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                                          const { [integration.id]: _removed, ...rest } = currentToolIds;
                                           form.setValue("enabledToolIds", rest);
                                         }
                                       }}

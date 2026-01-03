@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from app.models.campaign import Campaign
     from app.models.contact import Contact
     from app.models.conversation import Conversation
+    from app.models.lead_magnet import LeadMagnet
     from app.models.offer import Offer
     from app.models.phone_number import PhoneNumber
     from app.models.user import User
@@ -33,7 +34,7 @@ class Workspace(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    settings: Mapped[dict] = mapped_column(
+    settings: Mapped[dict[str, Any]] = mapped_column(
         JSONB, default=dict, nullable=False
     )  # timezone, business_hours
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -74,6 +75,9 @@ class Workspace(Base):
     )
     offers: Mapped[list["Offer"]] = relationship(
         "Offer", back_populates="workspace", cascade="all, delete-orphan"
+    )
+    lead_magnets: Mapped[list["LeadMagnet"]] = relationship(
+        "LeadMagnet", back_populates="workspace", cascade="all, delete-orphan"
     )
     automations: Mapped[list["Automation"]] = relationship(
         "Automation", back_populates="workspace", cascade="all, delete-orphan"
@@ -140,7 +144,7 @@ class WorkspaceIntegration(Base):
     integration_type: Mapped[str] = mapped_column(
         String(50), nullable=False
     )  # calcom, telnyx, openai, elevenlabs
-    credentials: Mapped[dict] = mapped_column(JSONB, nullable=False)  # api_key, etc.
+    credentials: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)  # api_key, etc.
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False

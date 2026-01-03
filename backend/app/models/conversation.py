@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from app.models.agent import Agent
     from app.models.campaign import CampaignContact
     from app.models.contact import Contact
+    from app.models.phone_number import PhoneNumber
     from app.models.workspace import Workspace
 
 
@@ -149,6 +150,14 @@ class Conversation(Base):
         return f"<Conversation(id={self.id}, contact_phone={self.contact_phone})>"
 
 
+class BounceType(str, Enum):
+    """Bounce type classification."""
+
+    HARD = "hard"
+    SOFT = "soft"
+    SPAM_COMPLAINT = "spam_complaint"
+
+
 class Message(Base):
     """Individual message in a conversation."""
 
@@ -176,6 +185,24 @@ class Message(Base):
     provider_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     error_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # === Bounce Classification ===
+    bounce_type: Mapped[str | None] = mapped_column(
+        String(50), nullable=True
+    )  # hard, soft, spam_complaint
+    bounce_category: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )  # invalid_number, carrier_block, opted_out, etc.
+    carrier_error_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    carrier_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    # === Phone Number Tracking ===
+    from_phone_number_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("phone_numbers.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     # AI attribution
     is_ai: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -205,6 +232,9 @@ class Message(Base):
     conversation: Mapped["Conversation"] = relationship("Conversation", back_populates="messages")
     agent: Mapped["Agent | None"] = relationship(
         "Agent", back_populates="messages", foreign_keys=[agent_id]
+    )
+    from_phone_number: Mapped["PhoneNumber | None"] = relationship(  # noqa: F821
+        "PhoneNumber", foreign_keys=[from_phone_number_id]
     )
 
     def __repr__(self) -> str:

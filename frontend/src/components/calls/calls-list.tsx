@@ -13,7 +13,6 @@ import {
   Clock,
   User,
   Bot,
-  Filter,
   Download,
   ChevronLeft,
   ChevronRight,
@@ -27,7 +26,6 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import {
   Select,
@@ -168,6 +166,7 @@ export function CallsList() {
   const [searchQuery, setSearchQuery] = useState("");
   const [directionFilter, setDirectionFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
 
   const filteredCalls = mockCalls.filter((call) => {

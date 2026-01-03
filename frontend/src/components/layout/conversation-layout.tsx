@@ -2,13 +2,11 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Menu, User } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useContactStore } from "@/lib/contact-store";
 import { ActionsPanel } from "@/components/actions/actions-panel";
 import { ConversationFeed } from "@/components/conversation/conversation-feed";
 import { ContactSidebar } from "@/components/contacts/contact-sidebar";
@@ -19,7 +17,6 @@ interface ConversationLayoutProps {
 
 export function ConversationLayout({ className }: ConversationLayoutProps) {
   const isMobile = useIsMobile();
-  const { selectedContact } = useContactStore();
   const [showActionsPanel, setShowActionsPanel] = React.useState(false);
   const [showSidebar, setShowSidebar] = React.useState(false);
 

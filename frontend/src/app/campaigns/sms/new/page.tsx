@@ -51,6 +51,28 @@ export default function NewSMSCampaignPage() {
     enabled: !!workspaceId,
   });
 
+  // Fetch contacts from API (page_size max is 100 per backend limit)
+  const { data: contactsData, isLoading: contactsLoading } = useQuery({
+    queryKey: ["contacts", workspaceId],
+    queryFn: async () => {
+      if (!workspaceId) return [];
+      const response = await contactsApi.list(workspaceId, { page_size: 100 });
+      return response.items;
+    },
+    enabled: !!workspaceId,
+  });
+
+  // Fetch agents from API - filter to active agents only
+  const { data: agentsData, isLoading: agentsLoading } = useQuery({
+    queryKey: ["agents", workspaceId, { active_only: true }],
+    queryFn: async () => {
+      if (!workspaceId) return [];
+      const response = await agentsApi.list(workspaceId, { active_only: true });
+      return response.items;
+    },
+    enabled: !!workspaceId,
+  });
+
   // Create offer mutation
   const createOfferMutation = useMutation({
     mutationFn: async (offer: Partial<Offer>) => {
@@ -126,11 +148,10 @@ export default function NewSMSCampaignPage() {
     await createOfferMutation.mutateAsync(offer);
   };
 
-  const isLoading = authLoading || offersLoading || phoneNumbersLoading;
+  const isLoading = authLoading || offersLoading || phoneNumbersLoading || contactsLoading || agentsLoading;
 
-  // Use mock data for contacts and agents (replace with API calls later)
-  const contacts = mockContacts;
-  const agents = mockAgents;
+  const contacts = Array.isArray(contactsData) ? contactsData : [];
+  const agents = Array.isArray(agentsData) ? agentsData : [];
   const offers = Array.isArray(offersData) ? offersData : [];
   const phoneNumbers = Array.isArray(phoneNumbersData) ? phoneNumbersData : [];
 

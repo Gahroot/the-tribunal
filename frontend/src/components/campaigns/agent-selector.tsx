@@ -12,6 +12,8 @@ interface AgentSelectorProps {
   selectedId?: string;
   onSelect: (agentId: string | undefined) => void;
   showTextAgentsOnly?: boolean;
+  showVoiceAgentsOnly?: boolean;
+  allowNone?: boolean;
 }
 
 const pricingTierColors: Record<string, string> = {
@@ -32,12 +34,20 @@ export function AgentSelector({
   agents,
   selectedId,
   onSelect,
-  showTextAgentsOnly = true,
+  showTextAgentsOnly = false,
+  showVoiceAgentsOnly = false,
+  allowNone = true,
 }: AgentSelectorProps) {
-  // Filter to only show agents that support text
-  const filteredAgents = showTextAgentsOnly
-    ? agents.filter((a) => a.channel_mode === "text" || a.channel_mode === "both")
-    : agents;
+  // Filter agents based on channel mode requirements
+  const filteredAgents = agents.filter((a) => {
+    if (showVoiceAgentsOnly) {
+      return a.channel_mode === "voice" || a.channel_mode === "both";
+    }
+    if (showTextAgentsOnly) {
+      return a.channel_mode === "text" || a.channel_mode === "both";
+    }
+    return true;
+  });
 
   const getChannelIcon = (mode: string) => {
     switch (mode) {
@@ -68,36 +78,38 @@ export function AgentSelector({
 
       <ScrollArea className="h-[350px]">
         <div className="space-y-2 pr-4">
-          {/* No agent option */}
-          <motion.div
-            whileHover={{ scale: 1.01 }}
-            whileTap={{ scale: 0.99 }}
-            onClick={() => onSelect(undefined)}
-            className={`relative p-4 rounded-lg border-2 cursor-pointer transition-colors ${
-              !selectedId
-                ? "border-primary bg-primary/5"
-                : "border-border hover:border-primary/50"
-            }`}
-          >
-            {!selectedId && (
-              <div className="absolute top-3 right-3">
-                <div className="size-5 rounded-full bg-primary flex items-center justify-center">
-                  <Check className="size-3 text-primary-foreground" />
+          {/* No agent option - only show if allowNone is true */}
+          {allowNone && (
+            <motion.div
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
+              onClick={() => onSelect(undefined)}
+              className={`relative p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+                !selectedId
+                  ? "border-primary bg-primary/5"
+                  : "border-border hover:border-primary/50"
+              }`}
+            >
+              {!selectedId && (
+                <div className="absolute top-3 right-3">
+                  <div className="size-5 rounded-full bg-primary flex items-center justify-center">
+                    <Check className="size-3 text-primary-foreground" />
+                  </div>
+                </div>
+              )}
+              <div className="flex items-center gap-3">
+                <div className="size-10 rounded-full bg-muted flex items-center justify-center">
+                  <Bot className="size-5 text-muted-foreground" />
+                </div>
+                <div>
+                  <div className="font-medium">No AI Agent</div>
+                  <div className="text-sm text-muted-foreground">
+                    Manual responses only - no automated replies
+                  </div>
                 </div>
               </div>
-            )}
-            <div className="flex items-center gap-3">
-              <div className="size-10 rounded-full bg-muted flex items-center justify-center">
-                <Bot className="size-5 text-muted-foreground" />
-              </div>
-              <div>
-                <div className="font-medium">No AI Agent</div>
-                <div className="text-sm text-muted-foreground">
-                  Manual responses only - no automated replies
-                </div>
-              </div>
-            </div>
-          </motion.div>
+            </motion.div>
+          )}
 
           {/* Agent cards */}
           {filteredAgents.map((agent) => {
@@ -131,12 +143,14 @@ export function AgentSelector({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium">{agent.name}</span>
-                      <Badge
-                        variant="secondary"
-                        className={pricingTierColors[agent.pricing_tier]}
-                      >
-                        {pricingTierLabels[agent.pricing_tier]}
-                      </Badge>
+                      {agent.pricing_tier && (
+                        <Badge
+                          variant="secondary"
+                          className={pricingTierColors[agent.pricing_tier]}
+                        >
+                          {pricingTierLabels[agent.pricing_tier]}
+                        </Badge>
+                      )}
                       <Badge variant="outline" className="flex items-center gap-1">
                         {getChannelIcon(agent.channel_mode)}
                         <span className="capitalize">{agent.channel_mode}</span>
@@ -164,9 +178,19 @@ export function AgentSelector({
           {filteredAgents.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <Bot className="size-12 mb-2 opacity-50" />
-              <p>No text-capable agents found</p>
+              <p>
+                {showVoiceAgentsOnly
+                  ? "No voice-capable agents found"
+                  : showTextAgentsOnly
+                  ? "No text-capable agents found"
+                  : "No agents found"}
+              </p>
               <p className="text-xs mt-1">
-                Create an agent with text channel support
+                {showVoiceAgentsOnly
+                  ? "Create an agent with voice channel support"
+                  : showTextAgentsOnly
+                  ? "Create an agent with text channel support"
+                  : "Create an agent to get started"}
               </p>
             </div>
           )}

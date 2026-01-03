@@ -33,6 +33,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDashboard } from "@/hooks/useDashboard";
+import { useAuth } from "@/providers/auth-provider";
 import type {
   DashboardStats,
   RecentActivity,
@@ -40,9 +41,6 @@ import type {
   AgentStat,
   TodayOverview,
 } from "@/lib/api/dashboard";
-
-// Default workspace ID - in production, this would come from auth context
-const WORKSPACE_ID = "00000000-0000-0000-0000-000000000001";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -528,7 +526,8 @@ function ErrorState({ error }: { error: Error }) {
 }
 
 export function DashboardPage() {
-  const { data, isLoading, error, isFetching } = useDashboard(WORKSPACE_ID);
+  const { workspaceId } = useAuth();
+  const { data, isLoading, error, isFetching } = useDashboard(workspaceId ?? "");
 
   if (error && !data) {
     return <ErrorState error={error as Error} />;

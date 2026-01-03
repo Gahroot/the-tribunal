@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
@@ -77,7 +77,7 @@ class Agent(Base):
     enabled_tools: Mapped[list[str]] = mapped_column(
         ARRAY(Text), default=["book_appointment"], nullable=False
     )
-    tool_settings: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    tool_settings: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
 
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -107,7 +107,9 @@ class Agent(Base):
     messages: Mapped[list["Message"]] = relationship(
         "Message", back_populates="agent", foreign_keys="Message.agent_id"
     )
-    campaigns: Mapped[list["Campaign"]] = relationship("Campaign", back_populates="agent")
+    campaigns: Mapped[list["Campaign"]] = relationship(
+        "Campaign", back_populates="agent", foreign_keys="Campaign.agent_id"
+    )
     appointments: Mapped[list["Appointment"]] = relationship("Appointment", back_populates="agent")
     phone_numbers: Mapped[list["PhoneNumber"]] = relationship(
         "PhoneNumber", back_populates="assigned_agent"

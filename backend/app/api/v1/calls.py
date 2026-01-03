@@ -156,7 +156,7 @@ async def list_calls(
     conv_query = select(Conversation.id).where(
         Conversation.workspace_id == workspace_id
     )
-    query = query.where(Message.conversation_id.in_(conv_query.subquery()))
+    query = query.where(Message.conversation_id.in_(conv_query))
 
     # Get total count
     count_query = select(func.count()).select_from(query.subquery())

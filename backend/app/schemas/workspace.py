@@ -1,5 +1,6 @@
 """Workspace schemas."""
 
+import typing
 import uuid
 from datetime import datetime
 
@@ -12,7 +13,7 @@ class WorkspaceCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     slug: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-z0-9-]+$")
     description: str | None = None
-    settings: dict = Field(default_factory=dict)
+    settings: dict[str, typing.Any] = Field(default_factory=dict)
 
 
 class WorkspaceUpdate(BaseModel):
@@ -20,7 +21,7 @@ class WorkspaceUpdate(BaseModel):
 
     name: str | None = Field(None, min_length=1, max_length=200)
     description: str | None = None
-    settings: dict | None = None
+    settings: dict[str, typing.Any] | None = None
 
 
 class WorkspaceResponse(BaseModel):
@@ -30,7 +31,7 @@ class WorkspaceResponse(BaseModel):
     name: str
     slug: str
     description: str | None
-    settings: dict
+    settings: dict[str, typing.Any]
     is_active: bool
     created_at: datetime
     updated_at: datetime

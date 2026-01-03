@@ -202,24 +202,27 @@ export function CampaignsList() {
               <ChevronDown className="ml-2 size-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuContent align="end" className="w-64">
             <DropdownMenuItem asChild>
               <Link href="/campaigns/sms/new" className="flex items-center cursor-pointer">
                 <MessageSquare className="mr-2 size-4" />
                 SMS Campaign
               </Link>
             </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/campaigns/voice/new" className="flex items-center cursor-pointer">
+                <Phone className="mr-2 size-4" />
+                <div>
+                  <div>Voice Campaign with SMS Fallback</div>
+                  <div className="text-xs text-muted-foreground">AI calls with auto-text on failures</div>
+                </div>
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem disabled className="flex items-center justify-between opacity-60">
               <span className="flex items-center">
                 <Mail className="mr-2 size-4" />
                 Email Campaign
-              </span>
-              <span className="text-xs bg-muted px-1.5 py-0.5 rounded">Coming Soon</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled className="flex items-center justify-between opacity-60">
-              <span className="flex items-center">
-                <Phone className="mr-2 size-4" />
-                Voice Campaign
               </span>
               <span className="text-xs bg-muted px-1.5 py-0.5 rounded">Coming Soon</span>
             </DropdownMenuItem>

@@ -89,7 +89,6 @@ export function MessageItem({ item, contactName }: MessageItemProps) {
 
   // Format timestamp
   const timestamp = format(new Date(item.timestamp), "h:mm a");
-  const dateLabel = format(new Date(item.timestamp), "MMM d");
 
   // Call-specific icon
   const callIcon = isCall ? (

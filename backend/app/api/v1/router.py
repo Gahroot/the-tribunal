@@ -12,9 +12,11 @@ from app.api.v1 import (
     contacts,
     conversations,
     dashboard,
+    lead_magnets,
     offers,
     phone_numbers,
     settings,
+    voice_campaigns,
     workspaces,
 )
 
@@ -45,9 +47,19 @@ api_router.include_router(
     tags=["Campaigns"],
 )
 api_router.include_router(
+    voice_campaigns.router,
+    prefix="/workspaces/{workspace_id}/voice-campaigns",
+    tags=["Voice Campaigns"],
+)
+api_router.include_router(
     offers.router,
     prefix="/workspaces/{workspace_id}/offers",
     tags=["Offers"],
+)
+api_router.include_router(
+    lead_magnets.router,
+    prefix="/workspaces/{workspace_id}/lead-magnets",
+    tags=["Lead Magnets"],
 )
 api_router.include_router(
     phone_numbers.router,

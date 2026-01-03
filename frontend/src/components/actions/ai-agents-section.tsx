@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Bot, Check, Pause, Play, Sparkles } from "lucide-react";
+import { Bot, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -73,9 +73,11 @@ function AgentCard({ agent, isAssigned, isActive, onAssign, onToggle }: AgentCar
             {agent.description}
           </p>
           <div className="flex items-center gap-2 mt-2">
-            <Badge variant="outline" className={cn("text-xs", tierColors[agent.pricing_tier])}>
-              {tierLabels[agent.pricing_tier]}
-            </Badge>
+            {agent.pricing_tier && (
+              <Badge variant="outline" className={cn("text-xs", tierColors[agent.pricing_tier])}>
+                {tierLabels[agent.pricing_tier]}
+              </Badge>
+            )}
             <span className="text-xs text-muted-foreground">
               {channelIcons[agent.channel_mode]}
             </span>

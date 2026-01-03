@@ -29,6 +29,13 @@ if TYPE_CHECKING:
     from app.models.workspace import Workspace
 
 
+class CampaignType(str, Enum):
+    """Campaign type."""
+
+    SMS = "sms"
+    VOICE_SMS_FALLBACK = "voice_sms_fallback"
+
+
 class CampaignStatus(str, Enum):
     """Campaign status."""
 
@@ -51,10 +58,15 @@ class CampaignContactStatus(str, Enum):
     OPTED_OUT = "opted_out"
     FAILED = "failed"
     COMPLETED = "completed"
+    # Voice campaign statuses
+    CALLING = "calling"
+    CALL_ANSWERED = "call_answered"
+    CALL_FAILED = "call_failed"
+    SMS_FALLBACK_SENT = "sms_fallback_sent"
 
 
 class Campaign(Base):
-    """SMS campaign for lead qualification."""
+    """Campaign for lead qualification via SMS or voice calls with SMS fallback."""
 
     __tablename__ = "campaigns"
 
@@ -83,16 +95,20 @@ class Campaign(Base):
     # Campaign details
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    campaign_type: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="sms", index=True
+    )
     status: Mapped[str] = mapped_column(
         String(50), nullable=False, default="draft", index=True
     )
 
     # Phone settings
     from_phone_number: Mapped[str] = mapped_column(String(50), nullable=False)
+    use_number_pool: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
-    # Initial message
-    initial_message: Mapped[str] = mapped_column(
-        Text, nullable=False
+    # Initial message (for SMS campaigns, nullable for voice campaigns)
+    initial_message: Mapped[str | None] = mapped_column(
+        Text, nullable=True
     )  # Supports {first_name}, {company_name}
 
     # AI settings
@@ -125,6 +141,37 @@ class Campaign(Base):
     follow_up_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     max_follow_ups: Mapped[int] = mapped_column(Integer, default=2, nullable=False)
 
+    # Voice campaign settings (for campaign_type="voice_sms_fallback")
+    voice_agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("agents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    voice_connection_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    enable_machine_detection: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
+    max_call_duration_seconds: Mapped[int] = mapped_column(
+        Integer, default=120, nullable=False
+    )
+    calls_per_minute: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
+
+    # SMS fallback settings (for voice campaigns)
+    sms_fallback_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
+    sms_fallback_template: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sms_fallback_use_ai: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+    sms_fallback_agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("agents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     # Statistics (denormalized)
     total_contacts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     messages_sent: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -134,6 +181,14 @@ class Campaign(Base):
     contacts_qualified: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     contacts_opted_out: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     appointments_booked: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # Voice campaign statistics
+    calls_attempted: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    calls_answered: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    calls_no_answer: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    calls_busy: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    calls_voicemail: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    sms_fallbacks_sent: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # Error tracking
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -155,7 +210,15 @@ class Campaign(Base):
 
     # Relationships
     workspace: Mapped["Workspace"] = relationship("Workspace", back_populates="campaigns")
-    agent: Mapped["Agent | None"] = relationship("Agent", back_populates="campaigns")
+    agent: Mapped["Agent | None"] = relationship(
+        "Agent", foreign_keys=[agent_id], back_populates="campaigns"
+    )
+    voice_agent: Mapped["Agent | None"] = relationship(
+        "Agent", foreign_keys=[voice_agent_id]
+    )
+    sms_fallback_agent: Mapped["Agent | None"] = relationship(
+        "Agent", foreign_keys=[sms_fallback_agent_id]
+    )
     offer: Mapped["Offer | None"] = relationship("Offer", back_populates="campaigns")
     campaign_contacts: Mapped[list["CampaignContact"]] = relationship(
         "CampaignContact", back_populates="campaign", cascade="all, delete-orphan"
@@ -224,6 +287,28 @@ class CampaignContact(Base):
 
     # Priority
     priority: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # Call tracking (for voice campaigns)
+    call_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_call_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_call_status: Mapped[str | None] = mapped_column(
+        String(50), nullable=True
+    )  # answered, no_answer, busy, voicemail, rejected
+    call_duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    call_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+
+    # SMS fallback tracking (for voice campaigns)
+    sms_fallback_sent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    sms_fallback_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    sms_fallback_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
 
     # Error tracking
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)

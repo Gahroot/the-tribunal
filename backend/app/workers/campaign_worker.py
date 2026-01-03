@@ -2,10 +2,12 @@
 
 This background worker:
 1. Polls for running campaigns
-2. Checks sending hours and rate limits
+2. Checks sending hours and rate limits (via Redis)
 3. Gets pending contacts and sends initial messages
 4. Handles follow-up messages
 5. Updates campaign contact status and statistics
+6. Supports number pooling and rotation
+7. Enforces global opt-out list
 """
 
 import asyncio
@@ -25,6 +27,11 @@ from app.db.session import AsyncSessionLocal
 from app.models.campaign import Campaign, CampaignContact, CampaignContactStatus, CampaignStatus
 from app.models.contact import Contact
 from app.models.offer import Offer
+from app.services.rate_limiting.number_pool import NumberPoolManager
+from app.services.rate_limiting.opt_out_manager import OptOutManager
+from app.services.rate_limiting.rate_limiter import RateLimiter
+from app.services.rate_limiting.reputation_tracker import ReputationTracker
+from app.services.rate_limiting.warming_scheduler import WarmingScheduler
 from app.services.telephony.telnyx import TelnyxSMSService
 
 logger = structlog.get_logger()
@@ -42,7 +49,13 @@ class CampaignWorker:
         self.running = False
         self.logger = logger.bind(component="campaign_worker")
         self._task: asyncio.Task[None] | None = None
-        self._rate_trackers: dict[str, list[datetime]] = {}
+
+        # Rate limiting services (Redis-based)
+        self.number_pool = NumberPoolManager()
+        self.rate_limiter = RateLimiter()
+        self.opt_out_manager = OptOutManager()
+        self.warming_scheduler = WarmingScheduler()
+        self.reputation_tracker = ReputationTracker()
 
     async def start(self) -> None:
         """Start the campaign worker background task."""
@@ -143,7 +156,7 @@ class CampaignWorker:
         finally:
             await sms_service.close()
 
-    async def _process_initial_messages(
+    async def _process_initial_messages(  # noqa: PLR0915
         self,
         campaign: Campaign,
         sms_service: TelnyxSMSService,
@@ -151,12 +164,15 @@ class CampaignWorker:
         log: Any,
     ) -> None:
         """Process and send initial messages to pending contacts."""
-        available_slots = self._get_available_message_slots(campaign)
-        if available_slots <= 0:
-            log.debug("Rate limit reached for this minute")
+        # Check campaign-level rate limit (Redis-based)
+        campaign_rate_ok = await self.rate_limiter.check_campaign_rate_limit(
+            campaign.id, campaign.messages_per_minute
+        )
+        if not campaign_rate_ok:
+            log.debug("Campaign rate limit reached")
             return
 
-        messages_to_send = min(available_slots, MAX_MESSAGES_PER_TICK)
+        messages_to_send = MAX_MESSAGES_PER_TICK
 
         # Get pending contacts with row-level locking
         pending_result = await db.execute(
@@ -184,9 +200,9 @@ class CampaignWorker:
         log.info(
             "Sending initial messages",
             count=len(pending_contacts),
-            available_slots=available_slots,
         )
 
+        sent_count = 0
         for campaign_contact in pending_contacts:
             contact = campaign_contact.contact
             if not contact or not contact.phone_number:
@@ -198,7 +214,34 @@ class CampaignWorker:
                 campaign_contact.last_error = "missing_phone_number"
                 continue
 
+            # Check global opt-out list
+            is_opted_out = await self.opt_out_manager.check_opt_out(
+                campaign.workspace_id,
+                contact.phone_number,
+                db,
+            )
+            if is_opted_out:
+                campaign_contact.status = CampaignContactStatus.OPTED_OUT.value
+                campaign_contact.opted_out = True
+                campaign_contact.opted_out_at = datetime.now(UTC)
+                log.info("Contact on global opt-out list", contact_id=contact.id)
+                continue
+
+            # Get next available number from pool (handles all rate limits internally)
+            from_phone = await self.number_pool.get_next_available_number(campaign, db)
+
+            if not from_phone:
+                log.warning("No available numbers in pool, pausing sending")
+                break  # Exit loop, try again next tick
+
             try:
+                # Skip if no initial message template
+                if not campaign.initial_message:
+                    log.warning("no_initial_message_template", campaign_id=str(campaign.id))
+                    campaign_contact.status = CampaignContactStatus.FAILED.value
+                    campaign_contact.last_error = "missing_initial_message"
+                    continue
+
                 # Render message template with contact and offer data
                 message_text = self._render_template(
                     campaign.initial_message,
@@ -206,15 +249,22 @@ class CampaignWorker:
                     campaign.offer,
                 )
 
-                # Send SMS
+                # Send SMS with phone number tracking
                 message = await sms_service.send_message(
                     to_number=contact.phone_number,
-                    from_number=campaign.from_phone_number,
+                    from_number=from_phone.phone_number,
                     body=message_text,
                     db=db,
                     workspace_id=campaign.workspace_id,
                     agent_id=campaign.agent_id,
+                    phone_number_id=from_phone.id,
                 )
+
+                # Update phone number last_sent_at
+                from_phone.last_sent_at = datetime.now(UTC)
+
+                # Increment daily stats for the sending phone number
+                await self.reputation_tracker.increment_sent(from_phone.id, db)
 
                 # Update contact status and link conversation
                 campaign_contact.status = CampaignContactStatus.SENT.value
@@ -231,14 +281,13 @@ class CampaignWorker:
 
                 # Update campaign stats
                 campaign.messages_sent += 1
-
-                # Track rate limiting
-                self._track_message_sent(str(campaign.id))
+                sent_count += 1
 
                 log.info(
                     "Initial message sent",
                     contact_id=contact.id,
                     phone=contact.phone_number,
+                    from_phone=from_phone.phone_number,
                     message_id=str(message.id),
                     offer_id=str(campaign.offer_id) if campaign.offer_id else None,
                     has_offer=bool(campaign.offer_id),
@@ -258,6 +307,9 @@ class CampaignWorker:
                 campaign.last_error = str(e)
                 campaign.last_error_at = datetime.now(UTC)
 
+        if sent_count > 0:
+            log.info("Initial messages batch complete", sent=sent_count)
+
     async def _process_follow_ups(
         self,
         campaign: Campaign,
@@ -269,8 +321,11 @@ class CampaignWorker:
         if not campaign.follow_up_message:
             return
 
-        available_slots = self._get_available_message_slots(campaign)
-        if available_slots <= 0:
+        # Check campaign-level rate limit
+        campaign_rate_ok = await self.rate_limiter.check_campaign_rate_limit(
+            campaign.id, campaign.messages_per_minute
+        )
+        if not campaign_rate_ok:
             return
 
         now = datetime.now(UTC)
@@ -293,7 +348,7 @@ class CampaignWorker:
                 )
             )
             .order_by(CampaignContact.next_follow_up_at)
-            .limit(min(available_slots, MAX_MESSAGES_PER_TICK))
+            .limit(MAX_MESSAGES_PER_TICK)
             .with_for_update(skip_locked=True)
         )
         followup_contacts = followup_result.scalars().all()
@@ -303,10 +358,30 @@ class CampaignWorker:
 
         log.info("Sending follow-up messages", count=len(followup_contacts))
 
+        sent_count = 0
         for campaign_contact in followup_contacts:
             contact = campaign_contact.contact
             if not contact or not contact.phone_number:
                 continue
+
+            # Check global opt-out
+            is_opted_out = await self.opt_out_manager.check_opt_out(
+                campaign.workspace_id,
+                contact.phone_number,
+                db,
+            )
+            if is_opted_out:
+                campaign_contact.status = CampaignContactStatus.OPTED_OUT.value
+                campaign_contact.opted_out = True
+                campaign_contact.opted_out_at = datetime.now(UTC)
+                continue
+
+            # Get next available number from pool
+            from_phone = await self.number_pool.get_next_available_number(campaign, db)
+
+            if not from_phone:
+                log.warning("No available numbers for follow-ups")
+                break
 
             try:
                 message_text = self._render_template(
@@ -317,12 +392,17 @@ class CampaignWorker:
 
                 message = await sms_service.send_message(
                     to_number=contact.phone_number,
-                    from_number=campaign.from_phone_number,
+                    from_number=from_phone.phone_number,
                     body=message_text,
                     db=db,
                     workspace_id=campaign.workspace_id,
                     agent_id=campaign.agent_id,
+                    phone_number_id=from_phone.id,
                 )
+
+                # Update phone number and stats
+                from_phone.last_sent_at = datetime.now(UTC)
+                await self.reputation_tracker.increment_sent(from_phone.id, db)
 
                 campaign_contact.follow_ups_sent += 1
                 campaign_contact.messages_sent += 1
@@ -338,12 +418,13 @@ class CampaignWorker:
                         campaign_contact.status = CampaignContactStatus.COMPLETED.value
 
                 campaign.messages_sent += 1
-                self._track_message_sent(str(campaign.id))
+                sent_count += 1
 
                 log.info(
                     "Follow-up message sent",
                     contact_id=contact.id,
                     phone=contact.phone_number,
+                    from_phone=from_phone.phone_number,
                     follow_up_number=campaign_contact.follow_ups_sent,
                     message_id=str(message.id),
                     offer_id=str(campaign.offer_id) if campaign.offer_id else None,
@@ -359,6 +440,9 @@ class CampaignWorker:
                 )
                 campaign_contact.last_error = str(e)
                 campaign.messages_failed += 1
+
+        if sent_count > 0:
+            log.info("Follow-up messages batch complete", sent=sent_count)
 
     async def _check_completion(
         self,
@@ -401,31 +485,12 @@ class CampaignWorker:
 
         start_time = campaign.sending_hours_start
         end_time = campaign.sending_hours_end
+        if start_time is None or end_time is None:
+            return True
         current_time = now.time()
 
-        return start_time <= current_time <= end_time
-
-    def _get_available_message_slots(self, campaign: Campaign) -> int:
-        """Calculate how many messages can be sent based on rate limit."""
-        campaign_id = str(campaign.id)
-        now = datetime.now(UTC)
-        cutoff = now - timedelta(minutes=1)
-
-        if campaign_id in self._rate_trackers:
-            self._rate_trackers[campaign_id] = [
-                send_time for send_time in self._rate_trackers[campaign_id] if send_time > cutoff
-            ]
-            sent_in_last_minute = len(self._rate_trackers[campaign_id])
-        else:
-            sent_in_last_minute = 0
-
-        return max(0, campaign.messages_per_minute - sent_in_last_minute)
-
-    def _track_message_sent(self, campaign_id: str) -> None:
-        """Track a sent message for rate limiting."""
-        if campaign_id not in self._rate_trackers:
-            self._rate_trackers[campaign_id] = []
-        self._rate_trackers[campaign_id].append(datetime.now(UTC))
+        result: bool = start_time <= current_time <= end_time  # type: ignore[operator]
+        return result
 
     def _render_template(
         self,

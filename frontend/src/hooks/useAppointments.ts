@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { appointmentsApi, type AppointmentsListParams, type UpdateAppointmentRequest } from "@/lib/api/appointments";
-import type { Appointment } from "@/types";
 
 /**
  * Fetch and manage a list of appointments for a workspace

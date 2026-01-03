@@ -53,7 +53,7 @@ async def create_workspace(
     workspace_in: WorkspaceCreate,
     current_user: CurrentUser,
     db: DB,
-) -> Workspace:
+) -> WorkspaceResponse:
     """Create a new workspace."""
     # Check if slug already exists
     result = await db.execute(select(Workspace).where(Workspace.slug == workspace_in.slug))
@@ -85,7 +85,7 @@ async def create_workspace(
     await db.commit()
     await db.refresh(workspace)
 
-    return workspace
+    return WorkspaceResponse.model_validate(workspace)
 
 
 @router.get("/{workspace_id}", response_model=WorkspaceResponse)
@@ -93,7 +93,7 @@ async def get_workspace(
     workspace_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
-) -> Workspace:
+) -> WorkspaceResponse:
     """Get a specific workspace."""
     # Verify membership
     result = await db.execute(
@@ -109,8 +109,8 @@ async def get_workspace(
         )
 
     # Get workspace
-    result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
-    workspace = result.scalar_one_or_none()
+    ws_result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
+    workspace: Workspace | None = ws_result.scalar_one_or_none()
 
     if workspace is None or not workspace.is_active:
         raise HTTPException(
@@ -118,7 +118,7 @@ async def get_workspace(
             detail="Workspace not found",
         )
 
-    return workspace
+    return WorkspaceResponse.model_validate(workspace)
 
 
 @router.put("/{workspace_id}", response_model=WorkspaceResponse)
@@ -127,7 +127,7 @@ async def update_workspace(
     workspace_in: WorkspaceUpdate,
     current_user: CurrentUser,
     db: DB,
-) -> Workspace:
+) -> WorkspaceResponse:
     """Update a workspace (owner/admin only)."""
     # Verify membership with admin+ role
     result = await db.execute(
@@ -144,8 +144,8 @@ async def update_workspace(
         )
 
     # Get workspace
-    result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
-    workspace = result.scalar_one_or_none()
+    ws_result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
+    workspace: Workspace | None = ws_result.scalar_one_or_none()
 
     if workspace is None:
         raise HTTPException(
@@ -161,7 +161,7 @@ async def update_workspace(
     await db.commit()
     await db.refresh(workspace)
 
-    return workspace
+    return WorkspaceResponse.model_validate(workspace)
 
 
 @router.delete("/{workspace_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -186,8 +186,8 @@ async def delete_workspace(
         )
 
     # Soft delete (deactivate)
-    result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
-    workspace = result.scalar_one_or_none()
+    ws_result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
+    workspace: Workspace | None = ws_result.scalar_one_or_none()
 
     if workspace is not None:
         workspace.is_active = False

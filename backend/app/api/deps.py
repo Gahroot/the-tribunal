@@ -84,8 +84,8 @@ async def get_workspace(
         )
 
     # Get workspace
-    result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
-    workspace = result.scalar_one_or_none()
+    ws_result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
+    workspace: Workspace | None = ws_result.scalar_one_or_none()
 
     if workspace is None or not workspace.is_active:
         raise HTTPException(

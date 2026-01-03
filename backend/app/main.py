@@ -14,6 +14,11 @@ from app.core.config import settings
 from app.db.redis import close_redis
 from app.websockets.voice_bridge import router as voice_bridge_router
 from app.workers.campaign_worker import start_campaign_worker, stop_campaign_worker
+from app.workers.reputation_worker import reputation_worker
+from app.workers.voice_campaign_worker import (
+    start_voice_campaign_worker,
+    stop_voice_campaign_worker,
+)
 
 logger = structlog.get_logger()
 
@@ -78,6 +83,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Start background workers
     await start_campaign_worker()
     log.info("Campaign worker started")
+    await start_voice_campaign_worker()
+    log.info("Voice campaign worker started")
+    await reputation_worker.start()
+    log.info("Reputation worker started")
 
     yield
 
@@ -85,6 +94,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Stop background workers
     await stop_campaign_worker()
     log.info("Campaign worker stopped")
+    await stop_voice_campaign_worker()
+    log.info("Voice campaign worker stopped")
+    await reputation_worker.stop()
+    log.info("Reputation worker stopped")
     await close_redis()
 
 

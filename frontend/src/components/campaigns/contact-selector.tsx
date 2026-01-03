@@ -43,7 +43,6 @@ export function ContactSelector({
   contacts,
   selectedIds,
   onSelectionChange,
-  isLoading = false,
 }: ContactSelectorProps) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<ContactStatus | "all">("all");

@@ -1,7 +1,7 @@
 """Authentication endpoints."""
 
 from datetime import timedelta
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -80,7 +80,7 @@ async def login(
 
 
 @router.get("/me", response_model=UserWithWorkspace)
-async def get_me(current_user: CurrentUser, db: DB) -> dict:
+async def get_me(current_user: CurrentUser, db: DB) -> dict[str, Any]:
     """Get current user info with default workspace."""
     # Get default workspace
     result = await db.execute(

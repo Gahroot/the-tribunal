@@ -126,14 +126,15 @@ export interface TimelineItem {
 // Agent types
 export interface Agent {
   id: string;
-  user_id: number;
+  user_id?: number;
+  workspace_id?: string;
   name: string;
-  description?: string;
-  pricing_tier: "budget" | "balanced" | "premium-mini" | "premium";
+  description?: string | null;
+  pricing_tier?: "budget" | "balanced" | "premium-mini" | "premium";
   system_prompt?: string;
   voice?: string;
   is_active: boolean;
-  channel_mode: "voice" | "text" | "both";
+  channel_mode: "voice" | "text" | "both" | string;
   created_at: string;
   updated_at: string;
 }
@@ -409,6 +410,15 @@ export interface CalcomTimeSlot {
 
 // Offer Types
 export type DiscountType = "percentage" | "fixed" | "free_service";
+export type GuaranteeType = "money_back" | "satisfaction" | "results";
+export type UrgencyType = "limited_time" | "limited_quantity" | "expiring";
+
+export interface ValueStackItem {
+  name: string;
+  description?: string;
+  value: number;
+  included: boolean;
+}
 
 export interface Offer {
   id: string;
@@ -421,8 +431,66 @@ export interface Offer {
   valid_from?: string;
   valid_until?: string;
   is_active: boolean;
+  // Hormozi-style fields
+  headline?: string;
+  subheadline?: string;
+  regular_price?: number;
+  offer_price?: number;
+  savings_amount?: number;
+  guarantee_type?: GuaranteeType;
+  guarantee_days?: number;
+  guarantee_text?: string;
+  urgency_type?: UrgencyType;
+  urgency_text?: string;
+  scarcity_count?: number;
+  value_stack_items?: ValueStackItem[];
+  cta_text?: string;
+  cta_subtext?: string;
+  // Computed fields
+  lead_magnets?: LeadMagnet[];
+  total_value?: number;
   created_at: string;
   updated_at: string;
+}
+
+// Lead Magnet Types
+export type LeadMagnetType =
+  | "pdf"
+  | "video"
+  | "checklist"
+  | "template"
+  | "webinar"
+  | "free_trial"
+  | "consultation"
+  | "ebook"
+  | "mini_course";
+
+export type DeliveryMethod = "email" | "download" | "redirect" | "sms";
+
+export interface LeadMagnet {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description?: string;
+  magnet_type: LeadMagnetType;
+  delivery_method: DeliveryMethod;
+  content_url: string;
+  thumbnail_url?: string;
+  estimated_value?: number;
+  is_active: boolean;
+  download_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OfferLeadMagnet {
+  id: string;
+  offer_id: string;
+  lead_magnet_id: string;
+  sort_order: number;
+  is_bonus: boolean;
+  created_at: string;
+  lead_magnet: LeadMagnet;
 }
 
 // Phone Number Types
@@ -436,6 +504,117 @@ export interface PhoneNumber {
   mms_enabled: boolean;
   assigned_agent_id?: string;
   is_active: boolean;
+}
+
+// Voice Campaign Types
+export type VoiceCampaignContactStatus =
+  | "pending"
+  | "calling"
+  | "call_answered"
+  | "call_failed"
+  | "sms_fallback_sent"
+  | "responded"
+  | "qualified"
+  | "opted_out";
+
+export interface VoiceCampaign {
+  id: string;
+  workspace_id: string;
+  campaign_type: "voice_sms_fallback";
+  name: string;
+  description?: string;
+  status: CampaignStatus;
+  from_phone_number: string;
+
+  // Voice settings
+  voice_agent_id?: string;
+  voice_connection_id?: string;
+  enable_machine_detection: boolean;
+  max_call_duration_seconds: number;
+  calls_per_minute: number;
+
+  // SMS fallback settings
+  sms_fallback_enabled: boolean;
+  sms_fallback_template?: string;
+  sms_fallback_use_ai: boolean;
+  sms_fallback_agent_id?: string;
+
+  // AI settings (for responses to SMS replies)
+  ai_enabled: boolean;
+  agent_id?: string;
+  qualification_criteria?: string;
+
+  // Scheduling
+  scheduled_start?: string;
+  scheduled_end?: string;
+  sending_hours_start?: string;
+  sending_hours_end?: string;
+  sending_days?: number[];
+  timezone: string;
+
+  // Statistics
+  total_contacts: number;
+  calls_attempted: number;
+  calls_answered: number;
+  calls_no_answer: number;
+  calls_busy: number;
+  calls_voicemail: number;
+  sms_fallbacks_sent: number;
+  messages_sent: number;
+  replies_received: number;
+  contacts_qualified: number;
+  contacts_opted_out: number;
+  appointments_booked: number;
+
+  // Timestamps
+  started_at?: string;
+  completed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VoiceCampaignContact {
+  id: string;
+  campaign_id: string;
+  contact_id: number;
+  contact?: Contact;
+  conversation_id?: string;
+  status: VoiceCampaignContactStatus;
+
+  // Call tracking
+  call_attempts: number;
+  last_call_at?: string;
+  last_call_status?: string;
+  call_duration_seconds?: number;
+
+  // SMS fallback tracking
+  sms_fallback_sent: boolean;
+  sms_fallback_sent_at?: string;
+
+  // Standard fields
+  messages_sent: number;
+  is_qualified: boolean;
+  opted_out: boolean;
+  created_at: string;
+}
+
+export interface VoiceCampaignAnalytics {
+  total_contacts: number;
+  calls_attempted: number;
+  calls_answered: number;
+  calls_no_answer: number;
+  calls_busy: number;
+  calls_voicemail: number;
+  sms_fallbacks_sent: number;
+  messages_sent: number;
+  replies_received: number;
+  contacts_qualified: number;
+  contacts_opted_out: number;
+  appointments_booked: number;
+  // Rates
+  answer_rate: number;
+  fallback_rate: number;
+  qualification_rate: number;
 }
 
 // SMS Campaign Types (extended)
