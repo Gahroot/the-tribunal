@@ -32,9 +32,15 @@ class Settings(BaseSettings):
     # Telnyx
     telnyx_api_key: str = ""
     telnyx_webhook_secret: str = ""
+    telnyx_public_key: str = ""
+    skip_webhook_verification: bool = False
+    # Telnyx Voice
+    telnyx_connection_id: str = ""  # Required for outbound calls
+    telnyx_app_id: str = ""  # TeXML application ID (optional)
 
     # Cal.com
     calcom_api_key: str = ""
+    calcom_webhook_secret: str = ""
 
     # ElevenLabs
     elevenlabs_api_key: str = ""
@@ -42,6 +48,7 @@ class Settings(BaseSettings):
     # App
     debug: bool = False
     cors_origins: list[str] = ["http://localhost:3000"]
+    api_base_url: str = ""  # Base URL for webhooks (e.g., https://api.example.com)
 
     # Workers
     campaign_poll_interval: int = 5

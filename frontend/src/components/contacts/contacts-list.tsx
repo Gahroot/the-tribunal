@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useContactStore } from "@/lib/contact-store";
+import { CreateContactDialog } from "./create-contact-dialog";
 import type { Contact } from "@/types";
 
 interface ContactsListProps {
@@ -122,6 +123,7 @@ function ContactItem({ contact, isSelected, onClick }: ContactItemProps) {
 }
 
 export function ContactsList({ className }: ContactsListProps) {
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
   const {
     contacts,
     selectedContact,
@@ -157,7 +159,12 @@ export function ContactsList({ className }: ContactsListProps) {
       <div className="p-4 border-b space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Contacts</h2>
-          <Button size="icon" variant="ghost" className="h-8 w-8">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            onClick={() => setIsCreateDialogOpen(true)}
+          >
             <Plus className="h-4 w-4" />
           </Button>
         </div>
@@ -206,6 +213,11 @@ export function ContactsList({ className }: ContactsListProps) {
           )}
         </div>
       </ScrollArea>
+
+      <CreateContactDialog
+        open={isCreateDialogOpen}
+        onOpenChange={setIsCreateDialogOpen}
+      />
     </div>
   );
 }

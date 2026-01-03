@@ -1,6 +1,6 @@
 """Telnyx webhook endpoints for SMS and voice events."""
 
-import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
+from app.core.webhook_security import verify_telnyx_webhook
 from app.db.session import AsyncSessionLocal
 from app.models.campaign import CampaignContact
 from app.models.phone_number import PhoneNumber
@@ -28,6 +29,8 @@ async def telnyx_sms_webhook(request: Request) -> dict[str, str]:
     - message.sent: Outbound message sent
     - message.finalized: Final delivery status
     """
+    await verify_telnyx_webhook(request)
+
     log = logger.bind(endpoint="telnyx_sms_webhook")
 
     try:
@@ -128,7 +131,11 @@ async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:
                         )
                         campaign_contact = campaign_contact_result.scalar_one_or_none()
 
-                        if campaign_contact and campaign_contact.campaign and campaign_contact.campaign.agent_id:
+                        if (
+                            campaign_contact
+                            and campaign_contact.campaign
+                            and campaign_contact.campaign.agent_id
+                        ):
                             # Assign campaign's agent to the conversation
                             conversation.assigned_agent_id = campaign_contact.campaign.agent_id
                             conversation.ai_enabled = True
@@ -199,10 +206,355 @@ async def handle_delivery_status(payload: dict[str, Any], log: Any) -> None:
 async def telnyx_voice_webhook(request: Request) -> dict[str, str]:
     """Handle incoming Telnyx voice webhooks.
 
-    TODO: Implement voice call handling with OpenAI Realtime.
+    Telnyx sends webhooks for:
+    - call.initiated: Incoming call received
+    - call.answered: Call was answered
+    - call.hangup: Call ended
+    - call.machine.detection.ended: Voicemail/human detection result
     """
-    log = logger.bind(endpoint="telnyx_voice_webhook")
-    log.info("voice_webhook_received")
+    await verify_telnyx_webhook(request)
 
-    # Voice handling will be implemented in Phase 4
+    log = logger.bind(endpoint="telnyx_voice_webhook")
+
+    try:
+        payload = await request.json()
+    except Exception:
+        log.error("invalid_json_payload")
+        return {"status": "error", "message": "Invalid JSON"}
+
+    # Extract event data
+    data = payload.get("data", {})
+    event_type = data.get("event_type", "")
+    event_payload = data.get("payload", {})
+
+    log = log.bind(event_type=event_type)
+    log.info("webhook_received")
+
+    # Handle different event types
+    if event_type == "call.initiated":
+        await handle_call_initiated(event_payload, log)
+    elif event_type == "call.answered":
+        await handle_call_answered(event_payload, log)
+    elif event_type == "call.hangup":
+        await handle_call_hangup(event_payload, log)
+    elif event_type == "call.machine.detection.ended":
+        await handle_machine_detection(event_payload, log)
+    else:
+        log.debug("unhandled_event_type")
+
     return {"status": "ok"}
+
+
+async def handle_call_initiated(payload: dict[Any, Any], log: Any) -> None:
+    """Handle incoming call.
+
+    Args:
+        payload: Telnyx call event payload
+        log: Logger instance
+    """
+    call_control_id = payload.get("call_control_id", "")
+    from_number = payload.get("from", {}).get("phone_number", "")
+    to_number = payload.get("to", [{}])[0].get("phone_number", "")
+    call_state = payload.get("state", "")
+
+    log = log.bind(
+        call_control_id=call_control_id,
+        from_number=from_number,
+        to_number=to_number,
+        call_state=call_state,
+    )
+    log.info("processing_call_initiated")
+
+    if not all([call_control_id, from_number, to_number]):
+        log.warning("missing_required_fields")
+        return
+
+    async with AsyncSessionLocal() as db:
+        # Look up workspace by phone number
+        result = await db.execute(
+            select(PhoneNumber).where(PhoneNumber.phone_number == to_number)
+        )
+        phone_record = result.scalar_one_or_none()
+
+        if not phone_record:
+            log.warning("phone_number_not_found", to_number=to_number)
+            return
+
+        workspace_id = phone_record.workspace_id
+
+        # Create message record for incoming call
+        from app.models.conversation import Conversation
+
+        # Get or create conversation
+        conv_result = await db.execute(
+            select(Conversation).where(
+                Conversation.workspace_id == workspace_id,
+                Conversation.workspace_phone == to_number,
+                Conversation.contact_phone == from_number,
+            )
+        )
+        conversation = conv_result.scalar_one_or_none()
+
+        if not conversation:
+            from app.models.contact import Contact
+
+            # Try to find contact
+            contact_result = await db.execute(
+                select(Contact).where(
+                    Contact.workspace_id == workspace_id,
+                    Contact.phone_number == from_number,
+                )
+            )
+            contact = contact_result.scalar_one_or_none()
+
+            conversation = Conversation(
+                workspace_id=workspace_id,
+                contact_id=contact.id if contact else None,
+                workspace_phone=to_number,
+                contact_phone=from_number,
+                channel="voice",
+                ai_enabled=True,
+            )
+            db.add(conversation)
+            await db.flush()
+
+        # Create inbound message
+        from app.models.conversation import Message
+
+        message = Message(
+            conversation_id=conversation.id,
+            provider_message_id=call_control_id,
+            direction="inbound",
+            channel="voice",
+            body="",  # Voice calls don't have body
+            status="ringing",
+        )
+        db.add(message)
+
+        # Update conversation
+        conversation.channel = "voice"
+        conversation.last_message_preview = "Incoming call"
+        conversation.last_message_at = datetime.now(UTC)
+
+        await db.commit()
+        await db.refresh(message)
+
+        log.info("call_initiated_processed", message_id=str(message.id))
+
+        # Auto-answer calls if phone number has an assigned active agent
+        await auto_answer_call_if_agent_assigned(
+            call_control_id=call_control_id,
+            phone_record=phone_record,
+            conversation=conversation,
+            log=log,
+        )
+
+
+async def handle_call_answered(payload: dict[Any, Any], log: Any) -> None:
+    """Handle call answered event.
+
+    Args:
+        payload: Telnyx call event payload
+        log: Logger instance
+    """
+    call_control_id = payload.get("call_control_id", "")
+    call_state = payload.get("state", "")
+
+    log = log.bind(call_control_id=call_control_id, call_state=call_state)
+    log.info("call_answered")
+
+    async with AsyncSessionLocal() as db:
+        from app.models.conversation import Message
+
+        result = await db.execute(
+            select(Message).where(
+                Message.provider_message_id == call_control_id
+            )
+        )
+        message = result.scalar_one_or_none()
+
+        if message:
+            message.status = "answered"
+            await db.commit()
+            log.info("message_updated", message_id=str(message.id))
+
+
+async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:
+    """Handle call hangup event.
+
+    Args:
+        payload: Telnyx call event payload
+        log: Logger instance
+    """
+    call_control_id = payload.get("call_control_id", "")
+    call_state = payload.get("state", "")
+    duration_secs = payload.get("duration_seconds", 0)
+
+    log = log.bind(
+        call_control_id=call_control_id,
+        call_state=call_state,
+        duration=duration_secs,
+    )
+    log.info("call_hangup")
+
+    async with AsyncSessionLocal() as db:
+        from app.models.conversation import Message
+
+        result = await db.execute(
+            select(Message).where(
+                Message.provider_message_id == call_control_id
+            )
+        )
+        message = result.scalar_one_or_none()
+
+        if message:
+            message.status = "completed"
+            message.duration_seconds = duration_secs
+
+            # Get recording URL if available
+            recordings = payload.get("recordings", [])
+            if recordings:
+                # Typically Telnyx returns recording details here
+                recording = recordings[0]
+                message.recording_url = recording.get("public_url")
+                log.info(
+                    "recording_available",
+                    recording_url=message.recording_url,
+                )
+
+            await db.commit()
+            log.info("message_updated", message_id=str(message.id))
+
+
+async def handle_machine_detection(payload: dict[Any, Any], log: Any) -> None:
+    """Handle voicemail/machine detection result.
+
+    Args:
+        payload: Telnyx machine detection payload
+        log: Logger instance
+    """
+    call_control_id = payload.get("call_control_id", "")
+    result_type = payload.get("result", "")  # human, machine, silence
+
+    log = log.bind(call_control_id=call_control_id, detection_result=result_type)
+    log.info("machine_detection_result")
+
+    # Can be used to handle voicemail differently or log analytics
+
+
+async def auto_answer_call_if_agent_assigned(
+    call_control_id: str,
+    phone_record: PhoneNumber,
+    conversation: Any,
+    log: Any,
+) -> None:
+    """Auto-answer incoming call if an active agent is assigned to the phone number.
+
+    This function:
+    1. Checks if the phone number has an assigned agent
+    2. Verifies the agent is active and supports voice
+    3. Answers the call via Telnyx API
+    4. Starts audio streaming to the voice bridge WebSocket
+
+    Args:
+        call_control_id: Telnyx call control ID
+        phone_record: PhoneNumber database record
+        conversation: Conversation database record
+        log: Logger instance
+    """
+    from app.models.agent import Agent
+    from app.services.telephony.telnyx_voice import TelnyxVoiceService
+
+    if not settings.telnyx_api_key:
+        log.warning("no_telnyx_api_key_for_auto_answer")
+        return
+
+    # Check if phone number has an assigned agent
+    if not phone_record.assigned_agent_id:
+        log.info("no_agent_assigned_to_phone_number", phone_number=phone_record.phone_number)
+        return
+
+    async with AsyncSessionLocal() as db:
+        # Look up the agent
+        result = await db.execute(
+            select(Agent).where(Agent.id == phone_record.assigned_agent_id)
+        )
+        agent = result.scalar_one_or_none()
+
+        if not agent:
+            log.warning(
+                "assigned_agent_not_found",
+                agent_id=str(phone_record.assigned_agent_id),
+            )
+            return
+
+        # Check if agent is active and supports voice
+        if not agent.is_active:
+            log.info("agent_not_active", agent_id=str(agent.id))
+            return
+
+        if agent.channel_mode not in ("voice", "both"):
+            log.info(
+                "agent_does_not_support_voice",
+                agent_id=str(agent.id),
+                channel_mode=agent.channel_mode,
+            )
+            return
+
+        log.info(
+            "auto_answering_call_with_agent",
+            agent_id=str(agent.id),
+            agent_name=agent.name,
+            call_control_id=call_control_id,
+        )
+
+        # Update conversation with assigned agent
+        from app.models.conversation import Conversation
+
+        conv_result = await db.execute(
+            select(Conversation).where(Conversation.id == conversation.id)
+        )
+        conv = conv_result.scalar_one_or_none()
+        if conv:
+            conv.assigned_agent_id = agent.id
+            conv.ai_enabled = True
+            await db.commit()
+
+        # Answer the call via Telnyx
+        voice_service = TelnyxVoiceService(settings.telnyx_api_key)
+        try:
+            answered = await voice_service.answer_call(call_control_id)
+
+            if not answered:
+                log.error("failed_to_answer_call", call_control_id=call_control_id)
+                return
+
+            log.info("call_answered_successfully", call_control_id=call_control_id)
+
+            # Start audio streaming to the voice bridge WebSocket
+            # The stream URL should point to our WebSocket endpoint
+            api_base = settings.api_base_url or "https://example.com"
+            # Convert https to wss for WebSocket
+            ws_base = api_base.replace("https://", "wss://").replace("http://", "ws://")
+            stream_url = f"{ws_base}/ws/voice/stream/{call_control_id}"
+
+            streaming_started = await voice_service.start_streaming(
+                call_control_id=call_control_id,
+                stream_url=stream_url,
+                stream_track="both",  # Stream both inbound and outbound audio
+            )
+
+            if streaming_started:
+                log.info(
+                    "audio_streaming_started",
+                    call_control_id=call_control_id,
+                    stream_url=stream_url,
+                )
+            else:
+                log.error(
+                    "failed_to_start_audio_streaming",
+                    call_control_id=call_control_id,
+                )
+
+        finally:
+            await voice_service.close()

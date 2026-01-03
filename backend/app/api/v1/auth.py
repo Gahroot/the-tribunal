@@ -13,7 +13,8 @@ from app.core.config import settings
 from app.core.security import create_access_token, get_password_hash, verify_password
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.user import Token, UserCreate, UserResponse
+from app.models.workspace import WorkspaceMembership
+from app.schemas.user import Token, UserCreate, UserResponse, UserWithWorkspace
 
 router = APIRouter()
 
@@ -78,7 +79,23 @@ async def login(
     return Token(access_token=access_token)
 
 
-@router.get("/me", response_model=UserResponse)
-async def get_me(current_user: CurrentUser) -> User:
-    """Get current user info."""
-    return current_user
+@router.get("/me", response_model=UserWithWorkspace)
+async def get_me(current_user: CurrentUser, db: DB) -> dict:
+    """Get current user info with default workspace."""
+    # Get default workspace
+    result = await db.execute(
+        select(WorkspaceMembership).where(
+            WorkspaceMembership.user_id == current_user.id,
+            WorkspaceMembership.is_default.is_(True),
+        )
+    )
+    membership = result.scalar_one_or_none()
+
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "full_name": current_user.full_name,
+        "is_active": current_user.is_active,
+        "created_at": current_user.created_at,
+        "default_workspace_id": str(membership.workspace_id) if membership else None,
+    }

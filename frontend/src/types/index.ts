@@ -12,7 +12,7 @@ export interface Contact {
   phone_number?: string;
   company_name?: string;
   status: ContactStatus;
-  tags?: string;
+  tags?: string[] | string;
   notes?: string;
   created_at: string;
   updated_at: string;
@@ -84,6 +84,7 @@ export interface CallRecord {
 export interface Appointment {
   id: number;
   contact_id: number;
+  contact?: Contact;
   workspace_id?: string;
   agent_id?: string;
   scheduled_at: string;
@@ -91,6 +92,12 @@ export interface Appointment {
   status: "scheduled" | "completed" | "cancelled" | "no_show";
   service_type?: string;
   notes?: string;
+  calcom_booking_uid?: string;
+  calcom_booking_id?: number;
+  calcom_event_type_id?: number;
+  sync_status?: string;
+  last_synced_at?: string;
+  sync_error?: string;
   created_at: string;
   updated_at: string;
 }

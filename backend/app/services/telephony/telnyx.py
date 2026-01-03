@@ -1,7 +1,9 @@
 """Telnyx SMS service for sending and receiving messages."""
 
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 import structlog
@@ -12,6 +14,44 @@ from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
 
 logger = structlog.get_logger()
+
+
+def normalize_phone_number(phone: str) -> str:
+    """Normalize phone number to E.164 format.
+
+    Handles common US number formats and ensures +1 prefix.
+
+    Args:
+        phone: Phone number in various formats
+
+    Returns:
+        Phone number in E.164 format (e.g., +12485551234)
+    """
+    # Remove all non-digit characters except leading +
+    digits = "".join(c for c in phone if c.isdigit())
+
+    # If already has + prefix, just return cleaned version
+    if phone.startswith("+"):
+        return f"+{digits}"
+
+    # US numbers: add +1 if 10 digits, or just + if 11 digits starting with 1
+    if len(digits) == 10:
+        return f"+1{digits}"
+    elif len(digits) == 11 and digits.startswith("1"):
+        return f"+{digits}"
+
+    # For other formats, assume it needs +
+    return f"+{digits}"
+
+
+@dataclass
+class PhoneNumberInfo:
+    """Phone number information from Telnyx."""
+
+    id: str
+    phone_number: str
+    friendly_name: str | None = None
+    capabilities: dict[str, Any] | None = None
 
 
 class TelnyxSMSService:
@@ -80,6 +120,10 @@ class TelnyxSMSService:
         Returns:
             Created Message record
         """
+        # Normalize phone numbers to E.164 format
+        to_number = normalize_phone_number(to_number)
+        from_number = normalize_phone_number(from_number)
+
         log = self.logger.bind(to=to_number, from_=from_number)
         log.info("sending_sms")
 
@@ -290,14 +334,14 @@ class TelnyxSMSService:
         if conversation:
             return conversation
 
-        # Try to find contact by phone number
+        # Try to find contact by phone number (use first() in case of duplicates)
         contact_result = await db.execute(
             select(Contact).where(
                 Contact.workspace_id == workspace_id,
                 Contact.phone_number == contact_phone,
             )
         )
-        contact = contact_result.scalar_one_or_none()
+        contact = contact_result.scalars().first()
 
         # Create new conversation
         conversation = Conversation(
@@ -318,3 +362,143 @@ class TelnyxSMSService:
         )
 
         return conversation
+
+    async def list_phone_numbers(self) -> list[PhoneNumberInfo]:
+        """List all Telnyx phone numbers."""
+        self.logger.info("listing_phone_numbers")
+
+        numbers = []
+        response = await self.client.get("/phone_numbers")
+        response.raise_for_status()
+        data = response.json()
+
+        for number in data.get("data", []):
+            numbers.append(
+                PhoneNumberInfo(
+                    id=number.get("id", ""),
+                    phone_number=number.get("phone_number", ""),
+                    friendly_name=number.get("connection_name"),
+                    capabilities={
+                        "voice": True,
+                        "sms": number.get("messaging_profile_id") is not None,
+                    },
+                )
+            )
+
+        self.logger.info("phone_numbers_listed", count=len(numbers))
+        return numbers
+
+    async def search_phone_numbers(
+        self,
+        country: str = "US",
+        area_code: str | None = None,
+        contains: str | None = None,
+        limit: int = 10,
+    ) -> list[PhoneNumberInfo]:
+        """Search for available Telnyx phone numbers."""
+        self.logger.info(
+            "searching_phone_numbers",
+            country=country,
+            area_code=area_code,
+            contains=contains,
+        )
+
+        params: dict[str, str | int | bool] = {
+            "filter[country_code]": country,
+            "filter[features]": "voice",
+            "filter[limit]": limit,
+        }
+        if area_code:
+            params["filter[national_destination_code]"] = area_code
+        if contains:
+            params["filter[phone_number][contains]"] = contains
+
+        response = await self.client.get("/available_phone_numbers", params=params)
+        response.raise_for_status()
+        data = response.json()
+
+        numbers = []
+        for number in data.get("data", []):
+            region_info = number.get("region_information", [{}])
+            numbers.append(
+                PhoneNumberInfo(
+                    id="",  # Not purchased yet
+                    phone_number=number.get("phone_number", ""),
+                    friendly_name=region_info[0].get("region_name") if region_info else None,
+                    capabilities={
+                        "voice": "voice" in number.get("features", []),
+                        "sms": "sms" in number.get("features", []),
+                    },
+                )
+            )
+
+        self.logger.info("phone_numbers_found", count=len(numbers))
+        return numbers
+
+    async def purchase_phone_number(self, phone_number: str) -> PhoneNumberInfo:
+        """Purchase a Telnyx phone number."""
+        self.logger.info("purchasing_phone_number", phone_number=phone_number)
+
+        response = await self.client.post(
+            "/number_orders",
+            json={"phone_numbers": [{"phone_number": phone_number}]},
+        )
+        response.raise_for_status()
+        order_data = response.json()
+
+        phone_numbers = order_data.get("data", {}).get("phone_numbers", [])
+        if not phone_numbers:
+            raise ValueError("No phone number returned from order")
+
+        number_data = phone_numbers[0]
+        self.logger.info("phone_number_purchased", id=number_data.get("id"))
+
+        return PhoneNumberInfo(
+            id=number_data.get("id", ""),
+            phone_number=number_data.get("phone_number", phone_number),
+            friendly_name=None,
+            capabilities={"voice": True, "sms": True},
+        )
+
+    async def release_phone_number(self, phone_number_id: str) -> bool:
+        """Release a Telnyx phone number."""
+        self.logger.info("releasing_phone_number", id=phone_number_id)
+
+        try:
+            response = await self.client.delete(f"/phone_numbers/{phone_number_id}")
+            response.raise_for_status()
+            return True
+        except Exception as e:
+            self.logger.exception("release_failed", id=phone_number_id, error=str(e))
+            return False
+
+    async def configure_phone_number(
+        self,
+        phone_number_id: str,
+        connection_id: str | None = None,
+        messaging_profile_id: str | None = None,
+    ) -> bool:
+        """Configure a phone number with connection or messaging profile."""
+        self.logger.info(
+            "configuring_phone_number",
+            id=phone_number_id,
+            connection_id=connection_id,
+            messaging_profile_id=messaging_profile_id,
+        )
+
+        try:
+            payload: dict[str, str] = {}
+            if connection_id:
+                payload["connection_id"] = connection_id
+            if messaging_profile_id:
+                payload["messaging_profile_id"] = messaging_profile_id
+
+            response = await self.client.patch(
+                f"/phone_numbers/{phone_number_id}",
+                json=payload,
+            )
+            response.raise_for_status()
+            return True
+        except Exception as e:
+            self.logger.exception("configure_failed", id=phone_number_id, error=str(e))
+            return False

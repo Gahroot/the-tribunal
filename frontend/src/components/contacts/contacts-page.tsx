@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Plus, User, Phone, Mail, Building2, Users, Filter } from "lucide-react";
+import { Search, Plus, User, Phone, Mail, Users } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useContactStore } from "@/lib/contact-store";
+import { CreateContactDialog } from "@/components/contacts/create-contact-dialog";
 import type { Contact, ContactStatus } from "@/types";
 
 const statusColors: Record<string, string> = {
@@ -128,16 +129,28 @@ function ContactCard({ contact }: ContactCardProps) {
 
         {contact.tags && (
           <div className="mt-3 flex flex-wrap gap-1.5">
-            {contact.tags.split(",").slice(0, 3).map((tag) => (
-              <Badge key={tag} variant="outline" className="text-xs">
-                {tag.trim()}
-              </Badge>
-            ))}
-            {contact.tags.split(",").length > 3 && (
-              <Badge variant="outline" className="text-xs">
-                +{contact.tags.split(",").length - 3}
-              </Badge>
-            )}
+            {(() => {
+              const tagsArray = Array.isArray(contact.tags)
+                ? contact.tags
+                : typeof contact.tags === "string"
+                  ? contact.tags.split(",").map((t) => t.trim()).filter(Boolean)
+                  : [];
+
+              return (
+                <>
+                  {tagsArray.slice(0, 3).map((tag) => (
+                    <Badge key={tag} variant="outline" className="text-xs">
+                      {tag}
+                    </Badge>
+                  ))}
+                  {tagsArray.length > 3 && (
+                    <Badge variant="outline" className="text-xs">
+                      +{tagsArray.length - 3}
+                    </Badge>
+                  )}
+                </>
+              );
+            })()}
           </div>
         )}
       </motion.div>
@@ -176,6 +189,7 @@ function StatusFilter({ selectedStatus, onStatusChange, counts }: StatusFilterPr
 }
 
 export function ContactsPage() {
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
   const {
     contacts,
     searchQuery,
@@ -218,7 +232,11 @@ export function ContactsPage() {
         const phone = contact.phone_number?.toLowerCase() ?? "";
         const email = contact.email?.toLowerCase() ?? "";
         const company = contact.company_name?.toLowerCase() ?? "";
-        const tags = contact.tags?.toLowerCase() ?? "";
+        const tags = typeof contact.tags === "string"
+          ? contact.tags.toLowerCase()
+          : Array.isArray(contact.tags)
+          ? contact.tags.join(" ").toLowerCase()
+          : "";
 
         return (
           fullName.includes(query) ||
@@ -245,7 +263,7 @@ export function ContactsPage() {
               {contacts.length}
             </Badge>
           </div>
-          <Button className="gap-2">
+          <Button className="gap-2" onClick={() => setIsCreateDialogOpen(true)}>
             <Plus className="h-4 w-4" />
             Add Contact
           </Button>
@@ -293,7 +311,7 @@ export function ContactsPage() {
                   : "Get started by adding your first contact"}
               </p>
               {!searchQuery && !statusFilter && (
-                <Button className="gap-2">
+                <Button className="gap-2" onClick={() => setIsCreateDialogOpen(true)}>
                   <Plus className="h-4 w-4" />
                   Add Contact
                 </Button>
@@ -310,6 +328,11 @@ export function ContactsPage() {
           )}
         </div>
       </ScrollArea>
+
+      <CreateContactDialog
+        open={isCreateDialogOpen}
+        onOpenChange={setIsCreateDialogOpen}
+      />
     </div>
   );
 }

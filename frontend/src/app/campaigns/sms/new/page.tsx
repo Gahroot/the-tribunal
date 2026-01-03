@@ -13,17 +13,18 @@ import { SMSCampaignWizard } from "@/components/campaigns/sms-campaign-wizard";
 import { smsCampaignsApi, type CreateSMSCampaignRequest } from "@/lib/api/sms-campaigns";
 import { offersApi } from "@/lib/api/offers";
 import { phoneNumbersApi } from "@/lib/api/phone-numbers";
-import type { Contact, Agent, Offer, PhoneNumber, SMSCampaign } from "@/types";
+import { useAuth } from "@/providers/auth-provider";
+import type { Contact, Agent, Offer, SMSCampaign } from "@/types";
 
-// TODO: Replace with real workspace ID from auth context
-const WORKSPACE_ID = "demo-workspace";
+// Default workspace ID - matches backend seed
+const DEFAULT_WORKSPACE_ID = "ba0e0e99-c7c9-45ec-9625-567d54d6e9c2";
 
 // Mock data for development - will be replaced with API calls
 const mockContacts: Contact[] = [
   {
     id: 1,
     user_id: 1,
-    workspace_id: WORKSPACE_ID,
+    workspace_id: DEFAULT_WORKSPACE_ID,
     first_name: "John",
     last_name: "Smith",
     email: "john.smith@example.com",
@@ -36,7 +37,7 @@ const mockContacts: Contact[] = [
   {
     id: 2,
     user_id: 1,
-    workspace_id: WORKSPACE_ID,
+    workspace_id: DEFAULT_WORKSPACE_ID,
     first_name: "Sarah",
     last_name: "Johnson",
     email: "sarah.j@example.com",
@@ -49,7 +50,7 @@ const mockContacts: Contact[] = [
   {
     id: 3,
     user_id: 1,
-    workspace_id: WORKSPACE_ID,
+    workspace_id: DEFAULT_WORKSPACE_ID,
     first_name: "Mike",
     last_name: "Williams",
     email: "mike.w@example.com",
@@ -61,7 +62,7 @@ const mockContacts: Contact[] = [
   {
     id: 4,
     user_id: 1,
-    workspace_id: WORKSPACE_ID,
+    workspace_id: DEFAULT_WORKSPACE_ID,
     first_name: "Emily",
     last_name: "Brown",
     email: "emily.b@example.com",
@@ -74,7 +75,7 @@ const mockContacts: Contact[] = [
   {
     id: 5,
     user_id: 1,
-    workspace_id: WORKSPACE_ID,
+    workspace_id: DEFAULT_WORKSPACE_ID,
     first_name: "David",
     last_name: "Lee",
     email: "david.l@example.com",
@@ -124,66 +125,44 @@ const mockAgents: Agent[] = [
   },
 ];
 
-const mockPhoneNumbers: PhoneNumber[] = [
-  {
-    id: "phone-1",
-    workspace_id: WORKSPACE_ID,
-    phone_number: "+15551112222",
-    friendly_name: "Main Line",
-    sms_enabled: true,
-    voice_enabled: true,
-    mms_enabled: false,
-    is_active: true,
-  },
-  {
-    id: "phone-2",
-    workspace_id: WORKSPACE_ID,
-    phone_number: "+15553334444",
-    friendly_name: "Sales",
-    sms_enabled: true,
-    voice_enabled: false,
-    mms_enabled: false,
-    is_active: true,
-  },
-];
-
 export default function NewSMSCampaignPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { workspaceId, isLoading: authLoading } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Fetch offers from API (with fallback to empty array)
   const { data: offersData, isLoading: offersLoading } = useQuery({
-    queryKey: ["offers", WORKSPACE_ID],
+    queryKey: ["offers", workspaceId],
     queryFn: async () => {
+      if (!workspaceId) return [];
       try {
-        const response = await offersApi.list(WORKSPACE_ID);
+        const response = await offersApi.list(workspaceId);
         return response.items;
       } catch {
         // Return empty array if API not available yet
         return [];
       }
     },
+    enabled: !!workspaceId,
   });
 
-  // Fetch phone numbers from API (with fallback to mock data)
+  // Fetch phone numbers from API - filter to SMS-enabled only
   const { data: phoneNumbersData, isLoading: phoneNumbersLoading } = useQuery({
-    queryKey: ["phone-numbers", WORKSPACE_ID],
+    queryKey: ["phone-numbers", workspaceId, { sms_enabled: true }],
     queryFn: async () => {
-      try {
-        const response = await phoneNumbersApi.list(WORKSPACE_ID, { sms_enabled: true });
-        return response.items;
-      } catch {
-        // Use mock data if API not available yet
-        return mockPhoneNumbers;
-      }
+      if (!workspaceId) return [];
+      const response = await phoneNumbersApi.list(workspaceId, { sms_enabled: true });
+      return response.items;
     },
+    enabled: !!workspaceId,
   });
 
   // Create offer mutation
   const createOfferMutation = useMutation({
     mutationFn: async (offer: Partial<Offer>) => {
-      await offersApi.create(WORKSPACE_ID, {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      await offersApi.create(workspaceId, {
         name: offer.name!,
         description: offer.description,
         discount_type: offer.discount_type!,
@@ -193,7 +172,9 @@ export default function NewSMSCampaignPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["offers", WORKSPACE_ID] });
+      if (workspaceId) {
+        queryClient.invalidateQueries({ queryKey: ["offers", workspaceId] });
+      }
       toast.success("Offer created successfully");
     },
     onError: (error) => {
@@ -211,19 +192,22 @@ export default function NewSMSCampaignPage() {
       data: CreateSMSCampaignRequest;
       contactIds: number[];
     }) => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
       // Create the campaign
-      const campaign = await smsCampaignsApi.create(WORKSPACE_ID, data);
+      const campaign = await smsCampaignsApi.create(workspaceId, data);
 
       // Add contacts to the campaign
       if (contactIds.length > 0) {
-        await smsCampaignsApi.addContacts(WORKSPACE_ID, campaign.id, contactIds);
+        await smsCampaignsApi.addContacts(workspaceId, campaign.id, contactIds);
       }
 
       return campaign;
     },
     onSuccess: (campaign) => {
       toast.success("Campaign created successfully!");
-      queryClient.invalidateQueries({ queryKey: ["campaigns", WORKSPACE_ID] });
+      if (workspaceId) {
+        queryClient.invalidateQueries({ queryKey: ["campaigns", workspaceId] });
+      }
       router.push(`/campaigns/${campaign.id}`);
     },
     onError: (error) => {
@@ -249,13 +233,13 @@ export default function NewSMSCampaignPage() {
     await createOfferMutation.mutateAsync(offer);
   };
 
-  const isLoading = offersLoading || phoneNumbersLoading;
+  const isLoading = authLoading || offersLoading || phoneNumbersLoading;
 
   // Use mock data for contacts and agents (replace with API calls later)
   const contacts = mockContacts;
   const agents = mockAgents;
-  const offers = offersData || [];
-  const phoneNumbers = phoneNumbersData || mockPhoneNumbers;
+  const offers = Array.isArray(offersData) ? offersData : [];
+  const phoneNumbers = Array.isArray(phoneNumbersData) ? phoneNumbersData : [];
 
   return (
     <AppSidebar>

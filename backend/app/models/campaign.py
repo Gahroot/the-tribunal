@@ -247,4 +247,7 @@ class CampaignContact(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<CampaignContact(campaign_id={self.campaign_id}, contact_id={self.contact_id}, status={self.status})>"
+        return (
+            f"<CampaignContact(campaign_id={self.campaign_id}, "
+            f"contact_id={self.contact_id}, status={self.status})>"
+        )

@@ -1,19 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
-import { format, addDays, startOfWeek, addHours, isSameDay } from "date-fns";
+import { format, addDays, startOfWeek, isSameDay } from "date-fns";
 import {
   ChevronLeft,
   ChevronRight,
   Plus,
   Calendar as CalendarIcon,
   Clock,
-  User,
-  MapPin,
-  Video,
-  ExternalLink,
   Settings,
+  Loader2,
+  AlertCircle,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -36,86 +35,94 @@ import {
 } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-
-// Mock appointments data
-const mockAppointments = [
-  {
-    id: 1,
-    title: "Property Viewing",
-    contact: { name: "John Smith", initials: "JS" },
-    date: addHours(new Date(), 2),
-    duration: 60,
-    type: "in_person",
-    location: "123 Main Street",
-    status: "confirmed",
-  },
-  {
-    id: 2,
-    title: "Follow-up Call",
-    contact: { name: "Emily Johnson", initials: "EJ" },
-    date: addHours(new Date(), 5),
-    duration: 30,
-    type: "video",
-    meetingUrl: "https://meet.google.com/abc-defg-hij",
-    status: "confirmed",
-  },
-  {
-    id: 3,
-    title: "Contract Discussion",
-    contact: { name: "Michael Brown", initials: "MB" },
-    date: addDays(new Date(), 1),
-    duration: 45,
-    type: "phone",
-    status: "pending",
-  },
-  {
-    id: 4,
-    title: "Home Inspection",
-    contact: { name: "Sarah Wilson", initials: "SW" },
-    date: addDays(new Date(), 2),
-    duration: 120,
-    type: "in_person",
-    location: "456 Oak Avenue",
-    status: "confirmed",
-  },
-  {
-    id: 5,
-    title: "Initial Consultation",
-    contact: { name: "David Lee", initials: "DL" },
-    date: addDays(new Date(), 3),
-    duration: 30,
-    type: "video",
-    meetingUrl: "https://meet.google.com/xyz-uvwx-rst",
-    status: "confirmed",
-  },
-];
+import { useAppointments, useDeleteAppointment } from "@/hooks/useAppointments";
+import { useAuth } from "@/providers/auth-provider";
+import { toast } from "sonner";
+import type { Contact } from "@/types";
 
 const statusColors: Record<string, string> = {
-  confirmed: "bg-green-500/10 text-green-500 border-green-500/20",
-  pending: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
+  scheduled: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+  completed: "bg-green-500/10 text-green-500 border-green-500/20",
   cancelled: "bg-red-500/10 text-red-500 border-red-500/20",
+  no_show: "bg-gray-500/10 text-gray-500 border-gray-500/20",
 };
 
-const typeIcons: Record<string, React.ElementType> = {
-  in_person: MapPin,
-  video: Video,
-  phone: Clock,
-};
+// Helper to get contact initials
+function getInitials(firstName: string, lastName?: string): string {
+  const first = firstName?.[0] ?? "";
+  const last = lastName?.[0] ?? "";
+  return (first + last).toUpperCase() || "?";
+}
+
+// Helper to get contact display name
+function getContactName(contact: Contact | null | undefined): string {
+  if (!contact) return "Unknown";
+  return [contact.first_name, contact.last_name].filter(Boolean).join(" ");
+}
 
 export function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedAppointment, setSelectedAppointment] = useState<typeof mockAppointments[0] | null>(null);
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState<number | null>(null);
+  const { workspaceId } = useAuth();
+
+  const { data: appointmentsData, isLoading, error } = useAppointments(
+    workspaceId || "",
+    { page: 1, page_size: 100 }
+  );
+  const deleteAppointmentMutation = useDeleteAppointment(workspaceId || "");
+
+  const appointmentsList = useMemo(
+    () => appointmentsData?.items || [],
+    [appointmentsData?.items]
+  );
 
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
-  const todayAppointments = mockAppointments.filter((apt) =>
-    isSameDay(new Date(apt.date), new Date())
+  const todayAppointments = useMemo(
+    () =>
+      appointmentsList.filter((apt) =>
+        isSameDay(new Date(apt.scheduled_at), new Date())
+      ),
+    [appointmentsList]
   );
 
-  const upcomingAppointments = mockAppointments.filter(
-    (apt) => new Date(apt.date) > new Date()
+  const upcomingAppointments = useMemo(
+    () =>
+      appointmentsList.filter(
+        (apt) => new Date(apt.scheduled_at) > new Date()
+      ),
+    [appointmentsList]
   );
+
+  const handleDeleteAppointment = async (appointmentId: number) => {
+    deleteAppointmentMutation.mutate(appointmentId, {
+      onSuccess: () => {
+        toast.success("Appointment cancelled");
+        setSelectedAppointmentId(null);
+      },
+      onError: () => {
+        toast.error("Failed to cancel appointment");
+      },
+    });
+  };
+
+  if (isLoading) {
+    return (
+      <div className="p-6 flex items-center justify-center h-96">
+        <Loader2 className="size-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6 flex flex-col items-center justify-center h-96 gap-2">
+        <AlertCircle className="size-8 text-destructive" />
+        <p className="text-muted-foreground">Failed to load appointments</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -199,8 +206,8 @@ export function CalendarPage() {
               {/* Appointments for the week */}
               <div className="grid grid-cols-7 gap-2 min-h-[300px]">
                 {weekDays.map((day) => {
-                  const dayAppointments = mockAppointments.filter((apt) =>
-                    isSameDay(new Date(apt.date), day)
+                  const dayAppointments = appointmentsList.filter((apt) =>
+                    isSameDay(new Date(apt.scheduled_at), day)
                   );
 
                   return (
@@ -211,74 +218,72 @@ export function CalendarPage() {
                       <ScrollArea className="h-[180px]">
                         <div className="space-y-1">
                           {dayAppointments.map((apt) => (
-                            <Dialog key={apt.id}>
+                            <Dialog key={apt.id} open={selectedAppointmentId === apt.id} onOpenChange={(open) => !open && setSelectedAppointmentId(null)}>
                               <DialogTrigger asChild>
                                 <motion.button
                                   className="w-full text-left p-2 rounded-md bg-primary/10 hover:bg-primary/20 transition-colors"
                                   whileHover={{ scale: 1.02 }}
                                   whileTap={{ scale: 0.98 }}
-                                  onClick={() => setSelectedAppointment(apt)}
+                                  onClick={() => setSelectedAppointmentId(apt.id)}
                                 >
                                   <p className="text-xs font-medium truncate">
-                                    {apt.title}
+                                    {apt.service_type || "Appointment"}
                                   </p>
                                   <p className="text-xs text-muted-foreground">
-                                    {format(new Date(apt.date), "h:mm a")}
+                                    {format(new Date(apt.scheduled_at), "h:mm a")}
                                   </p>
                                 </motion.button>
                               </DialogTrigger>
                               <DialogContent>
                                 <DialogHeader>
-                                  <DialogTitle>{apt.title}</DialogTitle>
+                                  <DialogTitle>{apt.service_type || "Appointment"}</DialogTitle>
                                   <DialogDescription>
                                     {format(
-                                      new Date(apt.date),
+                                      new Date(apt.scheduled_at),
                                       "EEEE, MMMM d, yyyy 'at' h:mm a"
                                     )}
                                   </DialogDescription>
                                 </DialogHeader>
                                 <div className="space-y-4 py-4">
-                                  <div className="flex items-center gap-3">
-                                    <Avatar className="size-10">
-                                      <AvatarFallback>
-                                        {apt.contact.initials}
-                                      </AvatarFallback>
-                                    </Avatar>
-                                    <div>
-                                      <p className="font-medium">
-                                        {apt.contact.name}
-                                      </p>
-                                      <Badge
-                                        variant="outline"
-                                        className={statusColors[apt.status]}
-                                      >
-                                        {apt.status}
-                                      </Badge>
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="flex items-center gap-3">
+                                      <Avatar className="size-10">
+                                        <AvatarFallback>
+                                          {getInitials(apt.contact?.first_name || "", apt.contact?.last_name)}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                      <div>
+                                        <p className="font-medium">
+                                          {getContactName(apt.contact)}
+                                        </p>
+                                        <Badge
+                                          variant="outline"
+                                          className={statusColors[apt.status]}
+                                        >
+                                          {apt.status}
+                                        </Badge>
+                                      </div>
                                     </div>
+                                    {apt.status === "scheduled" && (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => handleDeleteAppointment(apt.id)}
+                                        disabled={deleteAppointmentMutation.isPending}
+                                        className="text-destructive hover:text-destructive"
+                                      >
+                                        <Trash2 className="size-4" />
+                                      </Button>
+                                    )}
                                   </div>
                                   <div className="grid gap-2 text-sm">
                                     <div className="flex items-center gap-2">
                                       <Clock className="size-4 text-muted-foreground" />
-                                      <span>{apt.duration} minutes</span>
+                                      <span>{apt.duration_minutes} minutes</span>
                                     </div>
-                                    {apt.location && (
-                                      <div className="flex items-center gap-2">
-                                        <MapPin className="size-4 text-muted-foreground" />
-                                        <span>{apt.location}</span>
-                                      </div>
-                                    )}
-                                    {apt.meetingUrl && (
-                                      <div className="flex items-center gap-2">
-                                        <Video className="size-4 text-muted-foreground" />
-                                        <a
-                                          href={apt.meetingUrl}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="text-primary hover:underline flex items-center gap-1"
-                                        >
-                                          Join Meeting
-                                          <ExternalLink className="size-3" />
-                                        </a>
+                                    {apt.notes && (
+                                      <div className="text-sm text-muted-foreground">
+                                        {apt.notes}
                                       </div>
                                     )}
                                   </div>
@@ -316,31 +321,33 @@ export function CalendarPage() {
                 </p>
               ) : (
                 <div className="space-y-3">
-                  {todayAppointments.map((apt) => {
-                    const TypeIcon = typeIcons[apt.type];
-                    return (
-                      <div
-                        key={apt.id}
-                        className="flex items-center gap-3 p-2 rounded-lg border"
-                      >
-                        <Avatar className="size-8">
-                          <AvatarFallback className="text-xs">
-                            {apt.contact.initials}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">
-                            {apt.title}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {format(new Date(apt.date), "h:mm a")} •{" "}
-                            {apt.duration}min
-                          </p>
-                        </div>
-                        <TypeIcon className="size-4 text-muted-foreground" />
+                  {todayAppointments.map((apt) => (
+                    <div
+                      key={apt.id}
+                      className="flex items-center gap-3 p-2 rounded-lg border hover:bg-muted/50 transition-colors cursor-pointer"
+                      onClick={() => setSelectedAppointmentId(apt.id)}
+                    >
+                      <Avatar className="size-8">
+                        <AvatarFallback className="text-xs">
+                          {getInitials(apt.contact?.first_name || "", apt.contact?.last_name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {getContactName(apt.contact)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(apt.scheduled_at), "h:mm a")} • {apt.duration_minutes}min
+                        </p>
                       </div>
-                    );
-                  })}
+                      <Badge
+                        variant="outline"
+                        className={statusColors[apt.status]}
+                      >
+                        {apt.status}
+                      </Badge>
+                    </div>
+                  ))}
                 </div>
               )}
             </CardContent>
@@ -357,23 +364,23 @@ export function CalendarPage() {
                 {upcomingAppointments.slice(0, 5).map((apt) => (
                   <div
                     key={apt.id}
-                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors"
+                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                    onClick={() => setSelectedAppointmentId(apt.id)}
                   >
                     <div className="text-center min-w-[40px]">
                       <div className="text-xs font-medium text-muted-foreground">
-                        {format(new Date(apt.date), "MMM")}
+                        {format(new Date(apt.scheduled_at), "MMM")}
                       </div>
                       <div className="text-lg font-bold">
-                        {format(new Date(apt.date), "d")}
+                        {format(new Date(apt.scheduled_at), "d")}
                       </div>
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">
-                        {apt.title}
+                        {getContactName(apt.contact)}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {apt.contact.name} •{" "}
-                        {format(new Date(apt.date), "h:mm a")}
+                        {apt.service_type || "Appointment"} • {format(new Date(apt.scheduled_at), "h:mm a")}
                       </p>
                     </div>
                     <Badge
@@ -397,7 +404,7 @@ export function CalendarPage() {
               <div className="grid grid-cols-2 gap-4 text-center">
                 <div className="p-3 rounded-lg bg-muted/50">
                   <div className="text-2xl font-bold">
-                    {mockAppointments.length}
+                    {appointmentsList.length}
                   </div>
                   <div className="text-xs text-muted-foreground">
                     Total
@@ -405,10 +412,10 @@ export function CalendarPage() {
                 </div>
                 <div className="p-3 rounded-lg bg-muted/50">
                   <div className="text-2xl font-bold text-green-500">
-                    {mockAppointments.filter((a) => a.status === "confirmed").length}
+                    {appointmentsList.filter((a) => a.status === "scheduled").length}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    Confirmed
+                    Scheduled
                   </div>
                 </div>
               </div>

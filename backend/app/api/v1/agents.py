@@ -7,7 +7,6 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.models.agent import Agent
@@ -31,6 +30,8 @@ class AgentCreate(BaseModel):
     text_response_delay_ms: int = 2000
     text_max_context_messages: int = 20
     calcom_event_type_id: int | None = None
+    enabled_tools: list[str] = []
+    tool_settings: dict[str, list[str]] = {}
 
 
 class AgentUpdate(BaseModel):
@@ -48,6 +49,8 @@ class AgentUpdate(BaseModel):
     text_max_context_messages: int | None = None
     calcom_event_type_id: int | None = None
     is_active: bool | None = None
+    enabled_tools: list[str] | None = None
+    tool_settings: dict[str, list[str]] | None = None
 
 
 class AgentResponse(BaseModel):
@@ -66,6 +69,8 @@ class AgentResponse(BaseModel):
     text_response_delay_ms: int
     text_max_context_messages: int
     calcom_event_type_id: int | None
+    enabled_tools: list[str]
+    tool_settings: dict[str, list[str]]
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -99,7 +104,7 @@ async def list_agents(
     query = select(Agent).where(Agent.workspace_id == workspace_id)
 
     if active_only:
-        query = query.where(Agent.is_active == True)
+        query = query.where(Agent.is_active.is_(True))
 
     # Get total count
     count_query = select(func.count()).select_from(query.subquery())
@@ -143,6 +148,8 @@ async def create_agent(
         text_response_delay_ms=agent_in.text_response_delay_ms,
         text_max_context_messages=agent_in.text_max_context_messages,
         calcom_event_type_id=agent_in.calcom_event_type_id,
+        enabled_tools=agent_in.enabled_tools,
+        tool_settings=agent_in.tool_settings,
     )
     db.add(agent)
     await db.commit()

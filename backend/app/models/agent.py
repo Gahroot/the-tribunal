@@ -100,7 +100,9 @@ class Agent(Base):
     # Relationships
     workspace: Mapped["Workspace"] = relationship("Workspace", back_populates="agents")
     conversations: Mapped[list["Conversation"]] = relationship(
-        "Conversation", back_populates="assigned_agent", foreign_keys="Conversation.assigned_agent_id"
+        "Conversation",
+        back_populates="assigned_agent",
+        foreign_keys="Conversation.assigned_agent_id",
     )
     messages: Mapped[list["Message"]] = relationship(
         "Message", back_populates="agent", foreign_keys="Message.agent_id"

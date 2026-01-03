@@ -19,11 +19,12 @@ import {
   UserCheck,
   ArrowRight,
   Settings2,
+  Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -57,69 +58,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/providers/auth-provider";
+import {
+  useAutomations,
+  useCreateAutomation,
+  useDeleteAutomation,
+  useToggleAutomation,
+} from "@/hooks/useAutomations";
 import type { Automation, AutomationTriggerType, AutomationActionType } from "@/types";
-
-// Mock data
-const mockAutomations: Automation[] = [
-  {
-    id: "auto-1",
-    name: "New Lead Welcome",
-    description: "Send welcome SMS to new leads automatically",
-    trigger_type: "event",
-    trigger_config: { event: "contact_created", status: "new" },
-    actions: [
-      { type: "send_sms", config: { template: "welcome_sms" } },
-      { type: "add_tag", config: { tag: "welcomed" } },
-    ],
-    is_active: true,
-    last_triggered_at: "2024-01-20T10:30:00Z",
-    created_at: "2024-01-01T00:00:00Z",
-    updated_at: "2024-01-20T10:30:00Z",
-  },
-  {
-    id: "auto-2",
-    name: "Follow-up Reminder",
-    description: "Schedule follow-up call 3 days after initial contact",
-    trigger_type: "schedule",
-    trigger_config: { delay_days: 3, after: "last_contact" },
-    actions: [
-      { type: "make_call", config: { agent_id: "agent-1" } },
-    ],
-    is_active: true,
-    last_triggered_at: "2024-01-19T14:00:00Z",
-    created_at: "2024-01-05T00:00:00Z",
-    updated_at: "2024-01-19T14:00:00Z",
-  },
-  {
-    id: "auto-3",
-    name: "Hot Lead Assignment",
-    description: "Assign hot leads to senior sales agent",
-    trigger_type: "condition",
-    trigger_config: { field: "status", operator: "equals", value: "qualified" },
-    actions: [
-      { type: "assign_agent", config: { agent_id: "agent-1" } },
-      { type: "send_email", config: { template: "hot_lead_notification" } },
-    ],
-    is_active: false,
-    created_at: "2024-01-10T00:00:00Z",
-    updated_at: "2024-01-15T00:00:00Z",
-  },
-  {
-    id: "auto-4",
-    name: "Re-engagement Campaign",
-    description: "Add inactive contacts to re-engagement campaign",
-    trigger_type: "condition",
-    trigger_config: { field: "last_activity", operator: "older_than", value: "30_days" },
-    actions: [
-      { type: "add_tag", config: { tag: "inactive" } },
-      { type: "send_sms", config: { template: "reengagement_sms" } },
-    ],
-    is_active: true,
-    last_triggered_at: "2024-01-18T08:00:00Z",
-    created_at: "2024-01-08T00:00:00Z",
-    updated_at: "2024-01-18T08:00:00Z",
-  },
-];
 
 const triggerTypeConfig: Record<AutomationTriggerType, { label: string; icon: React.ElementType; color: string }> = {
   event: { label: "Event", icon: Zap, color: "text-yellow-500" },
@@ -149,17 +96,127 @@ const itemVariants = {
   visible: { opacity: 1, y: 0 },
 };
 
+function AutomationCardSkeleton() {
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-4 w-60" />
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-10 w-full" />
+      </CardContent>
+      <CardFooter className="border-t pt-4">
+        <Skeleton className="h-4 w-full" />
+      </CardFooter>
+    </Card>
+  );
+}
+
 export function AutomationsPage() {
+  const { workspaceId } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [newAutomationName, setNewAutomationName] = useState("");
+  const [newAutomationDescription, setNewAutomationDescription] = useState("");
+  const [newTriggerType, setNewTriggerType] = useState<AutomationTriggerType>("event");
+  const [newActionType, setNewActionType] = useState<AutomationActionType>("send_sms");
 
-  const filteredAutomations = mockAutomations.filter(
+  const { data, isLoading, error } = useAutomations(workspaceId ?? "");
+  const createMutation = useCreateAutomation(workspaceId ?? "");
+  const deleteMutation = useDeleteAutomation(workspaceId ?? "");
+  const toggleMutation = useToggleAutomation(workspaceId ?? "");
+
+  const automations = data?.items ?? [];
+
+  const filteredAutomations = automations.filter(
     (automation) =>
       automation.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       automation.description?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const activeCount = mockAutomations.filter((a) => a.is_active).length;
+  const activeCount = automations.filter((a) => a.is_active).length;
+
+  const handleCreateAutomation = async () => {
+    if (!newAutomationName.trim()) {
+      toast.error("Please enter a name for the automation");
+      return;
+    }
+
+    try {
+      await createMutation.mutateAsync({
+        name: newAutomationName,
+        description: newAutomationDescription || undefined,
+        trigger_type: newTriggerType,
+        trigger_config: {},
+        actions: [{ type: newActionType, config: {} }],
+        is_active: true,
+      });
+      toast.success("Automation created successfully");
+      setIsCreateDialogOpen(false);
+      setNewAutomationName("");
+      setNewAutomationDescription("");
+      setNewTriggerType("event");
+      setNewActionType("send_sms");
+    } catch {
+      toast.error("Failed to create automation");
+    }
+  };
+
+  const handleToggleAutomation = async (automation: Automation) => {
+    try {
+      await toggleMutation.mutateAsync(automation.id);
+      toast.success(automation.is_active ? "Automation paused" : "Automation activated");
+    } catch {
+      toast.error("Failed to toggle automation");
+    }
+  };
+
+  const handleDeleteAutomation = async (automation: Automation) => {
+    try {
+      await deleteMutation.mutateAsync(automation.id);
+      toast.success("Automation deleted");
+    } catch {
+      toast.error("Failed to delete automation");
+    }
+  };
+
+  const handleDuplicateAutomation = async (automation: Automation) => {
+    try {
+      await createMutation.mutateAsync({
+        name: `${automation.name} (Copy)`,
+        description: automation.description,
+        trigger_type: automation.trigger_type,
+        trigger_config: automation.trigger_config,
+        actions: automation.actions,
+        is_active: false,
+      });
+      toast.success("Automation duplicated");
+    } catch {
+      toast.error("Failed to duplicate automation");
+    }
+  };
+
+  if (!workspaceId) {
+    return (
+      <div className="p-6 flex items-center justify-center">
+        <p className="text-muted-foreground">Please select a workspace</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6 flex items-center justify-center">
+        <p className="text-destructive">Failed to load automations</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -188,18 +245,28 @@ export function AutomationsPage() {
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label htmlFor="auto-name">Name</Label>
-                <Input id="auto-name" placeholder="e.g., New Lead Welcome" />
+                <Input
+                  id="auto-name"
+                  placeholder="e.g., New Lead Welcome"
+                  value={newAutomationName}
+                  onChange={(e) => setNewAutomationName(e.target.value)}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="auto-desc">Description</Label>
                 <Input
                   id="auto-desc"
                   placeholder="Brief description of what this automation does"
+                  value={newAutomationDescription}
+                  onChange={(e) => setNewAutomationDescription(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
                 <Label>Trigger Type</Label>
-                <Select defaultValue="event">
+                <Select
+                  value={newTriggerType}
+                  onValueChange={(v) => setNewTriggerType(v as AutomationTriggerType)}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -227,7 +294,10 @@ export function AutomationsPage() {
               </div>
               <div className="space-y-2">
                 <Label>Action</Label>
-                <Select defaultValue="send_sms">
+                <Select
+                  value={newActionType}
+                  onValueChange={(v) => setNewActionType(v as AutomationActionType)}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -248,7 +318,13 @@ export function AutomationsPage() {
               >
                 Cancel
               </Button>
-              <Button onClick={() => setIsCreateDialogOpen(false)}>
+              <Button
+                onClick={handleCreateAutomation}
+                disabled={createMutation.isPending}
+              >
+                {createMutation.isPending && (
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                )}
                 Create
               </Button>
             </DialogFooter>
@@ -263,7 +339,9 @@ export function AutomationsPage() {
             <CardDescription>Total Automations</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockAutomations.length}</div>
+            <div className="text-2xl font-bold">
+              {isLoading ? <Skeleton className="h-8 w-8" /> : automations.length}
+            </div>
           </CardContent>
         </Card>
         <Card>
@@ -271,7 +349,9 @@ export function AutomationsPage() {
             <CardDescription>Active</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-500">{activeCount}</div>
+            <div className="text-2xl font-bold text-green-500">
+              {isLoading ? <Skeleton className="h-8 w-8" /> : activeCount}
+            </div>
           </CardContent>
         </Card>
         <Card>
@@ -279,7 +359,9 @@ export function AutomationsPage() {
             <CardDescription>Triggered Today</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">24</div>
+            <div className="text-2xl font-bold">
+              {isLoading ? <Skeleton className="h-8 w-8" /> : "-"}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -296,131 +378,179 @@ export function AutomationsPage() {
       </div>
 
       {/* Automations Grid */}
-      <motion.div
-        className="grid gap-4 md:grid-cols-2"
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
-      >
-        <AnimatePresence mode="popLayout">
-          {filteredAutomations.map((automation) => {
-            const trigger = triggerTypeConfig[automation.trigger_type];
-            const TriggerIcon = trigger.icon;
+      {isLoading ? (
+        <div className="grid gap-4 md:grid-cols-2">
+          <AutomationCardSkeleton />
+          <AutomationCardSkeleton />
+          <AutomationCardSkeleton />
+          <AutomationCardSkeleton />
+        </div>
+      ) : filteredAutomations.length === 0 ? (
+        <Card className="p-12 text-center">
+          <div className="flex flex-col items-center gap-4">
+            <Zap className="size-12 text-muted-foreground" />
+            <div className="space-y-2">
+              <h3 className="text-lg font-semibold">No automations found</h3>
+              <p className="text-muted-foreground">
+                {searchQuery
+                  ? "Try adjusting your search"
+                  : "Create your first automation to automate repetitive tasks"}
+              </p>
+            </div>
+            {!searchQuery && (
+              <Button onClick={() => setIsCreateDialogOpen(true)}>
+                <Plus className="mr-2 size-4" />
+                Create Automation
+              </Button>
+            )}
+          </div>
+        </Card>
+      ) : (
+        <motion.div
+          className="grid gap-4 md:grid-cols-2"
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+        >
+          <AnimatePresence mode="popLayout">
+            {filteredAutomations.map((automation) => {
+              const trigger = triggerTypeConfig[automation.trigger_type];
+              const TriggerIcon = trigger.icon;
 
-            return (
-              <motion.div
-                key={automation.id}
-                layout
-                variants={itemVariants}
-                initial="hidden"
-                animate="visible"
-                exit={{ opacity: 0, scale: 0.9 }}
-              >
-                <Card className="group">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-1">
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          {automation.name}
-                          {automation.is_active && (
-                            <span className="size-2 rounded-full bg-green-500" />
-                          )}
-                        </CardTitle>
-                        <CardDescription>{automation.description}</CardDescription>
-                      </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            className="opacity-0 group-hover:opacity-100"
-                          >
-                            <MoreHorizontal className="size-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
-                            <Settings2 className="mr-2 size-4" />
-                            Configure
-                          </DropdownMenuItem>
-                          {automation.is_active ? (
+              return (
+                <motion.div
+                  key={automation.id}
+                  layout
+                  variants={itemVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit={{ opacity: 0, scale: 0.9 }}
+                >
+                  <Card className="group">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                          <CardTitle className="text-lg flex items-center gap-2">
+                            {automation.name}
+                            {automation.is_active && (
+                              <span className="size-2 rounded-full bg-green-500" />
+                            )}
+                          </CardTitle>
+                          <CardDescription>{automation.description}</CardDescription>
+                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-8 opacity-0 group-hover:opacity-100"
+                            >
+                              <MoreHorizontal className="size-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
                             <DropdownMenuItem>
-                              <Pause className="mr-2 size-4" />
-                              Pause
+                              <Settings2 className="mr-2 size-4" />
+                              Configure
                             </DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem>
-                              <Play className="mr-2 size-4" />
-                              Activate
+                            <DropdownMenuItem
+                              onClick={() => handleToggleAutomation(automation)}
+                              disabled={toggleMutation.isPending}
+                            >
+                              {automation.is_active ? (
+                                <>
+                                  <Pause className="mr-2 size-4" />
+                                  Pause
+                                </>
+                              ) : (
+                                <>
+                                  <Play className="mr-2 size-4" />
+                                  Activate
+                                </>
+                              )}
                             </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem>
-                            <Copy className="mr-2 size-4" />
-                            Duplicate
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-destructive">
-                            <Trash2 className="mr-2 size-4" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {/* Trigger */}
-                    <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                      <div className={`p-2 rounded-md bg-background ${trigger.color}`}>
-                        <TriggerIcon className="size-4" />
+                            <DropdownMenuItem
+                              onClick={() => handleDuplicateAutomation(automation)}
+                              disabled={createMutation.isPending}
+                            >
+                              <Copy className="mr-2 size-4" />
+                              Duplicate
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => handleDeleteAutomation(automation)}
+                              disabled={deleteMutation.isPending}
+                            >
+                              <Trash2 className="mr-2 size-4" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">{trigger.label} Trigger</p>
-                        <p className="text-xs text-muted-foreground">
-                          {automation.trigger_type === "event" && "When a contact is created"}
-                          {automation.trigger_type === "schedule" && "3 days after last contact"}
-                          {automation.trigger_type === "condition" && "When status equals qualified"}
-                        </p>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {/* Trigger */}
+                      <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                        <div className={`p-2 rounded-md bg-background ${trigger.color}`}>
+                          <TriggerIcon className="size-4" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">{trigger.label} Trigger</p>
+                          <p className="text-xs text-muted-foreground">
+                            {automation.trigger_type === "event" && "When a contact is created"}
+                            {automation.trigger_type === "schedule" && "Runs on schedule"}
+                            {automation.trigger_type === "condition" && "When conditions are met"}
+                          </p>
+                        </div>
                       </div>
-                    </div>
 
-                    {/* Arrow */}
-                    <div className="flex justify-center">
-                      <ArrowRight className="size-4 text-muted-foreground" />
-                    </div>
-
-                    {/* Actions */}
-                    <div className="space-y-2">
-                      {automation.actions.map((action, index) => {
-                        const actionConfig = actionTypeConfig[action.type];
-                        const ActionIcon = actionConfig.icon;
-                        return (
-                          <div
-                            key={index}
-                            className="flex items-center gap-3 p-2 rounded-lg border"
-                          >
-                            <ActionIcon className="size-4 text-muted-foreground" />
-                            <span className="text-sm">{actionConfig.label}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </CardContent>
-                  <CardFooter className="border-t pt-4">
-                    <div className="flex items-center justify-between w-full text-sm">
-                      <div className="text-muted-foreground">
-                        {automation.last_triggered_at
-                          ? `Last run: ${new Date(automation.last_triggered_at).toLocaleDateString()}`
-                          : "Never triggered"}
+                      {/* Arrow */}
+                      <div className="flex justify-center">
+                        <ArrowRight className="size-4 text-muted-foreground" />
                       </div>
-                      <Switch checked={automation.is_active} />
-                    </div>
-                  </CardFooter>
-                </Card>
-              </motion.div>
-            );
-          })}
-        </AnimatePresence>
-      </motion.div>
+
+                      {/* Actions */}
+                      <div className="space-y-2">
+                        {automation.actions.map((action, index) => {
+                          const actionConfig = actionTypeConfig[action.type] ?? {
+                            label: action.type,
+                            icon: Settings2,
+                          };
+                          const ActionIcon = actionConfig.icon;
+                          return (
+                            <div
+                              key={index}
+                              className="flex items-center gap-3 p-2 rounded-lg border"
+                            >
+                              <ActionIcon className="size-4 text-muted-foreground" />
+                              <span className="text-sm">{actionConfig.label}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </CardContent>
+                    <CardFooter className="border-t pt-4">
+                      <div className="flex items-center justify-between w-full text-sm">
+                        <div className="text-muted-foreground">
+                          {automation.last_triggered_at
+                            ? `Last run: ${new Date(automation.last_triggered_at).toLocaleDateString()}`
+                            : "Never triggered"}
+                        </div>
+                        <Switch
+                          checked={automation.is_active}
+                          onCheckedChange={() => handleToggleAutomation(automation)}
+                          disabled={toggleMutation.isPending}
+                        />
+                      </div>
+                    </CardFooter>
+                  </Card>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+        </motion.div>
+      )}
     </div>
   );
 }

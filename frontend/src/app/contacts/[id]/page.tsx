@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { ConversationLayout } from "@/components/layout/conversation-layout";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { useContactStore } from "@/lib/contact-store";
-import { getMockTimeline, mockContacts, mockAgents, mockAutomations, mockContactAgents } from "@/lib/mock-data";
+import { useContacts, useContact, useContactTimeline } from "@/hooks/useContacts";
+import { useAuth } from "@/providers/auth-provider";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -15,57 +16,67 @@ interface PageProps {
 export default function ConversationPage({ params }: PageProps) {
   const { id } = use(params);
   const router = useRouter();
+  const { workspaceId } = useAuth();
   const {
-    contacts,
     setContacts,
     setSelectedContact,
     setTimeline,
     setIsLoadingContacts,
     setIsLoadingTimeline,
-    setAgents,
-    setAutomations,
-    setContactAgents,
   } = useContactStore();
 
   const contactId = parseInt(id, 10);
 
-  // Load contacts if not already loaded
-  React.useEffect(() => {
-    if (contacts.length === 0) {
-      setIsLoadingContacts(true);
-      setTimeout(() => {
-        setContacts(mockContacts);
-        setAgents(mockAgents);
-        setAutomations(mockAutomations);
-        setContactAgents(mockContactAgents);
-        setIsLoadingContacts(false);
-      }, 300);
-    } else {
-      // Ensure agents and automations are loaded
-      setAgents(mockAgents);
-      setAutomations(mockAutomations);
-      setContactAgents(mockContactAgents);
-    }
-  }, [contacts.length, setContacts, setAgents, setAutomations, setContactAgents, setIsLoadingContacts]);
+  // Fetch all contacts if not already loaded
+  const { data: contactsData, isLoading: isLoadingContactsList } = useContacts(
+    workspaceId ?? "",
+    {},
+  );
 
-  // Set selected contact and load timeline when contacts are available
+  // Fetch the specific contact
+  const { data: contact, isLoading: isLoadingContact } = useContact(
+    workspaceId ?? "",
+    contactId,
+  );
+
+  // Fetch the timeline for this contact
+  const { data: timelineData, isLoading: isLoadingTimelineData } = useContactTimeline(
+    workspaceId ?? "",
+    contactId,
+  );
+
+  // Sync contacts list to store
   React.useEffect(() => {
-    if (contacts.length > 0) {
-      const contact = contacts.find((c) => c.id === contactId);
-      if (contact) {
-        setSelectedContact(contact);
-        setIsLoadingTimeline(true);
-        setTimeout(() => {
-          const timeline = getMockTimeline(contactId);
-          setTimeline(timeline);
-          setIsLoadingTimeline(false);
-        }, 200);
-      } else {
-        // Contact not found, redirect to contacts page
-        router.push("/");
-      }
+    setIsLoadingContacts(isLoadingContactsList);
+  }, [isLoadingContactsList, setIsLoadingContacts]);
+
+  React.useEffect(() => {
+    if (contactsData?.items) {
+      setContacts(contactsData.items);
     }
-  }, [contacts, contactId, setSelectedContact, setTimeline, setIsLoadingTimeline, router]);
+  }, [contactsData, setContacts]);
+
+  // Set loading state for timeline
+  React.useEffect(() => {
+    setIsLoadingTimeline(isLoadingTimelineData);
+  }, [isLoadingTimelineData, setIsLoadingTimeline]);
+
+  // Set timeline data when loaded
+  React.useEffect(() => {
+    if (timelineData) {
+      setTimeline(timelineData);
+    }
+  }, [timelineData, setTimeline]);
+
+  // Set selected contact when loaded
+  React.useEffect(() => {
+    if (contact) {
+      setSelectedContact(contact);
+    } else if (!isLoadingContact && !contact && workspaceId) {
+      // Contact not found, redirect to contacts page
+      router.push("/");
+    }
+  }, [contact, isLoadingContact, workspaceId, setSelectedContact, router]);
 
   return (
     <AppSidebar>

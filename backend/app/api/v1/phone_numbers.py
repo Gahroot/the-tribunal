@@ -6,11 +6,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import DB, CurrentUser, get_workspace
+from app.core.config import settings
 from app.models.phone_number import PhoneNumber
 from app.models.workspace import Workspace
+from app.services.telephony.telnyx import TelnyxSMSService
 
 router = APIRouter()
 
@@ -39,6 +40,30 @@ class PaginatedPhoneNumbers(BaseModel):
     page: int
     page_size: int
     pages: int
+
+
+class SearchPhoneNumbersRequest(BaseModel):
+    """Search phone numbers request."""
+
+    country: str = "US"
+    area_code: str | None = None
+    contains: str | None = None
+    limit: int = 10
+
+
+class PurchasePhoneNumberRequest(BaseModel):
+    """Purchase phone number request."""
+
+    phone_number: str
+
+
+class PhoneNumberInfoResponse(BaseModel):
+    """Phone number info from Telnyx."""
+
+    id: str
+    phone_number: str
+    friendly_name: str | None
+    capabilities: dict[str, bool] | None
 
 
 @router.get("", response_model=PaginatedPhoneNumbers)
@@ -105,3 +130,168 @@ async def get_phone_number(
         )
 
     return phone_number
+
+
+@router.post("/search", response_model=list[PhoneNumberInfoResponse])
+async def search_phone_numbers(
+    workspace_id: uuid.UUID,
+    request_data: SearchPhoneNumbersRequest,
+    current_user: CurrentUser,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> list[PhoneNumberInfoResponse]:
+    """Search for available phone numbers to purchase."""
+    if not settings.telnyx_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Telnyx not configured",
+        )
+
+    service = TelnyxSMSService(settings.telnyx_api_key)
+    try:
+        numbers = await service.search_phone_numbers(
+            country=request_data.country,
+            area_code=request_data.area_code,
+            contains=request_data.contains,
+            limit=request_data.limit,
+        )
+        return [
+            PhoneNumberInfoResponse(
+                id=n.id,
+                phone_number=n.phone_number,
+                friendly_name=n.friendly_name,
+                capabilities=n.capabilities,
+            )
+            for n in numbers
+        ]
+    finally:
+        await service.close()
+
+
+@router.post("/purchase", response_model=PhoneNumberResponse)
+async def purchase_phone_number(
+    workspace_id: uuid.UUID,
+    request_data: PurchasePhoneNumberRequest,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> PhoneNumber:
+    """Purchase a phone number from Telnyx."""
+    if not settings.telnyx_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Telnyx not configured",
+        )
+
+    service = TelnyxSMSService(settings.telnyx_api_key)
+    try:
+        # Purchase from Telnyx
+        purchased = await service.purchase_phone_number(request_data.phone_number)
+
+        # Create database record
+        phone_number = PhoneNumber(
+            workspace_id=workspace_id,
+            phone_number=purchased.phone_number,
+            telnyx_phone_number_id=purchased.id,
+            sms_enabled=True,
+            voice_enabled=True,
+            is_active=True,
+        )
+        db.add(phone_number)
+        await db.commit()
+        await db.refresh(phone_number)
+
+        return phone_number
+    finally:
+        await service.close()
+
+
+@router.delete("/{phone_number_id}")
+async def release_phone_number(
+    workspace_id: uuid.UUID,
+    phone_number_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> dict[str, bool]:
+    """Release a phone number back to Telnyx."""
+    result = await db.execute(
+        select(PhoneNumber).where(
+            PhoneNumber.id == phone_number_id,
+            PhoneNumber.workspace_id == workspace_id,
+        )
+    )
+    phone_number = result.scalar_one_or_none()
+
+    if not phone_number:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Phone number not found",
+        )
+
+    if not settings.telnyx_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Telnyx not configured",
+        )
+
+    # Release from Telnyx if we have the provider ID
+    if phone_number.telnyx_phone_number_id:
+        service = TelnyxSMSService(settings.telnyx_api_key)
+        try:
+            await service.release_phone_number(phone_number.telnyx_phone_number_id)
+        finally:
+            await service.close()
+
+    # Delete from database
+    await db.delete(phone_number)
+    await db.commit()
+
+    return {"success": True}
+
+
+@router.post("/sync")
+async def sync_phone_numbers(
+    workspace_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> dict[str, int]:
+    """Sync phone numbers from Telnyx account."""
+    if not settings.telnyx_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Telnyx not configured",
+        )
+
+    service = TelnyxSMSService(settings.telnyx_api_key)
+    try:
+        telnyx_numbers = await service.list_phone_numbers()
+    finally:
+        await service.close()
+
+    synced = 0
+    for tn in telnyx_numbers:
+        # Check if already exists
+        result = await db.execute(
+            select(PhoneNumber).where(
+                PhoneNumber.workspace_id == workspace_id,
+                PhoneNumber.phone_number == tn.phone_number,
+            )
+        )
+        existing = result.scalar_one_or_none()
+
+        if not existing:
+            phone_number = PhoneNumber(
+                workspace_id=workspace_id,
+                phone_number=tn.phone_number,
+                friendly_name=tn.friendly_name,
+                telnyx_phone_number_id=tn.id,
+                sms_enabled=tn.capabilities.get("sms", False) if tn.capabilities else False,
+                voice_enabled=tn.capabilities.get("voice", False) if tn.capabilities else False,
+                is_active=True,
+            )
+            db.add(phone_number)
+            synced += 1
+
+    await db.commit()
+    return {"synced": synced}

@@ -1,17 +1,15 @@
 """Conversations and messages endpoints."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.core.config import settings
-from app.db.session import get_db
 from app.models.agent import Agent
 from app.models.conversation import Conversation, Message
 from app.models.workspace import Workspace

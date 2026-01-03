@@ -3,9 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { format } from "date-fns";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
-  Plus,
   Search,
   MoreHorizontal,
   Play,
@@ -18,6 +18,9 @@ import {
   Layers,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -28,7 +31,6 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import {
   DropdownMenu,
@@ -53,100 +55,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
+import { useAuth } from "@/providers/auth-provider";
 import type { Campaign, CampaignStatus, CampaignType } from "@/types";
-
-// Mock data for campaigns
-const mockCampaigns: Campaign[] = [
-  {
-    id: "1",
-    user_id: 1,
-    name: "Spring Property Showcase",
-    description: "Promote new spring listings to qualified leads",
-    type: "sms",
-    status: "running",
-    sms_template: "Hi {{first_name}}, check out our new spring listings!",
-    total_contacts: 1250,
-    sent_count: 890,
-    delivered_count: 856,
-    failed_count: 34,
-    responded_count: 145,
-    messages_per_hour: 200,
-    created_at: "2024-01-15T10:00:00Z",
-    updated_at: "2024-01-20T14:30:00Z",
-  },
-  {
-    id: "2",
-    user_id: 1,
-    name: "Open House Invitations",
-    description: "Invite contacts to upcoming open houses",
-    type: "email",
-    status: "scheduled",
-    email_subject: "You're Invited: Exclusive Open House This Weekend",
-    email_template: "<p>Dear {{first_name}}, join us for an exclusive viewing...</p>",
-    scheduled_start: "2024-01-25T09:00:00Z",
-    total_contacts: 500,
-    sent_count: 0,
-    delivered_count: 0,
-    failed_count: 0,
-    responded_count: 0,
-    messages_per_hour: 100,
-    created_at: "2024-01-18T08:00:00Z",
-    updated_at: "2024-01-18T08:00:00Z",
-  },
-  {
-    id: "3",
-    user_id: 1,
-    name: "Follow-up Call Campaign",
-    description: "AI voice calls to follow up with interested buyers",
-    type: "voice",
-    status: "paused",
-    voice_script: "Hello {{first_name}}, I'm calling from...",
-    agent_id: "agent-1",
-    total_contacts: 200,
-    sent_count: 87,
-    delivered_count: 65,
-    failed_count: 22,
-    responded_count: 45,
-    messages_per_hour: 30,
-    created_at: "2024-01-10T12:00:00Z",
-    updated_at: "2024-01-19T16:45:00Z",
-  },
-  {
-    id: "4",
-    user_id: 1,
-    name: "Multi-Channel Nurture",
-    description: "Comprehensive nurture campaign using SMS and Email",
-    type: "multi_channel",
-    status: "draft",
-    sms_template: "Hi {{first_name}}! Quick update on properties in your area.",
-    email_subject: "Weekly Market Update",
-    email_template: "<p>Stay informed with our latest market insights...</p>",
-    total_contacts: 0,
-    sent_count: 0,
-    delivered_count: 0,
-    failed_count: 0,
-    responded_count: 0,
-    created_at: "2024-01-20T09:00:00Z",
-    updated_at: "2024-01-20T09:00:00Z",
-  },
-  {
-    id: "5",
-    user_id: 1,
-    name: "Re-engagement SMS Blast",
-    description: "Re-engage cold leads with special offers",
-    type: "sms",
-    status: "completed",
-    sms_template: "{{first_name}}, we miss you! Special offer inside...",
-    total_contacts: 800,
-    sent_count: 800,
-    delivered_count: 756,
-    failed_count: 44,
-    responded_count: 89,
-    created_at: "2024-01-05T10:00:00Z",
-    updated_at: "2024-01-08T18:00:00Z",
-    completed_at: "2024-01-08T18:00:00Z",
-  },
-];
+import { campaignsApi } from "@/lib/api/campaigns";
 
 const statusColors: Record<CampaignStatus, string> = {
   draft: "bg-gray-500/10 text-gray-500 border-gray-500/20",
@@ -181,8 +92,58 @@ export function CampaignsList() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const { workspaceId } = useAuth();
 
-  const filteredCampaigns = mockCampaigns.filter((campaign) => {
+  const queryClient = useQueryClient();
+
+  const { data: campaignsData, isLoading, error } = useQuery({
+    queryKey: ["campaigns", workspaceId],
+    queryFn: () => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return campaignsApi.list(workspaceId);
+    },
+    enabled: !!workspaceId,
+  });
+
+  const campaigns = campaignsData?.campaigns ?? [];
+
+  const pauseMutation = useMutation({
+    mutationFn: (id: string) => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return campaignsApi.pause(workspaceId, id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      toast.success("Campaign paused");
+    },
+    onError: () => toast.error("Failed to pause campaign"),
+  });
+
+  const startMutation = useMutation({
+    mutationFn: (id: string) => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return campaignsApi.start(workspaceId, id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      toast.success("Campaign started");
+    },
+    onError: () => toast.error("Failed to start campaign"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return campaignsApi.delete(workspaceId, id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      toast.success("Campaign deleted");
+    },
+    onError: () => toast.error("Failed to delete campaign"),
+  });
+
+  const filteredCampaigns = campaigns.filter((campaign) => {
     const matchesSearch = campaign.name
       .toLowerCase()
       .includes(searchQuery.toLowerCase());
@@ -204,6 +165,26 @@ export function CampaignsList() {
     );
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="size-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-2">
+        <AlertCircle className="size-8 text-destructive" />
+        <p className="text-muted-foreground">Failed to load campaigns</p>
+        <Button variant="outline" onClick={() => queryClient.invalidateQueries({ queryKey: ["campaigns"] })}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -214,20 +195,36 @@ export function CampaignsList() {
             Create and manage your outreach campaigns
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" asChild>
-            <Link href="/campaigns/sms/new">
-              <MessageSquare className="mr-2 size-4" />
-              New SMS Campaign
-            </Link>
-          </Button>
-          <Button asChild>
-            <Link href="/campaigns/new">
-              <Plus className="mr-2 size-4" />
-              Create Campaign
-            </Link>
-          </Button>
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button>
+              New Campaign
+              <ChevronDown className="ml-2 size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuItem asChild>
+              <Link href="/campaigns/sms/new" className="flex items-center cursor-pointer">
+                <MessageSquare className="mr-2 size-4" />
+                SMS Campaign
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled className="flex items-center justify-between opacity-60">
+              <span className="flex items-center">
+                <Mail className="mr-2 size-4" />
+                Email Campaign
+              </span>
+              <span className="text-xs bg-muted px-1.5 py-0.5 rounded">Coming Soon</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled className="flex items-center justify-between opacity-60">
+              <span className="flex items-center">
+                <Phone className="mr-2 size-4" />
+                Voice Campaign
+              </span>
+              <span className="text-xs bg-muted px-1.5 py-0.5 rounded">Coming Soon</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Stats Cards */}
@@ -238,18 +235,18 @@ export function CampaignsList() {
         animate="visible"
       >
         {[
-          { label: "Total Campaigns", value: mockCampaigns.length },
+          { label: "Total Campaigns", value: campaigns.length },
           {
             label: "Active",
-            value: mockCampaigns.filter((c) => c.status === "running").length,
+            value: campaigns.filter((c) => c.status === "running").length,
           },
           {
             label: "Total Contacts",
-            value: mockCampaigns.reduce((sum, c) => sum + c.total_contacts, 0),
+            value: campaigns.reduce((sum, c) => sum + c.total_contacts, 0),
           },
           {
             label: "Total Responses",
-            value: mockCampaigns.reduce((sum, c) => sum + c.responded_count, 0),
+            value: campaigns.reduce((sum, c) => sum + c.responded_count, 0),
           },
         ].map((stat) => (
           <motion.div key={stat.label} variants={itemVariants}>
@@ -403,13 +400,13 @@ export function CampaignsList() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             {campaign.status === "running" ? (
-                              <DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => pauseMutation.mutate(campaign.id)}>
                                 <Pause className="mr-2 size-4" />
                                 Pause
                               </DropdownMenuItem>
                             ) : campaign.status === "paused" ||
                               campaign.status === "draft" ? (
-                              <DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => startMutation.mutate(campaign.id)}>
                                 <Play className="mr-2 size-4" />
                                 {campaign.status === "draft"
                                   ? "Start"
@@ -421,7 +418,7 @@ export function CampaignsList() {
                               Duplicate
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-destructive">
+                            <DropdownMenuItem className="text-destructive" onClick={() => deleteMutation.mutate(campaign.id)}>
                               <Trash2 className="mr-2 size-4" />
                               Delete
                             </DropdownMenuItem>
@@ -440,7 +437,7 @@ export function CampaignsList() {
       {/* Pagination */}
       <div className="flex items-center justify-between">
         <div className="text-sm text-muted-foreground">
-          Showing {filteredCampaigns.length} of {mockCampaigns.length} campaigns
+          Showing {filteredCampaigns.length} of {campaigns.length} campaigns
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" disabled>

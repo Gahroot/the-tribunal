@@ -13,6 +13,7 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.models.agent import Agent
     from app.models.appointment import Appointment
+    from app.models.automation import Automation
     from app.models.campaign import Campaign
     from app.models.contact import Contact
     from app.models.conversation import Conversation
@@ -74,6 +75,9 @@ class Workspace(Base):
     offers: Mapped[list["Offer"]] = relationship(
         "Offer", back_populates="workspace", cascade="all, delete-orphan"
     )
+    automations: Mapped[list["Automation"]] = relationship(
+        "Automation", back_populates="workspace", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<Workspace(id={self.id}, slug={self.slug})>"
@@ -110,7 +114,10 @@ class WorkspaceMembership(Base):
     workspace: Mapped["Workspace"] = relationship("Workspace", back_populates="memberships")
 
     def __repr__(self) -> str:
-        return f"<WorkspaceMembership(user_id={self.user_id}, workspace_id={self.workspace_id}, role={self.role})>"
+        return (
+            f"<WorkspaceMembership(user_id={self.user_id}, "
+            f"workspace_id={self.workspace_id}, role={self.role})>"
+        )
 
 
 class WorkspaceIntegration(Base):
@@ -149,4 +156,7 @@ class WorkspaceIntegration(Base):
     workspace: Mapped["Workspace"] = relationship("Workspace", back_populates="integrations")
 
     def __repr__(self) -> str:
-        return f"<WorkspaceIntegration(workspace_id={self.workspace_id}, type={self.integration_type})>"
+        return (
+            f"<WorkspaceIntegration(workspace_id={self.workspace_id}, "
+            f"type={self.integration_type})>"
+        )

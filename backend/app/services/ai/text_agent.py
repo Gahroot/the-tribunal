@@ -4,9 +4,11 @@ Handles:
 - LLM calls for generating text responses
 - Message context building
 - Response generation with debouncing
+- OpenAI function calling for booking appointments
 """
 
 import asyncio
+import json
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -14,14 +16,82 @@ from zoneinfo import ZoneInfo
 
 import structlog
 from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletionMessageToolCall
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.agent import Agent
+from app.models.appointment import Appointment
+from app.models.campaign import CampaignContact
+from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
+from app.services.calendar.calcom import CalComService
 
 logger = structlog.get_logger()
+
+
+# OpenAI function calling tool definitions
+BOOKING_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "book_appointment",
+            "description": (
+                "Book an appointment/meeting with the customer on Cal.com. "
+                "Use this when the customer agrees to schedule a call, meeting, "
+                "or appointment. Parse relative dates like 'tomorrow at 2pm'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "date": {
+                        "type": "string",
+                        "description": "Appointment date in YYYY-MM-DD format",
+                    },
+                    "time": {
+                        "type": "string",
+                        "description": "Appointment time in HH:MM 24-hour format",
+                    },
+                    "duration_minutes": {
+                        "type": "integer",
+                        "description": "Duration in minutes. Default is 30.",
+                        "default": 30,
+                    },
+                    "notes": {
+                        "type": "string",
+                        "description": "Optional notes about the appointment",
+                    },
+                },
+                "required": ["date", "time"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_availability",
+            "description": (
+                "Check available time slots on Cal.com for a date range. "
+                "Use before booking to confirm slot availability."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "start_date": {
+                        "type": "string",
+                        "description": "Start date in YYYY-MM-DD format",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "End date in YYYY-MM-DD (defaults to start)",
+                    },
+                },
+                "required": ["start_date"],
+            },
+        },
+    },
+]
 
 # Pending responses waiting for debounce
 _pending_responses: dict[str, asyncio.Task[None]] = {}
@@ -32,6 +102,8 @@ def build_text_instructions(
     language: str = "en-US",
     timezone: str = "America/New_York",
     contact_phone: str | None = None,
+    offer_context: str | None = None,
+    booking_url: str | None = None,
 ) -> str:
     """Build instructions for text agent.
 
@@ -40,6 +112,8 @@ def build_text_instructions(
         language: Language code (e.g., "en-US", "es-ES")
         timezone: Workspace timezone
         contact_phone: The contact's phone number
+        offer_context: Optional offer context to include in instructions
+        booking_url: Optional Cal.com booking URL to include in instructions
 
     Returns:
         Complete instructions string for text conversations
@@ -63,12 +137,22 @@ def build_text_instructions(
         current_datetime = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
 
     phone_context = f"\nContact Phone: {contact_phone}" if contact_phone else ""
+    offer_section = f"\n\n[OFFER CONTEXT]\n{offer_context}" if offer_context else ""
+
+    # Add booking instruction if URL is provided
+    booking_section = ""
+    if booking_url:
+        booking_section = (
+            f"\n\n[BOOKING AVAILABILITY]\n"
+            f"If the user wants to book a meeting or appointment, "
+            f"suggest they click here: {booking_url}"
+        )
 
     return f"""[CONTEXT]
 Language: {language_name}
 Timezone: {timezone}
 Current: {current_datetime}
-Channel: SMS/Text Message{phone_context}
+Channel: SMS/Text Message{phone_context}{offer_section}{booking_section}
 
 [RESPONSE RULES]
 - Respond ONLY in {language_name}
@@ -76,6 +160,10 @@ Channel: SMS/Text Message{phone_context}
 - Keep responses concise - SMS has character limits
 - Be conversational but efficient
 - Do not use markdown formatting (plain text only)
+- NEVER include stage directions or narration like "(pauses)" or "(After a moment)"
+- You are a TEXT agent - respond directly without describing your actions
+- Say "One moment" instead of "(checking...)" or theatrical descriptions
+- You may double-text for natural conversation flow
 
 [YOUR ROLE]
 {system_prompt}"""
@@ -112,13 +200,439 @@ async def build_message_context(
     return context
 
 
-async def generate_text_response(
+async def get_offer_context(
+    conversation: Conversation,
+    db: AsyncSession,
+) -> str | None:
+    """Get offer context for a conversation from its campaign.
+
+    Args:
+        conversation: The conversation
+        db: Database session
+
+    Returns:
+        Formatted offer context string, or None if no offer
+    """
+    from sqlalchemy.orm import selectinload
+
+    from app.models.campaign import Campaign
+
+    # Get campaign contact for this conversation
+    result = await db.execute(
+        select(CampaignContact)
+        .options(selectinload(CampaignContact.campaign).selectinload(Campaign.offer))
+        .where(CampaignContact.conversation_id == conversation.id)
+        .order_by(CampaignContact.created_at.desc())
+        .limit(1)
+    )
+    campaign_contact = result.scalar_one_or_none()
+
+    if not campaign_contact or not campaign_contact.campaign or not campaign_contact.campaign.offer:
+        return None
+
+    offer = campaign_contact.campaign.offer
+
+    # Format discount text
+    discount_text = ""
+    if offer.discount_type == "percentage":
+        discount_text = f"{offer.discount_value}% off"
+    elif offer.discount_type == "fixed":
+        discount_text = f"${offer.discount_value} off"
+    elif offer.discount_type == "free_service":
+        discount_text = "Free service"
+
+    # Build context string
+    context_parts = [f"The customer was offered: {offer.name}"]
+
+    if discount_text:
+        context_parts.append(f"Discount: {discount_text}")
+
+    if offer.description:
+        context_parts.append(f"Description: {offer.description}")
+
+    if offer.terms:
+        context_parts.append(f"Terms: {offer.terms}")
+
+    context_parts.append("Refer to this offer in your responses if relevant to the conversation.")
+
+    return "\n".join(context_parts)
+
+
+async def get_booking_url(
+    agent: Agent,
+    conversation: Conversation,
+    db: AsyncSession,
+) -> str | None:
+    """Get Cal.com booking URL for an agent with pre-filled contact information.
+
+    Args:
+        agent: The agent with potential calcom_event_type_id
+        conversation: The conversation
+        db: Database session
+
+    Returns:
+        Cal.com booking URL with pre-filled parameters, or None if not configured
+    """
+
+    from app.models.contact import Contact
+    from app.utils.calendar import generate_booking_url
+
+    # Check if agent has a Cal.com event type configured
+    if not agent.calcom_event_type_id:
+        return None
+
+    # Try to get contact info if available
+    contact_email: str | None = None
+    contact_name: str | None = None
+
+    # Load contact if conversation has one
+    if conversation.contact_id:
+        result = await db.execute(
+            select(Contact).where(Contact.id == conversation.contact_id)
+        )
+        contact = result.scalar_one_or_none()
+        if contact:
+            contact_email = contact.email
+            contact_name = contact.full_name
+
+    # Build the booking URL with contact pre-fill
+    booking_url = generate_booking_url(
+        event_type_id=agent.calcom_event_type_id,
+        contact_email=contact_email,
+        contact_name=contact_name,
+        contact_phone=conversation.contact_phone,
+    )
+
+
+    return booking_url
+
+
+async def execute_book_appointment(  # noqa: PLR0911
+    agent: Agent,
+    conversation: Conversation,
+    db: AsyncSession,
+    date_str: str,
+    time_str: str,
+    duration_minutes: int = 30,
+    notes: str | None = None,
+    timezone: str = "America/New_York",
+) -> dict[str, Any]:
+    """Execute the book_appointment tool call.
+
+    Creates a booking on Cal.com and saves the appointment to the database.
+
+    Args:
+        agent: The agent with calcom_event_type_id
+        conversation: The conversation with contact info
+        db: Database session
+        date_str: Date in YYYY-MM-DD format
+        time_str: Time in HH:MM format (24-hour)
+        duration_minutes: Duration in minutes
+        notes: Optional notes
+        timezone: Timezone for the appointment
+
+    Returns:
+        Dict with success status and booking details or error message
+    """
+    log = logger.bind(
+        agent_id=str(agent.id),
+        conversation_id=str(conversation.id),
+        date=date_str,
+        time=time_str,
+    )
+
+    # Check if Cal.com is configured
+    if not agent.calcom_event_type_id:
+        log.warning("calcom_not_configured")
+        return {
+            "success": False,
+            "error": "Cal.com event type not configured for this agent",
+        }
+
+    if not settings.calcom_api_key:
+        log.error("calcom_api_key_missing")
+        return {
+            "success": False,
+            "error": "Cal.com API key not configured",
+        }
+
+    # Get contact info
+    contact: Contact | None = None
+    if conversation.contact_id:
+        result = await db.execute(
+            select(Contact).where(Contact.id == conversation.contact_id)
+        )
+        contact = result.scalar_one_or_none()
+
+    if not contact:
+        log.warning("contact_not_found")
+        return {
+            "success": False,
+            "error": "Contact not found for this conversation",
+        }
+
+    if not contact.email:
+        log.warning("contact_email_missing")
+        return {
+            "success": False,
+            "error": "Contact email is required for booking. Please provide an email address.",
+        }
+
+    # Parse date and time
+    try:
+        tz = ZoneInfo(timezone)
+        appointment_datetime = datetime.strptime(
+            f"{date_str} {time_str}", "%Y-%m-%d %H:%M"
+        ).replace(tzinfo=tz)
+    except ValueError as e:
+        log.warning("invalid_datetime", error=str(e))
+        return {
+            "success": False,
+            "error": f"Invalid date/time format: {e}",
+        }
+
+    # Create Cal.com booking
+    calcom_service = CalComService(settings.calcom_api_key)
+    try:
+        # Convert to UTC for Cal.com API
+        appointment_utc = appointment_datetime.astimezone(UTC)
+
+        # Clean phone number - Cal.com wants E.164 format
+        phone = contact.phone_number
+        if phone:
+            # Remove any non-digit chars except leading +
+            cleaned = "".join(c for c in phone if c.isdigit())
+            if not phone.startswith("+"):
+                cleaned = "1" + cleaned if len(cleaned) == 10 else cleaned
+            phone = "+" + cleaned
+
+        booking_result = await calcom_service.create_booking(
+            event_type_id=agent.calcom_event_type_id,
+            contact_email=contact.email,
+            contact_name=contact.full_name or "Customer",
+            start_time=appointment_utc,
+            duration_minutes=duration_minutes,
+            metadata={
+                "source": "ai_agent",
+                "agent_id": str(agent.id),
+                "conversation_id": str(conversation.id),
+            },
+            timezone=timezone,
+            language="en",
+            phone_number=phone,
+        )
+
+        log.info(
+            "calcom_booking_created",
+            booking_uid=booking_result.get("uid"),
+            booking_id=booking_result.get("id"),
+        )
+
+        # Create appointment record in database
+        appointment = Appointment(
+            workspace_id=conversation.workspace_id,
+            contact_id=contact.id,
+            agent_id=agent.id,
+            scheduled_at=appointment_datetime,
+            duration_minutes=duration_minutes,
+            status="scheduled",
+            service_type="video_call",
+            notes=notes,
+            calcom_booking_uid=booking_result.get("uid"),
+            calcom_booking_id=booking_result.get("id"),
+            calcom_event_type_id=agent.calcom_event_type_id,
+            sync_status="synced",
+            last_synced_at=datetime.now(UTC),
+        )
+        db.add(appointment)
+        await db.commit()
+        await db.refresh(appointment)
+
+        log.info("appointment_created", appointment_id=appointment.id)
+
+        formatted_time = appointment_datetime.strftime("%A, %B %d at %I:%M %p")
+        return {
+            "success": True,
+            "booking_uid": booking_result.get("uid"),
+            "scheduled_at": appointment_datetime.isoformat(),
+            "duration_minutes": duration_minutes,
+            "message": f"Appointment booked for {formatted_time}",
+        }
+
+    except Exception as e:
+        log.exception("booking_failed", error=str(e))
+        return {
+            "success": False,
+            "error": f"Failed to create booking: {str(e)}",
+        }
+    finally:
+        await calcom_service.close()
+
+
+async def execute_check_availability(
+    agent: Agent,
+    start_date_str: str,
+    end_date_str: str | None = None,
+    timezone: str = "America/New_York",
+) -> dict[str, Any]:
+    """Execute the check_availability tool call.
+
+    Fetches available time slots from Cal.com.
+
+    Args:
+        agent: The agent with calcom_event_type_id
+        start_date_str: Start date in YYYY-MM-DD format
+        end_date_str: End date in YYYY-MM-DD format (defaults to start_date)
+        timezone: Timezone
+
+    Returns:
+        Dict with available slots or error message
+    """
+    log = logger.bind(
+        agent_id=str(agent.id),
+        start_date=start_date_str,
+        end_date=end_date_str,
+    )
+
+    if not agent.calcom_event_type_id:
+        return {
+            "success": False,
+            "error": "Cal.com event type not configured",
+        }
+
+    if not settings.calcom_api_key:
+        return {
+            "success": False,
+            "error": "Cal.com API key not configured",
+        }
+
+    try:
+        tz = ZoneInfo(timezone)
+        start_date = datetime.strptime(start_date_str, "%Y-%m-%d").replace(
+            hour=0, minute=0, second=0, tzinfo=tz
+        )
+        if end_date_str:
+            end_date = datetime.strptime(end_date_str, "%Y-%m-%d").replace(
+                hour=23, minute=59, second=59, tzinfo=tz
+            )
+        else:
+            end_date = start_date.replace(hour=23, minute=59, second=59)
+
+    except ValueError as e:
+        return {
+            "success": False,
+            "error": f"Invalid date format: {e}",
+        }
+
+    calcom_service = CalComService(settings.calcom_api_key)
+    try:
+        slots = await calcom_service.get_availability(
+            event_type_id=agent.calcom_event_type_id,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        log.info("availability_checked", slot_count=len(slots))
+
+        # Format slots for AI consumption
+        formatted_slots = []
+        for slot in slots[:10]:  # Limit to 10 slots
+            slot_time = slot.get("time", slot.get("start"))
+            if slot_time:
+                formatted_slots.append(slot_time)
+
+        return {
+            "success": True,
+            "available_slots": formatted_slots,
+            "slot_count": len(slots),
+        }
+
+    except Exception as e:
+        log.exception("availability_check_failed", error=str(e))
+        return {
+            "success": False,
+            "error": f"Failed to check availability: {str(e)}",
+        }
+    finally:
+        await calcom_service.close()
+
+
+async def handle_tool_calls(
+    tool_calls: list[ChatCompletionMessageToolCall],
+    agent: Agent,
+    conversation: Conversation,
+    db: AsyncSession,
+    timezone: str = "America/New_York",
+) -> list[dict[str, Any]]:
+    """Handle tool calls from OpenAI and return results.
+
+    Args:
+        tool_calls: List of tool calls from OpenAI response
+        agent: The agent
+        conversation: The conversation
+        db: Database session
+        timezone: Timezone for bookings
+
+    Returns:
+        List of tool results to send back to OpenAI
+    """
+    results = []
+
+    for tool_call in tool_calls:
+        function_name = tool_call.function.name
+        try:
+            arguments = json.loads(tool_call.function.arguments)
+        except json.JSONDecodeError:
+            arguments = {}
+
+        log = logger.bind(
+            tool_call_id=tool_call.id,
+            function_name=function_name,
+            arguments=arguments,
+        )
+        log.info("executing_tool_call")
+
+        if function_name == "book_appointment":
+            result = await execute_book_appointment(
+                agent=agent,
+                conversation=conversation,
+                db=db,
+                date_str=arguments.get("date", ""),
+                time_str=arguments.get("time", ""),
+                duration_minutes=arguments.get("duration_minutes", 30),
+                notes=arguments.get("notes"),
+                timezone=timezone,
+            )
+        elif function_name == "check_availability":
+            result = await execute_check_availability(
+                agent=agent,
+                start_date_str=arguments.get("start_date", ""),
+                end_date_str=arguments.get("end_date"),
+                timezone=timezone,
+            )
+        else:
+            result = {"success": False, "error": f"Unknown function: {function_name}"}
+
+        results.append({
+            "tool_call_id": tool_call.id,
+            "role": "tool",
+            "content": json.dumps(result),
+        })
+
+        log.info("tool_call_completed", success=result.get("success", False))
+
+    return results
+
+
+async def generate_text_response(  # noqa: PLR0915
     agent: Agent,
     conversation: Conversation,
     db: AsyncSession,
     openai_api_key: str,
 ) -> str | None:
     """Generate AI response for a text conversation.
+
+    Supports OpenAI function calling for booking appointments via Cal.com.
 
     Args:
         agent: The text agent to use
@@ -135,6 +649,8 @@ async def generate_text_response(
     )
     log.info("generating_text_response")
 
+    timezone = "America/New_York"  # TODO: Get from workspace settings
+
     # Build message context
     messages = await build_message_context(
         conversation, db, max_messages=agent.text_max_context_messages
@@ -144,12 +660,76 @@ async def generate_text_response(
         log.warning("no_messages_in_context")
         return None
 
-    # Build system instructions
+    # Get offer context if conversation was from a campaign
+    offer_context = await get_offer_context(conversation, db)
+
+    # Build system instructions - include booking tools info if configured
+    has_booking_tools = bool(
+        agent.calcom_event_type_id
+        and settings.calcom_api_key
+        and "book_appointment" in (agent.enabled_tools or [])
+    )
+
+    booking_instructions = ""
+    if has_booking_tools:
+        # Get current date for relative date parsing
+        try:
+            tz = ZoneInfo(timezone)
+            now = datetime.now(tz)
+            current_date = now.strftime("%Y-%m-%d")
+        except Exception:
+            current_date = datetime.now().strftime("%Y-%m-%d")
+
+        booking_instructions = f"""
+
+[APPOINTMENT BOOKING - MANDATORY TOOL USE]
+Today's date is {current_date}.
+
+YOU MUST CALL THE book_appointment FUNCTION TO BOOK APPOINTMENTS.
+This is non-negotiable. The function connects to Cal.com to create real bookings.
+
+RECOGNIZE BOOKING INTENT - Call book_appointment when the user:
+- Explicitly asks to book: "I'd like to schedule a meeting", "Can we set up a call?"
+- Agrees to a time: "Sure, let's do 3pm", "That works for me", "Sounds good"
+- Mentions specific times: "How about tomorrow at 2?", "Wednesday at 6pm works"
+- Shows interest in scheduling: "What times do you have?", "Are you free Friday?"
+- Confirms availability: "Yes", "Okay", "Perfect", "Let's do it"
+- Uses casual agreement: "Yeah that works", "I'm in", "Count me in"
+
+EXAMPLES THAT SHOULD TRIGGER book_appointment:
+- "Sure, let's do tomorrow at 3pm" → book_appointment(tomorrow's date, "15:00")
+- "Wednesday at 6 works" → book_appointment(next Wednesday, "18:00")
+- "Yeah 2pm is good" → book_appointment(discussed date, "14:00")
+- "Sounds good, I'll take the 4 o'clock slot" → book_appointment(date, "16:00")
+- "Ok let's do it" (after discussing a time) → book_appointment with discussed time
+
+RULES:
+- When user agrees to ANY time: IMMEDIATELY call book_appointment function
+- Parse natural language times: "3" = 15:00, "morning" = 10:00, "afternoon" = 14:00
+- If time is ambiguous, use context from conversation or default to afternoon
+- DO NOT say "I'll book that" WITHOUT calling the function first
+- The ONLY way to book is by calling book_appointment - there is no other way
+- If you respond without calling the function, NO BOOKING IS CREATED
+
+HOW TO BOOK:
+1. User agrees to or suggests a time → Call book_appointment immediately
+2. Date format: YYYY-MM-DD (e.g., tomorrow = {current_date} + 1 day)
+3. Time format: HH:MM in 24-hour (e.g., 2pm = "14:00", 5pm = "17:00")
+4. WAIT for function result
+5. If success=true: confirm the booking
+6. If success=false: apologize and offer alternatives
+
+PROACTIVE BOOKING: If the conversation is about scheduling and the user provides
+enough info (date + time), call book_appointment even if they didn't explicitly
+say "book". Agreement + time info = intent to book."""
+
     system_prompt = build_text_instructions(
-        system_prompt=agent.system_prompt,
+        system_prompt=agent.system_prompt + booking_instructions,
         language=agent.language,
-        timezone="America/New_York",  # TODO: Get from workspace settings
+        timezone=timezone,
         contact_phone=conversation.contact_phone,
+        offer_context=offer_context,
+        booking_url=None,  # Don't include URL when using function calling
     )
 
     # Create OpenAI client
@@ -162,27 +742,136 @@ async def generate_text_response(
             *messages,
         ]
 
-        # Make LLM call
+        # Prepare API call parameters
+        api_params: dict[str, Any] = {
+            "model": "gpt-4o-mini",
+            "messages": api_messages,
+            "temperature": agent.temperature,
+            "max_tokens": 500,
+        }
+
+        # Include tools if booking is configured
+        if has_booking_tools:
+            api_params["tools"] = BOOKING_TOOLS
+            # Check if last message mentions booking-related keywords
+            last_msg = messages[-1]["content"].lower() if messages else ""
+
+            # Comprehensive list of trigger words for natural booking detection
+            booking_words = [
+                # Direct booking words
+                "book", "schedule", "appointment", "meeting", "call", "reserve",
+                "set up", "setup", "arrange", "pencil", "slot",
+
+                # Time indicators
+                "tomorrow", "today", "tonight", "morning", "afternoon", "evening",
+                "pm", "am", ":00", "oclock", "o'clock", "noon", "midnight",
+
+                # Days of the week
+                "monday", "tuesday", "wednesday", "thursday", "friday",
+                "saturday", "sunday", "mon", "tue", "wed", "thu", "fri", "sat", "sun",
+
+                # Relative time expressions
+                "next week", "this week", "next month", "later this",
+                "day after", "coming", "upcoming",
+
+                # Availability questions
+                "available", "availability", "free", "open", "slot", "opening",
+                "when can", "what time", "any time", "what days",
+
+                # Agreement/confirmation phrases
+                "sounds good", "works for me", "that works", "perfect",
+                "let's do", "lets do", "i'm in", "im in", "count me in",
+                "sign me up", "i'll take", "ill take", "i'd like", "id like",
+                "sure", "yes", "yeah", "yep", "yup", "okay", "ok",
+                "absolutely", "definitely", "for sure",
+
+                # Specific time mentions (numbers often indicate times)
+                " 1 ", " 2 ", " 3 ", " 4 ", " 5 ", " 6 ", " 7 ", " 8 ", " 9 ",
+                " 10 ", " 11 ", " 12 ", "1pm", "2pm", "3pm", "4pm", "5pm",
+                "6pm", "7pm", "8pm", "9am", "10am", "11am", "12pm",
+                "at 1", "at 2", "at 3", "at 4", "at 5", "at 6", "at 7",
+                "at 8", "at 9", "at 10", "at 11", "at 12",
+                "around", "about", "ish",
+            ]
+            if any(kw in last_msg for kw in booking_words):
+                api_params["tool_choice"] = "required"
+                log.info("booking_tools_required")
+            else:
+                api_params["tool_choice"] = "auto"
+                log.info("booking_tools_enabled")
+
+        # Make initial LLM call
         response = await asyncio.wait_for(
-            client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=api_messages,
-                temperature=agent.temperature,
-                max_tokens=500,  # Limit for SMS
-            ),
+            client.chat.completions.create(**api_params),
             timeout=30.0,
         )
 
         assistant_message = response.choices[0].message
-        response_text = assistant_message.content
 
-        if response_text:
-            log.info("response_generated", length=len(response_text))
-            return response_text
+        # Handle tool calls if present
+        if assistant_message.tool_calls:
+            log.info(
+                "tool_calls_received",
+                count=len(assistant_message.tool_calls),
+            )
+
+            # Execute the tool calls
+            tool_results = await handle_tool_calls(
+                tool_calls=assistant_message.tool_calls,
+                agent=agent,
+                conversation=conversation,
+                db=db,
+                timezone=timezone,
+            )
+
+            # Add assistant message and tool results to conversation
+            api_messages.append({
+                "role": "assistant",
+                "content": assistant_message.content,
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    }
+                    for tc in assistant_message.tool_calls
+                ],
+            })
+            api_messages.extend(tool_results)
+
+            # Make follow-up call to get final response
+            follow_up_response = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=api_messages,  # type: ignore[arg-type]
+                    temperature=agent.temperature,
+                    max_tokens=500,
+                ),
+                timeout=30.0,
+            )
+
+            final_message = follow_up_response.choices[0].message
+            final_text: str | None = final_message.content
+
+            if final_text:
+                log.info(
+                    "response_generated_with_tools",
+                    length=len(final_text),
+                )
+                return final_text
+        else:
+            # No tool calls, use direct response
+            response_text: str | None = assistant_message.content
+            if response_text:
+                log.info("response_generated", length=len(response_text))
+                return response_text
 
         return None
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         log.error("openai_timeout")
         return None
     except Exception:
@@ -190,7 +879,7 @@ async def generate_text_response(
         return None
 
 
-async def process_inbound_with_ai(
+async def process_inbound_with_ai(  # noqa: PLR0911
     conversation_id: uuid.UUID,
     workspace_id: uuid.UUID,
     db: AsyncSession,
@@ -269,7 +958,16 @@ async def process_inbound_with_ai(
             workspace_id=workspace_id,
             agent_id=agent.id,
         )
-        log.info("ai_response_sent")
+        log.info(
+            "ai_response_sent",
+            response_length=len(response_text),
+        )
+    except Exception as e:
+        log.error(
+            "failed_to_send_ai_response",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
     finally:
         await sms_service.close()
 

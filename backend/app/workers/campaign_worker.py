@@ -240,6 +240,8 @@ class CampaignWorker:
                     contact_id=contact.id,
                     phone=contact.phone_number,
                     message_id=str(message.id),
+                    offer_id=str(campaign.offer_id) if campaign.offer_id else None,
+                    has_offer=bool(campaign.offer_id),
                 )
 
             except Exception as e:
@@ -344,6 +346,8 @@ class CampaignWorker:
                     phone=contact.phone_number,
                     follow_up_number=campaign_contact.follow_ups_sent,
                     message_id=str(message.id),
+                    offer_id=str(campaign.offer_id) if campaign.offer_id else None,
+                    has_offer=bool(campaign.offer_id),
                 )
 
             except Exception as e:
@@ -429,44 +433,94 @@ class CampaignWorker:
         contact: Contact,
         offer: Offer | None = None,
     ) -> str:
-        """Render message template with contact and offer data."""
-        message = template
-        full_name = " ".join(filter(None, [contact.first_name, contact.last_name])) or ""
+        """Render message template with contact and offer data.
 
-        replacements: dict[str, str] = {
-            "first_name": contact.first_name or "",
-            "last_name": contact.last_name or "",
-            "full_name": full_name,
-            "company_name": contact.company_name or "",
-            "email": contact.email or "",
-        }
+        Safely interpolates placeholders with error handling to prevent
+        template rendering failures from breaking campaign sending.
 
-        # Add offer placeholders if offer exists
-        if offer:
-            discount_text = ""
-            if offer.discount_type == "percentage":
-                discount_text = f"{offer.discount_value}% off"
-            elif offer.discount_type == "fixed":
-                discount_text = f"${offer.discount_value} off"
-            elif offer.discount_type == "free_service":
-                discount_text = "Free service"
+        Args:
+            template: Message template with {placeholder} variables
+            contact: Contact object with data to interpolate
+            offer: Optional offer object with discount/details
 
-            replacements.update({
-                "offer_name": offer.name or "",
-                "offer_discount": discount_text,
-                "offer_description": offer.description or "",
-                "offer_terms": offer.terms or "",
-            })
+        Returns:
+            Rendered message with all placeholders replaced
 
-        for placeholder, value in replacements.items():
-            message = re.sub(
-                rf"\{{{placeholder}\}}",
-                value,
-                message,
-                flags=re.IGNORECASE,
+        Raises:
+            ValueError: If template rendering fails after error recovery
+        """
+        try:
+            message = template
+            full_name = " ".join(filter(None, [contact.first_name, contact.last_name])) or ""
+
+            replacements: dict[str, str] = {
+                "first_name": contact.first_name or "",
+                "last_name": contact.last_name or "",
+                "full_name": full_name,
+                "company_name": contact.company_name or "",
+                "email": contact.email or "",
+            }
+
+            # Add offer placeholders if offer exists
+            if offer:
+                try:
+                    discount_text = ""
+                    if offer.discount_type == "percentage":
+                        discount_text = f"{offer.discount_value}% off"
+                    elif offer.discount_type == "fixed":
+                        discount_text = f"${offer.discount_value} off"
+                    elif offer.discount_type == "free_service":
+                        discount_text = "Free service"
+                    else:
+                        # Unknown discount type - log but continue
+                        logger.warning(
+                            "unknown_discount_type",
+                            offer_id=str(offer.id) if hasattr(offer, 'id') else "unknown",
+                            discount_type=offer.discount_type,
+                        )
+                        discount_text = ""
+
+                    replacements.update({
+                        "offer_name": offer.name or "",
+                        "offer_discount": discount_text,
+                        "offer_description": offer.description or "",
+                        "offer_terms": offer.terms or "",
+                    })
+                except Exception as e:
+                    logger.error(
+                        "offer_interpolation_error",
+                        error=str(e),
+                        offer_id=str(offer.id) if hasattr(offer, 'id') else "unknown",
+                    )
+                    # Continue without offer details if error occurs
+
+            # Replace placeholders safely
+            for placeholder, value in replacements.items():
+                try:
+                    message = re.sub(
+                        rf"\{{{placeholder}\}}",
+                        re.escape(value),  # Escape special regex characters in value
+                        message,
+                        flags=re.IGNORECASE,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "placeholder_replacement_error",
+                        placeholder=placeholder,
+                        error=str(e),
+                    )
+                    # Continue with other placeholders if one fails
+
+            return message
+
+        except Exception as e:
+            logger.error(
+                "template_rendering_failed",
+                error=str(e),
+                template_length=len(template) if template else 0,
             )
-
-        return message
+            # Return original template if rendering completely fails
+            return template
 
 
 # Global worker instance

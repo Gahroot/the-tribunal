@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   Plus,
   Search,
@@ -14,8 +16,9 @@ import {
   Phone,
   MessageSquare,
   Mic,
-  Volume2,
   Sparkles,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -37,82 +40,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import type { Agent } from "@/types";
-
-// Mock data
-const mockAgents: Agent[] = [
-  {
-    id: "agent-1",
-    user_id: 1,
-    name: "Sarah",
-    description: "Friendly sales agent specializing in property inquiries and scheduling viewings",
-    pricing_tier: "premium",
-    system_prompt: "You are Sarah, a friendly and professional real estate sales agent...",
-    voice: "alloy",
-    is_active: true,
-    channel_mode: "both",
-    created_at: "2024-01-01T00:00:00Z",
-    updated_at: "2024-01-20T00:00:00Z",
-  },
-  {
-    id: "agent-2",
-    user_id: 1,
-    name: "Mike",
-    description: "Technical support agent for handling service inquiries and troubleshooting",
-    pricing_tier: "balanced",
-    system_prompt: "You are Mike, a patient and knowledgeable support agent...",
-    voice: "echo",
-    is_active: true,
-    channel_mode: "voice",
-    created_at: "2024-01-05T00:00:00Z",
-    updated_at: "2024-01-18T00:00:00Z",
-  },
-  {
-    id: "agent-3",
-    user_id: 1,
-    name: "Emma",
-    description: "Appointment scheduler focused on booking and managing meetings",
-    pricing_tier: "budget",
-    system_prompt: "You are Emma, an efficient appointment scheduling assistant...",
-    voice: "shimmer",
-    is_active: false,
-    channel_mode: "text",
-    created_at: "2024-01-10T00:00:00Z",
-    updated_at: "2024-01-15T00:00:00Z",
-  },
-  {
-    id: "agent-4",
-    user_id: 1,
-    name: "Alex",
-    description: "Lead qualification agent for initial contact and screening",
-    pricing_tier: "premium-mini",
-    system_prompt: "You are Alex, a skilled lead qualification specialist...",
-    voice: "onyx",
-    is_active: true,
-    channel_mode: "both",
-    created_at: "2024-01-12T00:00:00Z",
-    updated_at: "2024-01-20T00:00:00Z",
-  },
-];
+import { useAuth } from "@/providers/auth-provider";
+import { agentsApi, type AgentResponse } from "@/lib/api/agents";
 
 const pricingTierColors: Record<string, string> = {
   budget: "bg-gray-500/10 text-gray-500 border-gray-500/20",
@@ -151,15 +80,90 @@ const itemVariants = {
 
 export function AgentsList() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const { workspaceId } = useAuth();
+  const queryClient = useQueryClient();
 
-  const filteredAgents = mockAgents.filter(
+  // Fetch agents from API
+  const {
+    data: agentsData,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["agents", workspaceId],
+    queryFn: () => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return agentsApi.list(workspaceId, { active_only: false });
+    },
+    enabled: !!workspaceId,
+  });
+
+  // Toggle agent active status
+  const toggleAgentMutation = useMutation({
+    mutationFn: ({ agentId, isActive }: { agentId: string; isActive: boolean }) => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return agentsApi.update(workspaceId, agentId, { is_active: isActive });
+    },
+    onSuccess: () => {
+      if (workspaceId) {
+        queryClient.invalidateQueries({ queryKey: ["agents", workspaceId] });
+      }
+      toast.success("Agent status updated");
+    },
+    onError: () => {
+      toast.error("Failed to update agent status");
+    },
+  });
+
+  // Delete agent
+  const deleteAgentMutation = useMutation({
+    mutationFn: (agentId: string) => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return agentsApi.delete(workspaceId, agentId);
+    },
+    onSuccess: () => {
+      if (workspaceId) {
+        queryClient.invalidateQueries({ queryKey: ["agents", workspaceId] });
+      }
+      toast.success("Agent deleted");
+    },
+    onError: () => {
+      toast.error("Failed to delete agent");
+    },
+  });
+
+  const agents = agentsData?.items ?? [];
+
+  const filteredAgents = agents.filter(
     (agent) =>
       agent.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       agent.description?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const activeAgents = mockAgents.filter((a) => a.is_active).length;
+  const activeAgents = agents.filter((a) => a.is_active).length;
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="size-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-2">
+        <AlertCircle className="size-8 text-destructive" />
+        <p className="text-muted-foreground">Failed to load agents</p>
+        <Button variant="outline" onClick={() => {
+          if (workspaceId) {
+            queryClient.invalidateQueries({ queryKey: ["agents", workspaceId] });
+          }
+        }}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -171,109 +175,12 @@ export function AgentsList() {
             Configure and manage your AI voice and text agents
           </p>
         </div>
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 size-4" />
-              Create Agent
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Create New Agent</DialogTitle>
-              <DialogDescription>
-                Configure a new AI agent for voice or text interactions
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="agent-name">Agent Name</Label>
-                  <Input id="agent-name" placeholder="e.g., Sarah" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="pricing-tier">Pricing Tier</Label>
-                  <Select defaultValue="balanced">
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="budget">Budget</SelectItem>
-                      <SelectItem value="balanced">Balanced</SelectItem>
-                      <SelectItem value="premium-mini">Premium Mini</SelectItem>
-                      <SelectItem value="premium">Premium</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Input
-                  id="description"
-                  placeholder="Brief description of the agent's role"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="voice">Voice</Label>
-                  <Select defaultValue="alloy">
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {voiceOptions.map((voice) => (
-                        <SelectItem key={voice.value} value={voice.value}>
-                          <div className="flex items-center gap-2">
-                            <Volume2 className="size-4" />
-                            <span>{voice.label}</span>
-                            <span className="text-xs text-muted-foreground">
-                              - {voice.description}
-                            </span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="channel-mode">Channel Mode</Label>
-                  <Select defaultValue="both">
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="voice">Voice Only</SelectItem>
-                      <SelectItem value="text">Text Only</SelectItem>
-                      <SelectItem value="both">Voice & Text</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="system-prompt">System Prompt</Label>
-                <Textarea
-                  id="system-prompt"
-                  placeholder="You are a helpful assistant..."
-                  rows={6}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Define the agent's personality, knowledge, and behavior
-                </p>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setIsCreateDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button onClick={() => setIsCreateDialogOpen(false)}>
-                Create Agent
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <Button asChild>
+          <Link href="/agents/create">
+            <Plus className="mr-2 size-4" />
+            Create Agent
+          </Link>
+        </Button>
       </div>
 
       {/* Stats */}
@@ -283,7 +190,7 @@ export function AgentsList() {
             <CardDescription>Total Agents</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockAgents.length}</div>
+            <div className="text-2xl font-bold">{agents.length}</div>
           </CardContent>
         </Card>
         <Card>
@@ -301,7 +208,7 @@ export function AgentsList() {
           <CardContent>
             <div className="text-2xl font-bold">
               {
-                mockAgents.filter(
+                agents.filter(
                   (a) => a.channel_mode === "voice" || a.channel_mode === "both"
                 ).length
               }
@@ -330,8 +237,8 @@ export function AgentsList() {
       >
         <AnimatePresence mode="popLayout">
           {filteredAgents.map((agent) => {
-            const ChannelIcon = channelModeIcons[agent.channel_mode];
-            const voiceInfo = voiceOptions.find((v) => v.value === agent.voice);
+            const ChannelIcon = channelModeIcons[agent.channel_mode] ?? Sparkles;
+            const voiceInfo = voiceOptions.find((v) => v.value === agent.voice_id);
 
             return (
               <motion.div
@@ -359,9 +266,9 @@ export function AgentsList() {
                           <div className="flex items-center gap-2 mt-1">
                             <Badge
                               variant="outline"
-                              className={pricingTierColors[agent.pricing_tier]}
+                              className="bg-blue-500/10 text-blue-500 border-blue-500/20"
                             >
-                              {agent.pricing_tier.replace("-", " ")}
+                              {agent.voice_provider}
                             </Badge>
                           </div>
                         </div>
@@ -377,23 +284,32 @@ export function AgentsList() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
-                            <Settings2 className="mr-2 size-4" />
-                            Configure
+                          <DropdownMenuItem asChild>
+                            <Link href={`/agents/${agent.id}`}>
+                              <Settings2 className="mr-2 size-4" />
+                              Configure
+                            </Link>
                           </DropdownMenuItem>
                           {agent.is_active ? (
-                            <DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => toggleAgentMutation.mutate({ agentId: agent.id, isActive: false })}
+                            >
                               <Pause className="mr-2 size-4" />
                               Deactivate
                             </DropdownMenuItem>
                           ) : (
-                            <DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => toggleAgentMutation.mutate({ agentId: agent.id, isActive: true })}
+                            >
                               <Play className="mr-2 size-4" />
                               Activate
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-destructive">
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => deleteAgentMutation.mutate(agent.id)}
+                          >
                             <Trash2 className="mr-2 size-4" />
                             Delete
                           </DropdownMenuItem>
@@ -403,7 +319,7 @@ export function AgentsList() {
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <p className="text-sm text-muted-foreground line-clamp-2">
-                      {agent.description}
+                      {agent.description ?? "No description"}
                     </p>
                     <div className="flex items-center gap-4 text-sm">
                       <div className="flex items-center gap-1.5">
@@ -414,10 +330,10 @@ export function AgentsList() {
                             : agent.channel_mode}
                         </span>
                       </div>
-                      {agent.voice && (
+                      {agent.voice_id && (
                         <div className="flex items-center gap-1.5">
                           <Mic className="size-4 text-muted-foreground" />
-                          <span className="capitalize">{agent.voice}</span>
+                          <span className="capitalize">{agent.voice_id}</span>
                         </div>
                       )}
                     </div>

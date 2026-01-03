@@ -4,23 +4,26 @@ import * as React from "react";
 import { ContactsPage } from "@/components/contacts/contacts-page";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { useContactStore } from "@/lib/contact-store";
-import { mockContacts, mockAgents, mockAutomations, mockContactAgents } from "@/lib/mock-data";
+import { useContacts } from "@/hooks/useContacts";
+import { useAuth } from "@/providers/auth-provider";
 
 export default function Home() {
-  const { setContacts, setAgents, setAutomations, setContactAgents, setIsLoadingContacts } = useContactStore();
+  const { workspaceId } = useAuth();
+  const { setContacts, setIsLoadingContacts } = useContactStore();
 
-  // Load mock data on mount
+  // Fetch contacts from API
+  const { data, isLoading } = useContacts(workspaceId ?? "", {});
+
+  // Sync API data to Zustand store
   React.useEffect(() => {
-    setIsLoadingContacts(true);
-    // Simulate API delay
-    setTimeout(() => {
-      setContacts(mockContacts);
-      setAgents(mockAgents);
-      setAutomations(mockAutomations);
-      setContactAgents(mockContactAgents);
-      setIsLoadingContacts(false);
-    }, 500);
-  }, [setContacts, setAgents, setAutomations, setContactAgents, setIsLoadingContacts]);
+    setIsLoadingContacts(isLoading);
+  }, [isLoading, setIsLoadingContacts]);
+
+  React.useEffect(() => {
+    if (data?.items) {
+      setContacts(data.items);
+    }
+  }, [data, setContacts]);
 
   return (
     <AppSidebar>

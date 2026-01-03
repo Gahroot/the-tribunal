@@ -1,9 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
-import { Send, Paperclip, Mic, Phone, MoreVertical, MessageSquare } from "lucide-react";
+import { Send, Paperclip, Mic, Phone, MoreVertical, MessageSquare, Loader2, PhoneOutgoing, Bot, User } from "lucide-react";
+import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,12 +15,25 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { usePhoneNumbers } from "@/hooks/usePhoneNumbers";
+import { useAgents } from "@/hooks/useAgents";
+import { useToggleConversationAI, useAssignAgent } from "@/hooks/useConversations";
 import { useContactStore } from "@/lib/contact-store";
+import { useAuth } from "@/providers/auth-provider";
+import { conversationsApi } from "@/lib/api/conversations";
 import { MessageItem } from "./message-item";
-import type { TimelineItem } from "@/types";
+import type { TimelineItem, Conversation } from "@/types";
 
 interface ConversationFeedProps {
   className?: string;
@@ -70,10 +85,47 @@ function LoadingSkeleton() {
 }
 
 export function ConversationFeed({ className }: ConversationFeedProps) {
-  const { selectedContact, timeline, isLoadingTimeline } = useContactStore();
+  const { selectedContact, timeline, isLoadingTimeline, addTimelineItem } = useContactStore();
+  const { workspaceId } = useAuth();
   const [message, setMessage] = React.useState("");
+  const [isSending, setIsSending] = React.useState(false);
+  const [selectedFromNumber, setSelectedFromNumber] = React.useState<string | undefined>();
   const scrollAreaRef = React.useRef<HTMLDivElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+
+  // Fetch phone numbers for the workspace
+  const { data: phoneNumbersData } = usePhoneNumbers(workspaceId ?? "", { sms_enabled: true, active_only: true });
+  const phoneNumbers = React.useMemo(() => phoneNumbersData?.items ?? [], [phoneNumbersData?.items]);
+
+  // Fetch agents for the workspace
+  const { data: agentsData } = useAgents(workspaceId ?? "");
+  const agents = React.useMemo(() => agentsData?.items ?? [], [agentsData?.items]);
+
+  // Fetch conversations to find the one for the current contact
+  const { data: conversationsData } = useQuery({
+    queryKey: ["conversations", workspaceId, selectedContact?.id],
+    queryFn: () =>
+      workspaceId
+        ? conversationsApi.list(workspaceId, { page: 1, page_size: 100 })
+        : Promise.resolve({ items: [], total: 0, page: 1, page_size: 100, pages: 0 }),
+    enabled: !!workspaceId && !!selectedContact,
+  });
+
+  // Find the conversation for the current contact
+  const contactConversation: Conversation | undefined = conversationsData?.items?.find(
+    (conv) => conv.contact_id === selectedContact?.id
+  );
+
+  // Mutations for AI toggle and agent assignment
+  const toggleAIMutation = useToggleConversationAI(workspaceId ?? "");
+  const assignAgentMutation = useAssignAgent(workspaceId ?? "");
+
+  // Auto-select first phone number when available
+  React.useEffect(() => {
+    if (phoneNumbers.length > 0 && !selectedFromNumber) {
+      setSelectedFromNumber(phoneNumbers[0].phone_number);
+    }
+  }, [phoneNumbers, selectedFromNumber]);
 
   // Auto-scroll to bottom when new messages arrive
   React.useEffect(() => {
@@ -103,12 +155,44 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
     return groups;
   }, [timeline]);
 
-  const handleSendMessage = () => {
-    if (!message.trim() || !selectedContact) return;
+  const handleSendMessage = async () => {
+    if (!message.trim() || !selectedContact || !workspaceId || isSending) return;
 
-    // TODO: Implement send message API call
-    console.log("Sending message:", message);
+    const messageBody = message.trim();
     setMessage("");
+    setIsSending(true);
+
+    try {
+      const sentMessage = await conversationsApi.sendMessageToContact(
+        workspaceId,
+        selectedContact.id,
+        messageBody,
+        selectedFromNumber
+      );
+
+      // Add the sent message to the timeline
+      const timelineItem: TimelineItem = {
+        id: sentMessage.id,
+        type: "sms",
+        timestamp: sentMessage.created_at,
+        direction: "outbound",
+        is_ai: sentMessage.is_ai,
+        content: sentMessage.body,
+        status: sentMessage.status,
+        original_id: sentMessage.id,
+        original_type: "sms_message",
+      };
+
+      addTimelineItem(timelineItem);
+      toast.success("Message sent");
+    } catch (error) {
+      // Restore the message if sending failed
+      setMessage(messageBody);
+      const errorMessage = error instanceof Error ? error.message : "Failed to send message";
+      toast.error(errorMessage);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -116,6 +200,45 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
       e.preventDefault();
       handleSendMessage();
     }
+  };
+
+  const handleToggleAI = () => {
+    if (!contactConversation) {
+      toast.error("No conversation found for this contact");
+      return;
+    }
+
+    const newState = !contactConversation.ai_enabled;
+    toggleAIMutation.mutate(
+      { conversationId: contactConversation.id, enabled: newState },
+      {
+        onSuccess: () => {
+          toast.success(newState ? "AI engagement enabled" : "AI engagement disabled");
+        },
+        onError: () => {
+          toast.error("Failed to toggle AI");
+        },
+      }
+    );
+  };
+
+  const handleAssignAgent = (agentId: string | null) => {
+    if (!contactConversation) {
+      toast.error("No conversation found for this contact");
+      return;
+    }
+
+    assignAgentMutation.mutate(
+      { conversationId: contactConversation.id, agentId },
+      {
+        onSuccess: () => {
+          toast.success(agentId ? "Agent assigned" : "Agent unassigned");
+        },
+        onError: () => {
+          toast.error("Failed to assign agent");
+        },
+      }
+    );
   };
 
   const contactName = selectedContact
@@ -149,6 +272,60 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
           )}
         </div>
         <div className="flex items-center gap-1">
+          {/* AI Toggle Button */}
+          <Button
+            size="sm"
+            variant={contactConversation?.ai_enabled ? "default" : "outline"}
+            className="h-8 gap-1.5"
+            onClick={handleToggleAI}
+            disabled={!contactConversation || toggleAIMutation.isPending}
+          >
+            {toggleAIMutation.isPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Bot className="h-3.5 w-3.5" />
+            )}
+            <span className="text-xs">
+              {contactConversation?.ai_enabled ? "AI On" : "AI Off"}
+            </span>
+          </Button>
+          {/* Agent Selector */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="outline" className="h-8 gap-1.5">
+                <User className="h-3.5 w-3.5" />
+                <span className="text-xs max-w-[100px] truncate">
+                  {contactConversation?.assigned_agent_id
+                    ? agents.find((a) => a.id === contactConversation.assigned_agent_id)?.name ?? "Agent"
+                    : "No Agent"}
+                </span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem
+                onClick={() => handleAssignAgent(null)}
+                disabled={!contactConversation || assignAgentMutation.isPending}
+              >
+                <span className="text-muted-foreground">No Agent</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {agents.map((agent) => (
+                <DropdownMenuItem
+                  key={agent.id}
+                  onClick={() => handleAssignAgent(agent.id)}
+                  disabled={!contactConversation || assignAgentMutation.isPending}
+                >
+                  <Bot className="h-4 w-4 mr-2" />
+                  {agent.name}
+                </DropdownMenuItem>
+              ))}
+              {agents.length === 0 && (
+                <DropdownMenuItem disabled>
+                  <span className="text-muted-foreground text-sm">No agents available</span>
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button size="icon" variant="ghost" className="h-8 w-8">
             <Phone className="h-4 w-4" />
           </Button>
@@ -177,7 +354,7 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
         ) : (
           <div className="py-4">
             <AnimatePresence mode="popLayout">
-              {groupedTimeline.map((group, groupIndex) => (
+              {groupedTimeline.map((group) => (
                 <div key={group.date.toISOString()}>
                   <DateSeparator date={group.date} />
                   {group.items.map((item) => (
@@ -196,8 +373,27 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
 
       {/* Message Input */}
       <div className="p-4 border-t">
+        {/* Phone number selector */}
+        {phoneNumbers.length > 1 && (
+          <div className="flex items-center gap-2 mb-2">
+            <PhoneOutgoing className="h-4 w-4 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">Send from:</span>
+            <Select value={selectedFromNumber} onValueChange={setSelectedFromNumber}>
+              <SelectTrigger size="sm" className="h-7 text-xs">
+                <SelectValue placeholder="Select number" />
+              </SelectTrigger>
+              <SelectContent>
+                {phoneNumbers.map((phone) => (
+                  <SelectItem key={phone.id} value={phone.phone_number}>
+                    {phone.phone_number}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         <div className="flex items-end gap-2">
-          <Button size="icon" variant="ghost" className="h-9 w-9 shrink-0">
+          <Button size="icon" variant="ghost" className="h-9 w-9 shrink-0" disabled={isSending}>
             <Paperclip className="h-4 w-4" />
           </Button>
           <div className="flex-1 relative">
@@ -209,11 +405,13 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
               placeholder="Type a message..."
               className="min-h-[40px] max-h-[120px] resize-none pr-12"
               rows={1}
+              disabled={isSending}
             />
             <Button
               size="icon"
               variant="ghost"
               className="absolute right-1 bottom-1 h-8 w-8"
+              disabled={isSending}
             >
               <Mic className="h-4 w-4" />
             </Button>
@@ -222,9 +420,13 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
             size="icon"
             className="h-9 w-9 shrink-0"
             onClick={handleSendMessage}
-            disabled={!message.trim()}
+            disabled={!message.trim() || isSending}
           >
-            <Send className="h-4 w-4" />
+            {isSending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
           </Button>
         </div>
       </div>

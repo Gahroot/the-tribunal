@@ -1,32 +1,39 @@
 "use client";
 
 import * as React from "react";
+import { useState } from "react";
 import { format } from "date-fns";
 import {
   Phone,
   Mail,
   Building2,
   Calendar,
-  Tag,
-  FileText,
   Clock,
   ChevronRight,
   Edit2,
-  Trash2,
   Bot,
-  Activity,
-  X
+  X,
+  Loader2,
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
+import { toast } from "sonner";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useContactStore } from "@/lib/contact-store";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useAppointments } from "@/hooks/useAppointments";
+import { useToggleContactAI } from "@/hooks/useContacts";
+import { useAuth } from "@/providers/auth-provider";
+import { callsApi, type InitiateCallRequest } from "@/lib/api/calls";
+import { conversationsApi } from "@/lib/api/conversations";
+import { phoneNumbersApi } from "@/lib/api/phone-numbers";
+import { EditContactDialog } from "@/components/contacts/edit-contact-dialog";
+import { ScheduleAppointmentDialog } from "@/components/contacts/schedule-appointment-dialog";
 import type { Contact } from "@/types";
 
 interface ContactSidebarProps {
@@ -87,17 +94,27 @@ interface QuickActionProps {
   label: string;
   onClick: () => void;
   variant?: "default" | "primary" | "destructive";
+  loading?: boolean;
+  disabled?: boolean;
 }
 
-function QuickAction({ icon, label, onClick, variant = "default" }: QuickActionProps) {
+function QuickAction({
+  icon,
+  label,
+  onClick,
+  variant = "default",
+  loading = false,
+  disabled = false,
+}: QuickActionProps) {
   return (
     <Button
       variant={variant === "destructive" ? "destructive" : variant === "primary" ? "default" : "outline"}
       size="sm"
       className="flex-1"
       onClick={onClick}
+      disabled={disabled || loading}
     >
-      {icon}
+      {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : icon}
       <span className="ml-2">{label}</span>
     </Button>
   );
@@ -106,6 +123,122 @@ function QuickAction({ icon, label, onClick, variant = "default" }: QuickActionP
 export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
   const { selectedContact, timeline } = useContactStore();
   const isMobile = useIsMobile();
+  const { workspaceId } = useAuth();
+
+  // Dialog states
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
+
+  // Fetch appointments for this contact
+  const { data: appointmentsData, isLoading: appointmentsLoading } = useAppointments(
+    workspaceId || "",
+    { page: 1, page_size: 50 }
+  );
+
+  // Fetch phone numbers for calls
+  const { data: phoneNumbersData } = useQuery({
+    queryKey: ["phone-numbers", workspaceId],
+    queryFn: () =>
+      workspaceId
+        ? phoneNumbersApi.list(workspaceId, { active_only: true })
+        : Promise.resolve({ items: [], total: 0, page: 1, page_size: 50, pages: 0 }),
+    enabled: !!workspaceId,
+  });
+
+  // AI toggle state - track locally for UI responsiveness
+  const [aiEnabled, setAiEnabled] = useState(false);
+
+  // Fetch conversations for this contact to get AI state
+  const { data: conversationsData } = useQuery({
+    queryKey: ["conversations", workspaceId, selectedContact?.id],
+    queryFn: () =>
+      workspaceId
+        ? conversationsApi.list(workspaceId, { page: 1, page_size: 100 })
+        : Promise.resolve({ items: [], total: 0, page: 1, page_size: 100, pages: 0 }),
+    enabled: !!workspaceId && !!selectedContact,
+  });
+
+  // Find conversation for current contact to get AI state
+  const contactConversation = conversationsData?.items?.find(
+    (conv) => conv.contact_id === selectedContact?.id
+  );
+
+  // Sync AI state from conversation
+  React.useEffect(() => {
+    if (contactConversation) {
+      setAiEnabled(contactConversation.ai_enabled);
+    }
+  }, [contactConversation]);
+
+  // Initiate call mutation
+  const initiateCallMutation = useMutation({
+    mutationFn: (data: InitiateCallRequest) => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return callsApi.initiate(workspaceId, data);
+    },
+    onSuccess: () => {
+      toast.success("Call initiated successfully!");
+    },
+    onError: (error) => {
+      console.error("Failed to initiate call:", error);
+      toast.error("Failed to initiate call. Please try again.");
+    },
+  });
+
+  // AI toggle mutation - uses the new contact-based endpoint
+  const toggleAIMutation = useToggleContactAI(workspaceId || "");
+
+  // Handle call action
+  const handleCall = () => {
+    if (!selectedContact?.phone_number) {
+      toast.error("Contact has no phone number");
+      return;
+    }
+
+    const voiceEnabledNumbers = phoneNumbersData?.items?.filter((p) => p.voice_enabled) || [];
+    if (voiceEnabledNumbers.length === 0) {
+      toast.error("No voice-enabled phone numbers available");
+      return;
+    }
+
+    // Use the first available voice-enabled number
+    const fromNumber = voiceEnabledNumbers[0].phone_number;
+
+    initiateCallMutation.mutate({
+      to_number: selectedContact.phone_number,
+      from_phone_number: fromNumber,
+      contact_phone: selectedContact.phone_number,
+    });
+  };
+
+  // Handle AI engage action
+  const handleAIEngage = () => {
+    if (!selectedContact) return;
+
+    // Toggle AI - if currently enabled, disable it, and vice versa
+    const newState = !aiEnabled;
+
+    // Optimistically update UI
+    setAiEnabled(newState);
+
+    toggleAIMutation.mutate(
+      {
+        contactId: selectedContact.id,
+        enabled: newState,
+      },
+      {
+        onSuccess: (data) => {
+          toast.success(data.ai_enabled ? "AI engagement enabled!" : "AI engagement disabled!");
+        },
+        onError: (error) => {
+          // Revert on error
+          setAiEnabled(!newState);
+          console.error("Failed to toggle AI:", error);
+          toast.error("Failed to toggle AI engagement. Please try again.");
+        },
+      }
+    );
+  };
 
   if (!selectedContact) {
     return (
@@ -118,7 +251,16 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
   }
 
   const displayName = [selectedContact.first_name, selectedContact.last_name].filter(Boolean).join(" ");
-  const tags = selectedContact.tags?.split(",").map(t => t.trim()).filter(Boolean) ?? [];
+  const tags = Array.isArray(selectedContact.tags)
+    ? selectedContact.tags
+    : typeof selectedContact.tags === "string"
+      ? selectedContact.tags.split(",").map((t) => t.trim()).filter(Boolean)
+      : [];
+
+  // Filter appointments for this contact
+  const contactAppointments = (appointmentsData?.items || []).filter(
+    (apt) => apt.contact_id === selectedContact.id
+  );
 
   // Calculate some stats from timeline
   const callCount = timeline.filter(t => t.type === "call").length;
@@ -174,25 +316,29 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
               <QuickAction
                 icon={<Phone className="h-4 w-4" />}
                 label="Call"
-                onClick={() => console.log("Call")}
+                onClick={handleCall}
                 variant="primary"
+                loading={initiateCallMutation.isPending}
+                disabled={!selectedContact.phone_number}
               />
               <QuickAction
                 icon={<Calendar className="h-4 w-4" />}
                 label="Schedule"
-                onClick={() => console.log("Schedule")}
+                onClick={() => setScheduleDialogOpen(true)}
               />
             </div>
             <div className="flex gap-2">
               <QuickAction
                 icon={<Edit2 className="h-4 w-4" />}
                 label="Edit"
-                onClick={() => console.log("Edit")}
+                onClick={() => setEditDialogOpen(true)}
               />
               <QuickAction
                 icon={<Bot className="h-4 w-4" />}
-                label="AI Engage"
-                onClick={() => console.log("AI Engage")}
+                label={aiEnabled ? "AI On" : "AI Off"}
+                onClick={handleAIEngage}
+                loading={toggleAIMutation.isPending}
+                variant={aiEnabled ? "primary" : "default"}
               />
             </div>
           </div>
@@ -262,6 +408,56 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
             )}
           </div>
 
+          {/* Appointments */}
+          <Separator />
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium text-muted-foreground px-2">Appointments</h3>
+            {appointmentsLoading ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              </div>
+            ) : contactAppointments.length === 0 ? (
+              <p className="text-xs text-muted-foreground px-2 py-2">No appointments scheduled</p>
+            ) : (
+              <div className="space-y-2 px-2">
+                {contactAppointments.slice(0, 3).map((apt) => (
+                  <div
+                    key={apt.id}
+                    className="flex items-center gap-2 p-2 rounded-lg bg-muted/30 text-xs"
+                  >
+                    <Calendar className="h-3 w-3 text-muted-foreground shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">
+                        {apt.service_type || "Appointment"}
+                      </p>
+                      <p className="text-muted-foreground text-xs">
+                        {format(new Date(apt.scheduled_at), "MMM d, h:mm a")}
+                      </p>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="text-xs py-0"
+                    >
+                      {apt.status}
+                    </Badge>
+                  </div>
+                ))}
+                {contactAppointments.length > 3 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-xs"
+                    asChild
+                  >
+                    <a href="/calendar">
+                      View all ({contactAppointments.length})
+                    </a>
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Notes */}
           {selectedContact.notes && (
             <>
@@ -283,6 +479,18 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
           </div>
         </div>
       </ScrollArea>
+
+      {/* Dialogs */}
+      <EditContactDialog
+        contact={selectedContact}
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+      />
+      <ScheduleAppointmentDialog
+        contact={selectedContact}
+        open={scheduleDialogOpen}
+        onOpenChange={setScheduleDialogOpen}
+      />
     </motion.div>
   );
 }

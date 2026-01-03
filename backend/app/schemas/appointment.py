@@ -1,0 +1,74 @@
+"""Appointment schemas for API validation."""
+
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class AppointmentBase(BaseModel):
+    """Base appointment schema."""
+
+    duration_minutes: int = Field(default=30, ge=15, le=480)
+    service_type: str | None = Field(default=None, max_length=100)
+    notes: str | None = None
+
+
+class AppointmentCreate(AppointmentBase):
+    """Schema for creating an appointment."""
+
+    contact_id: int
+    agent_id: str | None = None
+    scheduled_at: datetime
+
+
+class AppointmentUpdate(BaseModel):
+    """Schema for updating an appointment."""
+
+    status: str | None = Field(default=None, pattern="^(scheduled|completed|cancelled|no_show)$")
+    duration_minutes: int | None = Field(default=None, ge=15, le=480)
+    service_type: str | None = None
+    notes: str | None = None
+
+
+class ContactSummary(BaseModel):
+    """Minimal contact info for appointments."""
+
+    id: int
+    first_name: str
+    last_name: str | None
+    email: str | None
+    phone_number: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AppointmentResponse(AppointmentBase):
+    """Schema for appointment response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    workspace_id: str
+    contact_id: int
+    contact: ContactSummary | None = None
+    agent_id: str | None
+    scheduled_at: datetime
+    status: str
+    calcom_booking_uid: str | None
+    calcom_booking_id: int | None
+    calcom_event_type_id: int | None
+    sync_status: str
+    last_synced_at: datetime | None
+    sync_error: str | None = None  # Stored error message from Cal.com sync failures
+    created_at: datetime
+    updated_at: datetime
+
+
+class PaginatedAppointments(BaseModel):
+    """Paginated appointments response."""
+
+    items: list[AppointmentResponse]
+    total: int
+    page: int
+    page_size: int
+    pages: int

@@ -89,4 +89,7 @@ class Appointment(Base):
     agent: Mapped["Agent | None"] = relationship("Agent", back_populates="appointments")
 
     def __repr__(self) -> str:
-        return f"<Appointment(id={self.id}, scheduled_at={self.scheduled_at}, status={self.status})>"
+        return (
+            f"<Appointment(id={self.id}, scheduled_at={self.scheduled_at}, "
+            f"status={self.status})>"
+        )

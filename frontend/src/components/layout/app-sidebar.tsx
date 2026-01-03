@@ -13,7 +13,9 @@ import {
   Calendar,
   ChevronDown,
   Zap,
+  LogOut,
 } from "lucide-react";
+import { useAuth } from "@/providers/auth-provider";
 
 import {
   Sidebar,
@@ -37,6 +39,13 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const mainNavItems = [
   {
@@ -68,6 +77,11 @@ const managementNavItems = [
     icon: Bot,
   },
   {
+    title: "Phone Numbers",
+    url: "/phone-numbers",
+    icon: Phone,
+  },
+  {
     title: "Automations",
     url: "/automations",
     icon: Zap,
@@ -93,6 +107,7 @@ interface AppSidebarProps {
 
 export function AppSidebar({ children }: AppSidebarProps) {
   const pathname = usePathname();
+  const { user, logout } = useAuth();
 
   const isActive = (url: string) => {
     if (url === "/") {
@@ -100,6 +115,15 @@ export function AppSidebar({ children }: AppSidebarProps) {
     }
     return pathname.startsWith(url);
   };
+
+  const userInitials = user?.full_name
+    ? user.full_name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2)
+    : user?.email?.slice(0, 2).toUpperCase() ?? "U";
 
   return (
     <SidebarProvider>
@@ -211,19 +235,42 @@ export function AppSidebar({ children }: AppSidebarProps) {
         <SidebarFooter className="border-t border-sidebar-border">
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton size="lg">
-                <Avatar className="size-8">
-                  <AvatarFallback className="bg-primary/10 text-primary">
-                    JD
-                  </AvatarFallback>
-                </Avatar>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">John Doe</span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    john@company.com
-                  </span>
-                </div>
-              </SidebarMenuButton>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <SidebarMenuButton size="lg">
+                    <Avatar className="size-8">
+                      <AvatarFallback className="bg-primary/10 text-primary">
+                        {userInitials}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="grid flex-1 text-left text-sm leading-tight">
+                      <span className="truncate font-semibold">
+                        {user?.full_name || "User"}
+                      </span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {user?.email}
+                      </span>
+                    </div>
+                  </SidebarMenuButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  side="top"
+                  align="start"
+                  className="w-56"
+                >
+                  <DropdownMenuItem asChild>
+                    <Link href="/settings">
+                      <Settings className="mr-2 size-4" />
+                      Settings
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={logout}>
+                    <LogOut className="mr-2 size-4" />
+                    Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarFooter>
