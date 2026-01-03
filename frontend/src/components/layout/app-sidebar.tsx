@@ -276,11 +276,11 @@ export function AppSidebar({ children }: AppSidebarProps) {
         </SidebarFooter>
       </Sidebar>
 
-      <SidebarInset>
+      <SidebarInset className="h-svh overflow-hidden">
         <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" />
         </header>
-        <main className="flex-1 overflow-auto">{children}</main>
+        <main className="flex-1 min-h-0 overflow-hidden">{children}</main>
       </SidebarInset>
     </SidebarProvider>
   );

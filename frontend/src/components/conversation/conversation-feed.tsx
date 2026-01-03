@@ -260,9 +260,9 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
   }
 
   return (
-    <div className={cn("flex flex-col h-full", className)}>
+    <div className={cn("flex flex-col h-full overflow-hidden", className)}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b">
+      <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
         <div className="flex items-center gap-3">
           <h2 className="font-semibold">{contactName}</h2>
           {selectedContact.phone_number && (
@@ -346,7 +346,7 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
       </div>
 
       {/* Messages */}
-      <ScrollArea ref={scrollAreaRef} className="flex-1">
+      <ScrollArea ref={scrollAreaRef} className="flex-1 min-h-0">
         {isLoadingTimeline ? (
           <LoadingSkeleton />
         ) : timeline.length === 0 ? (
@@ -372,7 +372,7 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
       </ScrollArea>
 
       {/* Message Input */}
-      <div className="p-4 border-t">
+      <div className="p-4 border-t shrink-0">
         {/* Phone number selector */}
         {phoneNumbers.length > 1 && (
           <div className="flex items-center gap-2 mb-2">
