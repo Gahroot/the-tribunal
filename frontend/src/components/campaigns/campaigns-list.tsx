@@ -106,7 +106,7 @@ export function CampaignsList() {
     enabled: !!workspaceId,
   });
 
-  const campaigns = campaignsData?.campaigns ?? [];
+  const campaigns = campaignsData?.items ?? [];
 
   const pauseMutation = useMutation({
     mutationFn: (id: string) => {
@@ -142,6 +142,18 @@ export function CampaignsList() {
       toast.success("Campaign deleted");
     },
     onError: () => toast.error("Failed to delete campaign"),
+  });
+
+  const duplicateMutation = useMutation({
+    mutationFn: (id: string) => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return campaignsApi.duplicate(workspaceId, id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      toast.success("Campaign duplicated");
+    },
+    onError: () => toast.error("Failed to duplicate campaign"),
   });
 
   const filteredCampaigns = campaigns.filter((campaign) => {
@@ -406,25 +418,25 @@ export function CampaignsList() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             {campaign.status === "running" ? (
-                              <DropdownMenuItem onClick={() => pauseMutation.mutate(campaign.id)}>
+                              <DropdownMenuItem onSelect={() => pauseMutation.mutate(campaign.id)}>
                                 <Pause className="mr-2 size-4" />
                                 Pause
                               </DropdownMenuItem>
                             ) : campaign.status === "paused" ||
                               campaign.status === "draft" ? (
-                              <DropdownMenuItem onClick={() => startMutation.mutate(campaign.id)}>
+                              <DropdownMenuItem onSelect={() => startMutation.mutate(campaign.id)}>
                                 <Play className="mr-2 size-4" />
                                 {campaign.status === "draft"
                                   ? "Start"
                                   : "Resume"}
                               </DropdownMenuItem>
                             ) : null}
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => duplicateMutation.mutate(campaign.id)}>
                               <Copy className="mr-2 size-4" />
                               Duplicate
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-destructive" onClick={() => deleteMutation.mutate(campaign.id)}>
+                            <DropdownMenuItem variant="destructive" onSelect={() => deleteMutation.mutate(campaign.id)}>
                               <Trash2 className="mr-2 size-4" />
                               Delete
                             </DropdownMenuItem>

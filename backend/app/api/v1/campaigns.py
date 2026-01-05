@@ -460,3 +460,59 @@ async def delete_campaign(
 
     await db.delete(campaign)
     await db.commit()
+
+
+@router.post(
+    "/{campaign_id}/duplicate",
+    response_model=CampaignResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def duplicate_campaign(
+    workspace_id: uuid.UUID,
+    campaign_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> Campaign:
+    """Duplicate a campaign."""
+    result = await db.execute(
+        select(Campaign).where(
+            Campaign.id == campaign_id,
+            Campaign.workspace_id == workspace_id,
+        )
+    )
+    campaign = result.scalar_one_or_none()
+
+    if not campaign:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Campaign not found",
+        )
+
+    # Create a new campaign with copied attributes
+    new_campaign = Campaign(
+        workspace_id=workspace_id,
+        campaign_type=campaign.campaign_type,
+        agent_id=campaign.agent_id,
+        offer_id=campaign.offer_id,
+        name=f"{campaign.name} (Copy)",
+        status=CampaignStatus.DRAFT.value,
+        from_phone_number=campaign.from_phone_number,
+        initial_message=campaign.initial_message,
+        ai_enabled=campaign.ai_enabled,
+        qualification_criteria=campaign.qualification_criteria,
+        sending_hours_start=campaign.sending_hours_start,
+        sending_hours_end=campaign.sending_hours_end,
+        sending_days=campaign.sending_days,
+        timezone=campaign.timezone,
+        messages_per_minute=campaign.messages_per_minute,
+        follow_up_enabled=campaign.follow_up_enabled,
+        follow_up_delay_hours=campaign.follow_up_delay_hours,
+        follow_up_message=campaign.follow_up_message,
+        max_follow_ups=campaign.max_follow_ups,
+    )
+    db.add(new_campaign)
+    await db.commit()
+    await db.refresh(new_campaign)
+
+    return new_campaign

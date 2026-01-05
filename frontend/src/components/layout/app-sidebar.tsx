@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Users,
   Megaphone,
+  Briefcase,
   Phone,
   Bot,
   Settings,
@@ -57,6 +58,11 @@ const mainNavItems = [
     title: "Contacts",
     url: "/",
     icon: Users,
+  },
+  {
+    title: "Opportunities",
+    url: "/opportunities",
+    icon: Briefcase,
   },
   {
     title: "Campaigns",

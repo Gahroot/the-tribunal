@@ -19,7 +19,9 @@ if TYPE_CHECKING:
     from app.models.conversation import Conversation
     from app.models.lead_magnet import LeadMagnet
     from app.models.offer import Offer
+    from app.models.opportunity import Opportunity
     from app.models.phone_number import PhoneNumber
+    from app.models.pipeline import Pipeline
     from app.models.user import User
 
 
@@ -81,6 +83,12 @@ class Workspace(Base):
     )
     automations: Mapped[list["Automation"]] = relationship(
         "Automation", back_populates="workspace", cascade="all, delete-orphan"
+    )
+    pipelines: Mapped[list["Pipeline"]] = relationship(
+        "Pipeline", back_populates="workspace", cascade="all, delete-orphan"
+    )
+    opportunities: Mapped[list["Opportunity"]] = relationship(
+        "Opportunity", back_populates="workspace", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

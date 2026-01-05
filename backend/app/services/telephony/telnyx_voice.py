@@ -13,6 +13,9 @@ from app.models.conversation import Conversation, Message
 
 logger = structlog.get_logger()
 
+# Cache for Call Control Application ID
+_call_control_app_id_cache: str | None = None
+
 
 @dataclass
 class CallInfo:
@@ -69,11 +72,99 @@ class TelnyxVoiceService:
             await self._client.aclose()
             self._client = None
 
+    def _normalize_e164(self, phone: str) -> str:
+        """Normalize phone number to E.164 format (+1XXXXXXXXXX)."""
+        # Remove any non-digit characters except leading +
+        if phone.startswith("+"):
+            return "+" + "".join(c for c in phone[1:] if c.isdigit())
+        digits = "".join(c for c in phone if c.isdigit())
+        # Add + prefix if missing (assume US/Canada if 10-11 digits)
+        if len(digits) == 10:
+            return f"+1{digits}"
+        if len(digits) == 11 and digits.startswith("1"):
+            return f"+{digits}"
+        return f"+{digits}"
+
+    async def _get_call_control_application_id(self, webhook_url: str) -> str:
+        """Get or create a Telnyx Call Control Application for outbound calls.
+
+        Call Control Applications are required for the Call Control API.
+        They define how calls should be handled and where webhooks are sent.
+
+        Args:
+            webhook_url: Webhook URL for call events
+
+        Returns:
+            Call Control Application ID string
+
+        Raises:
+            ValueError: If no application ID is found or created
+        """
+        global _call_control_app_id_cache
+
+        # Return cached ID if available
+        if _call_control_app_id_cache:
+            self.logger.debug("using_cached_app_id", app_id=_call_control_app_id_cache)
+            return _call_control_app_id_cache
+
+        try:
+            self.logger.info("fetching_call_control_applications")
+            # List existing Call Control Applications
+            response = await self.client.get("/call_control_applications")
+            data = response.json()
+
+            applications = data.get("data", [])
+            self.logger.debug("found_applications", count=len(applications))
+
+            if applications:
+                # Find the first application with a valid webhook_event_url
+                for app in applications:
+                    app_id = app.get("id")
+                    app_webhook = app.get("webhook_event_url")
+
+                    if app_id and app_webhook:
+                        self.logger.info(
+                            "using_existing_call_control_application",
+                            app_id=app_id,
+                            app_name=app.get("application_name", "unknown"),
+                        )
+                        _call_control_app_id_cache = str(app_id)
+                        return _call_control_app_id_cache
+
+            # Create a new Call Control Application if none exists
+            self.logger.info("creating_new_call_control_application")
+            base_webhook_url = webhook_url.split("?")[0] if "?" in webhook_url else webhook_url
+
+            app_payload = {
+                "application_name": "aicrm-voice-agent",
+                "active": True,
+                "webhook_event_url": base_webhook_url,
+            }
+
+            response = await self.client.post(
+                "/call_control_applications",
+                json=app_payload,
+            )
+            new_data = response.json()
+            app_id = new_data.get("data", {}).get("id")
+
+            if not app_id:
+                msg = "Failed to create Call Control Application"
+                raise ValueError(msg)
+
+            self.logger.info("call_control_application_created", app_id=app_id)
+            _call_control_app_id_cache = str(app_id)
+            return _call_control_app_id_cache
+
+        except Exception as e:
+            self.logger.exception("get_call_control_app_failed", error=str(e))
+            raise ValueError(f"Failed to get Call Control Application: {e}") from e
+
     async def initiate_call(
         self,
         to_number: str,
         from_number: str,
-        connection_id: str,
+        connection_id: str | None,
         webhook_url: str,
         db: AsyncSession,
         workspace_id: uuid.UUID,
@@ -87,7 +178,7 @@ class TelnyxVoiceService:
         Args:
             to_number: Recipient phone number (E.164)
             from_number: Caller ID phone number (E.164)
-            connection_id: Telnyx connection ID for voice routing
+            connection_id: Telnyx connection ID (optional, auto-discovered if not provided)
             webhook_url: Webhook URL for call events
             db: Database session
             workspace_id: Workspace ID
@@ -99,8 +190,17 @@ class TelnyxVoiceService:
         Returns:
             Created Message record with channel="voice"
         """
+        # Normalize phone numbers to E.164 format
+        to_number = self._normalize_e164(to_number)
+        from_number = self._normalize_e164(from_number)
+
         log = self.logger.bind(to=to_number, from_=from_number)
         log.info("initiating_call")
+
+        # Auto-discover connection ID if not provided
+        if not connection_id:
+            connection_id = await self._get_call_control_application_id(webhook_url)
+            log.info("auto_discovered_connection_id", connection_id=connection_id)
 
         # Get or create conversation
         conversation = await self._get_or_create_conversation(

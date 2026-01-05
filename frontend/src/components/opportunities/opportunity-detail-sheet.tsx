@@ -1,0 +1,538 @@
+"use client";
+
+import * as React from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { opportunitiesApi } from "@/lib/api/opportunities";
+import type { Opportunity, OpportunityStatus, OpportunityActivity } from "@/types";
+import { cn } from "@/lib/utils";
+import {
+  DollarSign,
+  Calendar,
+  Edit2,
+  Trash2,
+  MoreVertical,
+  Check,
+  X,
+  Clock,
+  ArrowRight,
+  CircleDot,
+  Trophy,
+  XCircle,
+  Archive,
+} from "lucide-react";
+
+interface OpportunityDetailSheetProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  opportunity: Opportunity | null;
+  workspaceId: string;
+}
+
+function formatCurrency(amount: number | undefined, currency: string) {
+  if (!amount) return "$0";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: currency,
+  }).format(amount);
+}
+
+function getStatusConfig(status: OpportunityStatus) {
+  switch (status) {
+    case "won":
+      return {
+        label: "Won",
+        color: "bg-green-500/10 text-green-600 border-green-500/20",
+        icon: Trophy,
+      };
+    case "lost":
+      return {
+        label: "Lost",
+        color: "bg-red-500/10 text-red-600 border-red-500/20",
+        icon: XCircle,
+      };
+    case "abandoned":
+      return {
+        label: "Abandoned",
+        color: "bg-gray-500/10 text-gray-600 border-gray-500/20",
+        icon: Archive,
+      };
+    default:
+      return {
+        label: "Open",
+        color: "bg-blue-500/10 text-blue-600 border-blue-500/20",
+        icon: CircleDot,
+      };
+  }
+}
+
+interface ActivityItemProps {
+  activity: OpportunityActivity;
+}
+
+function ActivityItem({ activity }: ActivityItemProps) {
+  const getActivityIcon = () => {
+    switch (activity.activity_type) {
+      case "stage_changed":
+        return <ArrowRight className="h-4 w-4 text-blue-500" />;
+      case "status_changed":
+        return <CircleDot className="h-4 w-4 text-purple-500" />;
+      default:
+        return <Clock className="h-4 w-4 text-muted-foreground" />;
+    }
+  };
+
+  return (
+    <div className="flex gap-3 py-3">
+      <div className="flex-shrink-0 mt-0.5">{getActivityIcon()}</div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm">{activity.description}</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          {new Date(activity.created_at).toLocaleString()}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export function OpportunityDetailSheet({
+  open,
+  onOpenChange,
+  opportunity,
+  workspaceId,
+}: OpportunityDetailSheetProps) {
+  const queryClient = useQueryClient();
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [editData, setEditData] = React.useState({
+    name: "",
+    description: "",
+    amount: "",
+    currency: "USD",
+    expected_close_date: "",
+    source: "",
+    status: "open" as OpportunityStatus,
+    lost_reason: "",
+  });
+
+  // Fetch full opportunity details with activities
+  const { data: opportunityDetail } = useQuery({
+    queryKey: ["opportunity", workspaceId, opportunity?.id],
+    queryFn: () =>
+      opportunity ? opportunitiesApi.get(workspaceId, opportunity.id) : null,
+    enabled: !!opportunity && open,
+  });
+
+  // Fetch pipelines for stage selector
+  const { data: pipelines } = useQuery({
+    queryKey: ["pipelines", workspaceId],
+    queryFn: () => opportunitiesApi.listPipelines(workspaceId),
+    enabled: !!workspaceId && open,
+  });
+
+  // Find current pipeline and stage
+  const currentPipeline = pipelines?.find(
+    (p) => p.id === opportunity?.pipeline_id
+  );
+  const currentStage = currentPipeline?.stages.find(
+    (s) => s.id === opportunity?.stage_id
+  );
+
+  // Reset edit data when opportunity changes
+  React.useEffect(() => {
+    if (opportunity) {
+      setEditData({
+        name: opportunity.name,
+        description: opportunity.description || "",
+        amount: opportunity.amount?.toString() || "",
+        currency: opportunity.currency,
+        expected_close_date: opportunity.expected_close_date || "",
+        source: opportunity.source || "",
+        status: opportunity.status,
+        lost_reason: opportunity.lost_reason || "",
+      });
+    }
+    setIsEditing(false);
+  }, [opportunity]);
+
+  const updateMutation = useMutation({
+    mutationFn: (data: Parameters<typeof opportunitiesApi.update>[2]) =>
+      opportunitiesApi.update(workspaceId, opportunity!.id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["opportunities", workspaceId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["opportunity", workspaceId, opportunity?.id],
+      });
+      setIsEditing(false);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => opportunitiesApi.delete(workspaceId, opportunity!.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["opportunities", workspaceId],
+      });
+      onOpenChange(false);
+    },
+  });
+
+  const handleSave = () => {
+    if (!opportunity) return;
+    updateMutation.mutate({
+      name: editData.name,
+      description: editData.description || undefined,
+      amount: editData.amount ? parseFloat(editData.amount) : undefined,
+      currency: editData.currency,
+      expected_close_date: editData.expected_close_date || undefined,
+      source: editData.source || undefined,
+      status: editData.status,
+      lost_reason: editData.lost_reason || undefined,
+    });
+  };
+
+  const handleStatusChange = (newStatus: OpportunityStatus) => {
+    if (!opportunity) return;
+    updateMutation.mutate({ status: newStatus });
+  };
+
+  const handleStageChange = (stageId: string) => {
+    if (!opportunity) return;
+    updateMutation.mutate({ stage_id: stageId });
+  };
+
+  if (!opportunity) return null;
+
+  const statusConfig = getStatusConfig(opportunity.status);
+  const StatusIcon = statusConfig.icon;
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="sm:max-w-[500px] flex flex-col p-0">
+        <SheetHeader className="p-6 pb-0">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <SheetTitle className="text-xl">{opportunity.name}</SheetTitle>
+              <SheetDescription className="mt-1">
+                {currentPipeline?.name} • {currentStage?.name || "No stage"}
+              </SheetDescription>
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setIsEditing(true)}>
+                  <Edit2 className="h-4 w-4 mr-2" />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => deleteMutation.mutate()}
+                  className="text-destructive"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </SheetHeader>
+
+        <ScrollArea className="flex-1">
+          <div className="p-6 space-y-6">
+            {/* Status Badge */}
+            <div className="flex items-center gap-3">
+              <Badge
+                variant="outline"
+                className={cn("text-sm py-1 px-3", statusConfig.color)}
+              >
+                <StatusIcon className="h-4 w-4 mr-1.5" />
+                {statusConfig.label}
+              </Badge>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    Change Status
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={() => handleStatusChange("open")}>
+                    <CircleDot className="h-4 w-4 mr-2 text-blue-500" />
+                    Open
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleStatusChange("won")}>
+                    <Trophy className="h-4 w-4 mr-2 text-green-500" />
+                    Won
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleStatusChange("lost")}>
+                    <XCircle className="h-4 w-4 mr-2 text-red-500" />
+                    Lost
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => handleStatusChange("abandoned")}
+                  >
+                    <Archive className="h-4 w-4 mr-2 text-gray-500" />
+                    Abandoned
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            {/* Quick Info */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Value</p>
+                <p className="text-lg font-semibold flex items-center">
+                  <DollarSign className="h-4 w-4 mr-1" />
+                  {formatCurrency(opportunity.amount, opportunity.currency)}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Probability</p>
+                <p className="text-lg font-semibold">{opportunity.probability}%</p>
+              </div>
+              {opportunity.expected_close_date && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Expected Close</p>
+                  <p className="text-sm flex items-center">
+                    <Calendar className="h-4 w-4 mr-1" />
+                    {new Date(opportunity.expected_close_date).toLocaleDateString()}
+                  </p>
+                </div>
+              )}
+              {opportunity.source && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Source</p>
+                  <p className="text-sm">{opportunity.source}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Stage Selector */}
+            {currentPipeline && (
+              <>
+                <Separator />
+                <div className="space-y-3">
+                  <Label>Stage</Label>
+                  <Select
+                    value={opportunity.stage_id || ""}
+                    onValueChange={handleStageChange}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select stage" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {currentPipeline.stages
+                        .sort((a, b) => a.order - b.order)
+                        .map((stage) => (
+                          <SelectItem key={stage.id} value={stage.id}>
+                            {stage.name} ({stage.probability}%)
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
+
+            {/* Description */}
+            {opportunity.description && (
+              <>
+                <Separator />
+                <div className="space-y-2">
+                  <Label>Description</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {opportunity.description}
+                  </p>
+                </div>
+              </>
+            )}
+
+            {/* Edit Form */}
+            {isEditing && (
+              <>
+                <Separator />
+                <div className="space-y-4">
+                  <h3 className="font-medium">Edit Opportunity</h3>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-name">Name</Label>
+                    <Input
+                      id="edit-name"
+                      value={editData.name}
+                      onChange={(e) =>
+                        setEditData({ ...editData, name: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-description">Description</Label>
+                    <Textarea
+                      id="edit-description"
+                      value={editData.description}
+                      onChange={(e) =>
+                        setEditData({ ...editData, description: e.target.value })
+                      }
+                      rows={3}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-amount">Amount</Label>
+                      <Input
+                        id="edit-amount"
+                        type="number"
+                        value={editData.amount}
+                        onChange={(e) =>
+                          setEditData({ ...editData, amount: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-currency">Currency</Label>
+                      <Select
+                        value={editData.currency}
+                        onValueChange={(v) =>
+                          setEditData({ ...editData, currency: v })
+                        }
+                      >
+                        <SelectTrigger id="edit-currency">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="USD">USD</SelectItem>
+                          <SelectItem value="EUR">EUR</SelectItem>
+                          <SelectItem value="GBP">GBP</SelectItem>
+                          <SelectItem value="CAD">CAD</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-close-date">Expected Close Date</Label>
+                    <Input
+                      id="edit-close-date"
+                      type="date"
+                      value={editData.expected_close_date}
+                      onChange={(e) =>
+                        setEditData({
+                          ...editData,
+                          expected_close_date: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-source">Source</Label>
+                    <Input
+                      id="edit-source"
+                      value={editData.source}
+                      onChange={(e) =>
+                        setEditData({ ...editData, source: e.target.value })
+                      }
+                      placeholder="e.g., Website, Referral, Campaign"
+                    />
+                  </div>
+                  {editData.status === "lost" && (
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-lost-reason">Lost Reason</Label>
+                      <Input
+                        id="edit-lost-reason"
+                        value={editData.lost_reason}
+                        onChange={(e) =>
+                          setEditData({ ...editData, lost_reason: e.target.value })
+                        }
+                        placeholder="Why was this opportunity lost?"
+                      />
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={handleSave}
+                      disabled={updateMutation.isPending}
+                    >
+                      <Check className="h-4 w-4 mr-1" />
+                      {updateMutation.isPending ? "Saving..." : "Save"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsEditing(false)}
+                    >
+                      <X className="h-4 w-4 mr-1" />
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Activity Timeline */}
+            <Separator />
+            <div className="space-y-3">
+              <h3 className="font-medium">Activity</h3>
+              {opportunityDetail?.activities &&
+              opportunityDetail.activities.length > 0 ? (
+                <div className="divide-y">
+                  {opportunityDetail.activities
+                    .sort(
+                      (a, b) =>
+                        new Date(b.created_at).getTime() -
+                        new Date(a.created_at).getTime()
+                    )
+                    .map((activity) => (
+                      <ActivityItem key={activity.id} activity={activity} />
+                    ))}
+                </div>
+              ) : (
+                <div className="text-center py-6 text-muted-foreground text-sm">
+                  No activity yet
+                </div>
+              )}
+            </div>
+
+            {/* Metadata */}
+            <Separator />
+            <div className="text-xs text-muted-foreground space-y-1">
+              <p>Created: {new Date(opportunity.created_at).toLocaleString()}</p>
+              <p>Updated: {new Date(opportunity.updated_at).toLocaleString()}</p>
+              {opportunity.stage_changed_at && (
+                <p>
+                  Stage changed:{" "}
+                  {new Date(opportunity.stage_changed_at).toLocaleString()}
+                </p>
+              )}
+            </div>
+          </div>
+        </ScrollArea>
+      </SheetContent>
+    </Sheet>
+  );
+}

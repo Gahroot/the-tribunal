@@ -14,6 +14,7 @@ from app.api.v1 import (
     dashboard,
     lead_magnets,
     offers,
+    opportunities,
     phone_numbers,
     settings,
     voice_campaigns,
@@ -80,6 +81,11 @@ api_router.include_router(
     automations.router,
     prefix="/workspaces/{workspace_id}/automations",
     tags=["Automations"],
+)
+api_router.include_router(
+    opportunities.router,
+    prefix="/workspaces/{workspace_id}/opportunities",
+    tags=["Opportunities"],
 )
 api_router.include_router(
     dashboard.router,

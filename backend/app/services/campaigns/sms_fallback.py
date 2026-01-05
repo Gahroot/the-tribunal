@@ -199,6 +199,8 @@ async def trigger_sms_fallback_for_call(
     from app.db.session import AsyncSessionLocal
     from app.models.conversation import Message
 
+    log.info("trigger_sms_fallback_started", call_control_id=call_control_id)
+
     async with AsyncSessionLocal() as db:
         # Find the message by call_control_id
         msg_result = await db.execute(
@@ -209,6 +211,8 @@ async def trigger_sms_fallback_for_call(
         if not message:
             log.warning("message_not_found_for_fallback", call_control_id=call_control_id)
             return False
+
+        log.info("found_message", message_id=str(message.id))
 
         # Find campaign contact linked to this call
         cc_result = await db.execute(
@@ -224,6 +228,8 @@ async def trigger_sms_fallback_for_call(
         if not campaign_contact:
             log.info("not_a_campaign_call", message_id=str(message.id))
             return False
+
+        log.info("found_campaign_contact", campaign_contact_id=str(campaign_contact.id))
 
         campaign = campaign_contact.campaign
         contact = campaign_contact.contact

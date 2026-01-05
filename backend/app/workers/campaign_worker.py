@@ -24,7 +24,13 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
-from app.models.campaign import Campaign, CampaignContact, CampaignContactStatus, CampaignStatus
+from app.models.campaign import (
+    Campaign,
+    CampaignContact,
+    CampaignContactStatus,
+    CampaignStatus,
+    CampaignType,
+)
 from app.models.contact import Contact
 from app.models.offer import Offer
 from app.services.rate_limiting.number_pool import NumberPoolManager
@@ -88,7 +94,7 @@ class CampaignWorker:
             await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
     async def _process_campaigns(self) -> None:
-        """Process all running campaigns."""
+        """Process all running SMS campaigns (not voice campaigns)."""
         async with AsyncSessionLocal() as db:
             result = await db.execute(
                 select(Campaign)
@@ -96,7 +102,12 @@ class CampaignWorker:
                     selectinload(Campaign.agent),
                     selectinload(Campaign.offer),
                 )
-                .where(Campaign.status == CampaignStatus.RUNNING.value)
+                .where(
+                    and_(
+                        Campaign.status == CampaignStatus.RUNNING.value,
+                        Campaign.campaign_type == CampaignType.SMS.value,
+                    )
+                )
             )
             campaigns = result.scalars().all()
 
@@ -474,22 +485,43 @@ class CampaignWorker:
 
     def _is_within_sending_hours(self, campaign: Campaign) -> bool:
         """Check if current time is within campaign sending hours."""
-        if not campaign.sending_hours_start or not campaign.sending_hours_end:
+        # Use 'is None' instead of falsy check since time(0, 0) is falsy in Python
+        if campaign.sending_hours_start is None or campaign.sending_hours_end is None:
+            self.logger.debug(
+                "Sending hours not set, allowing",
+                start=campaign.sending_hours_start,
+                end=campaign.sending_hours_end,
+            )
             return True
 
         tz = pytz.timezone(campaign.timezone or "UTC")
         now = datetime.now(tz)
 
+        # Only check sending_days if it's a non-empty list
         if campaign.sending_days and now.weekday() not in campaign.sending_days:
+            self.logger.debug(
+                "Not a sending day",
+                sending_days=campaign.sending_days,
+                weekday=now.weekday(),
+            )
             return False
 
-        start_time = campaign.sending_hours_start
-        end_time = campaign.sending_hours_end
-        if start_time is None or end_time is None:
-            return True
+        # Handle both time objects and datetime objects from SQLAlchemy Time column
+        from datetime import time
+        start_val = campaign.sending_hours_start
+        end_val = campaign.sending_hours_end
+        start_time: time = start_val.time() if isinstance(start_val, datetime) else start_val
+        end_time: time = end_val.time() if isinstance(end_val, datetime) else end_val
         current_time = now.time()
 
-        result: bool = start_time <= current_time <= end_time  # type: ignore[operator]
+        result = start_time <= current_time <= end_time
+        self.logger.debug(
+            "Sending hours check",
+            start_time=str(start_time),
+            end_time=str(end_time),
+            current_time=str(current_time),
+            result=result,
+        )
         return result
 
     def _render_template(

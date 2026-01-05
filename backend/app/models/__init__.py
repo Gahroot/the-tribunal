@@ -10,9 +10,11 @@ from app.models.conversation import Conversation, Message
 from app.models.lead_magnet import LeadMagnet
 from app.models.offer import Offer
 from app.models.offer_lead_magnet import OfferLeadMagnet
+from app.models.opportunity import Opportunity, OpportunityActivity, OpportunityLineItem
 from app.models.opt_out import GlobalOptOut
 from app.models.phone_number import PhoneNumber
 from app.models.phone_number_stats import PhoneNumberDailyStats
+from app.models.pipeline import Pipeline, PipelineStage
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceIntegration, WorkspaceMembership
 
@@ -36,4 +38,9 @@ __all__ = [
     "LeadMagnet",
     "OfferLeadMagnet",
     "Automation",
+    "Pipeline",
+    "PipelineStage",
+    "Opportunity",
+    "OpportunityLineItem",
+    "OpportunityActivity",
 ]

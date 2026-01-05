@@ -194,12 +194,8 @@ class VoiceCampaignWorker:
         api_base = settings.api_base_url or "http://localhost:8000"
         webhook_url = f"{api_base}/webhooks/telnyx/voice"
 
-        # Get connection ID from settings or campaign
+        # Get connection ID from settings or campaign (None = auto-discover)
         connection_id = campaign.voice_connection_id or settings.telnyx_connection_id
-
-        if not connection_id:
-            log.error("No Telnyx connection ID configured")
-            return
 
         for campaign_contact in pending_contacts:
             contact = campaign_contact.contact
@@ -288,13 +284,25 @@ class VoiceCampaignWorker:
 
     def _is_within_sending_hours(self, campaign: Campaign) -> bool:
         """Check if current time is within campaign sending hours."""
-        if not campaign.sending_hours_start or not campaign.sending_hours_end:
+        # Use 'is None' instead of falsy check since time(0, 0) is falsy in Python
+        if campaign.sending_hours_start is None or campaign.sending_hours_end is None:
+            self.logger.debug(
+                "Sending hours not set, allowing",
+                start=campaign.sending_hours_start,
+                end=campaign.sending_hours_end,
+            )
             return True
 
         tz = pytz.timezone(campaign.timezone or "UTC")
         now = datetime.now(tz)
 
+        # Only check sending_days if it's a non-empty list
         if campaign.sending_days and now.weekday() not in campaign.sending_days:
+            self.logger.debug(
+                "Not a sending day",
+                sending_days=campaign.sending_days,
+                weekday=now.weekday(),
+            )
             return False
 
         # Handle both time objects and datetime objects from SQLAlchemy Time column
@@ -304,7 +312,15 @@ class VoiceCampaignWorker:
         end_time: time = end_val.time() if isinstance(end_val, datetime) else end_val
         current_time = now.time()
 
-        return start_time <= current_time <= end_time
+        result = start_time <= current_time <= end_time
+        self.logger.debug(
+            "Sending hours check",
+            start_time=str(start_time),
+            end_time=str(end_time),
+            current_time=str(current_time),
+            result=result,
+        )
+        return result
 
     def _get_available_call_slots(self, campaign: Campaign) -> int:
         """Calculate how many calls can be made based on rate limit."""

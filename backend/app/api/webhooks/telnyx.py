@@ -450,8 +450,9 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:
     call_control_id = payload.get("call_control_id", "")
     call_state = payload.get("state", "")
     duration_secs = payload.get("duration_seconds", 0)
-    hangup_cause = payload.get("hangup_cause", "")
+    hangup_cause = payload.get("hangup_cause", "").upper()  # Normalize to uppercase
     sip_hangup_cause = payload.get("sip_hangup_cause", "")
+    hangup_source = payload.get("hangup_source", "")  # "callee" if user rejected
 
     log = log.bind(
         call_control_id=call_control_id,
@@ -459,6 +460,7 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:
         duration=duration_secs,
         hangup_cause=hangup_cause,
         sip_hangup_cause=sip_hangup_cause,
+        hangup_source=hangup_source,
     )
     log.info("call_hangup")
 
@@ -485,18 +487,33 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:
                     recording_url=message.recording_url,
                 )
 
+            # Threshold for detecting rejected calls (quick hangup by callee)
+            rejected_call_threshold_secs = 15
+
+            # Detect rejected call: callee hung up quickly without answering
+            is_rejected_call = (
+                duration_secs < rejected_call_threshold_secs
+                and hangup_cause in ("NORMAL_CLEARING", "NORMAL_RELEASE")
+                and hangup_source == "callee"
+            )
+
             # Determine call outcome based on hangup cause
             call_outcome = None
-            if hangup_cause in ("no_answer", "timeout"):
+            if hangup_cause in ("NO_ANSWER", "TIMEOUT"):
                 call_outcome = "no_answer"
                 message.status = "failed"
-            elif hangup_cause == "user_busy":
+            elif hangup_cause == "USER_BUSY":
                 call_outcome = "busy"
                 message.status = "failed"
-            elif hangup_cause == "call_rejected":
+            elif hangup_cause == "CALL_REJECTED" or is_rejected_call:
                 call_outcome = "rejected"
                 message.status = "failed"
-            elif duration_secs < 5 and hangup_cause in ("originator_cancel", "normal_clearing"):
+                log.info("rejected_call_detected", hangup_source=hangup_source)
+            elif hangup_cause == "ORIGINATOR_CANCEL":
+                # We cancelled the call (e.g., voicemail detection)
+                call_outcome = "no_answer"
+                message.status = "failed"
+            elif duration_secs < 5 and hangup_cause in ("NORMAL_CLEARING", "NORMAL_RELEASE"):
                 # Very short call with normal clearing = likely no real conversation
                 call_outcome = "no_answer"
                 message.status = "failed"

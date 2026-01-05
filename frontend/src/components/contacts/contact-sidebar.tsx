@@ -14,7 +14,9 @@ import {
   Bot,
   X,
   Loader2,
+  Trash2,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -23,11 +25,21 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { useContactStore } from "@/lib/contact-store";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAppointments } from "@/hooks/useAppointments";
-import { useToggleContactAI } from "@/hooks/useContacts";
+import { useToggleContactAI, useDeleteContact } from "@/hooks/useContacts";
 import { useAuth } from "@/providers/auth-provider";
 import { callsApi, type InitiateCallRequest } from "@/lib/api/calls";
 import { conversationsApi } from "@/lib/api/conversations";
@@ -121,13 +133,15 @@ function QuickAction({
 }
 
 export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
-  const { selectedContact, timeline } = useContactStore();
+  const router = useRouter();
+  const { selectedContact, setSelectedContact, timeline } = useContactStore();
   const isMobile = useIsMobile();
   const { workspaceId } = useAuth();
 
   // Dialog states
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Fetch appointments for this contact
   const { data: appointmentsData, isLoading: appointmentsLoading } = useAppointments(
@@ -188,6 +202,9 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
   // AI toggle mutation - uses the new contact-based endpoint
   const toggleAIMutation = useToggleContactAI(workspaceId || "");
 
+  // Delete contact mutation
+  const deleteContactMutation = useDeleteContact(workspaceId || "");
+
   // Handle call action
   const handleCall = () => {
     if (!selectedContact?.phone_number) {
@@ -238,6 +255,24 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
         },
       }
     );
+  };
+
+  // Handle delete action
+  const handleDelete = () => {
+    if (!selectedContact) return;
+
+    deleteContactMutation.mutate(selectedContact.id, {
+      onSuccess: () => {
+        toast.success("Contact deleted successfully");
+        setSelectedContact(null);
+        setDeleteDialogOpen(false);
+        router.push("/contacts");
+      },
+      onError: (error) => {
+        console.error("Failed to delete contact:", error);
+        toast.error("Failed to delete contact. Please try again.");
+      },
+    });
   };
 
   if (!selectedContact) {
@@ -339,6 +374,14 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
                 onClick={handleAIEngage}
                 loading={toggleAIMutation.isPending}
                 variant={aiEnabled ? "primary" : "default"}
+              />
+            </div>
+            <div className="flex gap-2">
+              <QuickAction
+                icon={<Trash2 className="h-4 w-4" />}
+                label="Delete"
+                onClick={() => setDeleteDialogOpen(true)}
+                variant="destructive"
               />
             </div>
           </div>
@@ -491,6 +534,34 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
         open={scheduleDialogOpen}
         onOpenChange={setScheduleDialogOpen}
       />
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Contact</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {displayName || "this contact"}? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleteContactMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteContactMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </motion.div>
   );
 }

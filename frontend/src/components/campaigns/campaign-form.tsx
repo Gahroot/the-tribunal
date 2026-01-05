@@ -76,8 +76,15 @@ export function CampaignForm({ campaignId }: CampaignFormProps) {
   const [enableSchedule, setEnableSchedule] = useState(false);
 
   const handleSave = () => {
-    // TODO: Save campaign via API
-    router.push("/campaigns");
+    // Redirect to appropriate wizard based on campaign type
+    if (campaignType === "sms") {
+      router.push("/campaigns/sms/new");
+    } else if (campaignType === "voice") {
+      router.push("/campaigns/voice/new");
+    } else {
+      // For email and multi_channel, show coming soon message
+      router.push("/campaigns");
+    }
   };
 
   return (
