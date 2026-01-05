@@ -3,7 +3,7 @@
 import * as React from "react";
 import { AnimatePresence } from "framer-motion";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
-import { Send, Paperclip, Mic, Phone, MoreVertical, MessageSquare, Loader2, PhoneOutgoing, Bot, User } from "lucide-react";
+import { Send, Paperclip, Mic, Phone, MoreVertical, MessageSquare, Loader2, PhoneOutgoing, Bot, User, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -19,6 +19,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -28,7 +38,7 @@ import {
 import { cn } from "@/lib/utils";
 import { usePhoneNumbers } from "@/hooks/usePhoneNumbers";
 import { useAgents } from "@/hooks/useAgents";
-import { useToggleConversationAI, useAssignAgent } from "@/hooks/useConversations";
+import { useToggleConversationAI, useAssignAgent, useClearConversationHistory } from "@/hooks/useConversations";
 import { useContactStore } from "@/lib/contact-store";
 import { useAuth } from "@/providers/auth-provider";
 import { conversationsApi } from "@/lib/api/conversations";
@@ -85,11 +95,12 @@ function LoadingSkeleton() {
 }
 
 export function ConversationFeed({ className }: ConversationFeedProps) {
-  const { selectedContact, timeline, isLoadingTimeline, addTimelineItem } = useContactStore();
+  const { selectedContact, timeline, isLoadingTimeline, addTimelineItem, clearTimeline } = useContactStore();
   const { workspaceId } = useAuth();
   const [message, setMessage] = React.useState("");
   const [isSending, setIsSending] = React.useState(false);
   const [selectedFromNumber, setSelectedFromNumber] = React.useState<string | undefined>();
+  const [showClearHistoryDialog, setShowClearHistoryDialog] = React.useState(false);
   const scrollAreaRef = React.useRef<HTMLDivElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
@@ -116,9 +127,10 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
     (conv) => conv.contact_id === selectedContact?.id
   );
 
-  // Mutations for AI toggle and agent assignment
+  // Mutations for AI toggle, agent assignment, and clear history
   const toggleAIMutation = useToggleConversationAI(workspaceId ?? "");
   const assignAgentMutation = useAssignAgent(workspaceId ?? "");
+  const clearHistoryMutation = useClearConversationHistory(workspaceId ?? "");
 
   // Auto-select first phone number when available
   React.useEffect(() => {
@@ -241,6 +253,24 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
     );
   };
 
+  const handleClearHistory = () => {
+    if (!contactConversation) {
+      toast.error("No conversation found for this contact");
+      return;
+    }
+
+    clearHistoryMutation.mutate(contactConversation.id, {
+      onSuccess: () => {
+        clearTimeline();
+        toast.success("Conversation history cleared");
+        setShowClearHistoryDialog(false);
+      },
+      onError: () => {
+        toast.error("Failed to clear history");
+      },
+    });
+  };
+
   const contactName = selectedContact
     ? [selectedContact.first_name, selectedContact.last_name].filter(Boolean).join(" ")
     : undefined;
@@ -339,6 +369,15 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
               <DropdownMenuItem>View contact details</DropdownMenuItem>
               <DropdownMenuItem>Schedule appointment</DropdownMenuItem>
               <DropdownMenuItem>Add note</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive"
+                onClick={() => setShowClearHistoryDialog(true)}
+                disabled={!contactConversation || timeline.length === 0}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Clear history
+              </DropdownMenuItem>
               <DropdownMenuItem className="text-destructive">Archive</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -430,6 +469,31 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
           </Button>
         </div>
       </div>
+
+      {/* Clear History Confirmation Dialog */}
+      <AlertDialog open={showClearHistoryDialog} onOpenChange={setShowClearHistoryDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear conversation history?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete all messages in this conversation. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleClearHistory}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={clearHistoryMutation.isPending}
+            >
+              {clearHistoryMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : null}
+              Clear history
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

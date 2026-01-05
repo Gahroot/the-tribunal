@@ -361,3 +361,43 @@ async def assign_agent(
     await db.commit()
 
     return {"assigned_agent_id": conversation.assigned_agent_id}
+
+
+@router.delete("/{conversation_id}/messages", status_code=status.HTTP_204_NO_CONTENT)
+async def clear_conversation_history(
+    workspace_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> None:
+    """Clear all messages in a conversation (delete conversation history)."""
+    from sqlalchemy import delete
+
+    # Verify conversation exists and belongs to workspace
+    result = await db.execute(
+        select(Conversation).where(
+            Conversation.id == conversation_id,
+            Conversation.workspace_id == workspace_id,
+        )
+    )
+    conversation = result.scalar_one_or_none()
+
+    if not conversation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found",
+        )
+
+    # Delete all messages in the conversation
+    await db.execute(
+        delete(Message).where(Message.conversation_id == conversation_id)
+    )
+
+    # Reset conversation preview fields
+    conversation.last_message_preview = None
+    conversation.last_message_at = None
+    conversation.last_message_direction = None
+    conversation.unread_count = 0
+
+    await db.commit()

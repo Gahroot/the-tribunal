@@ -73,3 +73,19 @@ export function useAssignAgent(workspaceId: string) {
     },
   });
 }
+
+/**
+ * Clear conversation history (delete all messages)
+ */
+export function useClearConversationHistory(workspaceId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (conversationId: string) =>
+      conversationsApi.clearHistory(workspaceId, conversationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["conversations", workspaceId] });
+      queryClient.invalidateQueries({ queryKey: ["conversation"] });
+    },
+  });
+}
