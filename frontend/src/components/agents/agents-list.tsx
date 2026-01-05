@@ -19,6 +19,7 @@ import {
   Sparkles,
   Loader2,
   AlertCircle,
+  Copy,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -112,6 +113,37 @@ export function AgentsList() {
     },
     onError: () => {
       toast.error("Failed to delete agent");
+    },
+  });
+
+  // Duplicate agent
+  const duplicateAgentMutation = useMutation({
+    mutationFn: (agent: (typeof agents)[0]) => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return agentsApi.create(workspaceId, {
+        name: `${agent.name} (Copy)`,
+        description: agent.description ?? undefined,
+        channel_mode: agent.channel_mode,
+        voice_provider: agent.voice_provider,
+        voice_id: agent.voice_id,
+        language: agent.language,
+        system_prompt: agent.system_prompt,
+        temperature: agent.temperature,
+        text_response_delay_ms: agent.text_response_delay_ms,
+        text_max_context_messages: agent.text_max_context_messages,
+        calcom_event_type_id: agent.calcom_event_type_id ?? undefined,
+        enabled_tools: agent.enabled_tools,
+        tool_settings: agent.tool_settings,
+      });
+    },
+    onSuccess: () => {
+      if (workspaceId) {
+        queryClient.invalidateQueries({ queryKey: ["agents", workspaceId] });
+      }
+      toast.success("Agent duplicated");
+    },
+    onError: () => {
+      toast.error("Failed to duplicate agent");
     },
   });
 
@@ -288,6 +320,13 @@ export function AgentsList() {
                               Activate
                             </DropdownMenuItem>
                           )}
+                          <DropdownMenuItem
+                            onClick={() => duplicateAgentMutation.mutate(agent)}
+                            disabled={duplicateAgentMutation.isPending}
+                          >
+                            <Copy className="mr-2 size-4" />
+                            Duplicate
+                          </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             className="text-destructive"
