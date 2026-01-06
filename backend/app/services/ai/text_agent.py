@@ -40,7 +40,9 @@ BOOKING_TOOLS = [
             "description": (
                 "Book an appointment/meeting with the customer on Cal.com. "
                 "Use this when the customer agrees to schedule a call, meeting, "
-                "or appointment. Parse relative dates like 'tomorrow at 2pm'."
+                "or appointment. Parse relative dates like 'tomorrow at 2pm'. "
+                "IMPORTANT: You MUST collect the customer's email address and include "
+                "it in this call. Ask for email in the same message as confirming the booking."
             ),
             "parameters": {
                 "type": "object",
@@ -53,6 +55,13 @@ BOOKING_TOOLS = [
                         "type": "string",
                         "description": "Appointment time in HH:MM 24-hour format",
                     },
+                    "email": {
+                        "type": "string",
+                        "description": (
+                            "Customer's email address for booking confirmation. "
+                            "REQUIRED - always ask for and include the email."
+                        ),
+                    },
                     "duration_minutes": {
                         "type": "integer",
                         "description": "Duration in minutes. Default is 30.",
@@ -63,7 +72,7 @@ BOOKING_TOOLS = [
                         "description": "Optional notes about the appointment",
                     },
                 },
-                "required": ["date", "time"],
+                "required": ["date", "time", "email"],
             },
         },
     },
@@ -313,6 +322,7 @@ async def execute_book_appointment(  # noqa: PLR0911
     db: AsyncSession,
     date_str: str,
     time_str: str,
+    email: str | None = None,
     duration_minutes: int = 30,
     notes: str | None = None,
     timezone: str = "America/New_York",
@@ -327,6 +337,7 @@ async def execute_book_appointment(  # noqa: PLR0911
         db: Database session
         date_str: Date in YYYY-MM-DD format
         time_str: Time in HH:MM format (24-hour)
+        email: Customer email address for booking confirmation
         duration_minutes: Duration in minutes
         notes: Optional notes
         timezone: Timezone for the appointment
@@ -378,7 +389,20 @@ async def execute_book_appointment(  # noqa: PLR0911
             "error": "Contact not found for this conversation",
         }
 
-    if not contact.email:
+    # Use provided email or fall back to contact's existing email
+    booking_email = email or contact.email
+
+    # If email was provided and contact doesn't have one, update the contact
+    if email and not contact.email:
+        contact.email = email
+        await db.flush()
+        log.info(
+            "contact_email_updated",
+            contact_id=contact.id,
+            email=email,
+        )
+
+    if not booking_email:
         log.warning(
             "contact_email_missing",
             contact_id=contact.id,
@@ -387,7 +411,7 @@ async def execute_book_appointment(  # noqa: PLR0911
         )
         return {
             "success": False,
-            "error": "Contact email is required for booking. Please provide an email address.",
+            "error": "Email is required for booking. Please ask for their email.",
         }
 
     # Parse date and time
@@ -420,7 +444,7 @@ async def execute_book_appointment(  # noqa: PLR0911
 
         booking_result = await calcom_service.create_booking(
             event_type_id=agent.calcom_event_type_id,
-            contact_email=contact.email,
+            contact_email=booking_email,
             contact_name=contact.full_name or "Customer",
             start_time=appointment_utc,
             duration_minutes=duration_minutes,
@@ -629,6 +653,7 @@ async def handle_tool_calls(
                 db=db,
                 date_str=arguments.get("date", ""),
                 time_str=arguments.get("time", ""),
+                email=arguments.get("email"),
                 duration_minutes=arguments.get("duration_minutes", 30),
                 notes=arguments.get("notes"),
                 timezone=timezone,
@@ -720,6 +745,14 @@ CRITICAL RULES - NEVER VIOLATE THESE:
 2. NEVER promise to do something without IMMEDIATELY calling the function
 3. If you need availability info, call check_availability IN THIS RESPONSE
 4. If user picks a time, call book_appointment IN THIS RESPONSE
+5. EMAIL IS REQUIRED - collect email BEFORE or WITH the booking confirmation
+
+EMAIL COLLECTION - CRITICAL:
+- When offering available time slots, ALSO ask for their email in the same message
+- Example: "I have Monday 2pm or Tuesday 10am. Which works? What email for confirmation?"
+- NEVER attempt to book without having the customer's email
+- If user picks time without email, ask for it before calling book_appointment
+- Once you have both the time AND email, call book_appointment with the email parameter
 
 WHEN TO CALL check_availability:
 - User asks about availability ("when", "what times", "what's open")
@@ -728,27 +761,32 @@ WHEN TO CALL check_availability:
 - You need to offer time options
 
 WHEN TO CALL book_appointment:
-- User confirms a specific time you offered
-- User says "yes", "that works", "sounds good" after you offered times
-- User picks "the first one" or "the second option"
+- User confirms a specific time AND you have their email
+- ALWAYS include the email parameter when calling book_appointment
+- If user picks a time but hasn't given email, ask for email first, then book
 
 RESPONSE PATTERN:
 1. Call the function FIRST (check_availability or book_appointment)
 2. THEN respond based on the function result
 3. Offer exactly 2 specific time options when presenting availability
+4. Ask for email in the SAME message when presenting availability options
 
 FUNCTION FORMATS:
 - check_availability: start_date as YYYY-MM-DD (check 3-5 days ahead if not specified)
-- book_appointment: date as YYYY-MM-DD, time as HH:MM (24-hour format)
+- book_appointment: date as YYYY-MM-DD, time as HH:MM (24-hour format), email (REQUIRED)
 
 EXAMPLES OF WHAT NOT TO DO:
 ❌ "Let me check availability for you. One moment..."  (NO - call the function!)
 ❌ "I'll look into that and get back to you"  (NO - call the function NOW!)
 ❌ "Checking..."  (NO - just call the function silently!)
+❌ Booking without asking for email first  (NO - always get email before booking!)
+❌ Asking for email AFTER booking fails  (NO - ask BEFORE or WITH the booking confirmation!)
 
 CORRECT BEHAVIOR:
-✓ "when are you free?" → Call check_availability → "I have Monday 2pm or Tuesday 10am"
-✓ "Monday works" → Call book_appointment → "You're booked for Monday at 2pm!"
+✓ "when are you free?" → check_availability → "Monday 2pm or Tuesday 10am. What email?"
+✓ "Monday, email is john@example.com" → book_appointment(email) → "Booked! Sent to john@"
+✓ "Monday works" (no email) → "Great! What email should I send the confirmation to?"
+✓ User gives email → book_appointment with the email → Confirm booking
 
 The ONLY way to check times is check_availability. The ONLY way to book is book_appointment."""
 
@@ -816,6 +854,10 @@ The ONLY way to check times is check_availability. The ONLY way to book is book_
                 "6pm", "7pm", "8pm", "9am", "10am", "11am", "12pm",
                 "at 1", "at 2", "at 3", "at 4", "at 5", "at 6", "at 7",
                 "at 8", "at 9", "at 10", "at 11", "at 12",
+
+                # Email indicators - trigger booking when user provides email
+                "@", ".com", ".net", ".org", ".io", "email", "e-mail",
+                "my email", "email is", "send it to", "confirmation to",
             ]
             if any(kw in last_msg for kw in booking_words):
                 api_params["tool_choice"] = "required"

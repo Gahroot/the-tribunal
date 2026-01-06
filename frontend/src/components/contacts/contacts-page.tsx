@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Plus, User, Phone, Mail, Users } from "lucide-react";
+import { Search, Plus, User, Phone, Mail, Users, Upload } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useContactStore } from "@/lib/contact-store";
 import { CreateContactDialog } from "@/components/contacts/create-contact-dialog";
+import { ImportContactsDialog } from "@/components/contacts/import-contacts-dialog";
 import type { Contact, ContactStatus } from "@/types";
 
 const statusColors: Record<string, string> = {
@@ -190,6 +191,7 @@ function StatusFilter({ selectedStatus, onStatusChange, counts }: StatusFilterPr
 
 export function ContactsPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = React.useState(false);
   const {
     contacts,
     searchQuery,
@@ -263,10 +265,16 @@ export function ContactsPage() {
               {contacts.length}
             </Badge>
           </div>
-          <Button className="gap-2" onClick={() => setIsCreateDialogOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Add Contact
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" className="gap-2" onClick={() => setIsImportDialogOpen(true)}>
+              <Upload className="h-4 w-4" />
+              Import CSV
+            </Button>
+            <Button className="gap-2" onClick={() => setIsCreateDialogOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Add Contact
+            </Button>
+          </div>
         </div>
 
         {/* Search */}
@@ -332,6 +340,11 @@ export function ContactsPage() {
       <CreateContactDialog
         open={isCreateDialogOpen}
         onOpenChange={setIsCreateDialogOpen}
+      />
+
+      <ImportContactsDialog
+        open={isImportDialogOpen}
+        onOpenChange={setIsImportDialogOpen}
       />
     </div>
   );

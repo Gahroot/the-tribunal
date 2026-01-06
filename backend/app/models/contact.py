@@ -2,10 +2,10 @@
 
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, String, Text
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -42,6 +42,23 @@ class Contact(Base):
         String(50), nullable=False, default="new", index=True
     )  # new, contacted, qualified, converted, lost
     lead_score: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+
+    # Qualification
+    is_qualified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    qualification_signals: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # Structure: {
+    #     "budget": {"detected": bool, "value": str|None, "confidence": float},
+    #     "authority": {"detected": bool, "value": str|None, "confidence": float},
+    #     "need": {"detected": bool, "value": str|None, "confidence": float},
+    #     "timeline": {"detected": bool, "value": str|None, "confidence": float},
+    #     "interest_level": str,  # "high", "medium", "low", "unknown"
+    #     "pain_points": list[str],
+    #     "objections": list[str],
+    #     "next_steps": str|None,
+    #     "last_analyzed_at": str (ISO datetime),
+    #     "conversation_count": int
+    # }
+    qualified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Organization
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)

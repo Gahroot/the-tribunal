@@ -34,6 +34,29 @@ class ContactUpdate(BaseModel):
     lead_score: int | None = None
 
 
+class QualificationSignalDetail(BaseModel):
+    """Detail for a single BANT qualification signal."""
+
+    detected: bool = False
+    value: str | None = None
+    confidence: float = 0.0
+
+
+class QualificationSignals(BaseModel):
+    """Extracted qualification signals from conversations (BANT framework)."""
+
+    budget: QualificationSignalDetail = Field(default_factory=QualificationSignalDetail)
+    authority: QualificationSignalDetail = Field(default_factory=QualificationSignalDetail)
+    need: QualificationSignalDetail = Field(default_factory=QualificationSignalDetail)
+    timeline: QualificationSignalDetail = Field(default_factory=QualificationSignalDetail)
+    interest_level: str = "unknown"  # high, medium, low, unknown
+    pain_points: list[str] = Field(default_factory=list)
+    objections: list[str] = Field(default_factory=list)
+    next_steps: str | None = None
+    last_analyzed_at: datetime | None = None
+    conversation_count: int = 0
+
+
 class ContactResponse(BaseModel):
     """Schema for contact response."""
 
@@ -46,6 +69,9 @@ class ContactResponse(BaseModel):
     company_name: str | None
     status: str
     lead_score: int
+    is_qualified: bool
+    qualification_signals: QualificationSignals | None
+    qualified_at: datetime | None
     tags: list[str] | None
     notes: str | None
     source: str | None
