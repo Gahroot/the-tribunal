@@ -95,6 +95,15 @@ const HUME_VOICES = [
   { id: "luna", name: "Luna", description: "Soft and calming" },
 ] as const;
 
+// Grok (xAI) voices - supports realism cues like [whisper], [sigh], [laugh]
+const GROK_VOICES = [
+  { id: "ara", name: "Ara", description: "Warm & friendly female (Recommended)", recommended: true },
+  { id: "rex", name: "Rex", description: "Confident & clear male" },
+  { id: "sal", name: "Sal", description: "Smooth & balanced neutral" },
+  { id: "eve", name: "Eve", description: "Energetic & upbeat female" },
+  { id: "leo", name: "Leo", description: "Authoritative & strong male" },
+] as const;
+
 // Get integrations that have tools defined
 const INTEGRATIONS_WITH_TOOLS = AVAILABLE_INTEGRATIONS.filter(
   (i) => i.tools && i.tools.length > 0
@@ -162,7 +171,7 @@ const WIZARD_STEPS = [
 ] as const;
 
 const agentFormSchema = z.object({
-  pricingTier: z.enum(["budget", "balanced", "premium-mini", "premium", "hume-evi", "openai-hume"]),
+  pricingTier: z.enum(["budget", "balanced", "premium-mini", "premium", "hume-evi", "openai-hume", "grok"]),
   name: z.string().min(2, "Name must be at least 2 characters"),
   description: z.string().optional(),
   language: z.string(),
@@ -251,6 +260,33 @@ export function CreateAgentForm() {
     }
   }, [pricingTier, currentLanguage, form]);
 
+  // Set default voice when pricing tier changes
+  useEffect(() => {
+    const currentVoice = form.getValues("voice");
+    let defaultVoice = "marin"; // OpenAI default
+
+    if (pricingTier === "grok") {
+      defaultVoice = "ara";
+      // Only reset if current voice isn't a valid Grok voice
+      const grokVoiceIds = GROK_VOICES.map((v) => v.id);
+      if (!grokVoiceIds.includes(currentVoice as typeof grokVoiceIds[number])) {
+        form.setValue("voice", defaultVoice);
+      }
+    } else if (pricingTier === "openai-hume") {
+      defaultVoice = "kora";
+      const humeVoiceIds = HUME_VOICES.map((v) => v.id);
+      if (!humeVoiceIds.includes(currentVoice as typeof humeVoiceIds[number])) {
+        form.setValue("voice", defaultVoice);
+      }
+    } else {
+      // OpenAI Realtime
+      const realtimeVoiceIds = REALTIME_VOICES.map((v) => v.id);
+      if (!realtimeVoiceIds.includes(currentVoice as typeof realtimeVoiceIds[number])) {
+        form.setValue("voice", defaultVoice);
+      }
+    }
+  }, [pricingTier, form]);
+
   const validateStep = async (currentStep: number): Promise<boolean> => {
     switch (currentStep) {
       case 1: {
@@ -290,12 +326,24 @@ export function CreateAgentForm() {
     if (isSubmitting) return;
     setIsSubmitting(true);
 
+    // Determine voice provider based on pricing tier
+    const getVoiceProvider = (tier: string): string => {
+      switch (tier) {
+        case "grok":
+          return "grok";
+        case "openai-hume":
+          return "hume";
+        default:
+          return "openai";
+      }
+    };
+
     // Map form data to API request format
     const apiRequest: CreateAgentRequest = {
       name: data.name,
       description: data.description || undefined,
       channel_mode: data.channelMode,
-      voice_provider: data.pricingTier === "openai-hume" ? "hume" : "openai",
+      voice_provider: getVoiceProvider(data.pricingTier),
       voice_id: data.voice,
       language: data.language,
       system_prompt: data.systemPrompt,
@@ -574,12 +622,18 @@ export function CreateAgentForm() {
 
                   {(pricingTier === "premium" ||
                     pricingTier === "premium-mini" ||
-                    pricingTier === "openai-hume") && (
+                    pricingTier === "openai-hume" ||
+                    pricingTier === "grok") && (
                     <FormField
                       control={form.control}
                       name="voice"
                       render={({ field }) => {
-                        const voices = pricingTier === "openai-hume" ? HUME_VOICES : REALTIME_VOICES;
+                        const voices =
+                          pricingTier === "grok"
+                            ? GROK_VOICES
+                            : pricingTier === "openai-hume"
+                              ? HUME_VOICES
+                              : REALTIME_VOICES;
                         return (
                           <FormItem>
                             <FormLabel>Voice</FormLabel>

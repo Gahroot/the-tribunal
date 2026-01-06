@@ -11,6 +11,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
+from app.services.ai.grok_voice_agent import GrokVoiceAgentSession
 from app.services.ai.voice_agent import VoiceAgentSession
 
 router = APIRouter()
@@ -446,9 +447,76 @@ async def _lookup_call_context(
     return agent, contact_info, offer_info
 
 
+def _create_voice_session(
+    voice_provider: str,
+    agent: Any,
+) -> tuple[VoiceAgentSession | GrokVoiceAgentSession | None, str | None]:
+    """Create appropriate voice session based on provider.
+
+    Args:
+        voice_provider: Provider name (openai, grok)
+        agent: Agent model for configuration
+
+    Returns:
+        Tuple of (voice_session, error_message)
+    """
+    if voice_provider == "grok":
+        if not settings.xai_api_key:
+            return None, "xAI API key not configured"
+        return GrokVoiceAgentSession(settings.xai_api_key, agent), None
+
+    # Default to OpenAI
+    if not settings.openai_api_key:
+        return None, "OpenAI API key not configured"
+    return VoiceAgentSession(settings.openai_api_key, agent), None
+
+
+async def _setup_voice_session(
+    voice_session: VoiceAgentSession | GrokVoiceAgentSession,
+    agent: Any,
+    contact_info: dict[str, Any] | None,
+    offer_info: dict[str, Any] | None,
+    log: Any,
+) -> None:
+    """Configure voice session with agent settings and context.
+
+    Args:
+        voice_session: Voice provider session
+        agent: Agent model for configuration
+        contact_info: Contact information dict
+        offer_info: Offer information dict
+        log: Logger instance
+    """
+    if agent:
+        await voice_session.configure_session(
+            voice=agent.voice_id,
+            system_prompt=agent.system_prompt,
+            temperature=agent.temperature,
+            turn_detection_mode=agent.turn_detection_mode,
+            turn_detection_threshold=agent.turn_detection_threshold,
+            silence_duration_ms=agent.silence_duration_ms,
+        )
+        log.info("session_configured_with_agent_settings", agent_name=agent.name)
+
+    if contact_info or offer_info:
+        await voice_session.inject_context(
+            contact_info=contact_info,
+            offer_info=offer_info,
+        )
+        log.info("context_injected", has_contact=bool(contact_info), has_offer=bool(offer_info))
+
+    if agent and agent.initial_greeting:
+        await voice_session.send_greeting(agent.initial_greeting)
+        log.info("initial_greeting_sent")
+
+
 @router.websocket("/voice/stream/{call_id}")
 async def voice_stream_bridge(websocket: WebSocket, call_id: str) -> None:
-    """Bridge between Telnyx media stream and OpenAI Realtime API.
+    """Bridge between Telnyx media stream and voice AI provider.
+
+    Supports multiple providers:
+    - OpenAI Realtime API (default)
+    - Grok (xAI) Realtime API
 
     Args:
         websocket: WebSocket connection from Telnyx
@@ -459,56 +527,38 @@ async def voice_stream_bridge(websocket: WebSocket, call_id: str) -> None:
 
     await websocket.accept()
 
-    if not settings.openai_api_key:
-        log.error("openai_api_key_not_configured")
-        await websocket.send_json(
-            {"error": "OpenAI API key not configured"}
-        )
+    # Get agent and conversation context from database first to determine provider
+    agent, contact_info, offer_info = await _lookup_call_context(call_id, log)
+
+    # Determine which voice provider to use
+    voice_provider = "openai"  # default
+    if agent and agent.voice_provider:
+        voice_provider = agent.voice_provider.lower()
+
+    log.info("using_voice_provider", provider=voice_provider)
+
+    # Create appropriate voice session based on provider
+    voice_session, error = _create_voice_session(voice_provider, agent)
+    if voice_session is None:
+        log.error("api_key_not_configured", provider=voice_provider)
+        await websocket.send_json({"error": error})
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    # Connect to OpenAI Realtime API
-    voice_session = VoiceAgentSession(settings.openai_api_key)
-
     try:
-        # Get agent and conversation context from database
-        agent, contact_info, offer_info = await _lookup_call_context(call_id, log)
-
-        # Connect to OpenAI
+        # Connect to voice provider
         if not await voice_session.connect():
-            log.error("failed_to_connect_to_openai")
+            log.error("failed_to_connect_to_voice_provider", provider=voice_provider)
             await websocket.send_json(
-                {"error": "Failed to connect to OpenAI Realtime API"}
+                {"error": f"Failed to connect to {voice_provider} Realtime API"}
             )
             await websocket.close(code=status.WS_1011_SERVER_ERROR)
             return
 
-        log.info("connected_to_openai_realtime")
+        log.info("connected_to_voice_provider", provider=voice_provider)
 
-        # Configure session with agent settings if available
-        if agent:
-            await voice_session.configure_session(
-                voice=agent.voice_id,
-                system_prompt=agent.system_prompt,
-                temperature=agent.temperature,
-                turn_detection_mode=agent.turn_detection_mode,
-                turn_detection_threshold=agent.turn_detection_threshold,
-                silence_duration_ms=agent.silence_duration_ms,
-            )
-            log.info("session_configured_with_agent_settings", agent_name=agent.name)
-
-        # Inject context if available
-        if contact_info or offer_info:
-            await voice_session.inject_context(
-                contact_info=contact_info,
-                offer_info=offer_info,
-            )
-            log.info("context_injected", has_contact=bool(contact_info), has_offer=bool(offer_info))
-
-        # Send initial greeting if agent has one configured
-        if agent and agent.initial_greeting:
-            await voice_session.send_greeting(agent.initial_greeting)
-            log.info("initial_greeting_sent")
+        # Configure session with agent settings and inject context
+        await _setup_voice_session(voice_session, agent, contact_info, offer_info, log)
 
         # Start bidirectional audio relay
         relay_task = asyncio.create_task(
@@ -520,7 +570,7 @@ async def voice_stream_bridge(websocket: WebSocket, call_id: str) -> None:
             while True:
                 await asyncio.sleep(0.1)
                 if not voice_session.is_connected():
-                    log.warning("openai_connection_lost")
+                    log.warning("voice_provider_connection_lost")
                     break
         except asyncio.CancelledError:
             log.info("relay_cancelled")
@@ -539,7 +589,7 @@ async def voice_stream_bridge(websocket: WebSocket, call_id: str) -> None:
 
 async def _relay_audio(
     websocket: WebSocket,
-    voice_session: VoiceAgentSession,
+    voice_session: VoiceAgentSession | GrokVoiceAgentSession,
     log: Any,
 ) -> None:
     """Relay audio between Telnyx and OpenAI.
@@ -551,12 +601,12 @@ async def _relay_audio(
     """
     # Create tasks for bidirectional streaming
     send_task = asyncio.create_task(
-        _receive_from_telnyx_and_send_to_openai(
+        _receive_from_telnyx_and_send_to_provider(
             websocket, voice_session, log
         )
     )
     recv_task = asyncio.create_task(
-        _receive_from_openai_and_send_to_telnyx(
+        _receive_from_provider_and_send_to_telnyx(
             websocket, voice_session, log
         )
     )
@@ -582,16 +632,16 @@ async def _relay_audio(
         log.exception("relay_error", error=str(e))
 
 
-async def _receive_from_telnyx_and_send_to_openai(
+async def _receive_from_telnyx_and_send_to_provider(
     websocket: WebSocket,
-    voice_session: VoiceAgentSession,
+    voice_session: VoiceAgentSession | GrokVoiceAgentSession,
     log: Any,
 ) -> None:
-    """Receive audio from Telnyx and send to OpenAI.
+    """Receive audio from Telnyx and send to voice provider.
 
     Args:
         websocket: Telnyx WebSocket connection
-        voice_session: OpenAI Realtime session
+        voice_session: Voice provider session (OpenAI or Grok)
         log: Logger instance
     """
     try:
@@ -621,16 +671,16 @@ async def _receive_from_telnyx_and_send_to_openai(
         log.exception("receive_from_telnyx_error", error=str(e))
 
 
-async def _receive_from_openai_and_send_to_telnyx(
+async def _receive_from_provider_and_send_to_telnyx(
     websocket: WebSocket,
-    voice_session: VoiceAgentSession,
+    voice_session: VoiceAgentSession | GrokVoiceAgentSession,
     log: Any,
 ) -> None:
-    """Receive audio from OpenAI and send to Telnyx.
+    """Receive audio from voice provider and send to Telnyx.
 
     Args:
         websocket: Telnyx WebSocket connection
-        voice_session: OpenAI Realtime session
+        voice_session: Voice provider session (OpenAI or Grok)
         log: Logger instance
     """
     try:

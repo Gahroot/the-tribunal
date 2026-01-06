@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     # ElevenLabs
     elevenlabs_api_key: str = ""
 
+    # xAI (Grok)
+    xai_api_key: str = ""
+
     # App
     debug: bool = False
     cors_origins: list[str] = ["http://localhost:3000"]
