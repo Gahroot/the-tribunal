@@ -158,6 +158,25 @@ def _should_require_booking_tools(message: str) -> bool:  # noqa: PLR0911
     if any(phrase in message for phrase in direct_booking_phrases):
         return True
 
+    # Buying signals - general positive responses indicating readiness to proceed
+    # These trigger booking tools so the AI offers to schedule instead of more questions
+    buying_signal_phrases = [
+        "sounds good", "that sounds great", "that sounds good",
+        "ok sounds good", "okay sounds good",
+        "i'm in", "im in", "count me in", "sign me up",
+        "i'm interested", "im interested", "i'm ready", "im ready",
+        "let's move forward", "lets move forward",
+        "let's get started", "lets get started",
+        "let's go", "lets go",
+        "how do we get started", "how do i get started",
+        "what's the next step", "whats the next step",
+        "what do i need to do", "what do we do next",
+        "i want that", "i need that", "i want this", "i need this",
+        "yes please", "yeah that works", "yes that works",
+    ]
+    if any(phrase in message for phrase in buying_signal_phrases):
+        return True
+
     # Availability questions - trigger tools
     availability_phrases = [
         "when are you", "when is he", "when is she", "when is nolan",
