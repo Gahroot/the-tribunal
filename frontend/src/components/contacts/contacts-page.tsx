@@ -3,17 +3,30 @@
 import * as React from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Plus, User, Phone, Mail, Users, Upload } from "lucide-react";
+import { Search, Plus, User, Phone, Mail, Users, Upload, Trash2, X, CheckSquare } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { useContactStore } from "@/lib/contact-store";
 import { CreateContactDialog } from "@/components/contacts/create-contact-dialog";
 import { ImportContactsDialog } from "@/components/contacts/import-contacts-dialog";
+import { useBulkDeleteContacts } from "@/hooks/useContacts";
+import { useAuth } from "@/providers/auth-provider";
 import type { Contact, ContactStatus } from "@/types";
 
 const statusColors: Record<string, string> = {
@@ -70,93 +83,119 @@ function ContactCardSkeleton() {
 
 interface ContactCardProps {
   contact: Contact;
+  isSelected: boolean;
+  onSelectChange: (checked: boolean) => void;
+  isSelectionMode: boolean;
 }
 
-function ContactCard({ contact }: ContactCardProps) {
+function ContactCard({ contact, isSelected, onSelectChange, isSelectionMode }: ContactCardProps) {
   const displayName = [contact.first_name, contact.last_name].filter(Boolean).join(" ") || "Unknown";
 
-  return (
-    <Link href={`/contacts/${contact.id}`}>
-      <motion.div
-        layout
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        transition={{ duration: 0.2 }}
-        className={cn(
-          "flex flex-col p-4 rounded-xl border bg-card",
-          "hover:bg-accent/50 hover:border-accent transition-all cursor-pointer",
-          "group"
-        )}
-      >
-        <div className="flex items-start gap-3">
-          <Avatar className="h-12 w-12 shrink-0">
-            <AvatarFallback className="bg-primary/10 text-primary text-base font-medium">
-              {getInitials(contact)}
-            </AvatarFallback>
-          </Avatar>
+  const handleCheckboxClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onSelectChange(!isSelected);
+  };
 
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-semibold truncate group-hover:text-primary transition-colors">
-                {displayName}
-              </span>
-              <Badge variant="secondary" className={cn("text-xs shrink-0", statusColors[contact.status])}>
-                {statusLabels[contact.status]}
-              </Badge>
-            </div>
-            {contact.company_name && (
-              <p className="text-sm text-muted-foreground truncate mt-0.5">
-                {contact.company_name}
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="mt-3 flex flex-col gap-1.5 text-sm text-muted-foreground">
-          {contact.phone_number && (
-            <div className="flex items-center gap-2 truncate">
-              <Phone className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{formatPhoneNumber(contact.phone_number)}</span>
-            </div>
-          )}
-          {contact.email && (
-            <div className="flex items-center gap-2 truncate">
-              <Mail className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{contact.email}</span>
-            </div>
-          )}
-        </div>
-
-        {contact.tags && (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {(() => {
-              const tagsArray = Array.isArray(contact.tags)
-                ? contact.tags
-                : typeof contact.tags === "string"
-                  ? contact.tags.split(",").map((t) => t.trim()).filter(Boolean)
-                  : [];
-
-              return (
-                <>
-                  {tagsArray.slice(0, 3).map((tag) => (
-                    <Badge key={tag} variant="outline" className="text-xs">
-                      {tag}
-                    </Badge>
-                  ))}
-                  {tagsArray.length > 3 && (
-                    <Badge variant="outline" className="text-xs">
-                      +{tagsArray.length - 3}
-                    </Badge>
-                  )}
-                </>
-              );
-            })()}
+  const cardContent = (
+    <motion.div
+      layout
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{ duration: 0.2 }}
+      className={cn(
+        "flex flex-col p-4 rounded-xl border bg-card",
+        "hover:bg-accent/50 hover:border-accent transition-all cursor-pointer",
+        "group",
+        isSelected && "ring-2 ring-primary border-primary"
+      )}
+    >
+      <div className="flex items-start gap-3">
+        {isSelectionMode && (
+          <div className="shrink-0 pt-1" onClick={handleCheckboxClick}>
+            <Checkbox
+              checked={isSelected}
+              onCheckedChange={(checked) => onSelectChange(checked === true)}
+            />
           </div>
         )}
-      </motion.div>
-    </Link>
+        <Avatar className="h-12 w-12 shrink-0">
+          <AvatarFallback className="bg-primary/10 text-primary text-base font-medium">
+            {getInitials(contact)}
+          </AvatarFallback>
+        </Avatar>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-semibold truncate group-hover:text-primary transition-colors">
+              {displayName}
+            </span>
+            <Badge variant="secondary" className={cn("text-xs shrink-0", statusColors[contact.status])}>
+              {statusLabels[contact.status]}
+            </Badge>
+          </div>
+          {contact.company_name && (
+            <p className="text-sm text-muted-foreground truncate mt-0.5">
+              {contact.company_name}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-col gap-1.5 text-sm text-muted-foreground">
+        {contact.phone_number && (
+          <div className="flex items-center gap-2 truncate">
+            <Phone className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{formatPhoneNumber(contact.phone_number)}</span>
+          </div>
+        )}
+        {contact.email && (
+          <div className="flex items-center gap-2 truncate">
+            <Mail className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{contact.email}</span>
+          </div>
+        )}
+      </div>
+
+      {contact.tags && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {(() => {
+            const tagsArray = Array.isArray(contact.tags)
+              ? contact.tags
+              : typeof contact.tags === "string"
+                ? contact.tags.split(",").map((t) => t.trim()).filter(Boolean)
+                : [];
+
+            return (
+              <>
+                {tagsArray.slice(0, 3).map((tag) => (
+                  <Badge key={tag} variant="outline" className="text-xs">
+                    {tag}
+                  </Badge>
+                ))}
+                {tagsArray.length > 3 && (
+                  <Badge variant="outline" className="text-xs">
+                    +{tagsArray.length - 3}
+                  </Badge>
+                )}
+              </>
+            );
+          })()}
+        </div>
+      )}
+    </motion.div>
   );
+
+  if (isSelectionMode) {
+    return (
+      <div onClick={() => onSelectChange(!isSelected)}>
+        {cardContent}
+      </div>
+    );
+  }
+
+  return <Link href={`/contacts/${contact.id}`}>{cardContent}</Link>;
 }
 
 interface StatusFilterProps {
@@ -192,6 +231,10 @@ function StatusFilter({ selectedStatus, onStatusChange, counts }: StatusFilterPr
 export function ContactsPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = React.useState(false);
+  const [selectedIds, setSelectedIds] = React.useState<number[]>([]);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
+  const { workspaceId } = useAuth();
+  const bulkDeleteMutation = useBulkDeleteContacts(workspaceId ?? "");
   const {
     contacts,
     searchQuery,
@@ -199,7 +242,41 @@ export function ContactsPage() {
     statusFilter,
     setStatusFilter,
     isLoadingContacts,
+    setContacts,
   } = useContactStore();
+
+  const isSelectionMode = selectedIds.length > 0;
+
+  const handleSelectContact = (contactId: number, checked: boolean) => {
+    setSelectedIds((prev) =>
+      checked ? [...prev, contactId] : prev.filter((id) => id !== contactId)
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectedIds.length === filteredContacts.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredContacts.map((c) => c.id));
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedIds([]);
+  };
+
+  const handleBulkDelete = async () => {
+    if (!workspaceId || selectedIds.length === 0) return;
+
+    try {
+      await bulkDeleteMutation.mutateAsync(selectedIds);
+      setContacts(contacts.filter((c) => !selectedIds.includes(c.id)));
+      setSelectedIds([]);
+      setIsDeleteDialogOpen(false);
+    } catch (error) {
+      console.error("Failed to delete contacts:", error);
+    }
+  };
 
   // Calculate status counts
   const statusCounts = React.useMemo(() => {
@@ -218,6 +295,7 @@ export function ContactsPage() {
   }, [contacts]);
 
   // Filter contacts based on search query and status filter
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const filteredContacts = React.useMemo(() => {
     let filtered = contacts;
 
@@ -254,9 +332,9 @@ export function ContactsPage() {
   }, [contacts, searchQuery, statusFilter]);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="p-6 border-b space-y-4">
+      <div className="shrink-0 p-6 border-b space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Users className="h-6 w-6 text-primary" />
@@ -277,6 +355,39 @@ export function ContactsPage() {
           </div>
         </div>
 
+        {/* Bulk Actions Bar */}
+        {isSelectionMode && (
+          <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg border">
+            <Checkbox
+              checked={selectedIds.length === filteredContacts.length && filteredContacts.length > 0}
+              onCheckedChange={handleSelectAll}
+            />
+            <span className="text-sm font-medium">
+              {selectedIds.length} selected
+            </span>
+            <div className="flex-1" />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleClearSelection}
+              className="gap-2"
+            >
+              <X className="h-4 w-4" />
+              Clear
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setIsDeleteDialogOpen(true)}
+              className="gap-2"
+              disabled={bulkDeleteMutation.isPending}
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete ({selectedIds.length})
+            </Button>
+          </div>
+        )}
+
         {/* Search */}
         <div className="flex items-center gap-4">
           <div className="relative flex-1 max-w-md">
@@ -288,6 +399,17 @@ export function ContactsPage() {
               className="pl-9"
             />
           </div>
+          {!isSelectionMode && filteredContacts.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSelectedIds([filteredContacts[0].id])}
+              className="gap-2"
+            >
+              <CheckSquare className="h-4 w-4" />
+              Select
+            </Button>
+          )}
         </div>
 
         {/* Status Filters */}
@@ -299,7 +421,7 @@ export function ContactsPage() {
       </div>
 
       {/* Contacts Grid */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="p-6">
           {isLoadingContacts ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -329,7 +451,13 @@ export function ContactsPage() {
             <AnimatePresence mode="popLayout">
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {filteredContacts.map((contact) => (
-                  <ContactCard key={contact.id} contact={contact} />
+                  <ContactCard
+                    key={contact.id}
+                    contact={contact}
+                    isSelected={selectedIds.includes(contact.id)}
+                    onSelectChange={(checked) => handleSelectContact(contact.id, checked)}
+                    isSelectionMode={isSelectionMode}
+                  />
                 ))}
               </div>
             </AnimatePresence>
@@ -346,6 +474,27 @@ export function ContactsPage() {
         open={isImportDialogOpen}
         onOpenChange={setIsImportDialogOpen}
       />
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedIds.length} contact{selectedIds.length > 1 ? "s" : ""}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the selected contact{selectedIds.length > 1 ? "s" : ""} and all associated data.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={bulkDeleteMutation.isPending}
+            >
+              {bulkDeleteMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

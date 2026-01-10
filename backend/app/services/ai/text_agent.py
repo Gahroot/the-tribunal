@@ -106,6 +106,110 @@ BOOKING_TOOLS = [
 _pending_responses: dict[str, asyncio.Task[None]] = {}
 
 
+def _extract_email_from_messages(messages: list[dict[str, str]]) -> str | None:
+    """Extract email address from conversation history.
+
+    Searches through messages (newest first) for email addresses.
+
+    Args:
+        messages: List of message dicts with 'content' key
+
+    Returns:
+        The most recently mentioned email address, or None
+    """
+    import re
+
+    email_pattern = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+
+    # Search from newest to oldest (reversed)
+    for msg in reversed(messages):
+        content = msg.get("content", "")
+        match = re.search(email_pattern, content)
+        if match:
+            return match.group(0)
+
+    return None
+
+
+def _should_require_booking_tools(message: str) -> bool:  # noqa: PLR0911
+    """Determine if booking tools should be required based on message content.
+
+    Uses smarter matching to avoid false positives like "weather today".
+
+    Args:
+        message: The lowercased message to analyze
+
+    Returns:
+        True if booking tools should be required
+    """
+    import re
+
+    # Direct booking intent phrases - always trigger
+    direct_booking_phrases = [
+        "book a", "book an", "schedule a", "schedule an",
+        "set up a", "setup a", "arrange a",
+        "want to meet", "want to call", "want to schedule",
+        "like to meet", "like to call", "like to schedule",
+        "can we meet", "can we call", "can we schedule",
+        "let's meet", "lets meet", "let's schedule", "lets schedule",
+        "interested in scheduling", "interested in meeting",
+        "ready to book", "ready to schedule",
+    ]
+    if any(phrase in message for phrase in direct_booking_phrases):
+        return True
+
+    # Availability questions - trigger tools
+    availability_phrases = [
+        "when are you", "when is he", "when is she", "when is nolan",
+        "what times", "what time do", "what days",
+        "any availability", "your availability", "his availability",
+        "are you available", "is he available", "is she available",
+        "when can we", "when can i", "when could we",
+        "what's available", "whats available",
+        "free time", "open slots", "available slots",
+    ]
+    if any(phrase in message for phrase in availability_phrases):
+        return True
+
+    # Time selection responses - user picking a slot
+    # Must be in scheduling context (short message with time reference)
+    time_selection_patterns = [
+        r"\b(tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b.*\b(works|good|perfect|great|fine)\b",
+        r"\b(works|good|perfect|great|fine)\b.*\b(tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+        r"^(tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s*(at\s*)?\d",
+        r"^\d{1,2}(:\d{2})?\s*(am|pm|AM|PM)?\s*(works|good|perfect|sounds|great)?",
+        r"^(let's do|lets do|i'll take|ill take|how about)\s",
+    ]
+    for pattern in time_selection_patterns:
+        if re.search(pattern, message, re.IGNORECASE):
+            return True
+
+    # Specific time mentions with booking context
+    # Only trigger if message is SHORT and contains time (likely a time selection)
+    if len(message) < 50:
+        time_patterns = [
+            r"\b\d{1,2}(:\d{2})?\s*(am|pm)\b",  # "2pm", "2:30 pm"
+            r"\bat\s+\d{1,2}\b",  # "at 2", "at 3"
+            r"\b(morning|afternoon|evening)\s+(works|is good|sounds good)\b",
+        ]
+        for pattern in time_patterns:
+            if re.search(pattern, message, re.IGNORECASE):
+                return True
+
+    # Email provided - likely confirming booking
+    # Check for actual email pattern, not just "@" or ".com"
+    email_pattern = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+    if re.search(email_pattern, message):
+        return True
+
+    # Email mention in booking context
+    email_context_phrases = [
+        "my email is", "email is", "send it to", "send confirmation to",
+        "here's my email", "heres my email", "my email:",
+    ]
+    return any(phrase in message for phrase in email_context_phrases)
+
+
 def build_text_instructions(
     system_prompt: str,
     language: str = "en-US",
@@ -679,7 +783,7 @@ async def handle_tool_calls(
     return results
 
 
-async def generate_text_response(  # noqa: PLR0915
+async def generate_text_response(  # noqa: PLR0915, PLR0912
     agent: Agent,
     conversation: Conversation,
     db: AsyncSession,
@@ -726,6 +830,7 @@ async def generate_text_response(  # noqa: PLR0915
     )
 
     booking_instructions = ""
+    extracted_email = None
     if has_booking_tools:
         # Get current date for relative date parsing
         try:
@@ -735,10 +840,21 @@ async def generate_text_response(  # noqa: PLR0915
         except Exception:
             current_date = datetime.now().strftime("%Y-%m-%d")
 
+        # Extract email from conversation history
+        extracted_email = _extract_email_from_messages(messages)
+        email_context = ""
+        if extracted_email:
+            email_context = f"""
+KNOWN EMAIL: The customer has provided their email: {extracted_email}
+- Use this email when calling book_appointment
+- Do NOT ask for email again - you already have it
+- Proceed directly with booking when they confirm a time"""
+
         booking_instructions = f"""
 
 [APPOINTMENT BOOKING]
 Today's date is {current_date}.
+{email_context}
 
 CRITICAL RULES - NEVER VIOLATE THESE:
 1. NEVER say "one moment", "let me check", or "checking" - just call the function
@@ -747,12 +863,11 @@ CRITICAL RULES - NEVER VIOLATE THESE:
 4. If user picks a time, call book_appointment IN THIS RESPONSE
 5. EMAIL IS REQUIRED - collect email BEFORE or WITH the booking confirmation
 
-EMAIL COLLECTION - CRITICAL:
-- When offering available time slots, ALSO ask for their email in the same message
+EMAIL COLLECTION:
+- If you already have the customer's email (see KNOWN EMAIL above), use it directly
+- If no email is known, ask for it when offering time slots
 - Example: "I have Monday 2pm or Tuesday 10am. Which works? What email for confirmation?"
-- NEVER attempt to book without having the customer's email
-- If user picks time without email, ask for it before calling book_appointment
-- Once you have both the time AND email, call book_appointment with the email parameter
+- Once you have both time AND email, call book_appointment immediately
 
 WHEN TO CALL check_availability:
 - User asks about availability ("when", "what times", "what's open")
@@ -761,34 +876,31 @@ WHEN TO CALL check_availability:
 - You need to offer time options
 
 WHEN TO CALL book_appointment:
-- User confirms a specific time AND you have their email
+- User confirms a specific time AND you have their email (known or just provided)
 - ALWAYS include the email parameter when calling book_appointment
-- If user picks a time but hasn't given email, ask for email first, then book
+- If KNOWN EMAIL exists above, use it immediately when user confirms time
 
 RESPONSE PATTERN:
 1. Call the function FIRST (check_availability or book_appointment)
 2. THEN respond based on the function result
 3. Offer exactly 2 specific time options when presenting availability
-4. Ask for email in the SAME message when presenting availability options
+4. If no known email, ask for email in the SAME message as time options
 
 FUNCTION FORMATS:
 - check_availability: start_date as YYYY-MM-DD (check 3-5 days ahead if not specified)
 - book_appointment: date as YYYY-MM-DD, time as HH:MM (24-hour format), email (REQUIRED)
 
-EXAMPLES OF WHAT NOT TO DO:
-❌ "Let me check availability for you. One moment..."  (NO - call the function!)
-❌ "I'll look into that and get back to you"  (NO - call the function NOW!)
-❌ "Checking..."  (NO - just call the function silently!)
-❌ Booking without asking for email first  (NO - always get email before booking!)
-❌ Asking for email AFTER booking fails  (NO - ask BEFORE or WITH the booking confirmation!)
-
-CORRECT BEHAVIOR:
+EXAMPLES:
 ✓ "when are you free?" → check_availability → "Monday 2pm or Tuesday 10am. What email?"
 ✓ "Monday, email is john@example.com" → book_appointment(email) → "Booked! Sent to john@"
-✓ "Monday works" (no email) → "Great! What email should I send the confirmation to?"
-✓ User gives email → book_appointment with the email → Confirm booking
+✓ "Monday works" (with known email) → book_appointment(known_email) → "Booked!"
+✓ "Monday works" (no known email) → "Great! What email should I send the confirmation to?"
 
 The ONLY way to check times is check_availability. The ONLY way to book is book_appointment."""
+
+    # Log extracted email for debugging
+    if extracted_email:
+        log.info("email_extracted_from_history", email=extracted_email)
 
     system_prompt = build_text_instructions(
         system_prompt=agent.system_prompt + booking_instructions,
@@ -823,48 +935,32 @@ The ONLY way to check times is check_availability. The ONLY way to book is book_
             # Check if last message mentions booking-related keywords
             last_msg = messages[-1]["content"].lower() if messages else ""
 
-            # Trigger words that indicate booking/scheduling context
-            # These force the AI to use tools rather than just responding with text
-            booking_words = [
-                # Direct booking words
-                "book", "schedule", "appointment", "meeting", "call", "reserve",
-                "set up", "setup", "arrange", "pencil", "slot",
-
-                # Time indicators
-                "tomorrow", "today", "tonight", "morning", "afternoon", "evening",
-                "pm", "am", ":00", "oclock", "o'clock", "noon", "midnight",
-
-                # Days of the week
-                "monday", "tuesday", "wednesday", "thursday", "friday",
-                "saturday", "sunday", "mon", "tue", "wed", "thu", "fri", "sat", "sun",
-
-                # Relative time expressions
-                "next week", "this week", "next month", "later this",
-                "day after", "coming", "upcoming", "other day", "another day",
-                "different day", "different time", "other time", "another time",
-
-                # Availability questions - expanded to catch more patterns
-                "available", "availability", "free", "open", "slot", "opening",
-                "when can", "what time", "any time", "what days",
-                "when are", "when is", "like when", "when then",
-                "what about", "how about", "what else", "other options",
-
-                # Specific time mentions (numbers often indicate times)
-                "1pm", "2pm", "3pm", "4pm", "5pm",
-                "6pm", "7pm", "8pm", "9am", "10am", "11am", "12pm",
-                "at 1", "at 2", "at 3", "at 4", "at 5", "at 6", "at 7",
-                "at 8", "at 9", "at 10", "at 11", "at 12",
-
-                # Email indicators - trigger booking when user provides email
-                "@", ".com", ".net", ".org", ".io", "email", "e-mail",
-                "my email", "email is", "send it to", "confirmation to",
+            # OPT-OUT DETECTION: Never force booking tools on negative intent
+            # These phrases indicate user wants to stop communication
+            opt_out_phrases = [
+                "stop", "unsubscribe", "opt out", "optout", "cancel",
+                "remove me", "take me off", "don't text", "dont text",
+                "don't contact", "dont contact", "leave me alone",
+                "not interested", "no thanks", "no thank you",
+                "spam", "harassment", "harassing", "reported",
+                "wrong number", "wrong person",
             ]
-            if any(kw in last_msg for kw in booking_words):
-                api_params["tool_choice"] = "required"
-                log.info("booking_tools_required")
-            else:
+            is_opt_out = any(phrase in last_msg for phrase in opt_out_phrases)
+
+            if is_opt_out:
+                # Don't force tools on opt-out messages - let AI respond naturally
                 api_params["tool_choice"] = "auto"
-                log.info("booking_tools_enabled")
+                log.info("opt_out_detected_tools_auto")
+            else:
+                # Check for booking intent using smarter matching
+                should_require_tools = _should_require_booking_tools(last_msg)
+
+                if should_require_tools:
+                    api_params["tool_choice"] = "required"
+                    log.info("booking_tools_required")
+                else:
+                    api_params["tool_choice"] = "auto"
+                    log.info("booking_tools_enabled")
 
         # Make initial LLM call
         response = await asyncio.wait_for(

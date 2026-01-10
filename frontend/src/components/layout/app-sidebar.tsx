@@ -15,6 +15,7 @@ import {
   ChevronDown,
   Zap,
   LogOut,
+  Headphones,
 } from "lucide-react";
 import { useAuth } from "@/providers/auth-provider";
 
@@ -96,6 +97,11 @@ const managementNavItems = [
     title: "Calendar",
     url: "/calendar",
     icon: Calendar,
+  },
+  {
+    title: "Voice Test",
+    url: "/voice-test",
+    icon: Headphones,
   },
 ];
 

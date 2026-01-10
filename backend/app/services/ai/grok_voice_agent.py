@@ -2,12 +2,13 @@
 
 Grok Voice Agent API is compatible with OpenAI Realtime API format.
 Supports realism enhancements via auditory cues: [whisper], [sigh], [laugh], etc.
+Supports tool calling for Cal.com booking integration.
 """
 
 import asyncio
 import base64
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 import structlog
@@ -36,6 +37,67 @@ GROK_REALISM_CUES = [
     "[breath]",
 ]
 
+# Voice agent tool definitions for Cal.com booking
+VOICE_BOOKING_TOOLS = [
+    {
+        "type": "function",
+        "name": "book_appointment",
+        "description": (
+            "Book an appointment/meeting with the customer on Cal.com. "
+            "Use this when the customer agrees to schedule a call, meeting, "
+            "or appointment. You MUST collect the customer's email address first."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string",
+                    "description": "Appointment date in YYYY-MM-DD format",
+                },
+                "time": {
+                    "type": "string",
+                    "description": "Appointment time in HH:MM 24-hour format",
+                },
+                "email": {
+                    "type": "string",
+                    "description": "Customer's email address for booking confirmation",
+                },
+                "duration_minutes": {
+                    "type": "integer",
+                    "description": "Duration in minutes. Default is 30.",
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "Optional notes about the appointment",
+                },
+            },
+            "required": ["date", "time", "email"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "check_availability",
+        "description": (
+            "Check available time slots on Cal.com for a date range. "
+            "Use before booking to confirm slot availability."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "start_date": {
+                    "type": "string",
+                    "description": "Start date in YYYY-MM-DD format",
+                },
+                "end_date": {
+                    "type": "string",
+                    "description": "End date in YYYY-MM-DD (defaults to start)",
+                },
+            },
+            "required": ["start_date"],
+        },
+    },
+]
+
 
 class GrokVoiceAgentSession:
     """Grok (xAI) Realtime API session for voice conversations.
@@ -45,22 +107,45 @@ class GrokVoiceAgentSession:
     - Audio streaming and format conversion
     - Session configuration and context injection
     - Realism enhancements via auditory cues
+    - Tool calling for Cal.com booking integration
     """
 
     BASE_URL = "wss://api.x.ai/v1/realtime"
 
-    def __init__(self, api_key: str, agent: Agent | None = None) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        agent: Agent | None = None,
+        enable_tools: bool = False,
+    ) -> None:
         """Initialize Grok voice agent session.
 
         Args:
             api_key: xAI API key
             agent: Optional Agent model for configuration
+            enable_tools: Enable booking tools (requires Cal.com config)
         """
         self.api_key = api_key
         self.agent = agent
         self.ws: ClientConnection | None = None
         self.logger = logger.bind(service="grok_voice_agent")
         self._connection_task: asyncio.Task[None] | None = None
+        self._enable_tools = enable_tools
+
+        # Tool call handling
+        self._tool_callback: Callable[[str, str, dict[str, Any]], Any] | None = None
+        self._pending_function_calls: dict[str, dict[str, Any]] = {}
+
+    def set_tool_callback(
+        self,
+        callback: Callable[[str, str, dict[str, Any]], Any],
+    ) -> None:
+        """Set callback for tool execution.
+
+        Args:
+            callback: Async function(call_id, function_name, arguments) -> result
+        """
+        self._tool_callback = callback
 
     async def connect(self) -> bool:
         """Connect to Grok Realtime API.
@@ -120,7 +205,11 @@ You can use these auditory cues naturally in your responses to sound more human:
         return prompt + realism_instructions
 
     async def _configure_session(self) -> None:
-        """Configure the Grok Realtime session with agent settings."""
+        """Configure the Grok Realtime session with agent settings.
+
+        Uses pcm16 at 24kHz - the voice_bridge handles conversion from/to
+        Telnyx's μ-law 8kHz format.
+        """
         # Get base prompt
         base_prompt = (
             self.agent.system_prompt
@@ -128,44 +217,103 @@ You can use these auditory cues naturally in your responses to sound more human:
             else "You are a helpful AI voice assistant."
         )
 
+        # Prepend identity reinforcement if agent has a name configured
+        if self.agent and self.agent.name:
+            agent_name = self.agent.name
+            identity_prefix = (
+                f"CRITICAL IDENTITY INSTRUCTION: Your name is {agent_name}. "
+                f"You MUST always identify yourself as {agent_name} - never use "
+                "any other name like \"Alex\" or any default AI name. "
+                "This is non-negotiable.\n\n"
+            )
+            base_prompt = identity_prefix + base_prompt
+
         # Enhance with realism cues
         enhanced_prompt = self._enhance_prompt_with_realism(base_prompt)
 
-        # Get voice - default to 'ara' for Grok
-        voice = "ara"
+        # Add telephony-specific guidance to prevent hallucination at call start
+        enhanced_prompt += """
+
+IMPORTANT: You are on a phone call. When the call connects:
+- Wait briefly for the caller to speak first, OR
+- If instructed to greet first, deliver your greeting naturally and wait for response
+- Do NOT generate random content, fun facts, or filler - stay focused on your purpose
+- Speak clearly and conversationally as if on a real phone call"""
+
+        # Get voice - default to 'Ara' for Grok (capitalized)
+        voice = "Ara"
         if self.agent and self.agent.voice_id:
-            voice = self.agent.voice_id.lower()
+            voice_lower = self.agent.voice_id.lower()
             # Validate voice
-            if voice not in GROK_VOICES:
+            if voice_lower not in GROK_VOICES:
                 self.logger.warning(
                     "invalid_grok_voice",
-                    voice=voice,
-                    defaulting_to="ara",
+                    voice=voice_lower,
+                    defaulting_to="Ara",
                 )
-                voice = "ara"
+            else:
+                # Grok expects capitalized voice names
+                voice = voice_lower.capitalize()
 
-        config: dict[str, Any] = {
-            "type": "session.update",
-            "session": {
-                "modalities": ["audio", "text"],
-                "instructions": enhanced_prompt,
-                "voice": voice,
-                "input_audio_format": "pcm16",
-                "output_audio_format": "pcm16",
-                "turn_detection": {
-                    "type": self.agent.turn_detection_mode
-                    if self.agent and self.agent.turn_detection_mode
-                    else "server_vad",
-                    "threshold": 0.5,
-                    "prefix_padding_ms": 300,
-                    "silence_duration_ms": 500,
+        # Log the full instructions being sent for debugging
+        self.logger.info(
+            "grok_configuring_session",
+            voice=voice,
+            instructions_length=len(enhanced_prompt),
+            instructions_preview=enhanced_prompt[:200],
+        )
+
+        session_config: dict[str, Any] = {
+            "instructions": enhanced_prompt,
+            "voice": voice,
+            # Grok audio format (different from OpenAI)
+            "audio": {
+                "input": {
+                    "format": {
+                        "type": "audio/pcm",
+                        "rate": 24000,
+                    }
                 },
-                "temperature": self.agent.temperature if self.agent else 0.8,
+                "output": {
+                    "format": {
+                        "type": "audio/pcm",
+                        "rate": 24000,
+                    }
+                },
+            },
+            "turn_detection": {
+                "type": self.agent.turn_detection_mode
+                if self.agent and self.agent.turn_detection_mode
+                else "server_vad",
+                # Higher threshold = less sensitive to background noise
+                "threshold": 0.8,
+                # More padding before speech starts (prevents cutting off beginning)
+                "prefix_padding_ms": 500,
+                # Wait longer after silence before responding (prevents talking over)
+                "silence_duration_ms": 1000,
             },
         }
 
+        # Add tools if enabled and agent has Cal.com configured
+        if self._enable_tools:
+            session_config["tools"] = VOICE_BOOKING_TOOLS
+            self.logger.info(
+                "grok_tools_enabled",
+                tool_count=len(VOICE_BOOKING_TOOLS),
+            )
+
+        config: dict[str, Any] = {
+            "type": "session.update",
+            "session": session_config,
+        }
+
         await self._send_event(config)
-        self.logger.info("grok_session_configured", voice=voice)
+        self.logger.info(
+            "grok_session_configured",
+            voice=voice,
+            audio_format="pcm16",
+            tools_enabled=self._enable_tools,
+        )
 
     async def configure_session(
         self,
@@ -181,8 +329,8 @@ You can use these auditory cues naturally in your responses to sound more human:
         Args:
             voice: Voice ID (ara, rex, sal, eve, leo)
             system_prompt: System instructions for the assistant
-            temperature: Response temperature (0.0-1.0)
-            turn_detection_mode: Turn detection type (server_vad, none)
+            temperature: Response temperature (may not be supported by Grok)
+            turn_detection_mode: Turn detection type (server_vad)
             turn_detection_threshold: VAD threshold (0.0-1.0)
             silence_duration_ms: Silence duration before turn ends
         """
@@ -193,20 +341,36 @@ You can use these auditory cues naturally in your responses to sound more human:
         session_config: dict[str, Any] = {}
 
         if voice:
-            # Validate and normalize voice
+            # Validate and normalize voice - Grok uses capitalized names
             voice_lower = voice.lower()
             if voice_lower in GROK_VOICES:
-                session_config["voice"] = voice_lower
+                # Grok expects capitalized voice names like "Ara", "Rex"
+                session_config["voice"] = voice_lower.capitalize()
             else:
                 self.logger.warning("invalid_grok_voice", voice=voice)
 
         if system_prompt:
-            session_config["instructions"] = self._enhance_prompt_with_realism(
-                system_prompt
-            )
+            # Prepend identity reinforcement if agent has a name configured
+            if self.agent and self.agent.name:
+                agent_name = self.agent.name
+                identity_prefix = (
+                    f"CRITICAL IDENTITY INSTRUCTION: Your name is {agent_name}. "
+                    f"You MUST always identify yourself as {agent_name} - never use "
+                    "any other name like \"Alex\" or any default AI name. "
+                    "This is non-negotiable.\n\n"
+                )
+                system_prompt = identity_prefix + system_prompt
 
-        if temperature is not None:
-            session_config["temperature"] = temperature
+            # Enhance with realism cues and telephony guidance
+            enhanced = self._enhance_prompt_with_realism(system_prompt)
+            enhanced += """
+
+IMPORTANT: You are on a phone call. When the call connects:
+- Wait briefly for the caller to speak first, OR
+- If instructed to greet first, deliver your greeting naturally and wait for response
+- Do NOT generate random content, fun facts, or filler - stay focused on your purpose
+- Speak clearly and conversationally as if on a real phone call"""
+            session_config["instructions"] = enhanced
 
         # Configure turn detection
         if any([turn_detection_mode, turn_detection_threshold, silence_duration_ms]):
@@ -217,7 +381,7 @@ You can use these auditory cues naturally in your responses to sound more human:
                 turn_detection["threshold"] = turn_detection_threshold
             if silence_duration_ms is not None:
                 turn_detection["silence_duration_ms"] = silence_duration_ms
-            turn_detection["prefix_padding_ms"] = 300
+            turn_detection["prefix_padding_ms"] = 500
             session_config["turn_detection"] = turn_detection
 
         if session_config:
@@ -239,6 +403,9 @@ You can use these auditory cues naturally in your responses to sound more human:
         if not self.ws:
             self.logger.warning("grok_websocket_not_connected")
             return
+
+        # Store the greeting for later use by trigger_initial_response
+        self._pending_greeting = greeting
 
         event = {
             "type": "conversation.item.create",
@@ -270,6 +437,99 @@ You can use these auditory cues naturally in your responses to sound more human:
         except Exception as e:
             self.logger.exception("grok_send_greeting_error", error=str(e))
 
+    async def trigger_initial_response(self, greeting: str | None = None) -> None:
+        """Trigger the AI to start speaking with the initial greeting.
+
+        Call this after the audio stream is established to initiate the conversation.
+        Creates a user message prompting the AI to greet, then triggers response.create().
+
+        Args:
+            greeting: Optional greeting text. If not provided, uses the pending greeting
+                     from send_greeting or agent's initial greeting.
+        """
+        if not self.ws:
+            self.logger.warning("grok_websocket_not_connected")
+            return
+
+        # Use provided greeting, or pending greeting, or agent's initial greeting
+        message = greeting
+        if not message and hasattr(self, "_pending_greeting"):
+            message = self._pending_greeting
+        if not message and self.agent and self.agent.initial_greeting:
+            message = self.agent.initial_greeting
+
+        try:
+            # Create a user message that instructs the AI to deliver the greeting
+            # This is the proven pattern from working Realtime API integrations
+            if message:
+                prompt_text = f"Greet the caller by saying: {message}"
+            else:
+                # Build a contextual greeting prompt for outbound calls
+                prompt_parts = []
+
+                if self.agent and self.agent.name:
+                    prompt_parts.append(f"You are {self.agent.name}.")
+
+                # Check if we have call context stored from inject_context
+                if hasattr(self, "_call_context") and self._call_context:
+                    contact = self._call_context.get("contact", {})
+                    offer = self._call_context.get("offer", {})
+
+                    prompt_parts.append(
+                        "This is an OUTBOUND call that YOU initiated."
+                    )
+
+                    if contact and contact.get("name"):
+                        prompt_parts.append(
+                            f"You are calling {contact['name']}."
+                        )
+
+                    if offer and offer.get("name"):
+                        prompt_parts.append(
+                            f"You are calling about: {offer['name']}."
+                        )
+
+                    prompt_parts.append(
+                        "Greet them, introduce yourself, and explain why "
+                        "you're calling. Be direct - do NOT ask what they "
+                        "want to talk about."
+                    )
+                else:
+                    prompt_parts.append(
+                        "Greet the caller and introduce yourself. Follow your "
+                        "system instructions for the purpose of this call."
+                    )
+
+                prompt_text = " ".join(prompt_parts)
+
+            event = {
+                "type": "conversation.item.create",
+                "item": {
+                    "type": "message",
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": prompt_text,
+                        }
+                    ],
+                },
+            }
+
+            await self._send_event(event)
+            self.logger.info(
+                "grok_initial_response_triggered",
+                has_greeting=bool(message),
+                greeting_length=len(message) if message else 0,
+            )
+
+            # Trigger response generation - simple form without extra options
+            await self._send_event({"type": "response.create"})
+            self.logger.info("grok_response_requested")
+
+        except Exception as e:
+            self.logger.exception("grok_trigger_response_error", error=str(e))
+
     async def send_audio_chunk(self, audio_data: bytes) -> None:
         """Send audio chunk to Grok.
 
@@ -292,36 +552,103 @@ You can use these auditory cues naturally in your responses to sound more human:
         except Exception as e:
             self.logger.exception("grok_send_audio_error", error=str(e))
 
-    async def receive_audio_stream(self) -> AsyncIterator[bytes]:
+    async def receive_audio_stream(self) -> AsyncIterator[bytes]:  # noqa: PLR0912, PLR0915
         """Stream audio responses from Grok.
 
+        This generator continuously yields audio chunks from the Grok Realtime API.
+        It does NOT break on response.done - instead it keeps listening for more
+        responses as the conversation continues.
+
         Yields:
-            PCM audio chunks (16-bit)
+            PCM audio chunks (16-bit, 16kHz)
         """
         if not self.ws:
-            self.logger.warning("grok_websocket_not_connected")
+            self.logger.warning("grok_websocket_not_connected_for_audio_stream")
             return
 
+        audio_chunks_received = 0
+        total_audio_bytes = 0
+        responses_completed = 0
+
         try:
+            self.logger.info("grok_starting_audio_receive_stream")
+
             async for message in self.ws:
                 event = json.loads(message)
-                event_type = event.get("type")
+                event_type = event.get("type", "")
 
                 # Grok uses same event types as OpenAI Realtime
                 if event_type == "response.audio.delta":
                     audio_data = event.get("delta", "")
                     if audio_data:
-                        yield base64.b64decode(audio_data)
+                        decoded = base64.b64decode(audio_data)
+                        audio_chunks_received += 1
+                        total_audio_bytes += len(decoded)
+
+                        if audio_chunks_received % 100 == 0:
+                            self.logger.debug(
+                                "grok_audio_stream_progress",
+                                chunks=audio_chunks_received,
+                                total_bytes=total_audio_bytes,
+                                responses=responses_completed,
+                            )
+
+                        yield decoded
 
                 elif event_type == "response.output_audio.delta":
                     # Alternative event name in Grok API
                     audio_data = event.get("delta", "")
                     if audio_data:
-                        yield base64.b64decode(audio_data)
+                        decoded = base64.b64decode(audio_data)
+                        audio_chunks_received += 1
+                        total_audio_bytes += len(decoded)
+                        yield decoded
+
+                elif event_type == "response.audio_transcript.delta":
+                    transcript = event.get("delta", "")
+                    if transcript:
+                        self.logger.debug("grok_transcript_chunk", text=transcript[:50])
 
                 elif event_type == "response.done":
-                    self.logger.info("grok_response_complete")
-                    break
+                    # Response complete - but DON'T break!
+                    # Keep listening for more responses in the conversation
+                    responses_completed += 1
+
+                    # Check for function calls in the response
+                    response_data = event.get("response", {})
+                    output_items = response_data.get("output", [])
+
+                    for item in output_items:
+                        if item.get("type") == "function_call":
+                            await self._handle_function_call(item)
+
+                    self.logger.info(
+                        "grok_response_completed",
+                        response_num=responses_completed,
+                        total_audio_chunks=audio_chunks_received,
+                        total_audio_bytes=total_audio_bytes,
+                    )
+                    # Continue listening for next response
+
+                elif event_type == "response.output_item.done":
+                    # Handle completed output items (including function calls)
+                    item = event.get("item", {})
+                    if item.get("type") == "function_call":
+                        await self._handle_function_call(item)
+
+                elif event_type == "input_audio_buffer.speech_started":
+                    self.logger.debug("grok_user_speech_started")
+
+                elif event_type == "input_audio_buffer.speech_stopped":
+                    self.logger.debug("grok_user_speech_stopped")
+
+                elif event_type == "session.created":
+                    session = event.get("session", {})
+                    self.logger.info(
+                        "grok_session_created",
+                        session_id=session.get("id"),
+                        model=session.get("model"),
+                    )
 
                 elif event_type == "error":
                     error = event.get("error", {})
@@ -329,18 +656,151 @@ You can use these auditory cues naturally in your responses to sound more human:
                         "grok_realtime_error",
                         error_type=error.get("type"),
                         error_message=error.get("message"),
+                        error_code=error.get("code"),
                     )
-                    break
+                    # Don't break - some errors are recoverable
+
+                else:
+                    self.logger.debug("grok_event", event_type=event_type)
+
+        except websockets.exceptions.ConnectionClosed as e:
+            self.logger.warning(
+                "grok_websocket_closed",
+                code=e.code,
+                reason=e.reason,
+                chunks_received=audio_chunks_received,
+            )
+        except Exception as e:
+            self.logger.exception(
+                "grok_receive_audio_stream_error",
+                error=str(e),
+                chunks_received=audio_chunks_received,
+            )
+
+        self.logger.info(
+            "grok_audio_stream_ended",
+            total_chunks=audio_chunks_received,
+            total_bytes=total_audio_bytes,
+            total_responses=responses_completed,
+        )
+
+    async def _handle_function_call(self, item: dict[str, Any]) -> None:
+        """Handle a function call from Grok.
+
+        Executes the tool callback and sends the result back to Grok.
+
+        Args:
+            item: Function call item from Grok response
+        """
+        call_id = item.get("call_id", "")
+        function_name = item.get("name", "")
+        arguments_str = item.get("arguments", "{}")
+
+        self.logger.info(
+            "grok_function_call_received",
+            call_id=call_id,
+            function_name=function_name,
+            arguments=arguments_str[:100],
+        )
+
+        try:
+            arguments = json.loads(arguments_str)
+        except json.JSONDecodeError:
+            arguments = {}
+            self.logger.warning(
+                "grok_function_call_invalid_arguments",
+                arguments=arguments_str,
+            )
+
+        if not self._tool_callback:
+            self.logger.warning(
+                "grok_no_tool_callback_set",
+                function_name=function_name,
+            )
+            # Send error result back
+            await self.submit_tool_result(
+                call_id,
+                {"success": False, "error": "Tool execution not configured"},
+            )
+            return
+
+        try:
+            # Execute the tool callback
+            result = await self._tool_callback(call_id, function_name, arguments)
+
+            self.logger.info(
+                "grok_function_call_executed",
+                call_id=call_id,
+                function_name=function_name,
+                success=result.get("success", False) if isinstance(result, dict) else True,
+            )
+
+            # Send result back to Grok
+            await self.submit_tool_result(call_id, result)
 
         except Exception as e:
-            self.logger.exception("grok_receive_audio_error", error=str(e))
+            self.logger.exception(
+                "grok_function_call_error",
+                call_id=call_id,
+                function_name=function_name,
+                error=str(e),
+            )
+            await self.submit_tool_result(
+                call_id,
+                {"success": False, "error": str(e)},
+            )
+
+    async def submit_tool_result(
+        self,
+        call_id: str,
+        result: dict[str, Any],
+    ) -> None:
+        """Submit tool execution result back to Grok.
+
+        Args:
+            call_id: The function call ID from Grok
+            result: The result to send back
+        """
+        if not self.ws:
+            self.logger.warning("grok_websocket_not_connected")
+            return
+
+        # Create conversation item with tool result
+        event = {
+            "type": "conversation.item.create",
+            "item": {
+                "type": "function_call_output",
+                "call_id": call_id,
+                "output": json.dumps(result),
+            },
+        }
+
+        try:
+            await self._send_event(event)
+            self.logger.info(
+                "grok_tool_result_submitted",
+                call_id=call_id,
+            )
+
+            # Trigger Grok to continue the conversation with the result
+            await self._send_event({"type": "response.create"})
+
+        except Exception as e:
+            self.logger.exception(
+                "grok_submit_tool_result_error",
+                call_id=call_id,
+                error=str(e),
+            )
 
     async def inject_context(
         self,
         contact_info: dict[str, Any] | None = None,
         offer_info: dict[str, Any] | None = None,
     ) -> None:
-        """Inject conversation context into the session.
+        """Inject conversation context by updating system instructions.
+
+        This updates the session instructions to include contact and offer
+        context, rather than injecting as user messages which confuses the AI.
 
         Args:
             contact_info: Contact information (name, company, etc.)
@@ -350,48 +810,90 @@ You can use these auditory cues naturally in your responses to sound more human:
             self.logger.warning("grok_websocket_not_connected")
             return
 
-        context_messages = []
+        if not contact_info and not offer_info:
+            return
+
+        # Store context for use in trigger_initial_response
+        self._call_context = {
+            "contact": contact_info,
+            "offer": offer_info,
+        }
+
+        # Build context section for system prompt
+        context_parts = []
+
+        context_parts.append(
+            "\n\n# CURRENT CALL CONTEXT - THIS IS AN OUTBOUND CALL YOU ARE MAKING"
+        )
+        context_parts.append(
+            "You initiated this call. You know exactly why you're calling. "
+            "Do NOT ask the customer what they want to talk about."
+        )
 
         if contact_info:
-            contact_msg = "Customer information:\n"
+            context_parts.append("\n## Customer You Are Calling:")
             if contact_info.get("name"):
-                contact_msg += f"Name: {contact_info['name']}\n"
+                context_parts.append(f"- Name: {contact_info['name']}")
             if contact_info.get("company"):
-                contact_msg += f"Company: {contact_info['company']}\n"
-            context_messages.append(contact_msg)
+                context_parts.append(f"- Company: {contact_info['company']}")
 
         if offer_info:
-            offer_msg = "Offer information:\n"
+            context_parts.append("\n## What You Are Calling About:")
             if offer_info.get("name"):
-                offer_msg += f"Offer: {offer_info['name']}\n"
+                context_parts.append(f"- Offer: {offer_info['name']}")
             if offer_info.get("description"):
-                offer_msg += f"Description: {offer_info['description']}\n"
+                context_parts.append(f"- Details: {offer_info['description']}")
             if offer_info.get("terms"):
-                offer_msg += f"Terms: {offer_info['terms']}\n"
-            context_messages.append(offer_msg)
+                context_parts.append(f"- Terms: {offer_info['terms']}")
 
-        if context_messages:
-            combined_context = "\n".join(context_messages)
+        context_section = "\n".join(context_parts)
 
-            event = {
-                "type": "conversation.item.create",
-                "item": {
-                    "type": "message",
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": combined_context,
-                        }
-                    ],
-                },
-            }
+        # Update session with context appended to instructions
+        # Get current base prompt
+        base_prompt = (
+            self.agent.system_prompt
+            if self.agent
+            else "You are a helpful AI voice assistant."
+        )
 
-            try:
-                await self._send_event(event)
-                self.logger.info("grok_context_injected")
-            except Exception as e:
-                self.logger.exception("grok_inject_context_error", error=str(e))
+        # Add identity prefix
+        if self.agent and self.agent.name:
+            agent_name = self.agent.name
+            identity_prefix = (
+                f"CRITICAL IDENTITY INSTRUCTION: Your name is {agent_name}. "
+                f"You MUST always identify yourself as {agent_name} - never use "
+                "any other name like \"Alex\" or any default AI name. "
+                "This is non-negotiable.\n\n"
+            )
+            base_prompt = identity_prefix + base_prompt
+
+        # Combine with context
+        full_prompt = base_prompt + context_section
+
+        # Enhance with realism cues
+        enhanced_prompt = self._enhance_prompt_with_realism(full_prompt)
+
+        # Add telephony guidance
+        enhanced_prompt += """
+
+IMPORTANT: You are on a phone call that YOU initiated.
+- You called THEM - introduce yourself and explain why you're calling
+- Do NOT ask "what would you like to talk about" - YOU know why you called
+- Be direct and professional about the purpose of your call"""
+
+        # Send session update with full context
+        config = {
+            "type": "session.update",
+            "session": {
+                "instructions": enhanced_prompt,
+            },
+        }
+
+        try:
+            await self._send_event(config)
+            self.logger.info("grok_context_injected_to_instructions")
+        except Exception as e:
+            self.logger.exception("grok_inject_context_error", error=str(e))
 
     async def _send_event(self, event: dict[str, Any]) -> None:
         """Send event to WebSocket.

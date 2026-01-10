@@ -4,7 +4,9 @@ import {
   type ContactsListParams,
   type CreateContactRequest,
   type UpdateContactRequest,
+  type ContactsListResponse,
 } from "@/lib/api/contacts";
+import type { Contact } from "@/types";
 
 /**
  * Fetch and manage a list of contacts for a workspace
@@ -13,6 +15,43 @@ export function useContacts(workspaceId: string, params: ContactsListParams = {}
   return useQuery({
     queryKey: ["contacts", workspaceId, params],
     queryFn: () => contactsApi.list(workspaceId, params),
+    enabled: !!workspaceId,
+  });
+}
+
+/**
+ * Fetch ALL contacts across all pages for a workspace
+ */
+export function useAllContacts(workspaceId: string, params: Omit<ContactsListParams, 'page' | 'page_size'> = {}) {
+  return useQuery({
+    queryKey: ["all-contacts", workspaceId, params],
+    queryFn: async (): Promise<ContactsListResponse> => {
+      const allItems: Contact[] = [];
+      let currentPage = 1;
+      let totalPages = 1;
+      const pageSize = 100; // Max allowed by backend
+
+      // Fetch all pages
+      while (currentPage <= totalPages) {
+        const response = await contactsApi.list(workspaceId, {
+          ...params,
+          page: currentPage,
+          page_size: pageSize,
+        });
+
+        allItems.push(...response.items);
+        totalPages = response.pages;
+        currentPage++;
+      }
+
+      return {
+        items: allItems,
+        total: allItems.length,
+        page: 1,
+        page_size: allItems.length,
+        pages: 1,
+      };
+    },
     enabled: !!workspaceId,
   });
 }
@@ -68,6 +107,21 @@ export function useDeleteContact(workspaceId: string) {
     mutationFn: (contactId: number) => contactsApi.delete(workspaceId, contactId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["contacts", workspaceId] });
+    },
+  });
+}
+
+/**
+ * Bulk delete contacts
+ */
+export function useBulkDeleteContacts(workspaceId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (ids: number[]) => contactsApi.bulkDelete(workspaceId, ids),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["contacts", workspaceId] });
+      queryClient.invalidateQueries({ queryKey: ["all-contacts", workspaceId] });
     },
   });
 }

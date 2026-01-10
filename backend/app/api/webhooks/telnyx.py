@@ -308,8 +308,22 @@ async def handle_call_initiated(payload: dict[Any, Any], log: Any) -> None:
     from app.services.telephony.telnyx import normalize_phone_number
 
     call_control_id = payload.get("call_control_id", "")
-    from_number = payload.get("from", {}).get("phone_number", "")
-    to_number = payload.get("to", [{}])[0].get("phone_number", "")
+
+    # Telnyx voice webhooks send "from" and "to" as strings directly
+    # (unlike SMS webhooks which use nested objects)
+    from_raw = payload.get("from", "")
+    if isinstance(from_raw, dict):
+        from_number = from_raw.get("phone_number", "")
+    else:
+        from_number = str(from_raw) if from_raw else ""
+
+    to_raw = payload.get("to", "")
+    if isinstance(to_raw, list):
+        to_number = to_raw[0].get("phone_number", "") if to_raw else ""
+    elif isinstance(to_raw, dict):
+        to_number = to_raw.get("phone_number", "")
+    else:
+        to_number = str(to_raw) if to_raw else ""
     call_state = payload.get("state", "")
 
     # Normalize phone numbers to E.164 format for consistent lookups
@@ -409,33 +423,137 @@ async def handle_call_initiated(payload: dict[Any, Any], log: Any) -> None:
         )
 
 
-async def handle_call_answered(payload: dict[Any, Any], log: Any) -> None:
+async def handle_call_answered(payload: dict[Any, Any], log: Any) -> None:  # noqa: PLR0915
     """Handle call answered event.
+
+    For outbound calls initiated by AI agents, this starts the audio streaming
+    to connect the call to our WebSocket voice bridge.
 
     Args:
         payload: Telnyx call event payload
         log: Logger instance
     """
+    from sqlalchemy.orm import selectinload
+
+    from app.models.agent import Agent
+    from app.models.conversation import Conversation, Message
+    from app.services.telephony.telnyx_voice import TelnyxVoiceService
+
     call_control_id = payload.get("call_control_id", "")
     call_state = payload.get("state", "")
+    direction = payload.get("direction", "")  # "incoming" or "outgoing"
 
-    log = log.bind(call_control_id=call_control_id, call_state=call_state)
+    log = log.bind(call_control_id=call_control_id, call_state=call_state, direction=direction)
     log.info("call_answered")
 
     async with AsyncSessionLocal() as db:
-        from app.models.conversation import Message
-
+        # Get message with conversation loaded
         result = await db.execute(
-            select(Message).where(
-                Message.provider_message_id == call_control_id
-            )
+            select(Message)
+            .options(selectinload(Message.conversation))
+            .where(Message.provider_message_id == call_control_id)
         )
         message = result.scalar_one_or_none()
 
-        if message:
-            message.status = "answered"
-            await db.commit()
-            log.info("message_updated", message_id=str(message.id))
+        if not message:
+            log.warning("message_not_found_for_call", call_control_id=call_control_id)
+            return
+
+        message.status = "answered"
+        await db.commit()
+        # Determine agent_id: prefer message.agent_id, fall back to conversation's assigned_agent_id
+        agent_id = message.agent_id
+        if not agent_id and message.conversation and message.conversation.assigned_agent_id:
+            agent_id = message.conversation.assigned_agent_id
+            log.info(
+                "using_conversation_assigned_agent",
+                agent_id=str(agent_id),
+            )
+
+        conv_agent = message.conversation.assigned_agent_id if message.conversation else None
+        log.info(
+            "message_status_updated",
+            message_id=str(message.id),
+            message_direction=message.direction,
+            message_agent_id=str(message.agent_id) if message.agent_id else None,
+            conversation_agent_id=str(conv_agent) if conv_agent else None,
+            resolved_agent_id=str(agent_id) if agent_id else None,
+        )
+
+        # For outbound calls with an agent, start audio streaming
+        if message.direction == "outbound" and agent_id:
+            log.info(
+                "outbound_call_answered_starting_stream",
+                agent_id=str(agent_id),
+            )
+
+            # Get agent to check if it supports voice
+            agent_result = await db.execute(
+                select(Agent).where(Agent.id == agent_id)
+            )
+            agent = agent_result.scalar_one_or_none()
+
+            if not agent:
+                log.warning("agent_not_found", agent_id=str(agent_id))
+                return
+
+            if not agent.is_active:
+                log.info("agent_not_active", agent_id=str(agent.id))
+                return
+
+            # Assign agent to conversation if not already assigned
+            if message.conversation and not message.conversation.assigned_agent_id:
+                conv_result = await db.execute(
+                    select(Conversation).where(Conversation.id == message.conversation_id)
+                )
+                conv = conv_result.scalar_one_or_none()
+                if conv:
+                    conv.assigned_agent_id = agent.id
+                    conv.ai_enabled = True
+                    await db.commit()
+                    log.info("assigned_agent_to_conversation", agent_id=str(agent.id))
+
+            # Start audio streaming to the voice bridge WebSocket
+            if not settings.telnyx_api_key:
+                log.error("no_telnyx_api_key_for_streaming")
+                return
+
+            voice_service = TelnyxVoiceService(settings.telnyx_api_key)
+            try:
+                # Build WebSocket URL for audio streaming
+                api_base = settings.api_base_url or "https://example.com"
+                ws_base = api_base.replace("https://", "wss://").replace("http://", "ws://")
+                stream_url = f"{ws_base}/voice/stream/{call_control_id}"
+
+                log.info("starting_audio_streaming", stream_url=stream_url)
+
+                # Only stream caller's audio to avoid AI hearing itself
+                streaming_started = await voice_service.start_streaming(
+                    call_control_id=call_control_id,
+                    stream_url=stream_url,
+                    stream_track="inbound_track",
+                )
+
+                if streaming_started:
+                    log.info(
+                        "audio_streaming_started",
+                        call_control_id=call_control_id,
+                        stream_url=stream_url,
+                    )
+                else:
+                    log.error(
+                        "failed_to_start_audio_streaming",
+                        call_control_id=call_control_id,
+                    )
+            finally:
+                await voice_service.close()
+        else:
+            log.info(
+                "streaming_skipped",
+                reason="not outbound with agent",
+                direction=message.direction,
+                has_agent_id=bool(message.agent_id),
+            )
 
 
 async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:
@@ -678,16 +796,26 @@ async def auto_answer_call_if_agent_assigned(
             log.info("call_answered_successfully", call_control_id=call_control_id)
 
             # Start audio streaming to the voice bridge WebSocket
-            # The stream URL should point to our WebSocket endpoint
+            # The stream URL should point to our WebSocket endpoint at /voice/stream/
             api_base = settings.api_base_url or "https://example.com"
             # Convert https to wss for WebSocket
             ws_base = api_base.replace("https://", "wss://").replace("http://", "ws://")
-            stream_url = f"{ws_base}/ws/voice/stream/{call_control_id}"
+            # NOTE: Path is /voice/stream/ (not /ws/voice/stream/)
+            stream_url = f"{ws_base}/voice/stream/{call_control_id}"
 
+            log.info(
+                "starting_audio_streaming",
+                call_control_id=call_control_id,
+                stream_url=stream_url,
+                stream_track="inbound_track",
+            )
+
+            # Use inbound_track to only stream caller's audio to AI
+            # This prevents the AI from hearing itself (audio feedback)
             streaming_started = await voice_service.start_streaming(
                 call_control_id=call_control_id,
                 stream_url=stream_url,
-                stream_track="both",  # Stream both inbound and outbound audio
+                stream_track="inbound_track",
             )
 
             if streaming_started:
@@ -700,6 +828,7 @@ async def auto_answer_call_if_agent_assigned(
                 log.error(
                     "failed_to_start_audio_streaming",
                     call_control_id=call_control_id,
+                    stream_url=stream_url,
                 )
 
         finally:

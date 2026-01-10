@@ -1,10 +1,22 @@
-"""Voice bridge WebSocket endpoint for Telnyx media streaming."""
+"""Voice bridge WebSocket endpoint for Telnyx media streaming.
+
+This module handles bidirectional audio streaming between Telnyx (telephony)
+and AI voice providers (OpenAI/Grok). Key considerations:
+
+- Telnyx uses μ-law (G.711) at 8kHz sample rate
+- OpenAI/Grok Realtime API uses PCM16 at 24kHz
+- Audio must be converted and resampled in both directions (3x ratio)
+- Supports tool calling for Cal.com booking integration
+"""
 
 import asyncio
+import audioop
 import base64
 import contextlib
-import struct
+import time
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
@@ -13,293 +25,33 @@ from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.services.ai.grok_voice_agent import GrokVoiceAgentSession
 from app.services.ai.voice_agent import VoiceAgentSession
+from app.services.calendar.calcom import CalComService
 
 router = APIRouter()
 logger = structlog.get_logger()
 
-# Conversion utilities for audio formats
-# Telnyx uses μ-law (G.711), OpenAI uses PCM16
+# Audio format constants
+# Telnyx uses μ-law (G.711) at 8kHz, OpenAI/Grok uses PCM16 at 24kHz
+TELNYX_SAMPLE_RATE = 8000  # 8kHz for PSTN/Telnyx (μ-law/G.711)
+OPENAI_SAMPLE_RATE = 24000  # 24kHz for OpenAI/Grok Realtime API
 
 
 def mulaw_to_pcm(data: bytes) -> bytes:
-    """Convert μ-law audio to PCM16.
+    """Convert μ-law audio to PCM16 using Python's audioop.
 
     Args:
-        data: μ-law encoded audio bytes
+        data: μ-law encoded audio bytes (8kHz)
 
     Returns:
-        PCM16 audio bytes
+        PCM16 audio bytes (little-endian, 8kHz)
     """
-    # μ-law to PCM lookup table
-    mulaw_table = [
-        -32124,
-        -31100,
-        -30076,
-        -29052,
-        -28028,
-        -27004,
-        -25980,
-        -24956,
-        -23932,
-        -22908,
-        -21884,
-        -20860,
-        -19836,
-        -18812,
-        -17788,
-        -16764,
-        -15996,
-        -15484,
-        -14972,
-        -14460,
-        -13948,
-        -13436,
-        -12924,
-        -12412,
-        -11900,
-        -11388,
-        -10876,
-        -10364,
-        -9852,
-        -9340,
-        -8828,
-        -8316,
-        -7932,
-        -7676,
-        -7420,
-        -7164,
-        -6908,
-        -6652,
-        -6396,
-        -6140,
-        -5884,
-        -5628,
-        -5372,
-        -5116,
-        -4860,
-        -4604,
-        -4348,
-        -4092,
-        -3900,
-        -3772,
-        -3644,
-        -3516,
-        -3388,
-        -3260,
-        -3132,
-        -3004,
-        -2876,
-        -2748,
-        -2620,
-        -2492,
-        -2364,
-        -2236,
-        -2108,
-        -1980,
-        -1884,
-        -1820,
-        -1756,
-        -1692,
-        -1628,
-        -1564,
-        -1500,
-        -1436,
-        -1372,
-        -1308,
-        -1244,
-        -1180,
-        -1116,
-        -1052,
-        -988,
-        -924,
-        -876,
-        -844,
-        -812,
-        -780,
-        -748,
-        -716,
-        -684,
-        -652,
-        -620,
-        -588,
-        -556,
-        -524,
-        -492,
-        -460,
-        -428,
-        -396,
-        -372,
-        -356,
-        -340,
-        -324,
-        -308,
-        -292,
-        -276,
-        -260,
-        -244,
-        -228,
-        -212,
-        -196,
-        -180,
-        -164,
-        -148,
-        -132,
-        -120,
-        -112,
-        -104,
-        -96,
-        -88,
-        -80,
-        -72,
-        -64,
-        -56,
-        -48,
-        -40,
-        -32,
-        -24,
-        -16,
-        -8,
-        0,
-        32124,
-        31100,
-        30076,
-        29052,
-        28028,
-        27004,
-        25980,
-        24956,
-        23932,
-        22908,
-        21884,
-        20860,
-        19836,
-        18812,
-        17788,
-        16764,
-        15996,
-        15484,
-        14972,
-        14460,
-        13948,
-        13436,
-        12924,
-        12412,
-        11900,
-        11388,
-        10876,
-        10364,
-        9852,
-        9340,
-        8828,
-        8316,
-        7932,
-        7676,
-        7420,
-        7164,
-        6908,
-        6652,
-        6396,
-        6140,
-        5884,
-        5628,
-        5372,
-        5116,
-        4860,
-        4604,
-        4348,
-        4092,
-        3900,
-        3772,
-        3644,
-        3516,
-        3388,
-        3260,
-        3132,
-        3004,
-        2876,
-        2748,
-        2620,
-        2492,
-        2364,
-        2236,
-        2108,
-        1980,
-        1884,
-        1820,
-        1756,
-        1692,
-        1628,
-        1564,
-        1500,
-        1436,
-        1372,
-        1308,
-        1244,
-        1180,
-        1116,
-        1052,
-        988,
-        924,
-        876,
-        844,
-        812,
-        780,
-        748,
-        716,
-        684,
-        652,
-        620,
-        588,
-        556,
-        524,
-        492,
-        460,
-        428,
-        396,
-        372,
-        356,
-        340,
-        324,
-        308,
-        292,
-        276,
-        260,
-        244,
-        228,
-        212,
-        196,
-        180,
-        164,
-        148,
-        132,
-        120,
-        112,
-        104,
-        96,
-        88,
-        80,
-        72,
-        64,
-        56,
-        48,
-        40,
-        32,
-        24,
-        16,
-        8,
-    ]
-
-    pcm_data = b""
-    for byte in data:
-        pcm_value = mulaw_table[byte]
-        # Convert to little-endian 16-bit signed integer
-        pcm_data += struct.pack("<h", pcm_value)
-
-    return pcm_data
+    # audioop.ulaw2lin converts μ-law to linear PCM
+    # 2 = sample width in bytes (16-bit)
+    return audioop.ulaw2lin(data, 2)
 
 
 def pcm_to_mulaw(data: bytes) -> bytes:
-    """Convert PCM16 audio to μ-law.
+    """Convert PCM16 audio to μ-law using Python's audioop.
 
     Args:
         data: PCM16 audio bytes (little-endian)
@@ -307,42 +59,87 @@ def pcm_to_mulaw(data: bytes) -> bytes:
     Returns:
         μ-law encoded audio bytes
     """
-    mulaw_data = b""
+    # audioop.lin2ulaw converts linear PCM to μ-law
+    # 2 = sample width in bytes (16-bit)
+    return audioop.lin2ulaw(data, 2)
 
-    # Process 2 bytes at a time (16-bit samples)
-    for i in range(0, len(data), 2):
-        if i + 1 < len(data):
-            # Unpack little-endian signed 16-bit integer
-            sample = struct.unpack("<h", data[i : i + 2])[0]
 
-            # Simple μ-law encoding (simplified version)
-            # Full implementation would use proper bit manipulation
-            clamped = max(-32768, min(32767, sample))
-            magnitude = abs(clamped)
+def upsample_8k_to_24k(data: bytes) -> bytes:
+    """Upsample PCM16 audio from 8kHz to 24kHz using audioop.ratecv.
 
-            # Find exponent
-            exponent = 0
-            mantissa = magnitude
-            if magnitude > 255:
-                for exp in range(8):
-                    if magnitude <= 0xFF << (exp + 1):
-                        exponent = exp
-                        break
-            else:
-                exponent = 0
+    Args:
+        data: PCM16 audio bytes at 8kHz
 
-            mantissa = (magnitude >> (exponent + 3)) & 0x0F
+    Returns:
+        PCM16 audio bytes at 24kHz (3x samples)
+    """
+    if len(data) < 2:
+        return data
 
-            # Combine exponent and mantissa
-            byte_val = (exponent << 4) | mantissa
+    # audioop.ratecv(fragment, width, nchannels, inrate, outrate, state)
+    # width=2 for 16-bit, nchannels=1 for mono
+    # Returns (newfragment, newstate)
+    result, _ = audioop.ratecv(data, 2, 1, TELNYX_SAMPLE_RATE, OPENAI_SAMPLE_RATE, None)
+    return result
 
-            # Add sign and complement
-            if clamped < 0:
-                byte_val ^= 0x80
 
-            mulaw_data += bytes([byte_val ^ 0xFF])
+def downsample_24k_to_8k(data: bytes) -> bytes:
+    """Downsample PCM16 audio from 24kHz to 8kHz using audioop.ratecv.
 
-    return mulaw_data
+    Args:
+        data: PCM16 audio bytes at 24kHz
+
+    Returns:
+        PCM16 audio bytes at 8kHz (1/3x samples)
+    """
+    if len(data) < 2:
+        return data
+
+    # audioop.ratecv(fragment, width, nchannels, inrate, outrate, state)
+    result, _ = audioop.ratecv(data, 2, 1, OPENAI_SAMPLE_RATE, TELNYX_SAMPLE_RATE, None)
+    return result
+
+
+def convert_telnyx_to_openai(mulaw_8k: bytes, log: Any) -> bytes:
+    """Convert Telnyx μ-law 8kHz audio to OpenAI/Grok PCM16 24kHz.
+
+    Pipeline: μ-law 8kHz → PCM16 8kHz → PCM16 24kHz
+
+    Args:
+        mulaw_8k: μ-law encoded audio at 8kHz from Telnyx
+        log: Logger instance
+
+    Returns:
+        PCM16 audio at 24kHz for OpenAI/Grok Realtime API
+    """
+    # Step 1: μ-law to PCM16 (still at 8kHz)
+    pcm_8k = mulaw_to_pcm(mulaw_8k)
+
+    # Step 2: Upsample 8kHz to 24kHz (3x)
+    pcm_24k = upsample_8k_to_24k(pcm_8k)
+
+    return pcm_24k
+
+
+def convert_openai_to_telnyx(pcm_24k: bytes, log: Any) -> bytes:
+    """Convert OpenAI/Grok PCM16 24kHz audio to Telnyx μ-law 8kHz.
+
+    Pipeline: PCM16 24kHz → PCM16 8kHz → μ-law 8kHz
+
+    Args:
+        pcm_24k: PCM16 audio at 24kHz from OpenAI/Grok Realtime API
+        log: Logger instance
+
+    Returns:
+        μ-law encoded audio at 8kHz for Telnyx
+    """
+    # Step 1: Downsample 24kHz to 8kHz (3x)
+    pcm_8k = downsample_24k_to_8k(pcm_24k)
+
+    # Step 2: PCM16 to μ-law
+    mulaw_8k = pcm_to_mulaw(pcm_8k)
+
+    return mulaw_8k
 
 
 async def _lookup_call_context(
@@ -447,6 +244,239 @@ async def _lookup_call_context(
     return agent, contact_info, offer_info
 
 
+async def _execute_voice_tool(
+    call_id: str,
+    function_name: str,
+    arguments: dict[str, Any],
+    agent: Any,
+    contact_info: dict[str, Any] | None,
+    log: Any,
+) -> dict[str, Any]:
+    """Execute a tool call from voice agent.
+
+    Args:
+        call_id: Function call ID from Grok
+        function_name: Name of function to execute
+        arguments: Function arguments
+        agent: Agent model with Cal.com config
+        contact_info: Contact information
+        log: Logger instance
+
+    Returns:
+        Tool execution result
+    """
+    log.info(
+        "executing_voice_tool",
+        call_id=call_id,
+        function_name=function_name,
+        arguments=arguments,
+    )
+
+    timezone = "America/New_York"  # TODO: Get from workspace settings
+
+    if function_name == "check_availability":
+        return await _execute_check_availability(
+            agent=agent,
+            start_date_str=arguments.get("start_date", ""),
+            end_date_str=arguments.get("end_date"),
+            timezone=timezone,
+            log=log,
+        )
+
+    elif function_name == "book_appointment":
+        return await _execute_book_appointment(
+            agent=agent,
+            contact_info=contact_info,
+            date_str=arguments.get("date", ""),
+            time_str=arguments.get("time", ""),
+            email=arguments.get("email"),
+            duration_minutes=arguments.get("duration_minutes", 30),
+            notes=arguments.get("notes"),
+            timezone=timezone,
+            log=log,
+        )
+
+    else:
+        log.warning("unknown_voice_tool", function_name=function_name)
+        return {"success": False, "error": f"Unknown function: {function_name}"}
+
+
+async def _execute_check_availability(
+    agent: Any,
+    start_date_str: str,
+    end_date_str: str | None,
+    timezone: str,
+    log: Any,
+) -> dict[str, Any]:
+    """Execute check_availability tool.
+
+    Args:
+        agent: Agent with Cal.com event type ID
+        start_date_str: Start date in YYYY-MM-DD format
+        end_date_str: Optional end date
+        timezone: Timezone for availability
+        log: Logger instance
+
+    Returns:
+        Available slots or error
+    """
+    if not agent or not agent.calcom_event_type_id:
+        return {"success": False, "error": "Cal.com not configured for this agent"}
+
+    if not settings.calcom_api_key:
+        return {"success": False, "error": "Cal.com API key not configured"}
+
+    try:
+        # Parse dates
+        try:
+            tz = ZoneInfo(timezone)
+        except Exception:
+            tz = ZoneInfo("America/New_York")
+
+        start_date = datetime.strptime(start_date_str, "%Y-%m-%d").replace(tzinfo=tz)
+        if end_date_str:
+            end_date = datetime.strptime(end_date_str, "%Y-%m-%d").replace(tzinfo=tz)
+        else:
+            end_date = start_date
+
+        # Get availability from Cal.com
+        calcom_service = CalComService(settings.calcom_api_key)
+        try:
+            slots = await calcom_service.get_availability(
+                event_type_id=agent.calcom_event_type_id,
+                start_date=start_date,
+                end_date=end_date,
+                timezone=timezone,
+            )
+
+            log.info("availability_fetched", slot_count=len(slots))
+
+            # Format slots for voice response
+            if not slots:
+                return {
+                    "success": True,
+                    "available": False,
+                    "message": f"No available slots on {start_date_str}",
+                }
+
+            # Format slots nicely for voice
+            slot_descriptions = []
+            for slot in slots[:5]:  # Limit to 5 for voice
+                slot_time = slot.get("time", "")
+                slot_descriptions.append(slot_time)
+
+            return {
+                "success": True,
+                "available": True,
+                "slots": slots[:10],
+                "message": f"Available times: {', '.join(slot_descriptions)}",
+            }
+
+        finally:
+            await calcom_service.close()
+
+    except Exception as e:
+        log.exception("check_availability_error", error=str(e))
+        return {"success": False, "error": f"Failed to check availability: {str(e)}"}
+
+
+async def _execute_book_appointment(
+    agent: Any,
+    contact_info: dict[str, Any] | None,
+    date_str: str,
+    time_str: str,
+    email: str | None,
+    duration_minutes: int,
+    notes: str | None,
+    timezone: str,
+    log: Any,
+) -> dict[str, Any]:
+    """Execute book_appointment tool.
+
+    Args:
+        agent: Agent with Cal.com event type ID
+        contact_info: Contact information (name, phone)
+        date_str: Date in YYYY-MM-DD format
+        time_str: Time in HH:MM format
+        email: Customer email address
+        duration_minutes: Appointment duration
+        notes: Optional notes
+        timezone: Timezone for booking
+        log: Logger instance
+
+    Returns:
+        Booking confirmation or error
+    """
+    if not agent or not agent.calcom_event_type_id:
+        return {"success": False, "error": "Cal.com not configured for this agent"}
+
+    if not settings.calcom_api_key:
+        return {"success": False, "error": "Cal.com API key not configured"}
+
+    if not email:
+        return {
+            "success": False,
+            "error": "Email address is required for booking",
+            "message": "Please ask the customer for their email address",
+        }
+
+    # Get contact name
+    contact_name = "Customer"
+    contact_phone = None
+    if contact_info:
+        contact_name = contact_info.get("name", "Customer")
+        contact_phone = contact_info.get("phone")
+
+    try:
+        # Parse date and time
+        try:
+            tz = ZoneInfo(timezone)
+        except Exception:
+            tz = ZoneInfo("America/New_York")
+
+        datetime_str = f"{date_str} {time_str}"
+        start_time = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M").replace(tzinfo=tz)
+
+        # Convert to UTC for Cal.com
+        start_utc = start_time.astimezone(ZoneInfo("UTC"))
+
+        # Create booking via Cal.com
+        calcom_service = CalComService(settings.calcom_api_key)
+        try:
+            booking = await calcom_service.create_booking(
+                event_type_id=agent.calcom_event_type_id,
+                contact_email=email,
+                contact_name=contact_name,
+                start_time=start_utc,
+                duration_minutes=duration_minutes,
+                metadata={"notes": notes} if notes else None,
+                timezone=timezone,
+                phone_number=contact_phone,
+            )
+
+            log.info(
+                "booking_created",
+                booking_uid=booking.get("data", {}).get("uid"),
+                email=email,
+            )
+
+            return {
+                "success": True,
+                "booking_id": booking.get("data", {}).get("uid"),
+                "message": (
+                    f"Appointment booked for {contact_name} on {date_str} at {time_str}. "
+                    f"Confirmation email sent to {email}."
+                ),
+            }
+
+        finally:
+            await calcom_service.close()
+
+    except Exception as e:
+        log.exception("book_appointment_error", error=str(e))
+        return {"success": False, "error": f"Failed to book appointment: {str(e)}"}
+
+
 def _create_voice_session(
     voice_provider: str,
     agent: Any,
@@ -463,7 +493,19 @@ def _create_voice_session(
     if voice_provider == "grok":
         if not settings.xai_api_key:
             return None, "xAI API key not configured"
-        return GrokVoiceAgentSession(settings.xai_api_key, agent), None
+
+        # Enable tools if agent has Cal.com configured
+        enable_tools = bool(
+            agent
+            and agent.calcom_event_type_id
+            and settings.calcom_api_key
+        )
+
+        return GrokVoiceAgentSession(
+            settings.xai_api_key,
+            agent,
+            enable_tools=enable_tools,
+        ), None
 
     # Default to OpenAI
     if not settings.openai_api_key:
@@ -480,6 +522,10 @@ async def _setup_voice_session(
 ) -> None:
     """Configure voice session with agent settings and context.
 
+    Note: The greeting is NOT sent here. It's triggered when the Telnyx
+    stream starts (in _receive_from_telnyx_and_send_to_provider) to ensure
+    audio is ready before the AI starts speaking.
+
     Args:
         voice_session: Voice provider session
         agent: Agent model for configuration
@@ -487,6 +533,26 @@ async def _setup_voice_session(
         offer_info: Offer information dict
         log: Logger instance
     """
+    # Set up tool callback for Grok voice sessions
+    if isinstance(voice_session, GrokVoiceAgentSession):
+        # Create a closure to capture agent and contact_info for tool execution
+        async def tool_callback(
+            call_id: str,
+            function_name: str,
+            arguments: dict[str, Any],
+        ) -> dict[str, Any]:
+            return await _execute_voice_tool(
+                call_id=call_id,
+                function_name=function_name,
+                arguments=arguments,
+                agent=agent,
+                contact_info=contact_info,
+                log=log,
+            )
+
+        voice_session.set_tool_callback(tool_callback)
+        log.info("tool_callback_configured")
+
     if agent:
         await voice_session.configure_session(
             voice=agent.voice_id,
@@ -505,14 +571,17 @@ async def _setup_voice_session(
         )
         log.info("context_injected", has_contact=bool(contact_info), has_offer=bool(offer_info))
 
+    # Note: Greeting is triggered when Telnyx stream starts, not here
     if agent and agent.initial_greeting:
-        await voice_session.send_greeting(agent.initial_greeting)
-        log.info("initial_greeting_sent")
+        log.info("initial_greeting_prepared", greeting_length=len(agent.initial_greeting))
 
 
 @router.websocket("/voice/stream/{call_id}")
-async def voice_stream_bridge(websocket: WebSocket, call_id: str) -> None:
+async def voice_stream_bridge(websocket: WebSocket, call_id: str) -> None:  # noqa: PLR0915
     """Bridge between Telnyx media stream and voice AI provider.
+
+    This WebSocket endpoint receives audio from Telnyx (μ-law 8kHz) and
+    relays it to OpenAI/Grok (PCM16 24kHz), and vice versa.
 
     Supports multiple providers:
     - OpenAI Realtime API (default)
@@ -522,69 +591,128 @@ async def voice_stream_bridge(websocket: WebSocket, call_id: str) -> None:
         websocket: WebSocket connection from Telnyx
         call_id: Telnyx call control ID
     """
+    connection_start = time.time()
     log = logger.bind(endpoint="voice_stream_bridge", call_id=call_id)
-    log.info("voice_bridge_connection_received")
+    log.info(
+        "voice_bridge_connection_received",
+        client_host=websocket.client.host if websocket.client else "unknown",
+    )
 
     await websocket.accept()
+    log.info("websocket_accepted")
 
     # Get agent and conversation context from database first to determine provider
+    log.info("looking_up_call_context")
     agent, contact_info, offer_info = await _lookup_call_context(call_id, log)
+
+    if not agent:
+        log.warning(
+            "no_agent_found_for_call",
+            call_id=call_id,
+            hint="Check that call has associated message with agent_id",
+        )
 
     # Determine which voice provider to use
     voice_provider = "openai"  # default
     if agent and agent.voice_provider:
         voice_provider = agent.voice_provider.lower()
 
-    log.info("using_voice_provider", provider=voice_provider)
+    log.info(
+        "voice_provider_selected",
+        provider=voice_provider,
+        agent_name=agent.name if agent else None,
+        agent_id=str(agent.id) if agent else None,
+        has_contact=contact_info is not None,
+        has_offer=offer_info is not None,
+    )
 
     # Create appropriate voice session based on provider
     voice_session, error = _create_voice_session(voice_provider, agent)
     if voice_session is None:
-        log.error("api_key_not_configured", provider=voice_provider)
+        log.error(
+            "api_key_not_configured",
+            provider=voice_provider,
+            error=error,
+        )
         await websocket.send_json({"error": error})
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
+    relay_task: asyncio.Task[None] | None = None
+
     try:
         # Connect to voice provider
+        log.info("connecting_to_voice_provider", provider=voice_provider)
+        connect_start = time.time()
+
         if not await voice_session.connect():
-            log.error("failed_to_connect_to_voice_provider", provider=voice_provider)
+            connect_elapsed = time.time() - connect_start
+            log.error(
+                "failed_to_connect_to_voice_provider",
+                provider=voice_provider,
+                elapsed_secs=round(connect_elapsed, 2),
+            )
             await websocket.send_json(
                 {"error": f"Failed to connect to {voice_provider} Realtime API"}
             )
             await websocket.close(code=status.WS_1011_SERVER_ERROR)
             return
 
-        log.info("connected_to_voice_provider", provider=voice_provider)
+        connect_elapsed = time.time() - connect_start
+        log.info(
+            "connected_to_voice_provider",
+            provider=voice_provider,
+            connect_time_secs=round(connect_elapsed, 2),
+        )
 
         # Configure session with agent settings and inject context
+        log.info("configuring_voice_session")
         await _setup_voice_session(voice_session, agent, contact_info, offer_info, log)
+        log.info("voice_session_configured")
 
         # Start bidirectional audio relay
+        log.info("starting_relay_task")
         relay_task = asyncio.create_task(
             _relay_audio(websocket, voice_session, log)
         )
 
-        try:
-            # Keep connection alive
-            while True:
-                await asyncio.sleep(0.1)
-                if not voice_session.is_connected():
-                    log.warning("voice_provider_connection_lost")
-                    break
-        except asyncio.CancelledError:
-            log.info("relay_cancelled")
-        finally:
-            relay_task.cancel()
+        # Wait for relay to complete (it will run until disconnect)
+        await relay_task
+        log.info("relay_task_completed")
 
     except WebSocketDisconnect:
-        log.info("websocket_disconnected")
+        elapsed = time.time() - connection_start
+        log.info(
+            "telnyx_websocket_disconnected",
+            total_connection_secs=round(elapsed, 1),
+        )
+    except asyncio.CancelledError:
+        log.info("voice_bridge_cancelled")
     except Exception as e:
-        log.exception("voice_bridge_error", error=str(e))
+        elapsed = time.time() - connection_start
+        log.exception(
+            "voice_bridge_error",
+            error=str(e),
+            total_connection_secs=round(elapsed, 1),
+        )
     finally:
+        # Clean up
+        if relay_task and not relay_task.done():
+            relay_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await relay_task
+
+        log.info("disconnecting_from_voice_provider")
         await voice_session.disconnect()
+
         with contextlib.suppress(Exception):
             await websocket.close()
+
+        elapsed = time.time() - connection_start
+        log.info(
+            "voice_bridge_session_ended",
+            total_duration_secs=round(elapsed, 1),
+        )
 
 
 async def _relay_audio(
@@ -592,81 +720,210 @@ async def _relay_audio(
     voice_session: VoiceAgentSession | GrokVoiceAgentSession,
     log: Any,
 ) -> None:
-    """Relay audio between Telnyx and OpenAI.
+    """Relay audio bidirectionally between Telnyx and voice provider.
 
-    Args:
-        websocket: Telnyx WebSocket connection
-        voice_session: OpenAI Realtime session
-        log: Logger instance
-    """
-    # Create tasks for bidirectional streaming
-    send_task = asyncio.create_task(
-        _receive_from_telnyx_and_send_to_provider(
-            websocket, voice_session, log
-        )
-    )
-    recv_task = asyncio.create_task(
-        _receive_from_provider_and_send_to_telnyx(
-            websocket, voice_session, log
-        )
-    )
+    This function manages two concurrent tasks:
+    1. Receiving audio from Telnyx and sending to OpenAI/Grok
+    2. Receiving audio from OpenAI/Grok and sending to Telnyx
 
-    try:
-        # Wait for either task to fail
-        done, pending = await asyncio.wait(
-            [send_task, recv_task],
-            return_when=asyncio.FIRST_EXCEPTION,
-        )
-
-        # Cancel remaining tasks
-        for task in pending:
-            task.cancel()
-
-        # Check for exceptions
-        for task in done:
-            task.result()  # Raises exception if any
-
-    except asyncio.CancelledError:
-        log.info("relay_cancelled")
-    except Exception as e:
-        log.exception("relay_error", error=str(e))
-
-
-async def _receive_from_telnyx_and_send_to_provider(
-    websocket: WebSocket,
-    voice_session: VoiceAgentSession | GrokVoiceAgentSession,
-    log: Any,
-) -> None:
-    """Receive audio from Telnyx and send to voice provider.
+    A synchronization event ensures audio is only sent to Telnyx after
+    the greeting has been triggered and the stream is ready.
 
     Args:
         websocket: Telnyx WebSocket connection
         voice_session: Voice provider session (OpenAI or Grok)
         log: Logger instance
     """
+    # Event to synchronize greeting trigger with audio sending
+    greeting_triggered = asyncio.Event()
+
+    log.info("starting_audio_relay")
+
+    # Create tasks for bidirectional streaming
+    send_task = asyncio.create_task(
+        _receive_from_telnyx_and_send_to_provider(
+            websocket, voice_session, log, greeting_triggered
+        )
+    )
+    recv_task = asyncio.create_task(
+        _receive_from_provider_and_send_to_telnyx(
+            websocket, voice_session, log, greeting_triggered
+        )
+    )
+
+    try:
+        # Wait for either task to complete or fail
+        done, pending = await asyncio.wait(
+            [send_task, recv_task],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        # Log which task completed
+        for task in done:
+            if task == send_task:
+                log.info("telnyx_receive_task_completed")
+            else:
+                log.info("provider_receive_task_completed")
+
+        # Cancel remaining tasks gracefully
+        for task in pending:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+        # Check for exceptions in completed tasks
+        for task in done:
+            exc = task.exception()
+            if exc:
+                log.error(
+                    "relay_task_failed",
+                    task="telnyx_receive" if task == send_task else "provider_receive",
+                    error=str(exc),
+                )
+
+    except asyncio.CancelledError:
+        log.info("relay_cancelled")
+        # Cancel both tasks
+        send_task.cancel()
+        recv_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await asyncio.gather(send_task, recv_task)
+    except Exception as e:
+        log.exception("relay_error", error=str(e))
+
+
+async def _receive_from_telnyx_and_send_to_provider(  # noqa: PLR0912, PLR0915
+    websocket: WebSocket,
+    voice_session: VoiceAgentSession | GrokVoiceAgentSession,
+    log: Any,
+    greeting_triggered: asyncio.Event,
+) -> None:
+    """Receive audio from Telnyx and send to voice provider.
+
+    Telnyx sends JSON messages with the following format:
+    - {"event": "start", "stream_id": "...", "start": {"call_control_id": "..."}}
+    - {"event": "media", "media": {"payload": "<base64-audio>"}}
+    - {"event": "stop"}
+
+    Args:
+        websocket: Telnyx WebSocket connection
+        voice_session: Voice provider session (OpenAI or Grok)
+        log: Logger instance
+        greeting_triggered: Event to signal when greeting has been triggered
+    """
+    import json
+
+    stream_started = False
+    audio_chunks_received = 0
+    total_audio_bytes = 0
+    start_time = time.time()
+
     try:
         while True:
-            # Receive audio data from Telnyx (base64-encoded μ-law)
-            data = await websocket.receive_text()
+            # Receive JSON message from Telnyx
+            raw_data = await websocket.receive_text()
 
             try:
-                # Decode base64
-                audio_mulaw = base64.b64decode(data)
+                data = json.loads(raw_data)
+                event = data.get("event", "")
 
-                # Convert μ-law to PCM16
-                audio_pcm = mulaw_to_pcm(audio_mulaw)
+                if event == "start":
+                    # Stream has started - Telnyx is ready to send/receive audio
+                    stream_id = data.get("stream_id", "")
+                    start_info = data.get("start", {})
+                    call_control_id = start_info.get("call_control_id", "")
+                    media_format = start_info.get("media_format", {})
+                    stream_started = True
 
-                # Send to OpenAI
-                await voice_session.send_audio_chunk(audio_pcm)
+                    log.info(
+                        "telnyx_stream_started",
+                        stream_id=stream_id,
+                        call_control_id=call_control_id,
+                        encoding=media_format.get("encoding", "unknown"),
+                        sample_rate=media_format.get("sample_rate", "unknown"),
+                        channels=media_format.get("channels", "unknown"),
+                    )
 
+                    # Trigger initial greeting - no artificial delay needed
+                    # The stream is ready when we receive the "start" event
+                    log.info("triggering_initial_greeting")
+                    await voice_session.trigger_initial_response()
+                    greeting_triggered.set()
+                    log.info("initial_greeting_triggered")
+
+                elif event == "media" and stream_started:
+                    # Audio data received from caller
+                    media = data.get("media", {})
+                    payload = media.get("payload", "")
+                    timestamp = media.get("timestamp", "")
+                    chunk_num = media.get("chunk", "")
+
+                    if payload:
+                        # Decode base64 μ-law audio (8kHz)
+                        audio_mulaw = base64.b64decode(payload)
+                        audio_chunks_received += 1
+                        total_audio_bytes += len(audio_mulaw)
+
+                        # Convert μ-law 8kHz to PCM16 24kHz for OpenAI/Grok
+                        audio_pcm = convert_telnyx_to_openai(audio_mulaw, log)
+
+                        # Send to voice provider
+                        await voice_session.send_audio_chunk(audio_pcm)
+
+                        # Log periodically (every 50 chunks = ~1 second of audio)
+                        if audio_chunks_received % 50 == 0:
+                            elapsed = time.time() - start_time
+                            log.debug(
+                                "audio_relay_stats",
+                                direction="telnyx_to_provider",
+                                chunks=audio_chunks_received,
+                                total_bytes=total_audio_bytes,
+                                elapsed_secs=round(elapsed, 1),
+                                timestamp=timestamp,
+                                chunk=chunk_num,
+                            )
+
+                elif event == "stop":
+                    elapsed = time.time() - start_time
+                    log.info(
+                        "telnyx_stream_stopped",
+                        total_chunks=audio_chunks_received,
+                        total_bytes=total_audio_bytes,
+                        duration_secs=round(elapsed, 1),
+                    )
+                    break
+
+                elif event == "error":
+                    error_msg = data.get("error", {}).get("message", "unknown")
+                    log.error("telnyx_stream_error", error=error_msg)
+                    break
+
+                else:
+                    log.debug("telnyx_unknown_event", telnyx_event=event)
+
+            except json.JSONDecodeError as e:
+                log.warning(
+                    "telnyx_invalid_json",
+                    error=str(e),
+                    raw_data_preview=raw_data[:100] if raw_data else "empty",
+                )
             except Exception as e:
                 log.exception(
-                    "audio_conversion_error",
+                    "telnyx_audio_processing_error",
                     error=str(e),
+                    event=data.get("event", "unknown") if "data" in dir() else "unknown",
                 )
 
     except WebSocketDisconnect:
-        log.info("telnyx_websocket_disconnected")
+        elapsed = time.time() - start_time
+        log.info(
+            "telnyx_websocket_disconnected",
+            total_chunks=audio_chunks_received,
+            duration_secs=round(elapsed, 1),
+        )
+    except asyncio.CancelledError:
+        log.info("telnyx_receive_cancelled")
+        raise
     except Exception as e:
         log.exception("receive_from_telnyx_error", error=str(e))
 
@@ -675,33 +932,93 @@ async def _receive_from_provider_and_send_to_telnyx(
     websocket: WebSocket,
     voice_session: VoiceAgentSession | GrokVoiceAgentSession,
     log: Any,
+    greeting_triggered: asyncio.Event,
 ) -> None:
     """Receive audio from voice provider and send to Telnyx.
+
+    Sends audio in Telnyx's expected JSON format:
+    {"event": "media", "media": {"payload": "<base64-audio>"}}
 
     Args:
         websocket: Telnyx WebSocket connection
         voice_session: Voice provider session (OpenAI or Grok)
         log: Logger instance
+        greeting_triggered: Event to wait for before sending audio
     """
+    import json
+
+    audio_chunks_sent = 0
+    total_audio_bytes = 0
+    start_time = time.time()
+    first_audio_time: float | None = None
+
     try:
+        # Wait for greeting to be triggered before sending audio
+        # This ensures the stream is ready
+        log.info("waiting_for_greeting_trigger")
+        await asyncio.wait_for(greeting_triggered.wait(), timeout=10.0)
+        log.info("greeting_triggered_starting_audio_relay")
+
         async for audio_pcm in voice_session.receive_audio_stream():
+            if first_audio_time is None:
+                first_audio_time = time.time()
+                latency = first_audio_time - start_time
+                log.info(
+                    "first_audio_from_provider",
+                    latency_secs=round(latency, 2),
+                    audio_bytes=len(audio_pcm),
+                )
+
             try:
-                # Convert PCM16 to μ-law
-                audio_mulaw = pcm_to_mulaw(audio_pcm)
+                # Convert PCM16 24kHz to μ-law 8kHz for Telnyx
+                audio_mulaw = convert_openai_to_telnyx(audio_pcm, log)
 
                 # Encode as base64
                 audio_b64 = base64.b64encode(audio_mulaw).decode("utf-8")
 
-                # Send to Telnyx
-                await websocket.send_text(audio_b64)
+                # Send to Telnyx in the expected JSON format
+                message = json.dumps({
+                    "event": "media",
+                    "media": {"payload": audio_b64},
+                })
+                await websocket.send_text(message)
+
+                audio_chunks_sent += 1
+                total_audio_bytes += len(audio_mulaw)
+
+                # Log periodically
+                if audio_chunks_sent % 50 == 0:
+                    elapsed = time.time() - start_time
+                    log.debug(
+                        "audio_relay_stats",
+                        direction="provider_to_telnyx",
+                        chunks=audio_chunks_sent,
+                        total_bytes=total_audio_bytes,
+                        elapsed_secs=round(elapsed, 1),
+                    )
 
             except Exception as e:
                 log.exception(
-                    "audio_conversion_error",
+                    "provider_audio_conversion_error",
                     error=str(e),
+                    audio_bytes=len(audio_pcm),
                 )
 
+    except TimeoutError:
+        log.error("greeting_trigger_timeout", timeout_secs=10)
     except WebSocketDisconnect:
-        log.info("telnyx_websocket_disconnected_recv")
+        elapsed = time.time() - start_time
+        log.info(
+            "telnyx_websocket_disconnected_while_sending",
+            total_chunks=audio_chunks_sent,
+            duration_secs=round(elapsed, 1),
+        )
+    except asyncio.CancelledError:
+        log.info("provider_receive_cancelled")
+        raise
     except Exception as e:
-        log.exception("receive_from_openai_error", error=str(e))
+        log.exception(
+            "receive_from_provider_error",
+            error=str(e),
+            chunks_sent=audio_chunks_sent,
+        )

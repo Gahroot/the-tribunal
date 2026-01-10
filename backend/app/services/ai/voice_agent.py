@@ -80,38 +80,53 @@ class VoiceAgentSession:
             self.ws = None
 
     async def _configure_session(self) -> None:
-        """Configure the Realtime session with agent settings."""
+        """Configure the Realtime session with agent settings.
+
+        Uses pcm16 at 24kHz - the voice_bridge handles conversion from/to
+        Telnyx's μ-law 8kHz format.
+        """
+        # Build system instructions - be explicit about role and behavior
+        base_instructions = (
+            self.agent.system_prompt
+            if self.agent
+            else "You are a helpful AI voice assistant."
+        )
+
+        # Add telephony-specific guidance to prevent hallucination at call start
+        instructions = f"""{base_instructions}
+
+IMPORTANT: You are on a phone call. When the call connects:
+- Wait briefly for the caller to speak first, OR
+- If instructed to greet first, deliver your greeting naturally and wait for response
+- Do NOT generate random content, fun facts, or filler - stay focused on your purpose
+- Speak clearly and conversationally as if on a real phone call"""
+
         config: dict[str, Any] = {
             "type": "session.update",
             "session": {
-                "modalities": ["audio", "text"],
-                "model": self.MODEL,
-                "instructions": self.agent.system_prompt
-                if self.agent
-                else "You are a helpful AI voice assistant.",
-                "voice": self.agent.voice_id
-                if self.agent
-                else "alloy",  # Default voice
+                "modalities": ["text", "audio"],
+                "instructions": instructions,
+                "voice": self.agent.voice_id if self.agent else "alloy",
+                # PCM16 at 24kHz - voice_bridge converts from/to Telnyx μ-law 8kHz
                 "input_audio_format": "pcm16",
-                "input_audio_sample_rate": 16000,
                 "output_audio_format": "pcm16",
-                "output_audio_sample_rate": 16000,
                 "turn_detection": {
                     "type": self.agent.turn_detection_mode
-                    if self.agent
+                    if self.agent and self.agent.turn_detection_mode
                     else "server_vad",
-                    "threshold": 0.5,
-                    "prefix_padding_ms": 300,
-                    "silence_duration_ms": 500,
-                } if not self.agent or self.agent.turn_detection_mode else {
-                    "type": "server_vad"
+                    # Higher threshold = less sensitive to background noise
+                    "threshold": 0.8,
+                    # More padding before speech starts (prevents cutting off beginning)
+                    "prefix_padding_ms": 500,
+                    # Wait longer after silence before responding (prevents talking over)
+                    "silence_duration_ms": 1000,
                 },
                 "temperature": 0.8,
             },
         }
 
         await self._send_event(config)
-        self.logger.info("session_configured")
+        self.logger.info("session_configured", audio_format="pcm16")
 
     async def configure_session(
         self,
@@ -142,8 +157,18 @@ class VoiceAgentSession:
 
         if voice:
             session_config["voice"] = voice
+
         if system_prompt:
-            session_config["instructions"] = system_prompt
+            # Add telephony guidance to custom prompts too
+            enhanced_prompt = f"""{system_prompt}
+
+IMPORTANT: You are on a phone call. When the call connects:
+- Wait briefly for the caller to speak first, OR
+- If instructed to greet first, deliver your greeting naturally and wait for response
+- Do NOT generate random content, fun facts, or filler - stay focused on your purpose
+- Speak clearly and conversationally as if on a real phone call"""
+            session_config["instructions"] = enhanced_prompt
+
         if temperature is not None:
             session_config["temperature"] = temperature
 
@@ -154,7 +179,7 @@ class VoiceAgentSession:
                 turn_detection["threshold"] = turn_detection_threshold
             if silence_duration_ms is not None:
                 turn_detection["silence_duration_ms"] = silence_duration_ms
-            turn_detection["prefix_padding_ms"] = 300
+            turn_detection["prefix_padding_ms"] = 500
             session_config["turn_detection"] = turn_detection
 
         if session_config:
@@ -176,6 +201,9 @@ class VoiceAgentSession:
         if not self.ws:
             self.logger.warning("websocket_not_connected")
             return
+
+        # Store the greeting for later use by trigger_initial_response
+        self._pending_greeting = greeting
 
         # Create a conversation item with the greeting as assistant message
         # and trigger response generation
@@ -209,6 +237,64 @@ class VoiceAgentSession:
         except Exception as e:
             self.logger.exception("send_greeting_error", error=str(e))
 
+    async def trigger_initial_response(self, greeting: str | None = None) -> None:
+        """Trigger the AI to start speaking with the initial greeting.
+
+        Call this after the audio stream is established to initiate the conversation.
+        Creates a user message prompting the AI to greet, then triggers response.create().
+
+        Args:
+            greeting: Optional greeting text. If not provided, uses the pending greeting
+                     from send_greeting or agent's initial greeting.
+        """
+        if not self.ws:
+            self.logger.warning("websocket_not_connected")
+            return
+
+        # Use provided greeting, or pending greeting, or agent's initial greeting
+        message = greeting
+        if not message and hasattr(self, "_pending_greeting"):
+            message = self._pending_greeting
+        if not message and self.agent and self.agent.initial_greeting:
+            message = self.agent.initial_greeting
+
+        try:
+            # Create a user message that instructs the AI to deliver the greeting
+            # This is the proven pattern from working OpenAI Realtime integrations
+            if message:
+                prompt_text = f"Greet the caller by saying: {message}"
+            else:
+                prompt_text = "Greet the caller and introduce yourself briefly."
+
+            event = {
+                "type": "conversation.item.create",
+                "item": {
+                    "type": "message",
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": prompt_text,
+                        }
+                    ],
+                },
+            }
+
+            await self._send_event(event)
+            self.logger.info(
+                "initial_response_triggered",
+                has_greeting=bool(message),
+                greeting_length=len(message) if message else 0,
+            )
+
+            # Trigger response generation - simple form without extra options
+            # This tells OpenAI to respond to the conversation item we just created
+            await self._send_event({"type": "response.create"})
+            self.logger.info("response_requested")
+
+        except Exception as e:
+            self.logger.exception("trigger_response_error", error=str(e))
+
     async def send_audio_chunk(self, audio_data: bytes) -> None:
         """Send audio chunk to OpenAI.
 
@@ -234,43 +320,147 @@ class VoiceAgentSession:
         except Exception as e:
             self.logger.exception("send_audio_error", error=str(e))
 
-    async def receive_audio_stream(self) -> AsyncIterator[bytes]:
+    async def receive_audio_stream(self) -> AsyncIterator[bytes]:  # noqa: PLR0912, PLR0915
         """Stream audio responses from OpenAI.
+
+        This generator continuously yields audio chunks from the OpenAI Realtime API.
+        It does NOT break on response.done - instead it keeps listening for more
+        responses as the conversation continues.
 
         Yields:
             PCM audio chunks (16-bit, 16kHz)
         """
+        import base64
+
         if not self.ws:
-            self.logger.warning("websocket_not_connected")
+            self.logger.warning("websocket_not_connected_for_audio_stream")
             return
 
+        audio_chunks_received = 0
+        total_audio_bytes = 0
+        responses_completed = 0
+
         try:
+            self.logger.info("starting_audio_receive_stream")
+
             async for message in self.ws:
                 event = json.loads(message)
-                event_type = event.get("type")
+                event_type = event.get("type", "")
 
                 if event_type == "response.audio.delta":
-                    import base64
-
+                    # Audio chunk received
                     audio_data = event.get("delta", "")
                     if audio_data:
-                        yield base64.b64decode(audio_data)
+                        decoded = base64.b64decode(audio_data)
+                        audio_chunks_received += 1
+                        total_audio_bytes += len(decoded)
+
+                        # Log periodically
+                        if audio_chunks_received % 100 == 0:
+                            self.logger.debug(
+                                "audio_stream_progress",
+                                chunks=audio_chunks_received,
+                                total_bytes=total_audio_bytes,
+                                responses=responses_completed,
+                            )
+
+                        yield decoded
+
+                elif event_type == "response.audio_transcript.delta":
+                    # Transcript chunk - log for debugging
+                    transcript = event.get("delta", "")
+                    if transcript:
+                        self.logger.debug("transcript_chunk", text=transcript[:50])
 
                 elif event_type == "response.done":
-                    self.logger.info("response_complete")
-                    break
+                    # Response complete - but DON'T break!
+                    # Keep listening for more responses in the conversation
+                    responses_completed += 1
+                    self.logger.info(
+                        "response_completed",
+                        response_num=responses_completed,
+                        total_audio_chunks=audio_chunks_received,
+                        total_audio_bytes=total_audio_bytes,
+                    )
+                    # Continue listening for next response
+
+                elif event_type == "input_audio_buffer.speech_started":
+                    self.logger.debug("user_speech_started")
+
+                elif event_type == "input_audio_buffer.speech_stopped":
+                    self.logger.debug("user_speech_stopped")
+
+                elif event_type == "input_audio_buffer.committed":
+                    self.logger.debug("audio_buffer_committed")
+
+                elif event_type == "conversation.item.created":
+                    item = event.get("item", {})
+                    self.logger.debug(
+                        "conversation_item_created",
+                        item_type=item.get("type"),
+                        role=item.get("role"),
+                    )
+
+                elif event_type == "response.created":
+                    self.logger.debug("response_created")
+
+                elif event_type == "response.output_item.added":
+                    self.logger.debug("response_output_item_added")
+
+                elif event_type == "response.content_part.added":
+                    self.logger.debug("response_content_part_added")
+
+                elif event_type == "session.created":
+                    session = event.get("session", {})
+                    self.logger.info(
+                        "session_created",
+                        session_id=session.get("id"),
+                        model=session.get("model"),
+                    )
+
+                elif event_type == "session.updated":
+                    self.logger.debug("session_updated")
 
                 elif event_type == "error":
                     error = event.get("error", {})
                     self.logger.error(
-                        "realtime_error",
+                        "openai_realtime_error",
                         error_type=error.get("type"),
                         error_message=error.get("message"),
+                        error_code=error.get("code"),
                     )
-                    break
+                    # Don't break - some errors are recoverable
 
+                elif event_type == "rate_limits.updated":
+                    self.logger.debug(
+                        "rate_limits_updated",
+                        limits=event.get("rate_limits", []),
+                    )
+
+                else:
+                    # Log unknown event types for debugging
+                    self.logger.debug("openai_event", event_type=event_type)
+
+        except websockets.exceptions.ConnectionClosed as e:
+            self.logger.warning(
+                "openai_websocket_closed",
+                code=e.code,
+                reason=e.reason,
+                chunks_received=audio_chunks_received,
+            )
         except Exception as e:
-            self.logger.exception("receive_audio_error", error=str(e))
+            self.logger.exception(
+                "receive_audio_stream_error",
+                error=str(e),
+                chunks_received=audio_chunks_received,
+            )
+
+        self.logger.info(
+            "audio_stream_ended",
+            total_chunks=audio_chunks_received,
+            total_bytes=total_audio_bytes,
+            total_responses=responses_completed,
+        )
 
     async def inject_context(
         self,

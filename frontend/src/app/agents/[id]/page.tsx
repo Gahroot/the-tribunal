@@ -55,6 +55,7 @@ import {
   Phone,
   MessageSquare,
   MessagesSquare,
+  Headphones,
 } from "lucide-react";
 import { AVAILABLE_INTEGRATIONS, type ToolRiskLevel } from "@/lib/integrations";
 import {
@@ -70,6 +71,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { getLanguagesForTier } from "@/lib/languages";
+import { VoiceTestDialog } from "@/components/agents/voice-test-dialog";
 
 // Best practices system prompt template
 const BEST_PRACTICES_PROMPT = `# Role & Identity
@@ -135,6 +137,19 @@ const HUME_VOICES = [
   { id: "aoede", name: "Aoede", description: "Clear and articulate" },
   { id: "orpheus", name: "Orpheus", description: "Rich and expressive" },
   { id: "charon", name: "Charon", description: "Deep and authoritative" },
+  { id: "calliope", name: "Calliope", description: "Melodic and friendly" },
+  { id: "atlas", name: "Atlas", description: "Strong and confident" },
+  { id: "helios", name: "Helios", description: "Bright and energetic" },
+  { id: "luna", name: "Luna", description: "Soft and calming" },
+];
+
+// Grok (xAI) voices - supports realism cues like [whisper], [sigh], [laugh]
+const GROK_VOICES = [
+  { id: "ara", name: "Ara", description: "Warm & friendly female" },
+  { id: "rex", name: "Rex", description: "Confident & clear male" },
+  { id: "sal", name: "Sal", description: "Smooth & balanced neutral" },
+  { id: "eve", name: "Eve", description: "Energetic & upbeat female" },
+  { id: "leo", name: "Leo", description: "Authoritative & strong male" },
 ];
 
 // Get integrations that have tools defined
@@ -193,6 +208,7 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
   const { workspaceId } = useAuth();
   const [activeTab, setActiveTab] = useState("basic");
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isVoiceTestOpen, setIsVoiceTestOpen] = useState(false);
   const isDeletingRef = useRef(false);
 
   const {
@@ -285,7 +301,24 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
 
   // Watch voice provider to show appropriate voices
   const voiceProvider = form.watch("voiceProvider");
-  const voices = voiceProvider === "hume" ? HUME_VOICES : REALTIME_VOICES;
+  const voices =
+    voiceProvider === "grok"
+      ? GROK_VOICES
+      : voiceProvider === "hume"
+        ? HUME_VOICES
+        : REALTIME_VOICES;
+
+  // Reset voice when provider changes if current voice isn't valid
+  useEffect(() => {
+    const currentVoice = form.getValues("voiceId");
+    const validVoiceIds = voices.map((v) => v.id);
+    if (!validVoiceIds.includes(currentVoice)) {
+      // Set default voice for provider
+      const defaultVoice =
+        voiceProvider === "grok" ? "ara" : voiceProvider === "hume" ? "kora" : "marin";
+      form.setValue("voiceId", defaultVoice);
+    }
+  }, [voiceProvider, voices, form]);
 
   // Watch tools for UI updates
   const enabledToolIds = useWatch({ control: form.control, name: "enabledToolIds" });
@@ -439,7 +472,17 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
             </Badge>
           </div>
         </div>
-        <AlertDialog>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8"
+            onClick={() => setIsVoiceTestOpen(true)}
+          >
+            <Headphones className="mr-1.5 h-3.5 w-3.5" />
+            Test Voice
+          </Button>
+          <AlertDialog>
           <AlertDialogTrigger asChild>
             <Button variant="destructive" size="sm" className="h-8">
               <Trash2 className="mr-1.5 h-3.5 w-3.5" />
@@ -470,8 +513,17 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
-        </AlertDialog>
+          </AlertDialog>
+        </div>
       </div>
+
+      <VoiceTestDialog
+        open={isVoiceTestOpen}
+        onOpenChange={setIsVoiceTestOpen}
+        agentId={agentId}
+        agentName={agent.name}
+        workspaceId={workspaceId ?? ""}
+      />
 
       <Form {...form}>
         <form
@@ -659,6 +711,7 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
                           <SelectContent>
                             <SelectItem value="openai">OpenAI Realtime</SelectItem>
                             <SelectItem value="hume">Hume AI</SelectItem>
+                            <SelectItem value="grok">Grok (xAI)</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormDescription>Choose your voice synthesis provider</FormDescription>

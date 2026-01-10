@@ -235,6 +235,65 @@ async def delete_contact(
     await db.commit()
 
 
+class BulkDeleteRequest(BaseModel):
+    """Request schema for bulk deleting contacts."""
+
+    ids: list[int]
+
+
+class BulkDeleteResponse(BaseModel):
+    """Response schema for bulk delete operation."""
+
+    deleted: int
+    failed: int
+    errors: list[str]
+
+
+@router.post("/bulk-delete", response_model=BulkDeleteResponse)
+async def bulk_delete_contacts(
+    workspace_id: uuid.UUID,
+    request: BulkDeleteRequest,
+    current_user: CurrentUser,
+    db: DB,
+) -> BulkDeleteResponse:
+    """Delete multiple contacts at once."""
+    # Verify workspace access
+    workspace = await get_workspace(workspace_id, current_user, db)
+
+    if not request.ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No contact IDs provided",
+        )
+
+    deleted = 0
+    errors: list[str] = []
+
+    for contact_id in request.ids:
+        result = await db.execute(
+            select(Contact).where(
+                Contact.id == contact_id,
+                Contact.workspace_id == workspace.id,
+            )
+        )
+        contact = result.scalar_one_or_none()
+
+        if contact is None:
+            errors.append(f"Contact {contact_id} not found")
+            continue
+
+        await db.delete(contact)
+        deleted += 1
+
+    await db.commit()
+
+    return BulkDeleteResponse(
+        deleted=deleted,
+        failed=len(errors),
+        errors=errors,
+    )
+
+
 @router.post("/{contact_id}/messages", response_model=MessageResponse)
 async def send_message_to_contact(
     workspace_id: uuid.UUID,

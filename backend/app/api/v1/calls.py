@@ -79,11 +79,8 @@ async def initiate_call(
             detail="Telnyx not configured",
         )
 
-    if not settings.telnyx_connection_id:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Telnyx connection ID not configured",
-        )
+    # Note: telnyx_connection_id is optional - the service auto-discovers
+    # a Call Control Application ID if not provided
 
     # Verify the from_phone_number belongs to workspace
     result = await db.execute(
@@ -104,13 +101,17 @@ async def initiate_call(
     # Initiate call via Telnyx
     voice_service = TelnyxVoiceService(settings.telnyx_api_key)
     try:
-        # Build webhook URL
-        webhook_url = f"{settings.api_base_url or 'https://example.com'}/webhooks/telnyx/voice"
+        # Build webhook URL for call events
+        api_base = settings.api_base_url or "https://example.com"
+        webhook_url = f"{api_base}/webhooks/telnyx/voice"
+
+        # Connection ID is optional - service auto-discovers if not provided
+        connection_id = settings.telnyx_connection_id if settings.telnyx_connection_id else None
 
         message = await voice_service.initiate_call(
             to_number=call_data.to_number,
             from_number=call_data.from_phone_number,
-            connection_id=settings.telnyx_connection_id,
+            connection_id=connection_id,
             webhook_url=webhook_url,
             db=db,
             workspace_id=workspace_id,

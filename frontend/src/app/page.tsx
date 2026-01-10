@@ -4,15 +4,15 @@ import * as React from "react";
 import { ContactsPage } from "@/components/contacts/contacts-page";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { useContactStore } from "@/lib/contact-store";
-import { useContacts } from "@/hooks/useContacts";
+import { useAllContacts } from "@/hooks/useContacts";
 import { useAuth } from "@/providers/auth-provider";
 
 export default function Home() {
   const { workspaceId } = useAuth();
   const { setContacts, setIsLoadingContacts } = useContactStore();
 
-  // Fetch contacts from API
-  const { data, isLoading } = useContacts(workspaceId ?? "", {});
+  // Fetch ALL contacts from API (handles pagination automatically)
+  const { data, isLoading } = useAllContacts(workspaceId ?? "", {});
 
   // Sync API data to Zustand store
   React.useEffect(() => {

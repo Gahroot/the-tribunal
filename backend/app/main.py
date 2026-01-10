@@ -13,6 +13,7 @@ from app.api.webhooks.telnyx import router as telnyx_webhook_router
 from app.core.config import settings
 from app.db.redis import close_redis
 from app.websockets.voice_bridge import router as voice_bridge_router
+from app.websockets.voice_test import router as voice_test_router
 from app.workers.campaign_worker import start_campaign_worker, stop_campaign_worker
 from app.workers.reputation_worker import reputation_worker
 from app.workers.voice_campaign_worker import (
@@ -128,6 +129,7 @@ app.include_router(calcom_webhook_router, prefix="/webhooks/calcom", tags=["webh
 
 # Include WebSocket routers
 app.include_router(voice_bridge_router, tags=["voice"])
+app.include_router(voice_test_router, tags=["voice"])
 
 
 @app.get("/health")

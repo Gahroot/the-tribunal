@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { ConversationLayout } from "@/components/layout/conversation-layout";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { useContactStore } from "@/lib/contact-store";
-import { useContacts, useContact, useContactTimeline } from "@/hooks/useContacts";
+import { useAllContacts, useContact, useContactTimeline } from "@/hooks/useContacts";
 import { useAuth } from "@/providers/auth-provider";
 
 interface PageProps {
@@ -27,8 +27,8 @@ export default function ConversationPage({ params }: PageProps) {
 
   const contactId = parseInt(id, 10);
 
-  // Fetch all contacts if not already loaded
-  const { data: contactsData, isLoading: isLoadingContactsList } = useContacts(
+  // Fetch ALL contacts (handles pagination automatically)
+  const { data: contactsData, isLoading: isLoadingContactsList } = useAllContacts(
     workspaceId ?? "",
     {},
   );

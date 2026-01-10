@@ -350,10 +350,14 @@ class TelnyxVoiceService:
     ) -> bool:
         """Start bidirectional audio streaming for AI integration.
 
+        Enables real-time audio streaming between Telnyx and a WebSocket endpoint.
+        Uses bidirectional RTP mode to allow the AI to speak back to the caller.
+
         Args:
             call_control_id: Telnyx call control ID
-            stream_url: WebSocket URL for audio stream
-            stream_track: Which audio track to stream (inbound_track, outbound_track, both)
+            stream_url: WebSocket URL for audio stream (wss://...)
+            stream_track: Which audio track to stream (inbound_track recommended
+                         to avoid AI hearing itself)
 
         Returns:
             True if successful, False otherwise
@@ -362,12 +366,17 @@ class TelnyxVoiceService:
             "starting_stream",
             call_control_id=call_control_id,
             stream_url=stream_url,
+            stream_track=stream_track,
         )
 
         try:
             payload: dict[str, Any] = {
                 "stream_url": stream_url,
                 "stream_track": stream_track,
+                # Enable bidirectional streaming to send audio back to caller
+                "stream_bidirectional_mode": "rtp",
+                # Use PCMU codec (μ-law) at 8kHz for PSTN compatibility
+                "stream_bidirectional_codec": "PCMU",
             }
 
             response = await self.client.post(
@@ -378,6 +387,7 @@ class TelnyxVoiceService:
             self.logger.info(
                 "streaming_started",
                 call_control_id=call_control_id,
+                bidirectional=True,
             )
             return True
         except Exception as e:
