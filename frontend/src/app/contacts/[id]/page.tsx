@@ -7,7 +7,7 @@ import { ConversationLayout } from "@/components/layout/conversation-layout";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { useContactStore } from "@/lib/contact-store";
 import { useAllContacts, useContact, useContactTimeline } from "@/hooks/useContacts";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -16,7 +16,7 @@ interface PageProps {
 export default function ConversationPage({ params }: PageProps) {
   const { id } = use(params);
   const router = useRouter();
-  const { workspaceId } = useAuth();
+  const workspaceId = useWorkspaceId();
   const {
     setContacts,
     setSelectedContact,
@@ -72,7 +72,7 @@ export default function ConversationPage({ params }: PageProps) {
   React.useEffect(() => {
     if (contact) {
       setSelectedContact(contact);
-    } else if (!isLoadingContact && !contact && workspaceId) {
+    } else if (!isLoadingContact && !contact) {
       // Contact not found, redirect to contacts page
       router.push("/");
     }

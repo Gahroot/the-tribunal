@@ -46,7 +46,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Separator } from "@/components/ui/separator";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import {
   phoneNumbersApi,
   type PhoneNumberSearchResult,
@@ -61,7 +61,7 @@ const COUNTRIES = [
 ];
 
 export function PhoneNumbersSection() {
-  const { workspaceId } = useAuth();
+  const workspaceId = useWorkspaceId();
   const queryClient = useQueryClient();
 
   // Search state

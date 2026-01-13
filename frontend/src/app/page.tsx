@@ -5,10 +5,10 @@ import { ContactsPage } from "@/components/contacts/contacts-page";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { useContactStore } from "@/lib/contact-store";
 import { useAllContacts } from "@/hooks/useContacts";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 
 export default function Home() {
-  const { workspaceId } = useAuth();
+  const workspaceId = useWorkspaceId();
   const { setContacts, setIsLoadingContacts } = useContactStore();
 
   // Fetch ALL contacts from API (handles pagination automatically)

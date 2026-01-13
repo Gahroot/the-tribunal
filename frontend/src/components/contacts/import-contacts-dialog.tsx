@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Upload, FileText, AlertCircle, CheckCircle2, X, Download } from "lucide-react";
 
 import { contactsApi, type ImportResult, type ImportOptions } from "@/lib/api/contacts";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -38,7 +38,7 @@ type ImportStep = "upload" | "options" | "importing" | "results";
 
 export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialogProps) {
   const queryClient = useQueryClient();
-  const { workspaceId } = useAuth();
+  const workspaceId = useWorkspaceId();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [step, setStep] = useState<ImportStep>("upload");

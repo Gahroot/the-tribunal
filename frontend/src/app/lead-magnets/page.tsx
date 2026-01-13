@@ -63,7 +63,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { leadMagnetsApi, CreateLeadMagnetRequest } from "@/lib/api/lead-magnets";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import type { LeadMagnet, LeadMagnetType, DeliveryMethod } from "@/types";
 
 const magnetTypeIcons: Record<LeadMagnetType, React.ReactNode> = {
@@ -99,7 +99,7 @@ const deliveryMethodIcons: Record<DeliveryMethod, React.ReactNode> = {
 
 export default function LeadMagnetsPage() {
   const queryClient = useQueryClient();
-  const { workspaceId } = useAuth();
+  const workspaceId = useWorkspaceId();
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingMagnet, setEditingMagnet] = useState<LeadMagnet | null>(null);

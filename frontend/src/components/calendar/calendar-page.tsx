@@ -36,7 +36,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAppointments, useDeleteAppointment } from "@/hooks/useAppointments";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { toast } from "sonner";
 import type { Contact } from "@/types";
 
@@ -63,13 +63,13 @@ function getContactName(contact: Contact | null | undefined): string {
 export function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<number | null>(null);
-  const { workspaceId } = useAuth();
+  const workspaceId = useWorkspaceId();
 
   const { data: appointmentsData, isLoading, error } = useAppointments(
-    workspaceId || "",
+    workspaceId ?? "",
     { page: 1, page_size: 100 }
   );
-  const deleteAppointmentMutation = useDeleteAppointment(workspaceId || "");
+  const deleteAppointmentMutation = useDeleteAppointment(workspaceId ?? "");
 
   const appointmentsList = useMemo(
     () => appointmentsData?.items || [],

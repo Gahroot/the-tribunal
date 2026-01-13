@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import * as z from "zod";
 
 import { agentsApi, type CreateAgentRequest } from "@/lib/api/agents";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import {
   ArrowLeft,
   ArrowRight,
@@ -192,7 +192,7 @@ type AgentFormValues = z.infer<typeof agentFormSchema>;
 export function CreateAgentForm() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { workspaceId } = useAuth();
+  const workspaceId = useWorkspaceId();
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 

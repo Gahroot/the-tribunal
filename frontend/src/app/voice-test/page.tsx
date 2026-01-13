@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Play, Square, Loader2 } from "lucide-react";
 
 import { agentsApi } from "@/lib/api/agents";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -133,7 +133,7 @@ function AudioVisualizer({
 /* eslint-enable react-hooks/set-state-in-effect */
 
 export default function VoiceTestPage() {
-  const { workspaceId } = useAuth();
+  const workspaceId = useWorkspaceId();
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("idle");
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);

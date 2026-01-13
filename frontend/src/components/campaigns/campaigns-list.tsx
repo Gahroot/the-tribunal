@@ -55,7 +55,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import type { Campaign, CampaignStatus, CampaignType } from "@/types";
 import { campaignsApi } from "@/lib/api/campaigns";
 
@@ -93,7 +93,7 @@ export function CampaignsList() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
-  const { workspaceId } = useAuth();
+  const workspaceId = useWorkspaceId();
 
   const queryClient = useQueryClient();
 

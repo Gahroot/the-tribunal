@@ -40,7 +40,7 @@ import { usePhoneNumbers } from "@/hooks/usePhoneNumbers";
 import { useAgents } from "@/hooks/useAgents";
 import { useToggleConversationAI, useAssignAgent, useClearConversationHistory } from "@/hooks/useConversations";
 import { useContactStore } from "@/lib/contact-store";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { conversationsApi } from "@/lib/api/conversations";
 import { MessageItem } from "./message-item";
 import type { TimelineItem, Conversation } from "@/types";
@@ -96,7 +96,7 @@ function LoadingSkeleton() {
 
 export function ConversationFeed({ className }: ConversationFeedProps) {
   const { selectedContact, timeline, isLoadingTimeline, addTimelineItem, clearTimeline } = useContactStore();
-  const { workspaceId } = useAuth();
+  const workspaceId = useWorkspaceId();
   const [message, setMessage] = React.useState("");
   const [isSending, setIsSending] = React.useState(false);
   const [selectedFromNumber, setSelectedFromNumber] = React.useState<string | undefined>();

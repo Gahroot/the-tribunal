@@ -41,7 +41,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { agentsApi } from "@/lib/api/agents";
 
 const channelModeIcons: Record<string, React.ElementType> = {
@@ -65,7 +65,7 @@ const itemVariants = {
 
 export function AgentsList() {
   const [searchQuery, setSearchQuery] = useState("");
-  const { workspaceId } = useAuth();
+  const workspaceId = useWorkspaceId();
   const queryClient = useQueryClient();
 
   // Fetch agents from API

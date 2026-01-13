@@ -59,7 +59,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import {
   useAutomations,
   useCreateAutomation,
@@ -119,7 +119,7 @@ function AutomationCardSkeleton() {
 }
 
 export function AutomationsPage() {
-  const { workspaceId } = useAuth();
+  const workspaceId = useWorkspaceId();
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newAutomationName, setNewAutomationName] = useState("");
@@ -201,14 +201,6 @@ export function AutomationsPage() {
       toast.error("Failed to duplicate automation");
     }
   };
-
-  if (!workspaceId) {
-    return (
-      <div className="p-6 flex items-center justify-center">
-        <p className="text-muted-foreground">Please select a workspace</p>
-      </div>
-    );
-  }
 
   if (error) {
     return (

@@ -12,6 +12,8 @@ from app.api.v1 import (
     contacts,
     conversations,
     dashboard,
+    integrations,
+    invitations,
     lead_magnets,
     offers,
     opportunities,
@@ -91,4 +93,20 @@ api_router.include_router(
     dashboard.router,
     prefix="/workspaces/{workspace_id}/dashboard",
     tags=["Dashboard"],
+)
+api_router.include_router(
+    integrations.router,
+    prefix="/workspaces/{workspace_id}/integrations",
+    tags=["Integrations"],
+)
+api_router.include_router(
+    invitations.router,
+    prefix="/workspaces/{workspace_id}/invitations",
+    tags=["Invitations"],
+)
+# Public invitation endpoints (token-based)
+api_router.include_router(
+    invitations.public_router,
+    prefix="/invitations",
+    tags=["Invitations"],
 )

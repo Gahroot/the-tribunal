@@ -9,7 +9,7 @@ import * as z from "zod";
 import { Loader2 } from "lucide-react";
 
 import { contactsApi, type CreateContactRequest } from "@/lib/api/contacts";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -58,7 +58,7 @@ interface CreateContactDialogProps {
 
 export function CreateContactDialog({ open, onOpenChange }: CreateContactDialogProps) {
   const queryClient = useQueryClient();
-  const { workspaceId } = useAuth();
+  const workspaceId = useWorkspaceId();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<ContactFormValues>({

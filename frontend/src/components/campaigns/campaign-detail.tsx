@@ -21,7 +21,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { campaignsApi } from "@/lib/api/campaigns";
 
 interface CampaignDetailProps {
@@ -39,7 +39,7 @@ const statusColors: Record<string, string> = {
 
 export function CampaignDetail({ campaignId }: CampaignDetailProps) {
   const queryClient = useQueryClient();
-  const { workspaceId } = useAuth();
+  const workspaceId = useWorkspaceId();
 
   // Load campaign data
   const { data: campaign, isLoading, error } = useQuery({

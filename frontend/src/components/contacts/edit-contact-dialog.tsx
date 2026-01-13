@@ -10,7 +10,7 @@ import { Loader2 } from "lucide-react";
 
 import { contactsApi, type UpdateContactRequest } from "@/lib/api/contacts";
 import { useContactStore } from "@/lib/contact-store";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -61,7 +61,7 @@ interface EditContactDialogProps {
 export function EditContactDialog({ contact, open, onOpenChange }: EditContactDialogProps) {
   const queryClient = useQueryClient();
   const { setSelectedContact } = useContactStore();
-  const { workspaceId } = useAuth();
+  const workspaceId = useWorkspaceId();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Convert tags to string for form

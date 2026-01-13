@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { ChevronsUpDown, Plus, Building2, Check } from "lucide-react";
 import { useWorkspace } from "@/providers/workspace-provider";
+import { CreateWorkspaceDialog } from "@/components/workspaces/create-workspace-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,6 +20,7 @@ import {
 
 export function WorkspaceSwitcher() {
   const { workspaces, currentWorkspace, setCurrentWorkspace, isLoading } = useWorkspace();
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -88,15 +91,23 @@ export function WorkspaceSwitcher() {
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="gap-2 p-2" disabled>
+            <DropdownMenuItem
+              className="gap-2 p-2"
+              onSelect={() => setCreateDialogOpen(true)}
+            >
               <div className="flex size-6 items-center justify-center rounded-md border bg-background">
                 <Plus className="size-4" />
               </div>
-              <div className="font-medium text-muted-foreground">Add workspace</div>
+              <div className="font-medium">Add workspace</div>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>
+
+      <CreateWorkspaceDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+      />
     </SidebarMenu>
   );
 }

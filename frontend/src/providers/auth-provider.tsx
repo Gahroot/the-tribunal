@@ -16,6 +16,7 @@ interface AuthContextType {
 const AuthContext = React.createContext<AuthContextType | undefined>(undefined);
 
 const PUBLIC_PATHS = ["/login", "/register"];
+const PUBLIC_PATH_PREFIXES = ["/invite/"];
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -77,11 +78,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (isLoading) return;
 
-    const isPublicPath = PUBLIC_PATHS.includes(pathname);
+    const isPublicPath =
+      PUBLIC_PATHS.includes(pathname) ||
+      PUBLIC_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 
     if (!isAuthenticated && !isPublicPath) {
       router.replace("/login");
-    } else if (isAuthenticated && isPublicPath) {
+    } else if (isAuthenticated && PUBLIC_PATHS.includes(pathname)) {
+      // Only redirect away from explicit public paths (login/register), not invite pages
       router.replace("/");
     }
   }, [isAuthenticated, isLoading, pathname, router]);

@@ -10,7 +10,7 @@ import * as z from "zod";
 import Link from "next/link";
 
 import { agentsApi, type UpdateAgentRequest } from "@/lib/api/agents";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -205,7 +205,7 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
   const { id: agentId } = use(params);
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { workspaceId } = useAuth();
+  const workspaceId = useWorkspaceId();
   const [activeTab, setActiveTab] = useState("basic");
   const [isDeleting, setIsDeleting] = useState(false);
   const [isVoiceTestOpen, setIsVoiceTestOpen] = useState(false);

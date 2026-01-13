@@ -2,25 +2,11 @@
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { OfferBuilderWizard } from "@/components/offers/offer-builder-wizard";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { Card, CardContent } from "@/components/ui/card";
 
 export default function CreateOfferPage() {
-  const { workspaceId } = useAuth();
-
-  if (!workspaceId) {
-    return (
-      <AppSidebar>
-        <div className="p-6">
-          <Card>
-            <CardContent className="p-6">
-              <p className="text-muted-foreground">Loading workspace...</p>
-            </CardContent>
-          </Card>
-        </div>
-      </AppSidebar>
-    );
-  }
+  const workspaceId = useWorkspaceId();
 
   return (
     <AppSidebar>
@@ -31,7 +17,7 @@ export default function CreateOfferPage() {
             Build an irresistible offer with value stacking
           </p>
         </div>
-        <OfferBuilderWizard workspaceId={workspaceId} />
+        <OfferBuilderWizard workspaceId={workspaceId!} />
       </div>
     </AppSidebar>
   );

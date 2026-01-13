@@ -14,6 +14,7 @@ from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMembership
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
 
 async def get_current_user(
@@ -62,6 +63,36 @@ async def get_current_active_user(
     return current_user
 
 
+async def get_optional_current_user(
+    token: Annotated[str | None, Depends(oauth2_scheme_optional)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> User | None:
+    """Get the current user if authenticated, None otherwise."""
+    if token is None:
+        return None
+
+    payload = decode_access_token(token)
+    if payload is None:
+        return None
+
+    user_id_str: str | None = payload.get("sub")
+    if user_id_str is None:
+        return None
+
+    try:
+        user_id = int(user_id_str)
+    except (ValueError, TypeError):
+        return None
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if user is None or not user.is_active:
+        return None
+
+    return user
+
+
 async def get_workspace(
     workspace_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
@@ -99,4 +130,5 @@ async def get_workspace(
 # Type aliases for cleaner dependency injection
 CurrentUser = Annotated[User, Depends(get_current_user)]
 ActiveUser = Annotated[User, Depends(get_current_active_user)]
+OptionalCurrentUser = Annotated[User | None, Depends(get_optional_current_user)]
 DB = Annotated[AsyncSession, Depends(get_db)]

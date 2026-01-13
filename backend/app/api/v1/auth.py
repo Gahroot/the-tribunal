@@ -82,12 +82,14 @@ async def login(
 @router.get("/me", response_model=UserWithWorkspace)
 async def get_me(current_user: CurrentUser, db: DB) -> dict[str, Any]:
     """Get current user info with default workspace."""
-    # Get default workspace
+    # Get default workspace (use first() in case multiple are marked as default)
     result = await db.execute(
-        select(WorkspaceMembership).where(
+        select(WorkspaceMembership)
+        .where(
             WorkspaceMembership.user_id == current_user.id,
             WorkspaceMembership.is_default.is_(True),
         )
+        .limit(1)
     )
     membership = result.scalar_one_or_none()
 

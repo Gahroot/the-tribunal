@@ -53,7 +53,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import {
   phoneNumbersApi,
   type PhoneNumberSearchResult,
@@ -68,7 +68,7 @@ const COUNTRIES = [
 ];
 
 export function PhoneNumbersPage() {
-  const { workspaceId } = useAuth();
+  const workspaceId = useWorkspaceId();
   const queryClient = useQueryClient();
 
   // Search state

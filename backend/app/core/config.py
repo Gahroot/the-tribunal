@@ -48,10 +48,15 @@ class Settings(BaseSettings):
     # xAI (Grok)
     xai_api_key: str = ""
 
+    # SendGrid
+    sendgrid_api_key: str = ""
+    sendgrid_from_email: str = "noreply@example.com"
+
     # App
     debug: bool = False
     cors_origins: list[str] = ["http://localhost:3000"]
     api_base_url: str = ""  # Base URL for webhooks (e.g., https://api.example.com)
+    frontend_url: str = "http://localhost:3000"  # Frontend URL for links in emails
 
     # Workers
     campaign_poll_interval: int = 5

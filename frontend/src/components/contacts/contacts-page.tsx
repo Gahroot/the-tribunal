@@ -26,7 +26,7 @@ import { useContactStore } from "@/lib/contact-store";
 import { CreateContactDialog } from "@/components/contacts/create-contact-dialog";
 import { ImportContactsDialog } from "@/components/contacts/import-contacts-dialog";
 import { useBulkDeleteContacts } from "@/hooks/useContacts";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import type { Contact, ContactStatus } from "@/types";
 
 const statusColors: Record<string, string> = {
@@ -233,7 +233,7 @@ export function ContactsPage() {
   const [isImportDialogOpen, setIsImportDialogOpen] = React.useState(false);
   const [selectedIds, setSelectedIds] = React.useState<number[]>([]);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
-  const { workspaceId } = useAuth();
+  const workspaceId = useWorkspaceId();
   const bulkDeleteMutation = useBulkDeleteContacts(workspaceId ?? "");
   const {
     contacts,

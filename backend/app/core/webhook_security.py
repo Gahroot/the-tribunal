@@ -40,8 +40,9 @@ def validate_telnyx_signature(
     key = public_key or settings.telnyx_public_key
     if not key:
         logger.warning("telnyx_public_key_not_configured")
-        # If no key is configured, skip validation in development
-        return settings.debug
+        # Reject webhooks when public key is not configured
+        # Use skip_webhook_verification=True for explicit dev bypass
+        return False
 
     try:
         # Decode the public key
@@ -133,11 +134,12 @@ def validate_calcom_signature(
         return False
 
     # Use provided secret or fall back to settings
-    key = secret or settings.calcom_api_key
+    key = secret or settings.calcom_webhook_secret
     if not key:
         logger.warning("calcom_webhook_secret_not_configured")
-        # If no key is configured, skip validation in development
-        return settings.debug
+        # Reject webhooks when secret is not configured
+        # Use skip_webhook_verification=True for explicit dev bypass
+        return False
 
     try:
         # Calculate expected signature

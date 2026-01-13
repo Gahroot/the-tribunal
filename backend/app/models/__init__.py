@@ -7,6 +7,7 @@ from app.models.campaign import Campaign, CampaignContact
 from app.models.campaign_number_pool import CampaignNumberPool
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
+from app.models.invitation import WorkspaceInvitation
 from app.models.lead_magnet import LeadMagnet
 from app.models.offer import Offer
 from app.models.offer_lead_magnet import OfferLeadMagnet
@@ -23,6 +24,7 @@ __all__ = [
     "Workspace",
     "WorkspaceMembership",
     "WorkspaceIntegration",
+    "WorkspaceInvitation",
     "Contact",
     "Conversation",
     "Message",

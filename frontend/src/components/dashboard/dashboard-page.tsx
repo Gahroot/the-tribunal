@@ -33,7 +33,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDashboard } from "@/hooks/useDashboard";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import type {
   DashboardStats,
   RecentActivity,
@@ -526,7 +526,7 @@ function ErrorState({ error }: { error: Error }) {
 }
 
 export function DashboardPage() {
-  const { workspaceId } = useAuth();
+  const workspaceId = useWorkspaceId();
   const { data, isLoading, error, isFetching } = useDashboard(workspaceId ?? "");
 
   if (error && !data) {

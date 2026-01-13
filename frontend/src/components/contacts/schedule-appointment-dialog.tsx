@@ -10,7 +10,7 @@ import { format } from "date-fns";
 import { CalendarIcon, Loader2 } from "lucide-react";
 
 import { appointmentsApi, type CreateAppointmentRequest } from "@/lib/api/appointments";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -83,7 +83,7 @@ export function ScheduleAppointmentDialog({
   open,
   onOpenChange,
 }: ScheduleAppointmentDialogProps) {
-  const { workspaceId } = useAuth();
+  const workspaceId = useWorkspaceId();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
 

@@ -40,7 +40,7 @@ import { useContactStore } from "@/lib/contact-store";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAppointments } from "@/hooks/useAppointments";
 import { useToggleContactAI, useDeleteContact } from "@/hooks/useContacts";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { callsApi, type InitiateCallRequest } from "@/lib/api/calls";
 import { conversationsApi } from "@/lib/api/conversations";
 import { phoneNumbersApi } from "@/lib/api/phone-numbers";
@@ -136,7 +136,7 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
   const router = useRouter();
   const { selectedContact, setSelectedContact, timeline } = useContactStore();
   const isMobile = useIsMobile();
-  const { workspaceId } = useAuth();
+  const workspaceId = useWorkspaceId();
 
   // Dialog states
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -145,7 +145,7 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
 
   // Fetch appointments for this contact
   const { data: appointmentsData, isLoading: appointmentsLoading } = useAppointments(
-    workspaceId || "",
+    workspaceId ?? "",
     { page: 1, page_size: 50 }
   );
 
@@ -200,10 +200,10 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
   });
 
   // AI toggle mutation - uses the new contact-based endpoint
-  const toggleAIMutation = useToggleContactAI(workspaceId || "");
+  const toggleAIMutation = useToggleContactAI(workspaceId ?? "");
 
   // Delete contact mutation
-  const deleteContactMutation = useDeleteContact(workspaceId || "");
+  const deleteContactMutation = useDeleteContact(workspaceId ?? "");
 
   // Handle call action
   const handleCall = () => {

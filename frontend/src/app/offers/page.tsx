@@ -41,7 +41,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { offersApi } from "@/lib/api/offers";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import type { Offer, DiscountType } from "@/types";
 
 const discountTypeIcons: Record<DiscountType, React.ReactNode> = {
@@ -66,7 +66,7 @@ function formatDiscount(offer: Offer) {
 export default function OffersPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { workspaceId } = useAuth();
+  const workspaceId = useWorkspaceId();
 
   const [deleteOfferId, setDeleteOfferId] = useState<string | null>(null);
 
