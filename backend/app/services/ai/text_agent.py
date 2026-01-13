@@ -5,10 +5,12 @@ Handles:
 - Message context building
 - Response generation with debouncing
 - OpenAI function calling for booking appointments
+- AI-powered opt-out intent classification
 """
 
 import asyncio
 import json
+import re
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -26,7 +28,167 @@ from app.models.appointment import Appointment
 from app.models.campaign import CampaignContact
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
+from app.models.workspace import Workspace
 from app.services.calendar.calcom import CalComService
+
+# Default timezone fallback
+DEFAULT_TIMEZONE = "America/New_York"
+
+# Opt-out keywords that trigger AI classification
+# These are potential opt-out signals that need context verification
+OPT_OUT_KEYWORDS = [
+    "stop", "stopall", "unsubscribe", "opt out", "optout",
+    "cancel", "end", "quit", "remove", "unsub",
+    # Additional phrases for edge cases
+    "take me off", "don't want", "dont want", "no more messages",
+    "stop messaging", "stop texting", "leave me alone",
+]
+
+# System prompt for opt-out classification
+OPT_OUT_CLASSIFIER_PROMPT = """You are a message intent classifier. Determine if the user \
+is requesting to opt out of receiving messages (SMS/text communications).
+
+TRUE OPT-OUT examples (user wants to stop receiving messages):
+- "STOP"
+- "Stop texting me"
+- "Unsubscribe"
+- "Remove me from this list"
+- "I don't want these messages anymore"
+- "Quit sending me texts"
+- "Please stop contacting me"
+
+FALSE OPT-OUT examples (NOT requesting to stop messages):
+- "I think you should quit" (telling someone to quit their job/give up)
+- "Don't quit on me" (encouragement)
+- "I quit my job last week" (unrelated statement)
+- "Stop wasting my time with bad offers" (complaint, but still engaged)
+- "This is the end of our conversation" (ending chat, not unsubscribing)
+- "Cancel my appointment" (canceling something else, not messages)
+- "Remove my name from the appointment" (editing, not unsubscribing)
+
+Respond with ONLY "true" or "false" - no other text."""
+
+
+def has_potential_opt_out_keywords(message: str) -> bool:
+    """Check if message contains potential opt-out keywords.
+
+    This is a fast pre-filter before running the AI classifier.
+
+    Args:
+        message: The message text to check
+
+    Returns:
+        True if message contains any opt-out keywords
+    """
+    message_normalized = re.sub(r"[^\w\s]", "", message.lower().strip())
+    return any(keyword in message_normalized for keyword in OPT_OUT_KEYWORDS)
+
+
+async def classify_opt_out_intent(
+    message: str,
+    conversation_context: list[dict[str, str]] | None = None,
+    openai_api_key: str | None = None,
+) -> bool:
+    """Use AI to determine if a message is a genuine opt-out request.
+
+    This function uses GPT-4o-mini to understand the semantic intent
+    of a message, distinguishing between actual opt-out requests and
+    messages that happen to contain opt-out keywords in other contexts.
+
+    Args:
+        message: The message to classify
+        conversation_context: Optional recent conversation history for context
+        openai_api_key: OpenAI API key (uses settings if not provided)
+
+    Returns:
+        True if the message is a genuine opt-out request, False otherwise
+    """
+    log = logger.bind(message_preview=message[:50] if message else "")
+
+    api_key = openai_api_key or settings.openai_api_key
+    if not api_key:
+        log.warning("no_openai_key_for_opt_out_classifier")
+        # Fall back to keyword-only detection if no API key
+        return has_potential_opt_out_keywords(message)
+
+    # Build the user message with context if available
+    context_text = ""
+    if conversation_context and len(conversation_context) > 0:
+        # Include last 3 messages for context
+        recent = conversation_context[-3:]
+        context_lines = []
+        for msg in recent:
+            role = "Customer" if msg["role"] == "user" else "Agent"
+            context_lines.append(f"{role}: {msg['content']}")
+        context_text = "Recent conversation:\n" + "\n".join(context_lines) + "\n\n"
+
+    user_message = f"""{context_text}Message to classify: "{message}"
+
+Is this a genuine opt-out request (user wants to stop receiving SMS/text messages)?"""
+
+    client = AsyncOpenAI(api_key=api_key)
+
+    try:
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": OPT_OUT_CLASSIFIER_PROMPT},
+                    {"role": "user", "content": user_message},
+                ],
+                temperature=0,  # Deterministic for classification
+                max_tokens=10,  # Only need "true" or "false"
+            ),
+            timeout=5.0,  # Fast timeout for classification
+        )
+
+        result_text = response.choices[0].message.content or ""
+        is_opt_out = result_text.strip().lower() == "true"
+
+        log.info(
+            "opt_out_classified",
+            result=is_opt_out,
+            raw_response=result_text.strip(),
+        )
+
+        return is_opt_out
+
+    except TimeoutError:
+        log.warning("opt_out_classifier_timeout")
+        # On timeout, be conservative and check keywords only
+        # If message is just "STOP" or "unsubscribe", treat as opt-out
+        simple_opt_outs = ["stop", "stopall", "unsubscribe", "opt out", "optout"]
+        return message.lower().strip() in simple_opt_outs
+
+    except Exception as e:
+        log.exception("opt_out_classifier_error", error=str(e))
+        # On error, fall back to simple keyword check for obvious opt-outs
+        simple_opt_outs = ["stop", "stopall", "unsubscribe", "opt out", "optout"]
+        return message.lower().strip() in simple_opt_outs
+
+
+async def get_workspace_timezone(
+    workspace_id: uuid.UUID,
+    db: AsyncSession,
+) -> str:
+    """Get timezone from workspace settings.
+
+    Args:
+        workspace_id: The workspace ID
+        db: Database session
+
+    Returns:
+        Timezone string (e.g., "America/New_York")
+    """
+    result = await db.execute(
+        select(Workspace).where(Workspace.id == workspace_id)
+    )
+    workspace = result.scalar_one_or_none()
+    if workspace and workspace.settings:
+        tz = workspace.settings.get("timezone")
+        if isinstance(tz, str):
+            return tz
+    return DEFAULT_TIMEZONE
 
 logger = structlog.get_logger()
 
@@ -827,7 +989,8 @@ async def generate_text_response(  # noqa: PLR0915, PLR0912
     )
     log.info("generating_text_response")
 
-    timezone = "America/New_York"  # TODO: Get from workspace settings
+    # Get timezone from workspace settings
+    timezone = await get_workspace_timezone(conversation.workspace_id, db)
 
     # Build message context
     messages = await build_message_context(
@@ -1067,6 +1230,10 @@ async def process_inbound_with_ai(  # noqa: PLR0911
 ) -> None:
     """Process inbound message and generate AI response.
 
+    Includes AI-powered opt-out detection that runs during the debounce delay,
+    distinguishing between genuine opt-outs and false positives like
+    "I think you should quit" (insult) vs "quit texting me" (opt-out).
+
     Args:
         conversation_id: The conversation ID
         workspace_id: Workspace ID
@@ -1110,6 +1277,48 @@ async def process_inbound_with_ai(  # noqa: PLR0911
     if not openai_key:
         log.error("no_openai_api_key")
         return
+
+    # === AI-POWERED OPT-OUT DETECTION ===
+    # Get last inbound message to check for opt-out intent
+    last_msg_result = await db.execute(
+        select(Message)
+        .where(
+            Message.conversation_id == conversation_id,
+            Message.direction == "inbound",
+        )
+        .order_by(Message.created_at.desc())
+        .limit(1)
+    )
+    last_inbound = last_msg_result.scalar_one_or_none()
+
+    if last_inbound and has_potential_opt_out_keywords(last_inbound.body):
+        log.info("potential_opt_out_detected", message_preview=last_inbound.body[:50])
+
+        # Get conversation context for better classification
+        messages_context = await build_message_context(conversation, db, max_messages=5)
+
+        # Run AI classifier to verify intent
+        is_genuine_opt_out = await classify_opt_out_intent(
+            message=last_inbound.body,
+            conversation_context=messages_context,
+            openai_api_key=openai_key,
+        )
+
+        if is_genuine_opt_out:
+            # Confirmed opt-out - disable AI and don't respond
+            conversation.ai_enabled = False
+            await db.commit()
+            log.info(
+                "opt_out_confirmed_by_ai",
+                message=last_inbound.body[:100],
+            )
+            return
+        else:
+            log.info(
+                "opt_out_rejected_by_ai",
+                message=last_inbound.body[:100],
+            )
+            # Not a genuine opt-out - proceed with normal response
 
     # Generate response
     response_text = await generate_text_response(

@@ -246,11 +246,11 @@ class TelnyxSMSService:
         conversation.last_message_at = datetime.now(UTC)
         conversation.unread_count += 1
 
-        # Check for opt-out keywords
-        opt_out_keywords = ["stop", "unsubscribe", "opt out", "optout", "cancel"]
-        if body.lower().strip() in opt_out_keywords:
-            conversation.ai_enabled = False
-            log.info("contact_opted_out")
+        # NOTE: Opt-out detection has been moved to process_inbound_with_ai()
+        # where we use AI classification to distinguish between:
+        # - Genuine opt-outs: "STOP", "Unsubscribe", "Stop texting me"
+        # - False positives: "I think you should quit", "Don't quit on me"
+        # This runs in parallel during the debounce delay, adding no latency.
 
         await db.commit()
         await db.refresh(message)
