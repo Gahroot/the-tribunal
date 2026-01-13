@@ -145,7 +145,7 @@ def convert_openai_to_telnyx(pcm_24k: bytes, log: Any) -> bytes:
 async def _lookup_call_context(
     call_id: str,
     log: Any,
-) -> tuple[Any, dict[str, Any] | None, dict[str, Any] | None]:
+) -> tuple[Any, dict[str, Any] | None, dict[str, Any] | None, str]:
     """Look up agent, contact, and offer context for a call.
 
     Args:
@@ -153,7 +153,7 @@ async def _lookup_call_context(
         log: Logger instance
 
     Returns:
-        Tuple of (agent, contact_info dict, offer_info dict)
+        Tuple of (agent, contact_info dict, offer_info dict, timezone)
     """
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
@@ -163,10 +163,12 @@ async def _lookup_call_context(
     from app.models.contact import Contact
     from app.models.conversation import Message
     from app.models.offer import Offer
+    from app.models.workspace import Workspace
 
     agent = None
     contact_info = None
     offer_info = None
+    timezone = "America/New_York"  # Default fallback
 
     async with AsyncSessionLocal() as db:
         # Look up the message record for this call
@@ -179,9 +181,17 @@ async def _lookup_call_context(
 
         if not message or not message.conversation:
             log.warning("message_not_found_for_call", call_id=call_id)
-            return agent, contact_info, offer_info
+            return agent, contact_info, offer_info, timezone
 
         conversation = message.conversation
+
+        # Get workspace timezone
+        workspace_result = await db.execute(
+            select(Workspace).where(Workspace.id == conversation.workspace_id)
+        )
+        workspace = workspace_result.scalar_one_or_none()
+        if workspace and workspace.settings:
+            timezone = workspace.settings.get("timezone", "America/New_York")
 
         # Look up the assigned agent
         if conversation.assigned_agent_id:
@@ -241,7 +251,7 @@ async def _lookup_call_context(
                         offer_name=offer.name,
                     )
 
-    return agent, contact_info, offer_info
+    return agent, contact_info, offer_info, timezone
 
 
 async def _execute_voice_tool(
@@ -250,6 +260,7 @@ async def _execute_voice_tool(
     arguments: dict[str, Any],
     agent: Any,
     contact_info: dict[str, Any] | None,
+    timezone: str,
     log: Any,
 ) -> dict[str, Any]:
     """Execute a tool call from voice agent.
@@ -260,6 +271,7 @@ async def _execute_voice_tool(
         arguments: Function arguments
         agent: Agent model with Cal.com config
         contact_info: Contact information
+        timezone: Timezone for bookings (from workspace settings)
         log: Logger instance
 
     Returns:
@@ -271,8 +283,6 @@ async def _execute_voice_tool(
         function_name=function_name,
         arguments=arguments,
     )
-
-    timezone = "America/New_York"  # TODO: Get from workspace settings
 
     if function_name == "check_availability":
         return await _execute_check_availability(
@@ -518,6 +528,7 @@ async def _setup_voice_session(
     agent: Any,
     contact_info: dict[str, Any] | None,
     offer_info: dict[str, Any] | None,
+    timezone: str,
     log: Any,
 ) -> None:
     """Configure voice session with agent settings and context.
@@ -531,11 +542,12 @@ async def _setup_voice_session(
         agent: Agent model for configuration
         contact_info: Contact information dict
         offer_info: Offer information dict
+        timezone: Timezone for bookings (from workspace settings)
         log: Logger instance
     """
     # Set up tool callback for Grok voice sessions
     if isinstance(voice_session, GrokVoiceAgentSession):
-        # Create a closure to capture agent and contact_info for tool execution
+        # Create a closure to capture agent, contact_info, and timezone for tool execution
         async def tool_callback(
             call_id: str,
             function_name: str,
@@ -547,6 +559,7 @@ async def _setup_voice_session(
                 arguments=arguments,
                 agent=agent,
                 contact_info=contact_info,
+                timezone=timezone,
                 log=log,
             )
 
@@ -603,7 +616,7 @@ async def voice_stream_bridge(websocket: WebSocket, call_id: str) -> None:  # no
 
     # Get agent and conversation context from database first to determine provider
     log.info("looking_up_call_context")
-    agent, contact_info, offer_info = await _lookup_call_context(call_id, log)
+    agent, contact_info, offer_info, timezone = await _lookup_call_context(call_id, log)
 
     if not agent:
         log.warning(
@@ -667,7 +680,7 @@ async def voice_stream_bridge(websocket: WebSocket, call_id: str) -> None:  # no
 
         # Configure session with agent settings and inject context
         log.info("configuring_voice_session")
-        await _setup_voice_session(voice_session, agent, contact_info, offer_info, log)
+        await _setup_voice_session(voice_session, agent, contact_info, offer_info, timezone, log)
         log.info("voice_session_configured")
 
         # Start bidirectional audio relay

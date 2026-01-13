@@ -1,11 +1,11 @@
 "use client";
 
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspace } from "@/providers/workspace-provider";
 
 export function useWorkspaceId(): string {
-  const { workspaceId } = useAuth();
-  if (!workspaceId) {
+  const { currentWorkspaceId } = useWorkspace();
+  if (!currentWorkspaceId) {
     throw new Error("useWorkspaceId must be used within a workspace context");
   }
-  return workspaceId;
+  return currentWorkspaceId;
 }

@@ -4,6 +4,8 @@ import * as React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { AuthProvider } from "./auth-provider";
+import { WorkspaceProvider } from "./workspace-provider";
+import { PageErrorBoundary } from "@/components/ui/error-boundary";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,8 +24,12 @@ export function Providers({ children }: ProvidersProps) {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        {children}
-        <Toaster position="bottom-right" richColors />
+        <WorkspaceProvider>
+          <PageErrorBoundary>
+            {children}
+          </PageErrorBoundary>
+          <Toaster position="bottom-right" richColors />
+        </WorkspaceProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

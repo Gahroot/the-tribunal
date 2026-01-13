@@ -2,12 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { motion } from "framer-motion";
 import {
   LayoutDashboard,
   Users,
   Megaphone,
-  Briefcase,
   Phone,
   Bot,
   Settings,
@@ -35,6 +33,7 @@ import {
   SidebarTrigger,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
+import { WorkspaceSwitcher } from "./workspace-switcher";
 import {
   Collapsible,
   CollapsibleContent,
@@ -60,11 +59,12 @@ const mainNavItems = [
     url: "/",
     icon: Users,
   },
-  {
-    title: "Opportunities",
-    url: "/opportunities",
-    icon: Briefcase,
-  },
+  // Opportunities hidden until feature is complete
+  // {
+  //   title: "Opportunities",
+  //   url: "/opportunities",
+  //   icon: Briefcase,
+  // },
   {
     title: "Campaigns",
     url: "/campaigns",
@@ -141,27 +141,7 @@ export function AppSidebar({ children }: AppSidebarProps) {
     <SidebarProvider>
       <Sidebar collapsible="icon">
         <SidebarHeader className="border-b border-sidebar-border">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton size="lg" asChild>
-                <Link href="/dashboard">
-                  <motion.div
-                    className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground"
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <Zap className="size-4" />
-                  </motion.div>
-                  <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-semibold">AI CRM</span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      Enterprise
-                    </span>
-                  </div>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
+          <WorkspaceSwitcher />
         </SidebarHeader>
 
         <SidebarContent>
