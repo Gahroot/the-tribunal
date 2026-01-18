@@ -16,6 +16,9 @@ import {
   ChevronRight,
   Check,
   Loader2,
+  Globe,
+  Copy,
+  ExternalLink,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -31,10 +34,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 
 import { ValueStackBuilder } from "./value-stack-builder";
 import { LeadMagnetSelector } from "./lead-magnet-selector";
 import { OfferPreview } from "./offer-preview";
+import { AIOfferWriter } from "./ai-offer-writer";
 
 import { offersApi, CreateOfferRequest } from "@/lib/api/offers";
 import { leadMagnetsApi } from "@/lib/api/lead-magnets";
@@ -66,6 +72,7 @@ const STEPS: Step[] = [
   { id: "lead-magnets", label: "Lead Magnets", icon: <Gift className="size-4" /> },
   { id: "guarantee", label: "Guarantee", icon: <Shield className="size-4" /> },
   { id: "urgency", label: "Urgency", icon: <Clock className="size-4" /> },
+  { id: "publish", label: "Publish", icon: <Globe className="size-4" /> },
   { id: "review", label: "Review", icon: <Eye className="size-4" /> },
 ];
 
@@ -91,6 +98,12 @@ interface FormData {
   cta_subtext: string;
   terms: string;
   is_active: boolean;
+  // Public landing page fields
+  is_public: boolean;
+  public_slug: string;
+  require_email: boolean;
+  require_phone: boolean;
+  require_name: boolean;
 }
 
 const initialFormData: FormData = {
@@ -115,6 +128,12 @@ const initialFormData: FormData = {
   cta_subtext: "",
   terms: "",
   is_active: true,
+  // Public landing page defaults
+  is_public: false,
+  public_slug: "",
+  require_email: true,
+  require_phone: false,
+  require_name: false,
 };
 
 export function OfferBuilderWizard({
@@ -151,6 +170,12 @@ export function OfferBuilderWizard({
         cta_subtext: existingOffer.cta_subtext || "",
         terms: existingOffer.terms || "",
         is_active: existingOffer.is_active,
+        // Public landing page fields
+        is_public: existingOffer.is_public || false,
+        public_slug: existingOffer.public_slug || "",
+        require_email: existingOffer.require_email ?? true,
+        require_phone: existingOffer.require_phone || false,
+        require_name: existingOffer.require_name || false,
       };
     }
     return initialFormData;
@@ -255,6 +280,12 @@ export function OfferBuilderWizard({
         : undefined,
       cta_text: formData.cta_text || undefined,
       cta_subtext: formData.cta_subtext || undefined,
+      // Public landing page fields
+      is_public: formData.is_public,
+      public_slug: formData.public_slug || undefined,
+      require_email: formData.require_email,
+      require_phone: formData.require_phone,
+      require_name: formData.require_name,
     };
 
     createMutation.mutate(offerData);
@@ -265,6 +296,35 @@ export function OfferBuilderWizard({
       case "basics":
         return (
           <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <h4 className="font-medium">Basic Information</h4>
+                <p className="text-sm text-muted-foreground">
+                  Define your offer or generate content with AI
+                </p>
+              </div>
+              <AIOfferWriter
+                workspaceId={workspaceId}
+                onApply={(data) => {
+                  updateFormData({
+                    headline: data.headline ?? formData.headline,
+                    subheadline: data.subheadline ?? formData.subheadline,
+                    value_stack_items: data.value_stack_items ?? formData.value_stack_items,
+                    guarantee_type: data.guarantee_type ?? formData.guarantee_type,
+                    guarantee_days: data.guarantee_days ?? formData.guarantee_days,
+                    guarantee_text: data.guarantee_text ?? formData.guarantee_text,
+                    urgency_type: data.urgency_type ?? formData.urgency_type,
+                    urgency_text: data.urgency_text ?? formData.urgency_text,
+                    scarcity_count: data.scarcity_count ?? formData.scarcity_count,
+                    cta_text: data.cta_text ?? formData.cta_text,
+                    cta_subtext: data.cta_subtext ?? formData.cta_subtext,
+                  });
+                }}
+              />
+            </div>
+
+            <Separator />
+
             <div className="space-y-2">
               <Label htmlFor="name">Offer Name *</Label>
               <Input
@@ -590,6 +650,150 @@ export function OfferBuilderWizard({
                 rows={2}
               />
             </div>
+          </div>
+        );
+
+      case "publish":
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div className="space-y-0.5">
+                <Label className="text-base">Public Landing Page</Label>
+                <p className="text-sm text-muted-foreground">
+                  Enable a shareable landing page for this offer
+                </p>
+              </div>
+              <Switch
+                checked={formData.is_public}
+                onCheckedChange={(checked) =>
+                  updateFormData({ is_public: checked })
+                }
+              />
+            </div>
+
+            {formData.is_public && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="public_slug">URL Slug</Label>
+                  <div className="flex gap-2">
+                    <div className="flex-1 flex items-center gap-2 p-2 bg-muted rounded-md text-sm text-muted-foreground">
+                      <span>{typeof window !== "undefined" ? window.location.origin : ""}/p/offers/</span>
+                      <Input
+                        id="public_slug"
+                        placeholder="my-offer"
+                        value={formData.public_slug}
+                        onChange={(e) =>
+                          updateFormData({
+                            public_slug: e.target.value
+                              .toLowerCase()
+                              .replace(/[^a-z0-9-]/g, "-")
+                              .replace(/-+/g, "-"),
+                          })
+                        }
+                        className="flex-1 h-8"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Only lowercase letters, numbers, and dashes allowed
+                  </p>
+                </div>
+
+                {formData.public_slug && (
+                  <div className="flex items-center gap-2 p-3 bg-primary/5 rounded-lg border border-primary/20">
+                    <Globe className="size-4 text-primary" />
+                    <span className="text-sm flex-1 truncate">
+                      {typeof window !== "undefined" ? window.location.origin : ""}/p/offers/{formData.public_slug}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const url = `${window.location.origin}/p/offers/${formData.public_slug}`;
+                        navigator.clipboard.writeText(url);
+                      }}
+                    >
+                      <Copy className="size-4" />
+                    </Button>
+                    {existingOffer?.is_public && existingOffer?.public_slug && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          window.open(
+                            `/p/offers/${existingOffer.public_slug}`,
+                            "_blank"
+                          )
+                        }
+                      >
+                        <ExternalLink className="size-4" />
+                      </Button>
+                    )}
+                  </div>
+                )}
+
+                <Separator />
+
+                <div className="space-y-4">
+                  <h4 className="font-medium">Required Fields</h4>
+                  <p className="text-sm text-muted-foreground">
+                    Choose what information visitors must provide to access this offer
+                  </p>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-3">
+                      <Checkbox
+                        id="require_email"
+                        checked={formData.require_email}
+                        onCheckedChange={(checked) =>
+                          updateFormData({ require_email: checked === true })
+                        }
+                      />
+                      <Label
+                        htmlFor="require_email"
+                        className="text-sm font-normal cursor-pointer"
+                      >
+                        Email address (recommended)
+                      </Label>
+                    </div>
+
+                    <div className="flex items-center space-x-3">
+                      <Checkbox
+                        id="require_phone"
+                        checked={formData.require_phone}
+                        onCheckedChange={(checked) =>
+                          updateFormData({ require_phone: checked === true })
+                        }
+                      />
+                      <Label
+                        htmlFor="require_phone"
+                        className="text-sm font-normal cursor-pointer"
+                      >
+                        Phone number
+                      </Label>
+                    </div>
+
+                    <div className="flex items-center space-x-3">
+                      <Checkbox
+                        id="require_name"
+                        checked={formData.require_name}
+                        onCheckedChange={(checked) =>
+                          updateFormData({ require_name: checked === true })
+                        }
+                      />
+                      <Label
+                        htmlFor="require_name"
+                        className="text-sm font-normal cursor-pointer"
+                      >
+                        Full name
+                      </Label>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         );
 

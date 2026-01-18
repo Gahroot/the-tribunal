@@ -79,6 +79,17 @@ class Offer(Base):
     cta_text: Mapped[str | None] = mapped_column(String(100), nullable=True)
     cta_subtext: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    # Public landing page fields
+    is_public: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    public_slug: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True)
+    require_email: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    require_phone: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    require_name: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # Public page analytics
+    page_views: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    opt_ins: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False

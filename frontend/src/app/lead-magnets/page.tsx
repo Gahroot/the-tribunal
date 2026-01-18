@@ -22,6 +22,10 @@ import {
   ExternalLink,
   MessageSquare,
   DollarSign,
+  CircleHelp,
+  Calculator,
+  FileEdit,
+  Clapperboard,
 } from "lucide-react";
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
@@ -76,6 +80,10 @@ const magnetTypeIcons: Record<LeadMagnetType, React.ReactNode> = {
   consultation: <Users className="size-4" />,
   ebook: <BookOpen className="size-4" />,
   mini_course: <GraduationCap className="size-4" />,
+  quiz: <CircleHelp className="size-4" />,
+  calculator: <Calculator className="size-4" />,
+  rich_text: <FileEdit className="size-4" />,
+  video_course: <Clapperboard className="size-4" />,
 };
 
 const magnetTypeLabels: Record<LeadMagnetType, string> = {
@@ -88,6 +96,10 @@ const magnetTypeLabels: Record<LeadMagnetType, string> = {
   consultation: "Consultation",
   ebook: "eBook",
   mini_course: "Mini Course",
+  quiz: "Quiz",
+  calculator: "Calculator",
+  rich_text: "Rich Text",
+  video_course: "Video Course",
 };
 
 const deliveryMethodIcons: Record<DeliveryMethod, React.ReactNode> = {

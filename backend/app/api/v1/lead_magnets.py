@@ -10,13 +10,71 @@ from app.api.deps import DB, CurrentUser, get_workspace
 from app.models.lead_magnet import LeadMagnet
 from app.models.workspace import Workspace
 from app.schemas.lead_magnet import (
+    CalculatorGenerationRequest,
+    GeneratedCalculatorContent,
+    GeneratedQuizContent,
     LeadMagnetCreate,
     LeadMagnetResponse,
     LeadMagnetUpdate,
     PaginatedLeadMagnets,
+    QuizGenerationRequest,
+)
+from app.services.ai.lead_magnet_generator import (
+    generate_calculator_content,
+    generate_quiz_content,
 )
 
 router = APIRouter()
+
+
+@router.post("/generate-quiz", response_model=GeneratedQuizContent)
+async def generate_quiz_ai(
+    workspace_id: uuid.UUID,
+    request: QuizGenerationRequest,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> GeneratedQuizContent:
+    """Generate quiz content using AI."""
+    result = await generate_quiz_content(
+        topic=request.topic,
+        target_audience=request.target_audience,
+        goal=request.goal,
+        num_questions=request.num_questions,
+    )
+
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=result.get("error", "Failed to generate quiz content"),
+        )
+
+    return GeneratedQuizContent(**result)
+
+
+@router.post("/generate-calculator", response_model=GeneratedCalculatorContent)
+async def generate_calculator_ai(
+    workspace_id: uuid.UUID,
+    request: CalculatorGenerationRequest,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> GeneratedCalculatorContent:
+    """Generate calculator content using AI."""
+    result = await generate_calculator_content(
+        calculator_type=request.calculator_type,
+        industry=request.industry,
+        target_audience=request.target_audience,
+        value_proposition=request.value_proposition,
+    )
+
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=result.get("error", "Failed to generate calculator content"),
+        )
+
+    return GeneratedCalculatorContent(**result)
 
 
 @router.get("", response_model=PaginatedLeadMagnets)

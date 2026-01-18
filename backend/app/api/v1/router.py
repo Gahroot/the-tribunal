@@ -110,3 +110,9 @@ api_router.include_router(
     prefix="/invitations",
     tags=["Invitations"],
 )
+# Public offer endpoints (no auth)
+api_router.include_router(
+    offers.public_router,
+    prefix="/p/offers",
+    tags=["Public Offers"],
+)

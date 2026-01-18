@@ -16,7 +16,7 @@ interface AuthContextType {
 const AuthContext = React.createContext<AuthContextType | undefined>(undefined);
 
 const PUBLIC_PATHS = ["/login", "/register"];
-const PUBLIC_PATH_PREFIXES = ["/invite/"];
+const PUBLIC_PATH_PREFIXES = ["/invite/", "/p/"];
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;

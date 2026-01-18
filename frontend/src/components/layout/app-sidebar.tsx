@@ -14,6 +14,8 @@ import {
   Zap,
   LogOut,
   Headphones,
+  Gift,
+  Magnet,
 } from "lucide-react";
 import { useAuth } from "@/providers/auth-provider";
 
@@ -82,6 +84,16 @@ const managementNavItems = [
     title: "AI Agents",
     url: "/agents",
     icon: Bot,
+  },
+  {
+    title: "Offers",
+    url: "/offers",
+    icon: Gift,
+  },
+  {
+    title: "Lead Magnets",
+    url: "/lead-magnets",
+    icon: Magnet,
   },
   {
     title: "Phone Numbers",

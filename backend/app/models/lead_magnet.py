@@ -3,10 +3,10 @@
 import uuid
 from datetime import UTC, datetime
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -28,6 +28,11 @@ class LeadMagnetType(str, Enum):
     CONSULTATION = "consultation"
     EBOOK = "ebook"
     MINI_COURSE = "mini_course"
+    # Rich interactive types
+    QUIZ = "quiz"
+    CALCULATOR = "calculator"
+    RICH_TEXT = "rich_text"
+    VIDEO_COURSE = "video_course"
 
 
 class DeliveryMethod(str, Enum):
@@ -69,6 +74,9 @@ class LeadMagnet(Base):
     # Content
     content_url: Mapped[str] = mapped_column(String(500), nullable=False)
     thumbnail_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Rich content data (for quizzes, calculators, rich text, etc.)
+    content_data: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
     # Value perception (for Hormozi-style value stacking)
     estimated_value: Mapped[float | None] = mapped_column(Float, nullable=True)
