@@ -122,6 +122,18 @@ class Conversation(Base):
         String(20), nullable=False, default="platform"
     )  # platform, external
 
+    # Follow-up settings
+    followup_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    followup_delay_hours: Mapped[int] = mapped_column(Integer, default=24, nullable=False)
+    followup_max_count: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    followup_count_sent: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    next_followup_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_followup_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False

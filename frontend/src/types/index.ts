@@ -60,8 +60,36 @@ export interface Conversation {
   ai_enabled: boolean;
   ai_paused: boolean;
   assigned_agent_id?: string;
+  // Follow-up settings
+  followup_enabled?: boolean;
+  followup_delay_hours?: number;
+  followup_max_count?: number;
+  followup_count_sent?: number;
+  next_followup_at?: string;
+  last_followup_at?: string;
   created_at: string;
   updated_at: string;
+}
+
+// Follow-up Types
+export interface FollowupSettings {
+  enabled: boolean;
+  delay_hours: number;
+  max_count: number;
+  count_sent: number;
+  next_followup_at?: string;
+  last_followup_at?: string;
+}
+
+export interface FollowupGenerateResponse {
+  message: string;
+  conversation_id: string;
+}
+
+export interface FollowupSendResponse {
+  success: boolean;
+  message_id?: string;
+  message_body: string;
 }
 
 export interface CallRecord {
@@ -538,6 +566,14 @@ export interface Offer {
   value_stack_items?: ValueStackItem[];
   cta_text?: string;
   cta_subtext?: string;
+  // Public landing page fields
+  is_public?: boolean;
+  public_slug?: string;
+  require_email?: boolean;
+  require_phone?: boolean;
+  require_name?: boolean;
+  page_views?: number;
+  opt_ins?: number;
   // Computed fields
   lead_magnets?: LeadMagnet[];
   total_value?: number;
@@ -555,7 +591,11 @@ export type LeadMagnetType =
   | "free_trial"
   | "consultation"
   | "ebook"
-  | "mini_course";
+  | "mini_course"
+  | "quiz"
+  | "calculator"
+  | "rich_text"
+  | "video_course";
 
 export type DeliveryMethod = "email" | "download" | "redirect" | "sms";
 
@@ -569,10 +609,99 @@ export interface LeadMagnet {
   content_url: string;
   thumbnail_url?: string;
   estimated_value?: number;
+  content_data?: QuizContent | CalculatorContent | RichTextContent;
   is_active: boolean;
   download_count: number;
   created_at: string;
   updated_at: string;
+}
+
+// Quiz Types
+export interface QuizOption {
+  id: string;
+  text: string;
+  score: number;
+}
+
+export interface QuizQuestion {
+  id: string;
+  text: string;
+  type: "single_choice" | "multiple_choice" | "scale";
+  options: QuizOption[];
+  weight?: number;
+}
+
+export interface QuizResult {
+  id: string;
+  min_score: number;
+  max_score: number;
+  title: string;
+  description: string;
+  cta_text?: string;
+}
+
+export interface QuizContent {
+  title: string;
+  description?: string;
+  questions: QuizQuestion[];
+  results: QuizResult[];
+}
+
+// Calculator Types
+export interface CalculatorSelectOption {
+  value: string;
+  label: string;
+  multiplier?: number;
+}
+
+export interface CalculatorInput {
+  id: string;
+  label: string;
+  type: "number" | "currency" | "percentage" | "select";
+  placeholder?: string;
+  default_value?: number;
+  prefix?: string;
+  suffix?: string;
+  help_text?: string;
+  required: boolean;
+  options?: CalculatorSelectOption[];
+}
+
+export interface CalculatorCalculation {
+  id: string;
+  label: string;
+  formula: string;
+  format: "currency" | "percentage" | "number";
+}
+
+export interface CalculatorOutput {
+  id: string;
+  label: string;
+  formula: string;
+  format: "currency" | "percentage" | "number" | "text";
+  highlight: boolean;
+  description?: string;
+}
+
+export interface CalculatorCTA {
+  text: string;
+  description?: string;
+}
+
+export interface CalculatorContent {
+  title: string;
+  description?: string;
+  inputs: CalculatorInput[];
+  calculations: CalculatorCalculation[];
+  outputs: CalculatorOutput[];
+  cta?: CalculatorCTA;
+}
+
+// Rich Text Content
+export interface RichTextContent {
+  title: string;
+  description?: string;
+  content: unknown; // TipTap JSON format
 }
 
 export interface OfferLeadMagnet {

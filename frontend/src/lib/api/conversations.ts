@@ -1,5 +1,12 @@
 import api from "@/lib/api";
-import type { Conversation, Message, TimelineItem } from "@/types";
+import type {
+  Conversation,
+  FollowupGenerateResponse,
+  FollowupSendResponse,
+  FollowupSettings,
+  Message,
+  TimelineItem,
+} from "@/types";
 
 export interface ConversationsListParams {
   page?: number;
@@ -125,5 +132,67 @@ export const conversationsApi = {
     await api.delete(
       `/api/v1/workspaces/${workspaceId}/conversations/${conversationId}/messages`
     );
+  },
+
+  // Follow-up methods
+  getFollowupSettings: async (
+    workspaceId: string,
+    conversationId: string
+  ): Promise<FollowupSettings> => {
+    const response = await api.get<FollowupSettings>(
+      `/api/v1/workspaces/${workspaceId}/conversations/${conversationId}/followup/status`
+    );
+    return response.data;
+  },
+
+  updateFollowupSettings: async (
+    workspaceId: string,
+    conversationId: string,
+    settings: Partial<{
+      enabled: boolean;
+      delay_hours: number;
+      max_count: number;
+    }>
+  ): Promise<FollowupSettings> => {
+    const response = await api.patch<FollowupSettings>(
+      `/api/v1/workspaces/${workspaceId}/conversations/${conversationId}/followup/settings`,
+      settings
+    );
+    return response.data;
+  },
+
+  generateFollowup: async (
+    workspaceId: string,
+    conversationId: string,
+    customInstructions?: string
+  ): Promise<FollowupGenerateResponse> => {
+    const response = await api.post<FollowupGenerateResponse>(
+      `/api/v1/workspaces/${workspaceId}/conversations/${conversationId}/followup/generate`,
+      { custom_instructions: customInstructions }
+    );
+    return response.data;
+  },
+
+  sendFollowup: async (
+    workspaceId: string,
+    conversationId: string,
+    message?: string,
+    customInstructions?: string
+  ): Promise<FollowupSendResponse> => {
+    const response = await api.post<FollowupSendResponse>(
+      `/api/v1/workspaces/${workspaceId}/conversations/${conversationId}/followup/send`,
+      { message, custom_instructions: customInstructions }
+    );
+    return response.data;
+  },
+
+  resetFollowupCounter: async (
+    workspaceId: string,
+    conversationId: string
+  ): Promise<{ count_sent: number }> => {
+    const response = await api.post<{ count_sent: number }>(
+      `/api/v1/workspaces/${workspaceId}/conversations/${conversationId}/followup/reset`
+    );
+    return response.data;
   },
 };

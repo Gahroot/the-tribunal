@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { AIAgentsSection } from "./ai-agents-section";
-import { AutomationsSection } from "./automations-section";
+import { FollowupSection } from "./followup-section";
 import { QuickActionsSection } from "./quick-actions-section";
 
 interface ActionsPanelProps {
@@ -49,8 +49,8 @@ export function ActionsPanel({ className, onClose }: ActionsPanelProps) {
 
           <Separator />
 
-          {/* Automations Section */}
-          <AutomationsSection />
+          {/* Follow-up Section */}
+          <FollowupSection />
 
           <Separator />
 

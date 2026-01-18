@@ -1416,3 +1416,132 @@ async def schedule_ai_response(
     task = asyncio.create_task(delayed_response())
     _pending_responses[key] = task
     log.info("ai_response_scheduled")
+
+
+# Follow-up message generation system prompt
+FOLLOWUP_SYSTEM_PROMPT = """You are a friendly, professional follow-up assistant. Your job is to \
+re-engage contacts who haven't responded recently. Write a short, conversational follow-up message.
+
+RULES:
+1. Be warm and human - not pushy or salesy
+2. Reference the conversation context naturally
+3. Keep it SHORT (1-3 sentences max)
+4. Ask an open-ended question or offer value
+5. Don't repeat the same approach if there were previous follow-ups
+6. Respect their time - acknowledge they may be busy
+7. No pressure tactics or guilt trips
+8. Plain text only - no markdown or emojis
+
+GOOD EXAMPLES:
+- "Hey {first_name}, just checking in - any questions I can help with?"
+- "Hi! I know things get busy. Still interested in chatting?"
+- "Following up - would a quick call work better for you?"
+
+BAD EXAMPLES:
+- "URGENT: Last chance to respond!" (too pushy)
+- "I noticed you haven't replied..." (guilt trip)
+- "Did you get my last message?" (annoying)"""
+
+
+async def generate_followup_message(
+    conversation: Conversation,
+    db: AsyncSession,
+    openai_api_key: str,
+    custom_instructions: str | None = None,
+) -> str | None:
+    """Generate an AI follow-up message for a conversation.
+
+    Creates a contextual re-engagement message based on conversation history,
+    time since last interaction, and optional custom instructions.
+
+    Args:
+        conversation: The conversation to generate a follow-up for
+        db: Database session
+        openai_api_key: OpenAI API key
+        custom_instructions: Optional custom instructions to guide the message
+
+    Returns:
+        Generated follow-up message text, or None if generation failed
+    """
+    log = logger.bind(conversation_id=str(conversation.id))
+    log.info("generating_followup_message")
+
+    # Build message context
+    messages = await build_message_context(conversation, db, max_messages=10)
+
+    if not messages:
+        log.warning("no_messages_in_context_for_followup")
+        return None
+
+    # Get contact name for personalization
+    contact_name = "there"
+    if conversation.contact_id:
+        result = await db.execute(
+            select(Contact).where(Contact.id == conversation.contact_id)
+        )
+        contact = result.scalar_one_or_none()
+        if contact and contact.first_name:
+            contact_name = contact.first_name
+
+    # Calculate time since last message
+    time_context = ""
+    if conversation.last_message_at:
+        time_diff = datetime.now(UTC) - conversation.last_message_at.replace(tzinfo=UTC)
+        days = time_diff.days
+        hours = time_diff.seconds // 3600
+
+        if days > 0:
+            time_context = f"\nTime since last message: {days} day{'s' if days != 1 else ''}"
+        elif hours > 0:
+            time_context = f"\nTime since last message: {hours} hour{'s' if hours != 1 else ''}"
+
+    # Build the system prompt with context
+    system_prompt = FOLLOWUP_SYSTEM_PROMPT
+    if custom_instructions:
+        system_prompt += f"\n\nADDITIONAL INSTRUCTIONS:\n{custom_instructions}"
+
+    # Build user prompt with context
+    user_prompt = f"""Generate a follow-up message for this conversation.
+
+Contact name: {contact_name}
+Previous follow-ups sent: {conversation.followup_count_sent}{time_context}
+
+Recent conversation:
+"""
+    for msg in messages[-6:]:  # Last 6 messages for context
+        role = "Customer" if msg["role"] == "user" else "You"
+        user_prompt += f"\n{role}: {msg['content']}"
+
+    user_prompt += "\n\nWrite a short, friendly follow-up message:"
+
+    # Create OpenAI client
+    client = AsyncOpenAI(api_key=openai_api_key)
+
+    try:
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.7,
+                max_tokens=200,
+            ),
+            timeout=30.0,
+        )
+
+        followup_text: str | None = response.choices[0].message.content
+        if followup_text:
+            followup_text = followup_text.strip()
+            log.info("followup_message_generated", length=len(followup_text))
+            return followup_text
+
+        return None
+
+    except TimeoutError:
+        log.error("followup_generation_timeout")
+        return None
+    except Exception:
+        log.exception("followup_generation_error")
+        return None

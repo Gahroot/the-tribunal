@@ -1,11 +1,11 @@
 """Conversations and messages endpoints."""
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from app.api.deps import DB, CurrentUser, get_workspace
@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.models.agent import Agent
 from app.models.conversation import Conversation, Message
 from app.models.workspace import Workspace
+from app.services.ai.text_agent import generate_followup_message
 from app.services.telephony.telnyx import TelnyxSMSService
 
 router = APIRouter()
@@ -401,3 +402,327 @@ async def clear_conversation_history(
     conversation.unread_count = 0
 
     await db.commit()
+
+
+# === Follow-up Schemas ===
+
+
+class FollowupSettingsUpdate(BaseModel):
+    """Schema for updating follow-up settings."""
+
+    enabled: bool | None = None
+    delay_hours: int | None = Field(None, ge=1, le=168)  # 1 hour to 1 week
+    max_count: int | None = Field(None, ge=1, le=10)
+
+
+class FollowupSettingsResponse(BaseModel):
+    """Follow-up settings and status response."""
+
+    enabled: bool
+    delay_hours: int
+    max_count: int
+    count_sent: int
+    next_followup_at: datetime | None
+    last_followup_at: datetime | None
+
+
+class FollowupGenerateRequest(BaseModel):
+    """Request for generating a follow-up message."""
+
+    custom_instructions: str | None = None
+
+
+class FollowupGenerateResponse(BaseModel):
+    """Response with generated follow-up message."""
+
+    message: str
+    conversation_id: str
+
+
+class FollowupSendRequest(BaseModel):
+    """Request for sending a follow-up message."""
+
+    message: str | None = None  # If not provided, will generate one
+    custom_instructions: str | None = None
+
+
+class FollowupSendResponse(BaseModel):
+    """Response after sending a follow-up."""
+
+    success: bool
+    message_id: str | None
+    message_body: str
+
+
+# === Follow-up Endpoints ===
+
+
+@router.get("/{conversation_id}/followup/status", response_model=FollowupSettingsResponse)
+async def get_followup_status(
+    workspace_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> FollowupSettingsResponse:
+    """Get follow-up settings and status for a conversation."""
+    result = await db.execute(
+        select(Conversation).where(
+            Conversation.id == conversation_id,
+            Conversation.workspace_id == workspace_id,
+        )
+    )
+    conversation = result.scalar_one_or_none()
+
+    if not conversation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found",
+        )
+
+    return FollowupSettingsResponse(
+        enabled=conversation.followup_enabled,
+        delay_hours=conversation.followup_delay_hours,
+        max_count=conversation.followup_max_count,
+        count_sent=conversation.followup_count_sent,
+        next_followup_at=conversation.next_followup_at,
+        last_followup_at=conversation.last_followup_at,
+    )
+
+
+@router.patch("/{conversation_id}/followup/settings", response_model=FollowupSettingsResponse)
+async def update_followup_settings(
+    workspace_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    settings_update: FollowupSettingsUpdate,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> FollowupSettingsResponse:
+    """Update follow-up settings for a conversation."""
+    result = await db.execute(
+        select(Conversation).where(
+            Conversation.id == conversation_id,
+            Conversation.workspace_id == workspace_id,
+        )
+    )
+    conversation = result.scalar_one_or_none()
+
+    if not conversation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found",
+        )
+
+    # Update fields if provided
+    if settings_update.enabled is not None:
+        conversation.followup_enabled = settings_update.enabled
+        # If enabling and no next_followup_at is set, schedule one
+        if settings_update.enabled and not conversation.next_followup_at:
+            conversation.next_followup_at = datetime.now(UTC) + timedelta(
+                hours=conversation.followup_delay_hours
+            )
+
+    if settings_update.delay_hours is not None:
+        conversation.followup_delay_hours = settings_update.delay_hours
+
+    if settings_update.max_count is not None:
+        conversation.followup_max_count = settings_update.max_count
+
+    await db.commit()
+    await db.refresh(conversation)
+
+    return FollowupSettingsResponse(
+        enabled=conversation.followup_enabled,
+        delay_hours=conversation.followup_delay_hours,
+        max_count=conversation.followup_max_count,
+        count_sent=conversation.followup_count_sent,
+        next_followup_at=conversation.next_followup_at,
+        last_followup_at=conversation.last_followup_at,
+    )
+
+
+@router.post("/{conversation_id}/followup/generate", response_model=FollowupGenerateResponse)
+async def generate_followup(
+    workspace_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    request: FollowupGenerateRequest,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> FollowupGenerateResponse:
+    """Generate a follow-up message preview (does not send)."""
+    result = await db.execute(
+        select(Conversation).where(
+            Conversation.id == conversation_id,
+            Conversation.workspace_id == workspace_id,
+        )
+    )
+    conversation = result.scalar_one_or_none()
+
+    if not conversation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found",
+        )
+
+    # Check for OpenAI API key
+    openai_key = settings.openai_api_key
+    if not openai_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI service not configured",
+        )
+
+    # Generate follow-up message
+    message = await generate_followup_message(
+        conversation=conversation,
+        db=db,
+        openai_api_key=openai_key,
+        custom_instructions=request.custom_instructions,
+    )
+
+    if not message:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate follow-up message",
+        )
+
+    return FollowupGenerateResponse(
+        message=message,
+        conversation_id=str(conversation_id),
+    )
+
+
+@router.post("/{conversation_id}/followup/send", response_model=FollowupSendResponse)
+async def send_followup(
+    workspace_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    request: FollowupSendRequest,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> FollowupSendResponse:
+    """Send a follow-up message. Generates one if not provided."""
+    result = await db.execute(
+        select(Conversation).where(
+            Conversation.id == conversation_id,
+            Conversation.workspace_id == workspace_id,
+        )
+    )
+    conversation = result.scalar_one_or_none()
+
+    if not conversation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found",
+        )
+
+    # Get the message to send
+    message_body = request.message
+    if not message_body:
+        # Generate one
+        openai_key = settings.openai_api_key
+        if not openai_key:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="AI service not configured",
+            )
+
+        message_body = await generate_followup_message(
+            conversation=conversation,
+            db=db,
+            openai_api_key=openai_key,
+            custom_instructions=request.custom_instructions,
+        )
+
+        if not message_body:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to generate follow-up message",
+            )
+
+    # Check for Telnyx API key
+    telnyx_api_key = settings.telnyx_api_key
+    if not telnyx_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="SMS service not configured",
+        )
+
+    # Send message via Telnyx
+    sms_service = TelnyxSMSService(telnyx_api_key)
+    try:
+        message = await sms_service.send_message(
+            to_number=conversation.contact_phone,
+            from_number=conversation.workspace_phone,
+            body=message_body,
+            db=db,
+            workspace_id=workspace_id,
+        )
+
+        # Update follow-up tracking
+        conversation.followup_count_sent += 1
+        conversation.last_followup_at = datetime.now(UTC)
+
+        # Schedule next follow-up if still within limits
+        if (
+            conversation.followup_enabled
+            and conversation.followup_count_sent < conversation.followup_max_count
+        ):
+            conversation.next_followup_at = datetime.now(UTC) + timedelta(
+                hours=conversation.followup_delay_hours
+            )
+        else:
+            conversation.next_followup_at = None
+
+        await db.commit()
+
+        return FollowupSendResponse(
+            success=True,
+            message_id=str(message.id),
+            message_body=message_body,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to send message: {str(e)}",
+        ) from e
+    finally:
+        await sms_service.close()
+
+
+@router.post("/{conversation_id}/followup/reset")
+async def reset_followup_counter(
+    workspace_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> dict[str, int]:
+    """Reset the follow-up counter to 0."""
+    result = await db.execute(
+        select(Conversation).where(
+            Conversation.id == conversation_id,
+            Conversation.workspace_id == workspace_id,
+        )
+    )
+    conversation = result.scalar_one_or_none()
+
+    if not conversation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found",
+        )
+
+    conversation.followup_count_sent = 0
+
+    # Re-schedule next follow-up if enabled
+    if conversation.followup_enabled:
+        conversation.next_followup_at = datetime.now(UTC) + timedelta(
+            hours=conversation.followup_delay_hours
+        )
+
+    await db.commit()
+
+    return {"count_sent": 0}
