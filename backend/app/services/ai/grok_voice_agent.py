@@ -7,6 +7,7 @@ Supports tool calling for Cal.com booking integration.
 
 import asyncio
 import base64
+import binascii
 import json
 from collections.abc import AsyncIterator, Callable
 from typing import Any
@@ -239,6 +240,35 @@ IMPORTANT: You are on a phone call. When the call connects:
 - If instructed to greet first, deliver your greeting naturally and wait for response
 - Do NOT generate random content, fun facts, or filler - stay focused on your purpose
 - Speak clearly and conversationally as if on a real phone call"""
+
+        # Add booking instructions when tools are enabled
+        if self._enable_tools:
+            enhanced_prompt += """
+
+[APPOINTMENT BOOKING - CRITICAL RULES]
+You have tools to check calendar availability and book appointments. Follow these rules:
+
+1. NEVER say "one moment", "let me check", "checking", or "I'll get back to you"
+2. NEVER promise to do something without IMMEDIATELY calling the function
+3. When the customer asks about times, call check_availability RIGHT NOW
+4. When the customer picks a time, call book_appointment RIGHT NOW
+5. EMAIL IS REQUIRED for booking - ask for it when offering time slots
+
+WHEN TO CALL check_availability:
+- Customer asks about availability ("when are you free", "what times work")
+- Customer mentions a day ("Monday", "tomorrow", "next week")
+- Customer wants to schedule or book something
+
+WHEN TO CALL book_appointment:
+- Customer confirms a specific time AND you have their email
+
+RESPONSE PATTERN:
+- If they ask about times: Call check_availability, then offer 2 specific options
+- If they pick a time and you have email: Call book_appointment immediately
+- If they pick a time but no email: Ask for email, then book once provided
+- Example: "I have Monday at 2pm or Tuesday at 10am. Which works for you?"
+
+DO NOT say things like "I'll check and get back to you" - you can check instantly!"""
 
         # Get voice - default to 'Ara' for Grok (capitalized)
         voice = "Ara"
@@ -574,14 +604,33 @@ IMPORTANT: You are on a phone call. When the call connects:
             self.logger.info("grok_starting_audio_receive_stream")
 
             async for message in self.ws:
-                event = json.loads(message)
+                # Parse JSON with error handling to prevent stream crash
+                try:
+                    event = json.loads(message)
+                except json.JSONDecodeError as e:
+                    self.logger.warning(
+                        "invalid_json_from_grok",
+                        error=str(e),
+                        message_preview=str(message)[:100],
+                    )
+                    continue
+
                 event_type = event.get("type", "")
 
                 # Grok uses same event types as OpenAI Realtime
                 if event_type == "response.audio.delta":
                     audio_data = event.get("delta", "")
                     if audio_data:
-                        decoded = base64.b64decode(audio_data)
+                        # Decode base64 with error handling
+                        try:
+                            decoded = base64.b64decode(audio_data)
+                        except (binascii.Error, ValueError) as e:
+                            self.logger.warning(
+                                "invalid_base64_audio_from_grok",
+                                error=str(e),
+                            )
+                            continue
+
                         audio_chunks_received += 1
                         total_audio_bytes += len(decoded)
 
@@ -599,7 +648,16 @@ IMPORTANT: You are on a phone call. When the call connects:
                     # Alternative event name in Grok API
                     audio_data = event.get("delta", "")
                     if audio_data:
-                        decoded = base64.b64decode(audio_data)
+                        # Decode base64 with error handling
+                        try:
+                            decoded = base64.b64decode(audio_data)
+                        except (binascii.Error, ValueError) as e:
+                            self.logger.warning(
+                                "invalid_base64_audio_from_grok",
+                                error=str(e),
+                            )
+                            continue
+
                         audio_chunks_received += 1
                         total_audio_bytes += len(decoded)
                         yield decoded

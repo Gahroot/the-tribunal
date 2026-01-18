@@ -1,6 +1,8 @@
 """OpenAI Realtime API integration for voice conversations."""
 
 import asyncio
+import base64
+import binascii
 import json
 from collections.abc import AsyncIterator
 from typing import Any
@@ -301,8 +303,6 @@ IMPORTANT: You are on a phone call. When the call connects:
         Args:
             audio_data: PCM audio data (16-bit, 16kHz)
         """
-        import base64
-
         if not self.ws:
             self.logger.warning("websocket_not_connected")
             return
@@ -330,8 +330,6 @@ IMPORTANT: You are on a phone call. When the call connects:
         Yields:
             PCM audio chunks (16-bit, 16kHz)
         """
-        import base64
-
         if not self.ws:
             self.logger.warning("websocket_not_connected_for_audio_stream")
             return
@@ -344,14 +342,33 @@ IMPORTANT: You are on a phone call. When the call connects:
             self.logger.info("starting_audio_receive_stream")
 
             async for message in self.ws:
-                event = json.loads(message)
+                # Parse JSON with error handling to prevent stream crash
+                try:
+                    event = json.loads(message)
+                except json.JSONDecodeError as e:
+                    self.logger.warning(
+                        "invalid_json_from_openai",
+                        error=str(e),
+                        message_preview=str(message)[:100],
+                    )
+                    continue
+
                 event_type = event.get("type", "")
 
                 if event_type == "response.audio.delta":
                     # Audio chunk received
                     audio_data = event.get("delta", "")
                     if audio_data:
-                        decoded = base64.b64decode(audio_data)
+                        # Decode base64 with error handling
+                        try:
+                            decoded = base64.b64decode(audio_data)
+                        except (binascii.Error, ValueError) as e:
+                            self.logger.warning(
+                                "invalid_base64_audio_from_openai",
+                                error=str(e),
+                            )
+                            continue
+
                         audio_chunks_received += 1
                         total_audio_bytes += len(decoded)
 
