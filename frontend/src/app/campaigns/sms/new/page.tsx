@@ -15,13 +15,13 @@ import { offersApi } from "@/lib/api/offers";
 import { phoneNumbersApi } from "@/lib/api/phone-numbers";
 import { contactsApi } from "@/lib/api/contacts";
 import { agentsApi } from "@/lib/api/agents";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import type { Offer, SMSCampaign } from "@/types";
 
 export default function NewSMSCampaignPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { workspaceId, isLoading: authLoading } = useAuth();
+  const workspaceId = useWorkspaceId();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Fetch offers from API (with fallback to empty array)
@@ -148,7 +148,7 @@ export default function NewSMSCampaignPage() {
     await createOfferMutation.mutateAsync(offer);
   };
 
-  const isLoading = authLoading || offersLoading || phoneNumbersLoading || contactsLoading || agentsLoading;
+  const isLoading = !workspaceId || offersLoading || phoneNumbersLoading || contactsLoading || agentsLoading;
 
   const contacts = Array.isArray(contactsData) ? contactsData : [];
   const agents = Array.isArray(agentsData) ? agentsData : [];

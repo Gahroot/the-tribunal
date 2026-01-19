@@ -75,8 +75,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     (workspaceId: string) => {
       setCurrentWorkspaceId(workspaceId);
       setStoredWorkspaceId(workspaceId);
-      // Invalidate all workspace-scoped queries to refetch with new workspace
-      queryClient.invalidateQueries();
+      // Clear all cached queries when switching workspaces to ensure fresh data
+      // Using clear() instead of invalidateQueries() to remove stale workspace data
+      queryClient.clear();
     },
     [queryClient]
   );

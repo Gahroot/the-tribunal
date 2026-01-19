@@ -77,8 +77,9 @@ async def list_phone_numbers(
     sms_enabled: bool | None = None,
     active_only: bool = True,
 ) -> PaginatedPhoneNumbers:
-    """List phone numbers in a workspace."""
-    query = select(PhoneNumber).where(PhoneNumber.workspace_id == workspace_id)
+    """List phone numbers (shared across workspaces for now)."""
+    # Phone numbers are shared across workspaces - don't filter by workspace_id
+    query = select(PhoneNumber)
 
     if active_only:
         query = query.where(PhoneNumber.is_active.is_(True))
@@ -114,11 +115,11 @@ async def get_phone_number(
     db: DB,
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> PhoneNumber:
-    """Get a phone number by ID."""
+    """Get a phone number by ID (shared across workspaces)."""
+    # Phone numbers are shared across workspaces - don't filter by workspace_id
     result = await db.execute(
         select(PhoneNumber).where(
             PhoneNumber.id == phone_number_id,
-            PhoneNumber.workspace_id == workspace_id,
         )
     )
     phone_number = result.scalar_one_or_none()
@@ -271,16 +272,16 @@ async def sync_phone_numbers(
 
     synced = 0
     for tn in telnyx_numbers:
-        # Check if already exists
+        # Check if phone number already exists globally (unique constraint is on phone_number)
         result = await db.execute(
             select(PhoneNumber).where(
-                PhoneNumber.workspace_id == workspace_id,
                 PhoneNumber.phone_number == tn.phone_number,
             )
         )
         existing = result.scalar_one_or_none()
 
         if not existing:
+            # Phone number doesn't exist anywhere - create it for this workspace
             phone_number = PhoneNumber(
                 workspace_id=workspace_id,
                 phone_number=tn.phone_number,
@@ -292,6 +293,9 @@ async def sync_phone_numbers(
             )
             db.add(phone_number)
             synced += 1
+        elif existing.workspace_id != workspace_id:
+            # Phone number exists in another workspace - skip (shared phone numbers)
+            pass
 
     await db.commit()
     return {"synced": synced}

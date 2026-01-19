@@ -169,12 +169,9 @@ def render_fallback_template(
     message = template
     for placeholder, value in replacements.items():
         with contextlib.suppress(Exception):
-            message = re.sub(
-                rf"\{{{placeholder}\}}",
-                re.escape(value),
-                message,
-                flags=re.IGNORECASE,
-            )
+            # Find placeholder pattern case-insensitively and replace with literal value
+            pattern = re.compile(rf"\{{{placeholder}\}}", re.IGNORECASE)
+            message = pattern.sub(value, message)
 
     return message
 

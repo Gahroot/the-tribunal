@@ -321,7 +321,7 @@ class CampaignWorker:
         if sent_count > 0:
             log.info("Initial messages batch complete", sent=sent_count)
 
-    async def _process_follow_ups(
+    async def _process_follow_ups(  # noqa: PLR0912
         self,
         campaign: Campaign,
         sms_service: TelnyxSMSService,
@@ -353,7 +353,6 @@ class CampaignWorker:
                     CampaignContact.next_follow_up_at.is_not(None),
                     CampaignContact.next_follow_up_at <= now,
                     CampaignContact.follow_ups_sent < campaign.max_follow_ups,
-                    CampaignContact.messages_sent < campaign.max_messages_per_contact,
                     CampaignContact.opted_out.is_(False),
                     CampaignContact.last_reply_at.is_(None),
                 )
@@ -363,6 +362,13 @@ class CampaignWorker:
             .with_for_update(skip_locked=True)
         )
         followup_contacts = followup_result.scalars().all()
+
+        # Filter by max messages per contact (0 means unlimited)
+        if campaign.max_messages_per_contact > 0:
+            followup_contacts = [
+                cc for cc in followup_contacts
+                if cc.messages_sent < campaign.max_messages_per_contact
+            ]
 
         if not followup_contacts:
             return
@@ -591,15 +597,12 @@ class CampaignWorker:
                     )
                     # Continue without offer details if error occurs
 
-            # Replace placeholders safely
+            # Replace placeholders safely (case-insensitive)
             for placeholder, value in replacements.items():
                 try:
-                    message = re.sub(
-                        rf"\{{{placeholder}\}}",
-                        re.escape(value),  # Escape special regex characters in value
-                        message,
-                        flags=re.IGNORECASE,
-                    )
+                    # Find placeholder pattern case-insensitively and replace with literal value
+                    pattern = re.compile(rf"\{{{placeholder}\}}", re.IGNORECASE)
+                    message = pattern.sub(value, message)
                 except Exception as e:
                     logger.warning(
                         "placeholder_replacement_error",

@@ -17,13 +17,13 @@ import {
 import { phoneNumbersApi } from "@/lib/api/phone-numbers";
 import { contactsApi } from "@/lib/api/contacts";
 import { agentsApi } from "@/lib/api/agents";
-import { useAuth } from "@/providers/auth-provider";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import type { VoiceCampaign } from "@/types";
 
 export default function NewVoiceCampaignPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { workspaceId, isLoading: authLoading } = useAuth();
+  const workspaceId = useWorkspaceId();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Fetch phone numbers from API - filter to voice-enabled only
@@ -116,7 +116,7 @@ export default function NewVoiceCampaignPage() {
   };
 
   const isLoading =
-    authLoading || phoneNumbersLoading || contactsLoading || agentsLoading;
+    !workspaceId || phoneNumbersLoading || contactsLoading || agentsLoading;
 
   const contacts = Array.isArray(contactsData) ? contactsData : [];
   const agents = Array.isArray(agentsData) ? agentsData : [];

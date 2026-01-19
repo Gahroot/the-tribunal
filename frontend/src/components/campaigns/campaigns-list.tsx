@@ -114,7 +114,7 @@ export function CampaignsList() {
       return campaignsApi.pause(workspaceId, id);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["campaigns", workspaceId] });
       toast.success("Campaign paused");
     },
     onError: () => toast.error("Failed to pause campaign"),
@@ -126,7 +126,7 @@ export function CampaignsList() {
       return campaignsApi.start(workspaceId, id);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["campaigns", workspaceId] });
       toast.success("Campaign started");
     },
     onError: () => toast.error("Failed to start campaign"),
@@ -138,7 +138,7 @@ export function CampaignsList() {
       return campaignsApi.delete(workspaceId, id);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["campaigns", workspaceId] });
       toast.success("Campaign deleted");
     },
     onError: () => toast.error("Failed to delete campaign"),
@@ -150,7 +150,7 @@ export function CampaignsList() {
       return campaignsApi.duplicate(workspaceId, id);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["campaigns", workspaceId] });
       toast.success("Campaign duplicated");
     },
     onError: () => toast.error("Failed to duplicate campaign"),
@@ -193,7 +193,7 @@ export function CampaignsList() {
       <div className="flex flex-col items-center justify-center h-64 gap-2">
         <AlertCircle className="size-8 text-destructive" />
         <p className="text-muted-foreground">Failed to load campaigns</p>
-        <Button variant="outline" onClick={() => queryClient.invalidateQueries({ queryKey: ["campaigns"] })}>
+        <Button variant="outline" onClick={() => queryClient.invalidateQueries({ queryKey: ["campaigns", workspaceId] })}>
           Retry
         </Button>
       </div>

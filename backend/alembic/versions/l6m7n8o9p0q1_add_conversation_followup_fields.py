@@ -1,7 +1,7 @@
 """add conversation followup fields
 
-Revision ID: k5l6m7n8o9p0
-Revises: j4k5l6m7n8o9
+Revision ID: l6m7n8o9p0q1
+Revises: k5l6m7n8o9p0
 Create Date: 2026-01-18 14:00:00.000000
 
 """
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'k5l6m7n8o9p0'
-down_revision: Union[str, None] = 'j4k5l6m7n8o9'
+revision: str = 'l6m7n8o9p0q1'
+down_revision: Union[str, None] = 'k5l6m7n8o9p0'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

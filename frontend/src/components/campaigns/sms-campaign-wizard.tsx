@@ -754,6 +754,8 @@ export function SMSCampaignWizard({
                       <SelectItem value="2">2 messages</SelectItem>
                       <SelectItem value="3">3 messages</SelectItem>
                       <SelectItem value="5">5 messages</SelectItem>
+                      <SelectItem value="10">10 messages</SelectItem>
+                      <SelectItem value="0">Unlimited</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -903,8 +905,10 @@ export function SMSCampaignWizard({
                 <div className="flex items-center gap-2 text-sm">
                   <span className="text-muted-foreground">Rate:</span>
                   <span>
-                    {formData.messages_per_minute} messages/min, max{" "}
-                    {formData.max_messages_per_contact} per contact
+                    {formData.messages_per_minute} messages/min,{" "}
+                    {formData.max_messages_per_contact === 0
+                      ? "unlimited messages per contact"
+                      : `max ${formData.max_messages_per_contact} per contact`}
                   </span>
                 </div>
               </CardContent>

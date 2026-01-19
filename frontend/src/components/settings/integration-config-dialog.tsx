@@ -7,6 +7,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import * as z from "zod";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { AxiosError } from "axios";
 
 import {
   integrationsApi,
@@ -229,8 +230,10 @@ export function IntegrationConfigDialog({
       toast.success(`${config.name} connected successfully!`);
       onOpenChange(false);
     },
-    onError: () => {
-      toast.error(`Failed to connect ${config.name}`);
+    onError: (error: Error) => {
+      const axiosError = error as AxiosError<{ detail?: string }>;
+      const message = axiosError.response?.data?.detail || `Failed to connect ${config.name}`;
+      toast.error(message);
     },
     onSettled: () => {
       setIsSubmitting(false);
@@ -250,8 +253,10 @@ export function IntegrationConfigDialog({
       toast.success(`${config.name} updated successfully!`);
       onOpenChange(false);
     },
-    onError: () => {
-      toast.error(`Failed to update ${config.name}`);
+    onError: (error: Error) => {
+      const axiosError = error as AxiosError<{ detail?: string }>;
+      const message = axiosError.response?.data?.detail || `Failed to update ${config.name}`;
+      toast.error(message);
     },
     onSettled: () => {
       setIsSubmitting(false);
@@ -272,7 +277,13 @@ export function IntegrationConfigDialog({
   });
 
   const handleSubmit = (data: FormValues) => {
-    if (isSubmitting || !workspaceId) return;
+    if (isSubmitting) return;
+
+    if (!workspaceId) {
+      toast.error("No workspace selected. Please select a workspace first.");
+      return;
+    }
+
     setIsSubmitting(true);
 
     // Filter out empty optional fields
