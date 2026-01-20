@@ -35,6 +35,10 @@ logger = structlog.get_logger()
 TELNYX_SAMPLE_RATE = 8000  # 8kHz for PSTN/Telnyx (μ-law/G.711)
 OPENAI_SAMPLE_RATE = 24000  # 24kHz for OpenAI/Grok Realtime API
 
+# Telnyx requires audio chunks to be 20ms-30s in duration
+# At 8kHz with 1 byte per sample (μ-law), 20ms = 160 bytes
+TELNYX_MIN_CHUNK_BYTES = 160  # 20ms at 8kHz μ-law
+
 
 def mulaw_to_pcm(data: bytes) -> bytes:
     """Convert μ-law audio to PCM16 using Python's audioop.
@@ -952,6 +956,9 @@ async def _receive_from_provider_and_send_to_telnyx(
     Sends audio in Telnyx's expected JSON format:
     {"event": "media", "media": {"payload": "<base64-audio>"}}
 
+    IMPORTANT: Telnyx requires audio chunks to be 20ms-30s in duration.
+    At 8kHz μ-law, 20ms = 160 bytes. We buffer audio until we have enough.
+
     Args:
         websocket: Telnyx WebSocket connection
         voice_session: Voice provider session (OpenAI or Grok)
@@ -964,6 +971,24 @@ async def _receive_from_provider_and_send_to_telnyx(
     total_audio_bytes = 0
     start_time = time.time()
     first_audio_time: float | None = None
+
+    # Buffer for accumulating audio until we have enough for Telnyx
+    # Telnyx requires minimum 20ms chunks (160 bytes at 8kHz μ-law)
+    audio_buffer = bytearray()
+
+    async def send_audio_to_telnyx(audio_data: bytes) -> None:
+        """Send audio chunk to Telnyx via WebSocket."""
+        nonlocal audio_chunks_sent, total_audio_bytes
+
+        audio_b64 = base64.b64encode(audio_data).decode("utf-8")
+        message = json.dumps({
+            "event": "media",
+            "media": {"payload": audio_b64},
+        })
+        await websocket.send_text(message)
+
+        audio_chunks_sent += 1
+        total_audio_bytes += len(audio_data)
 
     try:
         # Wait for greeting to be triggered before sending audio
@@ -986,27 +1011,25 @@ async def _receive_from_provider_and_send_to_telnyx(
                 # Convert PCM16 24kHz to μ-law 8kHz for Telnyx
                 audio_mulaw = convert_openai_to_telnyx(audio_pcm, log)
 
-                # Encode as base64
-                audio_b64 = base64.b64encode(audio_mulaw).decode("utf-8")
+                # Add to buffer
+                audio_buffer.extend(audio_mulaw)
 
-                # Send to Telnyx in the expected JSON format
-                message = json.dumps({
-                    "event": "media",
-                    "media": {"payload": audio_b64},
-                })
-                await websocket.send_text(message)
-
-                audio_chunks_sent += 1
-                total_audio_bytes += len(audio_mulaw)
+                # Send chunks when we have at least the minimum size
+                # Send in 160-byte chunks (20ms) for optimal latency
+                while len(audio_buffer) >= TELNYX_MIN_CHUNK_BYTES:
+                    chunk = bytes(audio_buffer[:TELNYX_MIN_CHUNK_BYTES])
+                    del audio_buffer[:TELNYX_MIN_CHUNK_BYTES]
+                    await send_audio_to_telnyx(chunk)
 
                 # Log periodically
-                if audio_chunks_sent % 50 == 0:
+                if audio_chunks_sent % 50 == 0 and audio_chunks_sent > 0:
                     elapsed = time.time() - start_time
                     log.debug(
                         "audio_relay_stats",
                         direction="provider_to_telnyx",
                         chunks=audio_chunks_sent,
                         total_bytes=total_audio_bytes,
+                        buffer_size=len(audio_buffer),
                         elapsed_secs=round(elapsed, 1),
                     )
 
@@ -1016,6 +1039,11 @@ async def _receive_from_provider_and_send_to_telnyx(
                     error=str(e),
                     audio_bytes=len(audio_pcm),
                 )
+
+        # Flush any remaining audio in the buffer
+        if audio_buffer:
+            log.debug("flushing_audio_buffer", remaining_bytes=len(audio_buffer))
+            await send_audio_to_telnyx(bytes(audio_buffer))
 
     except TimeoutError:
         log.error("greeting_trigger_timeout", timeout_secs=10)
