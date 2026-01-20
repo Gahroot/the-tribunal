@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.models.appointment import Appointment
     from app.models.campaign import Campaign
     from app.models.conversation import Conversation, Message
+    from app.models.message_test import MessageTest
     from app.models.phone_number import PhoneNumber
     from app.models.workspace import Workspace
 
@@ -113,6 +114,9 @@ class Agent(Base):
     appointments: Mapped[list["Appointment"]] = relationship("Appointment", back_populates="agent")
     phone_numbers: Mapped[list["PhoneNumber"]] = relationship(
         "PhoneNumber", back_populates="assigned_agent"
+    )
+    message_tests: Mapped[list["MessageTest"]] = relationship(
+        "MessageTest", back_populates="agent"
     )
 
     def __repr__(self) -> str:

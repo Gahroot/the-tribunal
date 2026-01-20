@@ -284,6 +284,22 @@ class CampaignWorker:
                 campaign_contact.first_sent_at = campaign_contact.first_sent_at or datetime.now(UTC)
                 campaign_contact.last_sent_at = datetime.now(UTC)
 
+                # Assign campaign's AI agent to the conversation for response handling
+                if campaign.agent_id and message.conversation_id:
+                    from app.models.conversation import Conversation
+                    conv_result = await db.execute(
+                        select(Conversation).where(Conversation.id == message.conversation_id)
+                    )
+                    conv = conv_result.scalar_one_or_none()
+                    if conv:
+                        conv.assigned_agent_id = campaign.agent_id
+                        conv.ai_enabled = campaign.ai_enabled
+                        log.info(
+                            "assigned_campaign_agent_to_conversation",
+                            conversation_id=str(conv.id),
+                            agent_id=str(campaign.agent_id),
+                        )
+
                 # Schedule follow-up if enabled
                 if campaign.follow_up_enabled and campaign.follow_up_message:
                     campaign_contact.next_follow_up_at = datetime.now(UTC) + timedelta(

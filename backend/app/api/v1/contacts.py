@@ -21,6 +21,7 @@ from app.schemas.contact import (
     ContactListResponse,
     ContactResponse,
     ContactUpdate,
+    ContactWithConversationResponse,
     QualificationSignals,
 )
 from app.services.telephony.telnyx import TelnyxSMSService, normalize_phone_number
@@ -63,13 +64,40 @@ async def list_contacts(
     page_size: int = Query(50, ge=1, le=100),
     status_filter: str | None = Query(None, alias="status"),
     search: str | None = None,
+    sort_by: str | None = Query(
+        None, description="Sort by: created_at, last_conversation, unread_first"
+    ),
 ) -> ContactListResponse:
     """List contacts in a workspace."""
     # Verify workspace access
     workspace = await get_workspace(workspace_id, current_user, db)
 
-    # Build query
-    query = select(Contact).where(Contact.workspace_id == workspace.id)
+    # Subquery to get conversation data per contact (aggregated across all conversations)
+    conv_subquery = (
+        select(
+            Conversation.contact_id,
+            func.sum(Conversation.unread_count).label("total_unread"),
+            func.max(Conversation.last_message_at).label("max_message_at"),
+            # Get the direction of the most recent message
+            func.max(Conversation.last_message_direction).label("last_direction"),
+        )
+        .where(Conversation.workspace_id == workspace.id)
+        .where(Conversation.contact_id.isnot(None))
+        .group_by(Conversation.contact_id)
+        .subquery()
+    )
+
+    # Build query with conversation data
+    query = (
+        select(
+            Contact,
+            func.coalesce(conv_subquery.c.total_unread, 0).label("unread_count"),
+            conv_subquery.c.max_message_at.label("last_message_at"),
+            conv_subquery.c.last_direction.label("last_message_direction"),
+        )
+        .outerjoin(conv_subquery, Contact.id == conv_subquery.c.contact_id)
+        .where(Contact.workspace_id == workspace.id)
+    )
 
     # Apply filters
     if status_filter:
@@ -85,21 +113,55 @@ async def list_contacts(
             | (Contact.company_name.ilike(search_term))
         )
 
-    # Get total count
-    count_query = select(func.count()).select_from(query.subquery())
+    # Get total count (from base contact query without conversation columns)
+    base_count_query = select(Contact).where(Contact.workspace_id == workspace.id)
+    if status_filter:
+        base_count_query = base_count_query.where(Contact.status == status_filter)
+    if search:
+        search_term = f"%{search}%"
+        base_count_query = base_count_query.where(
+            (Contact.first_name.ilike(search_term))
+            | (Contact.last_name.ilike(search_term))
+            | (Contact.email.ilike(search_term))
+            | (Contact.phone_number.ilike(search_term))
+            | (Contact.company_name.ilike(search_term))
+        )
+    count_query = select(func.count()).select_from(base_count_query.subquery())
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
 
+    # Apply sorting
+    if sort_by == "unread_first":
+        # Unread contacts first (by unread count desc), then by last message time
+        query = query.order_by(
+            conv_subquery.c.total_unread.desc().nullslast(),
+            conv_subquery.c.max_message_at.desc().nullslast(),
+        )
+    elif sort_by == "last_conversation":
+        # Sort by most recent conversation first, contacts with no conversation go last
+        query = query.order_by(conv_subquery.c.max_message_at.desc().nullslast())
+    else:
+        query = query.order_by(Contact.created_at.desc())
+
     # Apply pagination
-    query = query.order_by(Contact.created_at.desc())
     query = query.offset((page - 1) * page_size).limit(page_size)
 
     # Execute query
     result = await db.execute(query)
-    contacts = result.scalars().all()
+    rows = result.all()
+
+    # Build response with conversation data
+    items = []
+    for row in rows:
+        contact = row[0]  # Contact object
+        contact_data = ContactWithConversationResponse.model_validate(contact)
+        contact_data.unread_count = row[1] or 0
+        contact_data.last_message_at = row[2]
+        contact_data.last_message_direction = row[3]
+        items.append(contact_data)
 
     return ContactListResponse(
-        items=[ContactResponse.model_validate(c) for c in contacts],
+        items=items,
         total=total,
         page=page,
         page_size=page_size,

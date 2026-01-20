@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.campaign import Campaign
 from app.models.campaign_number_pool import CampaignNumberPool
+from app.models.message_test import MessageTest
 from app.models.phone_number import PhoneNumber, PhoneNumberHealthStatus
 from app.services.rate_limiting.rate_limiter import RateLimiter
 from app.services.rate_limiting.warming_scheduler import WarmingScheduler
@@ -394,3 +395,36 @@ class NumberPoolManager:
         )
 
         return count
+
+    async def get_next_available_number_for_test(
+        self,
+        test: MessageTest,
+        db: AsyncSession,
+    ) -> PhoneNumber | None:
+        """Get next available number for a message test.
+
+        For simplicity, message tests use the single from_phone_number approach.
+        If use_number_pool is True, falls back to selecting any active workspace number.
+
+        Args:
+            test: MessageTest model
+            db: Database session
+
+        Returns:
+            Available phone number, or None if all rate limited
+        """
+        log = self.logger.bind(test_id=str(test.id))
+
+        # Get the phone number configured for the test
+        result = await db.execute(
+            select(PhoneNumber).where(
+                PhoneNumber.phone_number == test.from_phone_number
+            )
+        )
+        phone = result.scalar_one_or_none()
+
+        if phone and await self._check_all_rate_limits(phone):
+            return phone
+
+        log.debug("test_number_rate_limited", phone=test.from_phone_number)
+        return None

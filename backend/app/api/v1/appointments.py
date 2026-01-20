@@ -6,6 +6,7 @@ from typing import Annotated
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.models.appointment import Appointment
@@ -43,7 +44,11 @@ async def list_appointments(
     )
     log.info("listing_appointments")
 
-    query = select(Appointment).where(Appointment.workspace_id == workspace_id)
+    query = (
+        select(Appointment)
+        .options(selectinload(Appointment.contact))
+        .where(Appointment.workspace_id == workspace_id)
+    )
 
     if status_filter:
         query = query.where(Appointment.status == status_filter)

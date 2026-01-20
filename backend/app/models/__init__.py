@@ -9,6 +9,13 @@ from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
 from app.models.invitation import WorkspaceInvitation
 from app.models.lead_magnet import LeadMagnet
+from app.models.message_test import (
+    MessageTest,
+    MessageTestStatus,
+    TestContact,
+    TestContactStatus,
+    TestVariant,
+)
 from app.models.offer import Offer
 from app.models.offer_lead_magnet import OfferLeadMagnet
 from app.models.opportunity import Opportunity, OpportunityActivity, OpportunityLineItem
@@ -45,4 +52,9 @@ __all__ = [
     "Opportunity",
     "OpportunityLineItem",
     "OpportunityActivity",
+    "MessageTest",
+    "MessageTestStatus",
+    "TestVariant",
+    "TestContact",
+    "TestContactStatus",
 ]

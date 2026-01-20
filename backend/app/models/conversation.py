@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from app.models.agent import Agent
     from app.models.campaign import CampaignContact
     from app.models.contact import Contact
+    from app.models.message_test import TestContact
     from app.models.phone_number import PhoneNumber
     from app.models.workspace import Workspace
 
@@ -156,6 +157,9 @@ class Conversation(Base):
     )
     campaign_contacts: Mapped[list["CampaignContact"]] = relationship(
         "CampaignContact", back_populates="conversation"
+    )
+    test_contacts: Mapped[list["TestContact"]] = relationship(
+        "TestContact", back_populates="conversation"
     )
 
     def __repr__(self) -> str:

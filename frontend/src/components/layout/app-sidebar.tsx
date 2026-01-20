@@ -16,6 +16,9 @@ import {
   Headphones,
   Gift,
   Magnet,
+  FlaskConical,
+  MapPin,
+  Sparkles,
 } from "lucide-react";
 import { useAuth } from "@/providers/auth-provider";
 
@@ -61,6 +64,16 @@ const mainNavItems = [
     url: "/",
     icon: Users,
   },
+  {
+    title: "Find Leads",
+    url: "/find-leads",
+    icon: MapPin,
+  },
+  {
+    title: "Find Leads AI",
+    url: "/find-leads-ai",
+    icon: Sparkles,
+  },
   // Opportunities hidden until feature is complete
   // {
   //   title: "Opportunities",
@@ -71,6 +84,11 @@ const mainNavItems = [
     title: "Campaigns",
     url: "/campaigns",
     icon: Megaphone,
+  },
+  {
+    title: "Experiments",
+    url: "/experiments",
+    icon: FlaskConical,
   },
   {
     title: "Calls",

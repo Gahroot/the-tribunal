@@ -35,6 +35,7 @@ dependencies = [
     "pytz>=2024.2",
     "phonenumbers>=8.13.0",
     "sendgrid>=6.12.5",
+    "beautifulsoup4>=4.14.3",
 ]
 
 [project.optional-dependencies]

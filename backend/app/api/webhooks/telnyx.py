@@ -128,31 +128,38 @@ async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:  # 
                 conversation = conv_result.scalar_one_or_none()
 
                 if conversation:
-                    # Check if conversation is part of a campaign and assign campaign agent
-                    if not conversation.assigned_agent_id:
-                        campaign_contact_result = await db.execute(
-                            select(CampaignContact)
-                            .options(selectinload(CampaignContact.campaign))
-                            .where(CampaignContact.conversation_id == conversation.id)
-                        )
-                        campaign_contact = campaign_contact_result.scalar_one_or_none()
+                    # Check if conversation is part of a campaign and sync campaign agent
+                    # Campaign agent always overrides any existing agent assignment
+                    campaign_contact_result = await db.execute(
+                        select(CampaignContact)
+                        .options(selectinload(CampaignContact.campaign))
+                        .where(CampaignContact.conversation_id == conversation.id)
+                    )
+                    campaign_contact = campaign_contact_result.scalar_one_or_none()
 
-                        if (
-                            campaign_contact
-                            and campaign_contact.campaign
-                            and campaign_contact.campaign.agent_id
-                        ):
-                            # Assign campaign's agent to the conversation
+                    if (
+                        campaign_contact
+                        and campaign_contact.campaign
+                        and campaign_contact.campaign.agent_id
+                    ):
+                        # Always sync campaign's agent to the conversation (campaign overrides)
+                        if conversation.assigned_agent_id != campaign_contact.campaign.agent_id:
                             conversation.assigned_agent_id = campaign_contact.campaign.agent_id
-                            conversation.ai_enabled = True
                             log.info(
-                                "assigned_campaign_agent",
+                                "synced_campaign_agent",
                                 conversation_id=str(conversation.id),
                                 campaign_id=str(campaign_contact.campaign_id),
                                 agent_id=str(campaign_contact.campaign.agent_id),
                             )
-                            await db.commit()
-                            await db.refresh(conversation)
+                        # Ensure AI is enabled for campaign conversations
+                        if not conversation.ai_enabled and campaign_contact.campaign.ai_enabled:
+                            conversation.ai_enabled = True
+                            log.info(
+                                "enabled_ai_for_campaign_conversation",
+                                conversation_id=str(conversation.id),
+                            )
+                        await db.commit()
+                        await db.refresh(conversation)
 
                     if conversation.ai_enabled and not conversation.ai_paused:
                         # Use agent's delay setting or default

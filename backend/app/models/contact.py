@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.models.appointment import Appointment
     from app.models.campaign import CampaignContact
     from app.models.conversation import Conversation
+    from app.models.message_test import TestContact
     from app.models.workspace import Workspace
 
 
@@ -64,6 +65,15 @@ class Contact(Base):
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # AI Enrichment fields
+    website_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    linkedin_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    business_intel: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    enrichment_status: Mapped[str | None] = mapped_column(
+        String(20), nullable=True, index=True
+    )  # pending, enriched, failed, skipped
+    enriched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # Source tracking
     source: Mapped[str | None] = mapped_column(
         String(100), nullable=True
@@ -93,6 +103,9 @@ class Contact(Base):
     )
     campaign_contacts: Mapped[list["CampaignContact"]] = relationship(
         "CampaignContact", back_populates="contact", cascade="all, delete-orphan"
+    )
+    test_contacts: Mapped[list["TestContact"]] = relationship(
+        "TestContact", back_populates="contact", cascade="all, delete-orphan"
     )
 
     @property

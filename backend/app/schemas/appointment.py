@@ -1,5 +1,6 @@
 """Appointment schemas for API validation."""
 
+import uuid
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -48,10 +49,10 @@ class AppointmentResponse(AppointmentBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    workspace_id: str
+    workspace_id: uuid.UUID
     contact_id: int
     contact: ContactSummary | None = None
-    agent_id: str | None
+    agent_id: uuid.UUID | None
     scheduled_at: datetime
     status: str
     calcom_booking_uid: str | None

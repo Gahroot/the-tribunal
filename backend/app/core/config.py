@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     sendgrid_api_key: str = ""
     sendgrid_from_email: str = "noreply@example.com"
 
+    # Google Places API
+    google_places_api_key: str = ""
+
     # App
     debug: bool = False
     cors_origins: list[str] = ["http://localhost:3000"]
@@ -61,6 +64,9 @@ class Settings(BaseSettings):
     # Workers
     campaign_poll_interval: int = 5
     ai_response_delay_ms: int = 2000
+
+    # Enrichment
+    enable_ai_enrichment: bool = True  # Toggle AI website summary
 
 
 @lru_cache

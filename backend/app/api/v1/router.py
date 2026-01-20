@@ -12,12 +12,15 @@ from app.api.v1 import (
     contacts,
     conversations,
     dashboard,
+    find_leads_ai,
     integrations,
     invitations,
     lead_magnets,
+    message_tests,
     offers,
     opportunities,
     phone_numbers,
+    scraping,
     settings,
     voice_campaigns,
     workspaces,
@@ -53,6 +56,11 @@ api_router.include_router(
     voice_campaigns.router,
     prefix="/workspaces/{workspace_id}/voice-campaigns",
     tags=["Voice Campaigns"],
+)
+api_router.include_router(
+    message_tests.router,
+    prefix="/workspaces/{workspace_id}/message-tests",
+    tags=["Message Tests"],
 )
 api_router.include_router(
     offers.router,
@@ -103,6 +111,16 @@ api_router.include_router(
     invitations.router,
     prefix="/workspaces/{workspace_id}/invitations",
     tags=["Invitations"],
+)
+api_router.include_router(
+    scraping.router,
+    prefix="/workspaces/{workspace_id}/scraping",
+    tags=["Lead Scraping"],
+)
+api_router.include_router(
+    find_leads_ai.router,
+    prefix="/workspaces/{workspace_id}/find-leads-ai",
+    tags=["Find Leads AI"],
 )
 # Public invitation endpoints (token-based)
 api_router.include_router(

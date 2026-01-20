@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Plus, User, Phone, Mail, Users, Upload, Trash2, X, CheckSquare } from "lucide-react";
+import { Search, Plus, User, Phone, Mail, Users, Upload, Trash2, X, CheckSquare, MapPin, ArrowUpDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -11,6 +11,13 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,9 +32,11 @@ import { cn } from "@/lib/utils";
 import { useContactStore } from "@/lib/contact-store";
 import { CreateContactDialog } from "@/components/contacts/create-contact-dialog";
 import { ImportContactsDialog } from "@/components/contacts/import-contacts-dialog";
+import { ScrapeLeadsDialog } from "@/components/contacts/scrape-leads-dialog";
 import { useBulkDeleteContacts } from "@/hooks/useContacts";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import type { Contact, ContactStatus } from "@/types";
+import type { ContactSortBy } from "@/lib/api/contacts";
 
 const statusColors: Record<string, string> = {
   new: "bg-blue-500/10 text-blue-500 hover:bg-blue-500/20",
@@ -90,6 +99,7 @@ interface ContactCardProps {
 
 function ContactCard({ contact, isSelected, onSelectChange, isSelectionMode }: ContactCardProps) {
   const displayName = [contact.first_name, contact.last_name].filter(Boolean).join(" ") || "Unknown";
+  const hasUnread = (contact.unread_count ?? 0) > 0;
 
   const handleCheckboxClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -108,7 +118,8 @@ function ContactCard({ contact, isSelected, onSelectChange, isSelectionMode }: C
         "flex flex-col p-4 rounded-xl border bg-card",
         "hover:bg-accent/50 hover:border-accent transition-all cursor-pointer",
         "group",
-        isSelected && "ring-2 ring-primary border-primary"
+        isSelected && "ring-2 ring-primary border-primary",
+        hasUnread && "border-l-4 border-l-blue-500"
       )}
     >
       <div className="flex items-start gap-3">
@@ -120,15 +131,25 @@ function ContactCard({ contact, isSelected, onSelectChange, isSelectionMode }: C
             />
           </div>
         )}
-        <Avatar className="h-12 w-12 shrink-0">
-          <AvatarFallback className="bg-primary/10 text-primary text-base font-medium">
-            {getInitials(contact)}
-          </AvatarFallback>
-        </Avatar>
+        <div className="relative">
+          <Avatar className="h-12 w-12 shrink-0">
+            <AvatarFallback className="bg-primary/10 text-primary text-base font-medium">
+              {getInitials(contact)}
+            </AvatarFallback>
+          </Avatar>
+          {hasUnread && (
+            <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-blue-500 text-[10px] font-bold text-white">
+              {contact.unread_count}
+            </span>
+          )}
+        </div>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">
-            <span className="font-semibold truncate group-hover:text-primary transition-colors">
+            <span className={cn(
+              "font-semibold truncate group-hover:text-primary transition-colors",
+              hasUnread && "text-blue-600 dark:text-blue-400"
+            )}>
               {displayName}
             </span>
             <Badge variant="secondary" className={cn("text-xs shrink-0", statusColors[contact.status])}>
@@ -231,6 +252,7 @@ function StatusFilter({ selectedStatus, onStatusChange, counts }: StatusFilterPr
 export function ContactsPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = React.useState(false);
+  const [isScrapeDialogOpen, setIsScrapeDialogOpen] = React.useState(false);
   const [selectedIds, setSelectedIds] = React.useState<number[]>([]);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const workspaceId = useWorkspaceId();
@@ -241,6 +263,8 @@ export function ContactsPage() {
     setSearchQuery,
     statusFilter,
     setStatusFilter,
+    sortBy,
+    setSortBy,
     isLoadingContacts,
     setContacts,
   } = useContactStore();
@@ -344,6 +368,10 @@ export function ContactsPage() {
             </Badge>
           </div>
           <div className="flex items-center gap-2">
+            <Button variant="outline" className="gap-2" onClick={() => setIsScrapeDialogOpen(true)}>
+              <MapPin className="h-4 w-4" />
+              Find Leads
+            </Button>
             <Button variant="outline" className="gap-2" onClick={() => setIsImportDialogOpen(true)}>
               <Upload className="h-4 w-4" />
               Import CSV
@@ -388,7 +416,7 @@ export function ContactsPage() {
           </div>
         )}
 
-        {/* Search */}
+        {/* Search and Sort */}
         <div className="flex items-center gap-4">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -399,6 +427,17 @@ export function ContactsPage() {
               className="pl-9"
             />
           </div>
+          <Select value={sortBy} onValueChange={(value: ContactSortBy) => setSortBy(value)}>
+            <SelectTrigger className="w-[180px]">
+              <ArrowUpDown className="h-4 w-4 mr-2" />
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="created_at">Newest First</SelectItem>
+              <SelectItem value="unread_first">Unread First</SelectItem>
+              <SelectItem value="last_conversation">Recent Activity</SelectItem>
+            </SelectContent>
+          </Select>
           {!isSelectionMode && filteredContacts.length > 0 && (
             <Button
               variant="outline"
@@ -473,6 +512,11 @@ export function ContactsPage() {
       <ImportContactsDialog
         open={isImportDialogOpen}
         onOpenChange={setIsImportDialogOpen}
+      />
+
+      <ScrapeLeadsDialog
+        open={isScrapeDialogOpen}
+        onOpenChange={setIsScrapeDialogOpen}
       />
 
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>

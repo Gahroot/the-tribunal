@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { Contact, TimelineItem, Agent, Automation, ContactAgent } from "@/types";
+import type { ContactSortBy } from "@/lib/api/contacts";
 
 interface ContactStore {
   // Selected contact
@@ -29,6 +30,10 @@ interface ContactStore {
   // Filters
   statusFilter: string | null;
   setStatusFilter: (status: string | null) => void;
+
+  // Sorting
+  sortBy: ContactSortBy;
+  setSortBy: (sortBy: ContactSortBy) => void;
 
   // AI Agents
   agents: Agent[];
@@ -78,6 +83,10 @@ export const useContactStore = create<ContactStore>((set) => ({
   // Filters
   statusFilter: null,
   setStatusFilter: (status) => set({ statusFilter: status }),
+
+  // Sorting
+  sortBy: "created_at",
+  setSortBy: (sortBy) => set({ sortBy }),
 
   // AI Agents
   agents: [],

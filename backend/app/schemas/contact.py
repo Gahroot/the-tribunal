@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -76,16 +77,30 @@ class ContactResponse(BaseModel):
     notes: str | None
     source: str | None
     source_campaign_id: uuid.UUID | None
+    # AI Enrichment fields
+    website_url: str | None = None
+    linkedin_url: str | None = None
+    business_intel: dict[str, Any] | None = None
+    enrichment_status: str | None = None
+    enriched_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
 
 
+class ContactWithConversationResponse(ContactResponse):
+    """Contact response with conversation metadata for list views."""
+
+    unread_count: int = 0
+    last_message_at: datetime | None = None
+    last_message_direction: str | None = None
+
+
 class ContactListResponse(BaseModel):
     """Schema for paginated contact list."""
 
-    items: list[ContactResponse]
+    items: list[ContactWithConversationResponse]
     total: int
     page: int
     page_size: int

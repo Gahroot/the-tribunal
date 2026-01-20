@@ -15,7 +15,15 @@ from app.db.redis import close_redis
 from app.websockets.voice_bridge import router as voice_bridge_router
 from app.websockets.voice_test import router as voice_test_router
 from app.workers.campaign_worker import start_campaign_worker, stop_campaign_worker
+from app.workers.enrichment_worker import (
+    start_enrichment_worker,
+    stop_enrichment_worker,
+)
 from app.workers.followup_worker import start_followup_worker, stop_followup_worker
+from app.workers.message_test_worker import (
+    start_message_test_worker,
+    stop_message_test_worker,
+)
 from app.workers.reputation_worker import reputation_worker
 from app.workers.voice_campaign_worker import (
     start_voice_campaign_worker,
@@ -89,8 +97,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info("Voice campaign worker started")
     await start_followup_worker()
     log.info("Follow-up worker started")
+    await start_message_test_worker()
+    log.info("Message test worker started")
     await reputation_worker.start()
     log.info("Reputation worker started")
+    await start_enrichment_worker()
+    log.info("Enrichment worker started")
 
     yield
 
@@ -102,8 +114,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info("Voice campaign worker stopped")
     await stop_followup_worker()
     log.info("Follow-up worker stopped")
+    await stop_message_test_worker()
+    log.info("Message test worker stopped")
     await reputation_worker.stop()
     log.info("Reputation worker stopped")
+    await stop_enrichment_worker()
+    log.info("Enrichment worker stopped")
     await close_redis()
 
 

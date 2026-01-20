@@ -1,0 +1,105 @@
+"""AI-powered website content analyzer for lead enrichment."""
+
+import json
+
+import structlog
+from bs4 import BeautifulSoup
+from openai import AsyncOpenAI
+
+from app.core.config import settings
+from app.schemas.find_leads_ai import WebsiteSummary
+
+logger = structlog.get_logger()
+
+WEBSITE_ANALYSIS_PROMPT = """Analyze this business website content and extract key information.
+
+Return ONLY valid JSON with this structure:
+{
+    "business_description": "What the business does (1-2 sentences)",
+    "services": ["Service 1", "Service 2", ...],  // Up to 5 main services
+    "target_market": "Who they serve",
+    "unique_selling_points": ["USP 1", "USP 2"],  // Up to 3
+    "industry": "Industry category"
+}
+
+If information is not available, use null for strings or empty arrays for lists."""
+
+
+class AIContentAnalyzerService:
+    """Service for AI-powered website content analysis."""
+
+    def __init__(self, api_key: str | None = None) -> None:
+        self._openai = AsyncOpenAI(api_key=api_key or settings.openai_api_key)
+        self.logger = logger.bind(component="ai_content_analyzer")
+
+    def _extract_text(self, html: str, max_chars: int = 8000) -> str:
+        """Extract readable text from HTML, truncated for token limits."""
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Remove script, style, nav, footer elements
+        for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
+            tag.decompose()
+
+        text = soup.get_text(separator=" ", strip=True)
+        # Collapse whitespace
+        text = " ".join(text.split())
+        return text[:max_chars]
+
+    async def generate_website_summary(
+        self,
+        html_content: str,
+        website_url: str,
+        business_name: str | None = None,
+    ) -> WebsiteSummary | None:
+        """Generate AI summary of website content.
+
+        Args:
+            html_content: Raw HTML from website
+            website_url: URL for context
+            business_name: Optional business name for context
+
+        Returns:
+            WebsiteSummary or None if analysis fails
+        """
+        log = self.logger.bind(website_url=website_url)
+
+        try:
+            text_content = self._extract_text(html_content)
+            if len(text_content) < 100:
+                log.warning("insufficient_content", text_length=len(text_content))
+                return None
+
+            context = (
+                f"Business: {business_name}\nWebsite: {website_url}\n\n"
+                if business_name
+                else f"Website: {website_url}\n\n"
+            )
+
+            response = await self._openai.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": WEBSITE_ANALYSIS_PROMPT},
+                    {"role": "user", "content": context + text_content},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.3,
+                max_tokens=500,
+            )
+
+            result = json.loads(response.choices[0].message.content or "{}")
+            log.info(
+                "website_summary_generated",
+                has_description=bool(result.get("business_description")),
+            )
+
+            return WebsiteSummary(
+                business_description=result.get("business_description"),
+                services=result.get("services", [])[:5],
+                target_market=result.get("target_market"),
+                unique_selling_points=result.get("unique_selling_points", [])[:3],
+                industry=result.get("industry"),
+            )
+
+        except Exception as e:
+            log.warning("website_summary_failed", error=str(e))
+            return None

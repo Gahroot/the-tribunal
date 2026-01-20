@@ -9,10 +9,10 @@ import { useWorkspaceId } from "@/hooks/use-workspace-id";
 
 export default function Home() {
   const workspaceId = useWorkspaceId();
-  const { setContacts, setIsLoadingContacts } = useContactStore();
+  const { setContacts, setIsLoadingContacts, sortBy } = useContactStore();
 
   // Fetch ALL contacts from API (handles pagination automatically)
-  const { data, isLoading } = useAllContacts(workspaceId ?? "", {});
+  const { data, isLoading } = useAllContacts(workspaceId ?? "", { sort_by: sortBy });
 
   // Sync API data to Zustand store
   React.useEffect(() => {

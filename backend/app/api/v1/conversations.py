@@ -7,16 +7,66 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.core.config import settings
 from app.models.agent import Agent
+from app.models.campaign import CampaignContact
 from app.models.conversation import Conversation, Message
 from app.models.workspace import Workspace
 from app.services.ai.text_agent import generate_followup_message
 from app.services.telephony.telnyx import TelnyxSMSService
 
 router = APIRouter()
+
+
+async def sync_campaign_agent(
+    conversation: Conversation,
+    db: AsyncSession,
+) -> bool:
+    """Sync the campaign's agent to the conversation if applicable.
+
+    If the conversation is part of a campaign with an assigned agent,
+    ensure the conversation's assigned_agent_id matches the campaign's agent.
+    Campaign agent always takes precedence.
+
+    Args:
+        conversation: The conversation to sync
+        db: Database session
+
+    Returns:
+        True if any updates were made, False otherwise
+    """
+    campaign_contact_result = await db.execute(
+        select(CampaignContact)
+        .options(selectinload(CampaignContact.campaign))
+        .where(CampaignContact.conversation_id == conversation.id)
+    )
+    campaign_contact = campaign_contact_result.scalar_one_or_none()
+
+    if not campaign_contact or not campaign_contact.campaign:
+        return False
+
+    campaign = campaign_contact.campaign
+    updated = False
+
+    # Sync agent if campaign has one and it differs from conversation
+    if campaign.agent_id and conversation.assigned_agent_id != campaign.agent_id:
+        conversation.assigned_agent_id = campaign.agent_id
+        updated = True
+
+    # Enable AI if campaign has it enabled and conversation doesn't
+    if campaign.ai_enabled and not conversation.ai_enabled:
+        conversation.ai_enabled = True
+        updated = True
+
+    if updated:
+        await db.commit()
+        await db.refresh(conversation)
+
+    return updated
 
 
 # Schemas
@@ -127,7 +177,42 @@ async def list_conversations(
     query = query.offset((page - 1) * page_size).limit(page_size)
 
     result = await db.execute(query)
-    conversations = result.scalars().all()
+    conversations = list(result.scalars().all())
+
+    # Sync campaign agents for all conversations in a single batch query
+    if conversations:
+        conversation_ids = [c.id for c in conversations]
+        campaign_contacts_result = await db.execute(
+            select(CampaignContact)
+            .options(selectinload(CampaignContact.campaign))
+            .where(CampaignContact.conversation_id.in_(conversation_ids))
+        )
+        campaign_contacts = campaign_contacts_result.scalars().all()
+
+        # Build a map of conversation_id -> campaign
+        campaign_by_conv_id = {
+            cc.conversation_id: cc.campaign
+            for cc in campaign_contacts
+            if cc.campaign is not None
+        }
+
+        # Sync agents for conversations that are part of campaigns
+        needs_commit = False
+        for conv in conversations:
+            campaign = campaign_by_conv_id.get(conv.id)
+            if campaign and campaign.agent_id:
+                if conv.assigned_agent_id != campaign.agent_id:
+                    conv.assigned_agent_id = campaign.agent_id
+                    needs_commit = True
+                if campaign.ai_enabled and not conv.ai_enabled:
+                    conv.ai_enabled = True
+                    needs_commit = True
+
+        if needs_commit:
+            await db.commit()
+            # Refresh all conversations that were modified
+            for conv in conversations:
+                await db.refresh(conv)
 
     return PaginatedConversations(
         items=[ConversationResponse.model_validate(c) for c in conversations],
@@ -162,6 +247,10 @@ async def get_conversation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Conversation not found",
         )
+
+    # Sync campaign agent if this conversation is part of a campaign
+    # Campaign agent always takes precedence over conversation's assigned agent
+    await sync_campaign_agent(conversation, db)
 
     # Get messages
     messages_result = await db.execute(
