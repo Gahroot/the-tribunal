@@ -27,7 +27,7 @@ class VoiceAgentSession:
     """
 
     BASE_URL = "wss://api.openai.com/v1/realtime"
-    MODEL = "gpt-4o-realtime-preview-2024-12-26"
+    MODEL = "gpt-realtime"
 
     def __init__(self, api_key: str, agent: Agent | None = None) -> None:
         """Initialize voice agent session.
@@ -48,12 +48,15 @@ class VoiceAgentSession:
         Returns:
             True if successful, False otherwise
         """
-        self.logger.info("connecting_to_realtime_api")
+        url = f"{self.BASE_URL}?model={self.MODEL}"
+        self.logger.info(
+            "========== CONNECTING TO OPENAI REALTIME API ==========",
+            url=url,
+            model=self.MODEL,
+            api_key_prefix=self.api_key[:10] + "..." if self.api_key else "None",
+        )
 
         try:
-            # Build connection URL with API key
-            url = f"{self.BASE_URL}?model={self.MODEL}"
-
             self.ws = await websockets.connect(
                 url,
                 additional_headers={
@@ -62,14 +65,31 @@ class VoiceAgentSession:
                 },
             )
 
-            self.logger.info("connected_to_realtime_api")
+            self.logger.info(
+                "websocket_connected_to_openai",
+                ws_connected=self.ws is not None,
+            )
 
             # Send session configuration
+            self.logger.info("configuring_openai_session")
             await self._configure_session()
+            self.logger.info("openai_session_configured")
 
             return True
+        except websockets.exceptions.InvalidStatus as e:
+            self.logger.error(
+                "openai_connection_rejected",
+                status_code=e.response.status_code if hasattr(e, "response") else "unknown",
+                error=str(e),
+                hint="Check if API key is valid",
+            )
+            return False
         except Exception as e:
-            self.logger.exception("connection_failed", error=str(e))
+            self.logger.exception(
+                "openai_connection_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return False
 
     async def disconnect(self) -> None:
@@ -84,8 +104,8 @@ class VoiceAgentSession:
     async def _configure_session(self) -> None:
         """Configure the Realtime session with agent settings.
 
-        Uses pcm16 at 24kHz - the voice_bridge handles conversion from/to
-        Telnyx's μ-law 8kHz format.
+        Uses g711_ulaw at 8kHz - this matches Telnyx's format directly,
+        eliminating the need for audio conversion (lower latency, no quality loss).
         """
         # Build system instructions - be explicit about role and behavior
         base_instructions = (
@@ -109,9 +129,9 @@ IMPORTANT: You are on a phone call. When the call connects:
                 "modalities": ["text", "audio"],
                 "instructions": instructions,
                 "voice": self.agent.voice_id if self.agent else "alloy",
-                # PCM16 at 24kHz - voice_bridge converts from/to Telnyx μ-law 8kHz
-                "input_audio_format": "pcm16",
-                "output_audio_format": "pcm16",
+                # g711_ulaw at 8kHz - matches Telnyx format directly (no conversion!)
+                "input_audio_format": "g711_ulaw",
+                "output_audio_format": "g711_ulaw",
                 "turn_detection": {
                     "type": self.agent.turn_detection_mode
                     if self.agent and self.agent.turn_detection_mode
@@ -128,7 +148,7 @@ IMPORTANT: You are on a phone call. When the call connects:
         }
 
         await self._send_event(config)
-        self.logger.info("session_configured", audio_format="pcm16")
+        self.logger.info("session_configured", audio_format="g711_ulaw")
 
     async def configure_session(
         self,
@@ -155,7 +175,13 @@ IMPORTANT: You are on a phone call. When the call connects:
             self.logger.warning("websocket_not_connected")
             return
 
-        session_config: dict[str, Any] = {}
+        session_config: dict[str, Any] = {
+            # CRITICAL: Always include modalities and audio formats to prevent them being cleared
+            # Must use g711_ulaw to match Telnyx format - pcm16 would break audio!
+            "modalities": ["text", "audio"],
+            "input_audio_format": "g711_ulaw",
+            "output_audio_format": "g711_ulaw",
+        }
 
         if voice:
             session_config["voice"] = voice
@@ -249,16 +275,30 @@ IMPORTANT: You are on a phone call. When the call connects:
             greeting: Optional greeting text. If not provided, uses the pending greeting
                      from send_greeting or agent's initial greeting.
         """
+        self.logger.info(
+            "========== TRIGGER INITIAL RESPONSE ==========",
+            ws_connected=self.ws is not None,
+            ws_is_connected=self.is_connected(),
+            provided_greeting=greeting[:50] if greeting else None,
+        )
+
         if not self.ws:
-            self.logger.warning("websocket_not_connected")
+            self.logger.error(
+                "cannot_trigger_response_ws_not_connected",
+                hint="WebSocket connection to OpenAI was not established",
+            )
             return
 
         # Use provided greeting, or pending greeting, or agent's initial greeting
         message = greeting
         if not message and hasattr(self, "_pending_greeting"):
             message = self._pending_greeting
+            msg_len = len(message) if message else 0
+            self.logger.debug("using_pending_greeting", greeting_length=msg_len)
         if not message and self.agent and self.agent.initial_greeting:
             message = self.agent.initial_greeting
+            msg_len = len(message) if message else 0
+            self.logger.debug("using_agent_initial_greeting", greeting_length=msg_len)
 
         try:
             # Create a user message that instructs the AI to deliver the greeting
@@ -267,6 +307,12 @@ IMPORTANT: You are on a phone call. When the call connects:
                 prompt_text = f"Greet the caller by saying: {message}"
             else:
                 prompt_text = "Greet the caller and introduce yourself briefly."
+
+            self.logger.info(
+                "sending_greeting_prompt",
+                prompt_text=prompt_text[:100],
+                has_custom_greeting=bool(message),
+            )
 
             event = {
                 "type": "conversation.item.create",
@@ -284,18 +330,31 @@ IMPORTANT: You are on a phone call. When the call connects:
 
             await self._send_event(event)
             self.logger.info(
-                "initial_response_triggered",
+                "greeting_conversation_item_created",
                 has_greeting=bool(message),
                 greeting_length=len(message) if message else 0,
             )
 
-            # Trigger response generation - simple form without extra options
+            # Trigger response generation with audio modality
             # This tells OpenAI to respond to the conversation item we just created
-            await self._send_event({"type": "response.create"})
-            self.logger.info("response_requested")
+            self.logger.info("sending_response_create_event", modalities=["text", "audio"])
+            await self._send_event({
+                "type": "response.create",
+                "response": {
+                    "modalities": ["text", "audio"],
+                },
+            })
+            self.logger.info(
+                "response_create_sent_successfully",
+                hint="AI should now generate audio response",
+            )
 
         except Exception as e:
-            self.logger.exception("trigger_response_error", error=str(e))
+            self.logger.exception(
+                "trigger_response_error",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     async def send_audio_chunk(self, audio_data: bytes) -> None:
         """Send audio chunk to OpenAI.
@@ -330,8 +389,17 @@ IMPORTANT: You are on a phone call. When the call connects:
         Yields:
             PCM audio chunks (16-bit, 16kHz)
         """
+        self.logger.info(
+            "========== STARTING AUDIO RECEIVE STREAM ==========",
+            ws_connected=self.ws is not None,
+            ws_is_connected=self.is_connected(),
+        )
+
         if not self.ws:
-            self.logger.warning("websocket_not_connected_for_audio_stream")
+            self.logger.error(
+                "cannot_receive_audio_ws_not_connected",
+                hint="OpenAI WebSocket connection was not established",
+            )
             return
 
         audio_chunks_received = 0
@@ -339,7 +407,10 @@ IMPORTANT: You are on a phone call. When the call connects:
         responses_completed = 0
 
         try:
-            self.logger.info("starting_audio_receive_stream")
+            self.logger.info(
+                "entering_websocket_receive_loop",
+                ws_is_connected=self.is_connected(),
+            )
 
             async for message in self.ws:
                 # Parse JSON with error handling to prevent stream crash
@@ -372,8 +443,13 @@ IMPORTANT: You are on a phone call. When the call connects:
                         audio_chunks_received += 1
                         total_audio_bytes += len(decoded)
 
-                        # Log periodically
-                        if audio_chunks_received % 100 == 0:
+                        # Log first chunk and periodically
+                        if audio_chunks_received == 1:
+                            self.logger.info(
+                                "first_audio_chunk_received",
+                                chunk_bytes=len(decoded),
+                            )
+                        elif audio_chunks_received % 100 == 0:
                             self.logger.debug(
                                 "audio_stream_progress",
                                 chunks=audio_chunks_received,
@@ -387,15 +463,52 @@ IMPORTANT: You are on a phone call. When the call connects:
                     # Transcript chunk - log for debugging
                     transcript = event.get("delta", "")
                     if transcript:
-                        self.logger.debug("transcript_chunk", text=transcript[:50])
+                        self.logger.debug("audio_transcript_chunk", text=transcript[:50])
+
+                elif event_type == "response.text.delta":
+                    # Text response (not audio) - this means audio is NOT being generated
+                    text = event.get("delta", "")
+                    self.logger.warning(
+                        "text_delta_received_not_audio",
+                        text_preview=text[:100] if text else "",
+                        text_length=len(text) if text else 0,
+                    )
+
+                elif event_type == "response.text.done":
+                    text = event.get("text", "")
+                    self.logger.warning(
+                        "text_response_done_not_audio",
+                        text_preview=text[:200] if text else "",
+                        text_length=len(text) if text else 0,
+                    )
 
                 elif event_type == "response.done":
                     # Response complete - but DON'T break!
                     # Keep listening for more responses in the conversation
                     responses_completed += 1
+                    response = event.get("response", {})
+                    usage = response.get("usage", {})
+                    output = response.get("output", [])
+                    output_summary = [
+                        {
+                            "type": o.get("type"),
+                            "role": o.get("role"),
+                            "content_types": [c.get("type") for c in o.get("content", [])],
+                        }
+                        for o in output
+                    ]
                     self.logger.info(
                         "response_completed",
                         response_num=responses_completed,
+                        response_id=response.get("id"),
+                        status=response.get("status"),
+                        status_details=response.get("status_details"),
+                        modalities=response.get("modalities"),
+                        output_count=len(output),
+                        output_summary=output_summary,
+                        total_tokens=usage.get("total_tokens"),
+                        input_tokens=usage.get("input_tokens"),
+                        output_tokens=usage.get("output_tokens"),
                         total_audio_chunks=audio_chunks_received,
                         total_audio_bytes=total_audio_bytes,
                     )
@@ -419,13 +532,32 @@ IMPORTANT: You are on a phone call. When the call connects:
                     )
 
                 elif event_type == "response.created":
-                    self.logger.debug("response_created")
+                    response = event.get("response", {})
+                    self.logger.info(
+                        "response_created",
+                        response_id=response.get("id"),
+                        status=response.get("status"),
+                        modalities=response.get("modalities"),
+                        output=response.get("output"),
+                    )
 
                 elif event_type == "response.output_item.added":
-                    self.logger.debug("response_output_item_added")
+                    item = event.get("item", {})
+                    self.logger.info(
+                        "response_output_item_added",
+                        item_id=item.get("id"),
+                        item_type=item.get("type"),
+                        role=item.get("role"),
+                        content_types=[c.get("type") for c in item.get("content", [])],
+                    )
 
                 elif event_type == "response.content_part.added":
-                    self.logger.debug("response_content_part_added")
+                    part = event.get("part", {})
+                    self.logger.info(
+                        "response_content_part_added",
+                        part_type=part.get("type"),
+                        content_index=event.get("content_index"),
+                    )
 
                 elif event_type == "session.created":
                     session = event.get("session", {})
@@ -433,10 +565,21 @@ IMPORTANT: You are on a phone call. When the call connects:
                         "session_created",
                         session_id=session.get("id"),
                         model=session.get("model"),
+                        modalities=session.get("modalities"),
+                        voice=session.get("voice"),
+                        input_audio_format=session.get("input_audio_format"),
+                        output_audio_format=session.get("output_audio_format"),
                     )
 
                 elif event_type == "session.updated":
-                    self.logger.debug("session_updated")
+                    session = event.get("session", {})
+                    self.logger.info(
+                        "session_updated",
+                        modalities=session.get("modalities"),
+                        voice=session.get("voice"),
+                        input_audio_format=session.get("input_audio_format"),
+                        output_audio_format=session.get("output_audio_format"),
+                    )
 
                 elif event_type == "error":
                     error = event.get("error", {})
@@ -526,7 +669,7 @@ IMPORTANT: You are on a phone call. When the call connects:
                     "role": "user",
                     "content": [
                         {
-                            "type": "text",
+                            "type": "input_text",
                             "text": combined_context,
                         }
                     ],
@@ -547,6 +690,39 @@ IMPORTANT: You are on a phone call. When the call connects:
         """
         if not self.ws:
             raise RuntimeError("WebSocket not connected")
+
+        event_type = event.get("type", "unknown")
+
+        # Log important events with details
+        if event_type == "session.update":
+            session = event.get("session", {})
+            self.logger.info(
+                "sending_session_update",
+                modalities=session.get("modalities"),
+                voice=session.get("voice"),
+                input_audio_format=session.get("input_audio_format"),
+                output_audio_format=session.get("output_audio_format"),
+                has_instructions=bool(session.get("instructions")),
+                turn_detection=session.get("turn_detection"),
+            )
+        elif event_type == "response.create":
+            response = event.get("response", {})
+            self.logger.info(
+                "sending_response_create",
+                modalities=response.get("modalities"),
+                has_instructions=bool(response.get("instructions")),
+            )
+        elif event_type == "conversation.item.create":
+            item = event.get("item", {})
+            content = item.get("content", [])
+            self.logger.info(
+                "sending_conversation_item_create",
+                role=item.get("role"),
+                item_type=item.get("type"),
+                content_types=[c.get("type") for c in content],
+            )
+        else:
+            self.logger.debug("sending_event", event_type=event_type)
 
         try:
             await self.ws.send(json.dumps(event))
