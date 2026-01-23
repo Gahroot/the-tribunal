@@ -23,6 +23,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
+from app.services.ai.elevenlabs_voice_agent import ElevenLabsVoiceAgentSession
 from app.services.ai.grok_voice_agent import GrokVoiceAgentSession
 from app.services.ai.voice_agent import VoiceAgentSession
 from app.services.calendar.calcom import CalComService
@@ -491,19 +492,43 @@ async def _execute_book_appointment(
         return {"success": False, "error": f"Failed to book appointment: {str(e)}"}
 
 
-def _create_voice_session(
+VoiceSessionType = VoiceAgentSession | GrokVoiceAgentSession | ElevenLabsVoiceAgentSession
+
+
+def _create_voice_session(  # noqa: PLR0911
     voice_provider: str,
     agent: Any,
-) -> tuple[VoiceAgentSession | GrokVoiceAgentSession | None, str | None]:
+) -> tuple[VoiceSessionType | None, str | None]:
     """Create appropriate voice session based on provider.
 
     Args:
-        voice_provider: Provider name (openai, grok)
+        voice_provider: Provider name (openai, grok, elevenlabs)
         agent: Agent model for configuration
 
     Returns:
         Tuple of (voice_session, error_message)
     """
+    if voice_provider == "elevenlabs":
+        # ElevenLabs hybrid mode: Grok STT+LLM + ElevenLabs TTS
+        if not settings.elevenlabs_api_key:
+            return None, "ElevenLabs API key not configured"
+        if not settings.xai_api_key:
+            return None, "xAI API key required for ElevenLabs mode (used for STT+LLM)"
+
+        # Enable tools if agent has Cal.com configured
+        enable_tools = bool(
+            agent
+            and agent.calcom_event_type_id
+            and settings.calcom_api_key
+        )
+
+        return ElevenLabsVoiceAgentSession(
+            xai_api_key=settings.xai_api_key,
+            elevenlabs_api_key=settings.elevenlabs_api_key,
+            agent=agent,
+            enable_tools=enable_tools,
+        ), None
+
     if voice_provider == "grok":
         if not settings.xai_api_key:
             return None, "xAI API key not configured"
@@ -528,7 +553,7 @@ def _create_voice_session(
 
 
 async def _setup_voice_session(
-    voice_session: VoiceAgentSession | GrokVoiceAgentSession,
+    voice_session: VoiceSessionType,
     agent: Any,
     contact_info: dict[str, Any] | None,
     offer_info: dict[str, Any] | None,
@@ -549,8 +574,8 @@ async def _setup_voice_session(
         timezone: Timezone for bookings (from workspace settings)
         log: Logger instance
     """
-    # Set up tool callback for Grok voice sessions
-    if isinstance(voice_session, GrokVoiceAgentSession):
+    # Set up tool callback for Grok and ElevenLabs voice sessions (both support tools)
+    if isinstance(voice_session, (GrokVoiceAgentSession, ElevenLabsVoiceAgentSession)):
         # Create a closure to capture agent, contact_info, and timezone for tool execution
         async def tool_callback(
             call_id: str,
@@ -734,7 +759,7 @@ async def voice_stream_bridge(websocket: WebSocket, call_id: str) -> None:  # no
 
 async def _relay_audio(
     websocket: WebSocket,
-    voice_session: VoiceAgentSession | GrokVoiceAgentSession,
+    voice_session: VoiceSessionType,
     log: Any,
 ) -> None:
     """Relay audio bidirectionally between Telnyx and voice provider.
@@ -811,7 +836,7 @@ async def _relay_audio(
 
 async def _receive_from_telnyx_and_send_to_provider(  # noqa: PLR0912, PLR0915
     websocket: WebSocket,
-    voice_session: VoiceAgentSession | GrokVoiceAgentSession,
+    voice_session: VoiceSessionType,
     log: Any,
     greeting_triggered: asyncio.Event,
 ) -> None:
@@ -945,9 +970,9 @@ async def _receive_from_telnyx_and_send_to_provider(  # noqa: PLR0912, PLR0915
         log.exception("receive_from_telnyx_error", error=str(e))
 
 
-async def _receive_from_provider_and_send_to_telnyx(
+async def _receive_from_provider_and_send_to_telnyx(  # noqa: PLR0915
     websocket: WebSocket,
-    voice_session: VoiceAgentSession | GrokVoiceAgentSession,
+    voice_session: VoiceSessionType,
     log: Any,
     greeting_triggered: asyncio.Event,
 ) -> None:
@@ -959,9 +984,12 @@ async def _receive_from_provider_and_send_to_telnyx(
     IMPORTANT: Telnyx requires audio chunks to be 20ms-30s in duration.
     At 8kHz μ-law, 20ms = 160 bytes. We buffer audio until we have enough.
 
+    NOTE: ElevenLabs outputs ulaw_8000 directly - no conversion needed!
+    OpenAI/Grok output PCM16 24kHz which must be converted.
+
     Args:
         websocket: Telnyx WebSocket connection
-        voice_session: Voice provider session (OpenAI or Grok)
+        voice_session: Voice provider session (OpenAI, Grok, or ElevenLabs)
         log: Logger instance
         greeting_triggered: Event to wait for before sending audio
     """
@@ -997,19 +1025,27 @@ async def _receive_from_provider_and_send_to_telnyx(
         await asyncio.wait_for(greeting_triggered.wait(), timeout=10.0)
         log.info("greeting_triggered_starting_audio_relay")
 
-        async for audio_pcm in voice_session.receive_audio_stream():
+        # Check if ElevenLabs - it outputs ulaw_8000 directly (no conversion needed)
+        is_elevenlabs = isinstance(voice_session, ElevenLabsVoiceAgentSession)
+
+        async for audio_chunk in voice_session.receive_audio_stream():
             if first_audio_time is None:
                 first_audio_time = time.time()
                 latency = first_audio_time - start_time
                 log.info(
                     "first_audio_from_provider",
                     latency_secs=round(latency, 2),
-                    audio_bytes=len(audio_pcm),
+                    audio_bytes=len(audio_chunk),
+                    is_elevenlabs=is_elevenlabs,
                 )
 
             try:
-                # Convert PCM16 24kHz to μ-law 8kHz for Telnyx
-                audio_mulaw = convert_openai_to_telnyx(audio_pcm, log)
+                if is_elevenlabs:
+                    # ElevenLabs outputs ulaw_8000 directly - no conversion needed!
+                    audio_mulaw = audio_chunk
+                else:
+                    # OpenAI/Grok output PCM16 24kHz - convert to μ-law 8kHz for Telnyx
+                    audio_mulaw = convert_openai_to_telnyx(audio_chunk, log)
 
                 # Add to buffer
                 audio_buffer.extend(audio_mulaw)
@@ -1037,7 +1073,7 @@ async def _receive_from_provider_and_send_to_telnyx(
                 log.exception(
                     "provider_audio_conversion_error",
                     error=str(e),
-                    audio_bytes=len(audio_pcm),
+                    audio_bytes=len(audio_chunk),
                 )
 
         # Flush any remaining audio in the buffer

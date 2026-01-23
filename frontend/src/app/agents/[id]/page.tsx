@@ -156,6 +156,31 @@ const GROK_VOICES = [
   { id: "leo", name: "Leo", description: "Authoritative & strong male" },
 ];
 
+// ElevenLabs voices - premium TTS with 100+ expressive voices
+const ELEVENLABS_VOICES = [
+  { id: "rachel", name: "Rachel", description: "Calm female" },
+  { id: "bella", name: "Bella", description: "Soft female" },
+  { id: "antoni", name: "Antoni", description: "Young male" },
+  { id: "josh", name: "Josh", description: "Deep male" },
+  { id: "adam", name: "Adam", description: "Narrator male" },
+  { id: "sam", name: "Sam", description: "Raspy male" },
+  { id: "domi", name: "Domi", description: "Strong female" },
+  { id: "elli", name: "Elli", description: "Young female" },
+  { id: "callum", name: "Callum", description: "Transatlantic male" },
+  { id: "charlie", name: "Charlie", description: "Casual male" },
+  { id: "charlotte", name: "Charlotte", description: "Swedish female" },
+  { id: "daniel", name: "Daniel", description: "British male" },
+  { id: "emily", name: "Emily", description: "Calm female" },
+  { id: "freya", name: "Freya", description: "American female" },
+  { id: "giovanni", name: "Giovanni", description: "Italian male" },
+  { id: "grace", name: "Grace", description: "Southern female" },
+  { id: "lily", name: "Lily", description: "British female" },
+  { id: "matilda", name: "Matilda", description: "Warm female" },
+  { id: "river", name: "River", description: "Confident female" },
+  { id: "serena", name: "Serena", description: "Pleasant female" },
+  { id: "thomas", name: "Thomas", description: "Calm male" },
+];
+
 // Grok built-in tools - these are native capabilities that auto-execute
 const GROK_BUILTIN_TOOLS = [
   {
@@ -327,7 +352,9 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
       ? GROK_VOICES
       : voiceProvider === "hume"
         ? HUME_VOICES
-        : REALTIME_VOICES;
+        : voiceProvider === "elevenlabs"
+          ? ELEVENLABS_VOICES
+          : REALTIME_VOICES;
 
   // Reset voice when provider changes if current voice isn't valid
   useEffect(() => {
@@ -336,7 +363,13 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
     if (!validVoiceIds.includes(currentVoice)) {
       // Set default voice for provider
       const defaultVoice =
-        voiceProvider === "grok" ? "ara" : voiceProvider === "hume" ? "kora" : "marin";
+        voiceProvider === "grok"
+          ? "ara"
+          : voiceProvider === "hume"
+            ? "kora"
+            : voiceProvider === "elevenlabs"
+              ? "rachel"
+              : "marin";
       form.setValue("voiceId", defaultVoice);
     }
   }, [voiceProvider, voices, form]);
@@ -771,6 +804,14 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
                                 </span>
                               </div>
                             </SelectItem>
+                            <SelectItem value="elevenlabs">
+                              <div className="flex flex-col">
+                                <span>ElevenLabs</span>
+                                <span className="text-xs text-muted-foreground">
+                                  Most expressive, 100+ premium voices
+                                </span>
+                              </div>
+                            </SelectItem>
                           </SelectContent>
                         </Select>
                         <FormDescription>
@@ -778,7 +819,9 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
                             ? "Grok includes built-in search tools and supports realism cues like [whisper], [sigh], [laugh]"
                             : field.value === "hume"
                               ? "Hume AI provides emotional intelligence in voice synthesis"
-                              : "OpenAI Realtime offers the best voice quality and lowest latency"}
+                              : field.value === "elevenlabs"
+                                ? "ElevenLabs provides the most expressive TTS with 100+ premium voices"
+                                : "OpenAI Realtime offers the best voice quality and lowest latency"}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>

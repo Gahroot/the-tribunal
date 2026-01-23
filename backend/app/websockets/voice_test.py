@@ -11,11 +11,15 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
+from app.services.ai.elevenlabs_voice_agent import ElevenLabsVoiceAgentSession
 from app.services.ai.grok_voice_agent import GrokVoiceAgentSession
 from app.services.ai.voice_agent import VoiceAgentSession
 
 router = APIRouter()
 logger = structlog.get_logger()
+
+# Type alias for voice sessions
+VoiceSessionType = VoiceAgentSession | GrokVoiceAgentSession | ElevenLabsVoiceAgentSession
 
 
 async def _get_agent_by_id(agent_id: str, workspace_id: str, log: Any) -> Any:
@@ -46,19 +50,31 @@ async def _get_agent_by_id(agent_id: str, workspace_id: str, log: Any) -> Any:
         return agent
 
 
-def _create_voice_session_for_test(
+def _create_voice_session_for_test(  # noqa: PLR0911
     voice_provider: str,
     agent: Any,
-) -> tuple[VoiceAgentSession | GrokVoiceAgentSession | None, str | None]:
+) -> tuple[VoiceSessionType | None, str | None]:
     """Create appropriate voice session based on provider.
 
     Args:
-        voice_provider: Provider name (openai, grok)
+        voice_provider: Provider name (openai, grok, elevenlabs)
         agent: Agent model for configuration
 
     Returns:
         Tuple of (voice_session, error_message)
     """
+    if voice_provider == "elevenlabs":
+        # ElevenLabs hybrid mode: Grok STT+LLM + ElevenLabs TTS
+        if not settings.elevenlabs_api_key:
+            return None, "ElevenLabs API key not configured"
+        if not settings.xai_api_key:
+            return None, "xAI API key required for ElevenLabs mode (used for STT+LLM)"
+        return ElevenLabsVoiceAgentSession(
+            xai_api_key=settings.xai_api_key,
+            elevenlabs_api_key=settings.elevenlabs_api_key,
+            agent=agent,
+        ), None
+
     if voice_provider == "grok":
         if not settings.xai_api_key:
             return None, "xAI API key not configured"
@@ -72,7 +88,7 @@ def _create_voice_session_for_test(
 
 async def _handle_start_message(
     websocket: WebSocket,
-    voice_session: VoiceAgentSession | GrokVoiceAgentSession,
+    voice_session: VoiceSessionType,
     agent: Any,
     voice_provider: str,
     log: Any,
@@ -114,7 +130,7 @@ async def _handle_start_message(
 
 
 async def _handle_audio_message(
-    voice_session: VoiceAgentSession | GrokVoiceAgentSession,
+    voice_session: VoiceSessionType,
     message: dict[str, Any],
 ) -> None:
     """Handle audio message from client."""
@@ -126,7 +142,7 @@ async def _handle_audio_message(
 
 async def _process_messages(
     websocket: WebSocket,
-    voice_session: VoiceAgentSession | GrokVoiceAgentSession,
+    voice_session: VoiceSessionType,
     agent: Any,
     voice_provider: str,
     log: Any,
@@ -247,7 +263,7 @@ async def voice_test_endpoint(
 
 async def _receive_from_provider(
     websocket: WebSocket,
-    voice_session: VoiceAgentSession | GrokVoiceAgentSession,
+    voice_session: VoiceSessionType,
     log: Any,
 ) -> None:
     """Receive audio from voice provider and send to browser.

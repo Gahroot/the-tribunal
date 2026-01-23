@@ -135,7 +135,8 @@ export type PricingTierType =
   | "premium"
   | "hume-evi"
   | "openai-hume"
-  | "grok";
+  | "grok"
+  | "elevenlabs";
 
 /**
  * Get languages available for a specific pricing tier.
@@ -145,6 +146,7 @@ export function getLanguagesForTier(tier: PricingTierType): Language[] {
     case "budget":
     case "openai-hume":
     case "grok":
+    case "elevenlabs":
       return [...COMMON_LANGUAGES].sort((a, b) => a.name.localeCompare(b.name));
 
     case "balanced":

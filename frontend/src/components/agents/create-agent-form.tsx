@@ -104,6 +104,31 @@ const GROK_VOICES = [
   { id: "leo", name: "Leo", description: "Authoritative & strong male" },
 ] as const;
 
+// ElevenLabs voices - premium TTS with 100+ expressive voices
+const ELEVENLABS_VOICES = [
+  { id: "rachel", name: "Rachel", description: "Calm female (Recommended)", recommended: true },
+  { id: "bella", name: "Bella", description: "Soft female" },
+  { id: "antoni", name: "Antoni", description: "Young male" },
+  { id: "josh", name: "Josh", description: "Deep male" },
+  { id: "adam", name: "Adam", description: "Narrator male" },
+  { id: "sam", name: "Sam", description: "Raspy male" },
+  { id: "domi", name: "Domi", description: "Strong female" },
+  { id: "elli", name: "Elli", description: "Young female" },
+  { id: "callum", name: "Callum", description: "Transatlantic male" },
+  { id: "charlie", name: "Charlie", description: "Casual male" },
+  { id: "charlotte", name: "Charlotte", description: "Swedish female" },
+  { id: "daniel", name: "Daniel", description: "British male" },
+  { id: "emily", name: "Emily", description: "Calm female" },
+  { id: "freya", name: "Freya", description: "American female" },
+  { id: "giovanni", name: "Giovanni", description: "Italian male" },
+  { id: "grace", name: "Grace", description: "Southern female" },
+  { id: "lily", name: "Lily", description: "British female" },
+  { id: "matilda", name: "Matilda", description: "Warm female" },
+  { id: "river", name: "River", description: "Confident female" },
+  { id: "serena", name: "Serena", description: "Pleasant female" },
+  { id: "thomas", name: "Thomas", description: "Calm male" },
+] as const;
+
 // Get integrations that have tools defined
 const INTEGRATIONS_WITH_TOOLS = AVAILABLE_INTEGRATIONS.filter(
   (i) => i.tools && i.tools.length > 0
@@ -171,7 +196,7 @@ const WIZARD_STEPS = [
 ] as const;
 
 const agentFormSchema = z.object({
-  pricingTier: z.enum(["budget", "balanced", "premium-mini", "premium", "hume-evi", "openai-hume", "grok"]),
+  pricingTier: z.enum(["budget", "balanced", "premium-mini", "premium", "hume-evi", "openai-hume", "grok", "elevenlabs"]),
   name: z.string().min(2, "Name must be at least 2 characters"),
   description: z.string().optional(),
   language: z.string(),
@@ -278,6 +303,12 @@ export function CreateAgentForm() {
       if (!humeVoiceIds.includes(currentVoice as typeof humeVoiceIds[number])) {
         form.setValue("voice", defaultVoice);
       }
+    } else if (pricingTier === "elevenlabs") {
+      defaultVoice = "rachel";
+      const elevenlabsVoiceIds = ELEVENLABS_VOICES.map((v) => v.id);
+      if (!elevenlabsVoiceIds.includes(currentVoice as typeof elevenlabsVoiceIds[number])) {
+        form.setValue("voice", defaultVoice);
+      }
     } else {
       // OpenAI Realtime
       const realtimeVoiceIds = REALTIME_VOICES.map((v) => v.id);
@@ -333,6 +364,8 @@ export function CreateAgentForm() {
           return "grok";
         case "openai-hume":
           return "hume";
+        case "elevenlabs":
+          return "elevenlabs";
         default:
           return "openai";
       }
@@ -623,7 +656,8 @@ export function CreateAgentForm() {
                   {(pricingTier === "premium" ||
                     pricingTier === "premium-mini" ||
                     pricingTier === "openai-hume" ||
-                    pricingTier === "grok") && (
+                    pricingTier === "grok" ||
+                    pricingTier === "elevenlabs") && (
                     <FormField
                       control={form.control}
                       name="voice"
@@ -633,7 +667,9 @@ export function CreateAgentForm() {
                             ? GROK_VOICES
                             : pricingTier === "openai-hume"
                               ? HUME_VOICES
-                              : REALTIME_VOICES;
+                              : pricingTier === "elevenlabs"
+                                ? ELEVENLABS_VOICES
+                                : REALTIME_VOICES;
                         return (
                           <FormItem>
                             <FormLabel>Voice</FormLabel>
