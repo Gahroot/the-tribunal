@@ -13,7 +13,6 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Card, CardContent } from "@/components/ui/card";
 import { PhoneInput, normalizeToE164 } from "./phone-input";
 import { publicDemoApi } from "@/lib/api/public-demo";
 
@@ -94,16 +93,15 @@ export function HeroSection() {
 
         {/* Right side - Form */}
         <motion.div variants={itemVariants}>
-          <Card className="border border-gray-200 shadow-sm">
-            <CardContent className="pt-6">
-              <div className="space-y-2 mb-6">
-                <h2 className="text-xl md:text-2xl font-semibold text-card-foreground">
-                  Don&apos;t believe us?
-                </h2>
-                <p className="text-lg text-muted-foreground">
-                  Have our AI give you a call.
-                </p>
-              </div>
+          <div>
+            <div className="space-y-3 mb-8">
+              <h2 className="text-3xl md:text-4xl font-bold text-gray-900">
+                Don&apos;t believe us?
+              </h2>
+              <p className="text-xl md:text-2xl text-gray-600">
+                Have our AI give you a call.
+              </p>
+            </div>
 
               <div aria-live="polite" role="status">
                 {isSuccess && (
@@ -119,9 +117,6 @@ export function HeroSection() {
               {!isSuccess && (
                 <div className="space-y-4">
                   <div>
-                    <label htmlFor="phone-input" className="block text-sm font-medium text-muted-foreground mb-1">
-                      Phone Number
-                    </label>
                     <PhoneInput
                       id="phone-input"
                       value={phone}
@@ -129,7 +124,7 @@ export function HeroSection() {
                       disabled={isPending}
                       aria-describedby={isError ? "phone-error" : undefined}
                       aria-invalid={isError}
-                      className="h-12"
+                      className="h-14 text-lg text-gray-900"
                     />
                   </div>
 
@@ -166,8 +161,7 @@ export function HeroSection() {
                   <Button
                     type="button"
                     size="lg"
-                    variant="outline"
-                    className="w-full h-12 font-semibold"
+                    className="w-full h-12 bg-gray-900 hover:bg-gray-800 text-white font-semibold"
                     disabled={!isPhoneValid || isPending}
                     onClick={handleText}
                   >
@@ -185,8 +179,7 @@ export function HeroSection() {
                   </Button>
                 </div>
               )}
-            </CardContent>
-          </Card>
+          </div>
         </motion.div>
       </motion.div>
     </div>
