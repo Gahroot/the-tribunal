@@ -28,6 +28,8 @@ import {
   Shield,
   ShieldAlert,
   Loader2,
+  Globe,
+  Search,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -133,6 +135,22 @@ const ELEVENLABS_VOICES = [
 const INTEGRATIONS_WITH_TOOLS = AVAILABLE_INTEGRATIONS.filter(
   (i) => i.tools && i.tools.length > 0
 );
+
+// Grok built-in tools - these are native capabilities that auto-execute
+const GROK_BUILTIN_TOOLS = [
+  {
+    id: "web_search",
+    name: "Web Search",
+    description:
+      "Search the web for current events, prices, news, weather, and real-time information. Grok automatically decides when to search.",
+  },
+  {
+    id: "x_search",
+    name: "X (Twitter) Search",
+    description:
+      "Search X/Twitter for trending topics, public opinions, and recent posts. Great for understanding what people are saying.",
+  },
+];
 
 // Best practices system prompt template
 const BEST_PRACTICES_PROMPT = `# Role & Identity
@@ -956,6 +974,64 @@ Your role:
                       />
                     ))}
                   </div>
+
+                  {/* Grok-specific built-in tools */}
+                  {pricingTier === "grok" && (
+                    <div className="mt-6 rounded-lg border bg-muted/30 p-4">
+                      <h3 className="mb-2 text-sm font-medium">
+                        Grok Built-in Search Tools
+                      </h3>
+                      <p className="mb-4 text-sm text-muted-foreground">
+                        Grok has built-in search capabilities that execute automatically during
+                        conversations. Enable the ones you want your agent to use.
+                      </p>
+                      <FormField
+                        control={form.control}
+                        name="enabledTools"
+                        render={({ field }) => (
+                          <div className="space-y-3">
+                            {GROK_BUILTIN_TOOLS.map((tool) => {
+                              const isEnabled = field.value?.includes(tool.id);
+                              const Icon = tool.id === "web_search" ? Globe : Search;
+                              return (
+                                <div
+                                  key={tool.id}
+                                  className={cn(
+                                    "flex items-start gap-3 rounded-lg border bg-background p-4 transition-colors",
+                                    isEnabled && "border-primary bg-primary/5"
+                                  )}
+                                >
+                                  <Checkbox
+                                    checked={isEnabled}
+                                    onCheckedChange={(checked) => {
+                                      const current = field.value ?? [];
+                                      if (checked) {
+                                        field.onChange([...current, tool.id]);
+                                      } else {
+                                        field.onChange(current.filter((v) => v !== tool.id));
+                                      }
+                                    }}
+                                  />
+                                  <div className="flex-1 space-y-1">
+                                    <div className="flex items-center gap-2">
+                                      <Icon className="h-4 w-4 text-muted-foreground" />
+                                      <span className="font-medium">{tool.name}</span>
+                                      <Badge variant="secondary" className="text-xs">
+                                        Auto
+                                      </Badge>
+                                    </div>
+                                    <p className="text-sm text-muted-foreground">
+                                      {tool.description}
+                                    </p>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      />
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
