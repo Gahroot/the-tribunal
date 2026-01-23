@@ -46,6 +46,7 @@ import {
   AlertCircle,
   ArrowLeft,
   ChevronDown,
+  Code2,
   Loader2,
   Shield,
   ShieldAlert,
@@ -72,6 +73,7 @@ import {
 import { cn } from "@/lib/utils";
 import { getLanguagesForTier } from "@/lib/languages";
 import { VoiceTestDialog } from "@/components/agents/voice-test-dialog";
+import { EmbedAgentDialog } from "@/components/agents/embed-agent-dialog";
 
 // Best practices system prompt template
 const BEST_PRACTICES_PROMPT = `# Role & Identity
@@ -209,6 +211,7 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
   const [activeTab, setActiveTab] = useState("basic");
   const [isDeleting, setIsDeleting] = useState(false);
   const [isVoiceTestOpen, setIsVoiceTestOpen] = useState(false);
+  const [isEmbedDialogOpen, setIsEmbedDialogOpen] = useState(false);
   const isDeletingRef = useRef(false);
 
   const {
@@ -482,6 +485,15 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
             <Headphones className="mr-1.5 h-3.5 w-3.5" />
             Test Voice
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8"
+            onClick={() => setIsEmbedDialogOpen(true)}
+          >
+            <Code2 className="mr-1.5 h-3.5 w-3.5" />
+            Embed
+          </Button>
           <AlertDialog>
           <AlertDialogTrigger asChild>
             <Button variant="destructive" size="sm" className="h-8">
@@ -520,6 +532,14 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
       <VoiceTestDialog
         open={isVoiceTestOpen}
         onOpenChange={setIsVoiceTestOpen}
+        agentId={agentId}
+        agentName={agent.name}
+        workspaceId={workspaceId ?? ""}
+      />
+
+      <EmbedAgentDialog
+        open={isEmbedDialogOpen}
+        onOpenChange={setIsEmbedDialogOpen}
         agentId={agentId}
         agentName={agent.name}
         workspaceId={workspaceId ?? ""}

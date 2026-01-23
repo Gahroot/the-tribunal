@@ -1,5 +1,7 @@
 """AI Agent model."""
 
+import secrets
+import string
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -9,6 +11,13 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+
+
+def generate_public_id() -> str:
+    """Generate a short public ID for embedding (e.g., ag_xK9mN2pQ)."""
+    chars = string.ascii_letters + string.digits
+    random_part = "".join(secrets.choice(chars) for _ in range(8))
+    return f"ag_{random_part}"
 
 if TYPE_CHECKING:
     from app.models.appointment import Appointment
@@ -82,6 +91,16 @@ class Agent(Base):
 
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # Embed settings
+    public_id: Mapped[str | None] = mapped_column(
+        String(20), unique=True, nullable=True, index=True
+    )
+    embed_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    allowed_domains: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), default=list, nullable=False
+    )
+    embed_settings: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
 
     # Stats (denormalized)
     total_calls: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)

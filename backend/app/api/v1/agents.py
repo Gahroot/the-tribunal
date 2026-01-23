@@ -2,14 +2,14 @@
 
 import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from app.api.deps import DB, CurrentUser, get_workspace
-from app.models.agent import Agent
+from app.models.agent import Agent, generate_public_id
 from app.models.workspace import Workspace
 
 router = APIRouter()
@@ -244,3 +244,154 @@ async def delete_agent(
 
     agent.is_active = False
     await db.commit()
+
+
+# Embed settings schemas
+class EmbedSettings(BaseModel):
+    """Embed widget settings."""
+
+    button_text: str = "Talk to AI"
+    theme: str = "auto"  # auto, light, dark
+    position: str = "bottom-right"  # bottom-right, bottom-left, top-right, top-left
+    primary_color: str = "#6366f1"
+    mode: str = "voice"  # voice, chat, both
+
+
+class EmbedSettingsResponse(BaseModel):
+    """Response for embed settings."""
+
+    public_id: str | None
+    embed_enabled: bool
+    allowed_domains: list[str]
+    embed_settings: EmbedSettings
+    embed_code: str | None
+
+
+class EmbedSettingsUpdate(BaseModel):
+    """Request to update embed settings."""
+
+    embed_enabled: bool | None = None
+    allowed_domains: list[str] | None = None
+    embed_settings: dict[str, Any] | None = None
+
+
+@router.get("/{agent_id}/embed", response_model=EmbedSettingsResponse)
+async def get_embed_settings(
+    workspace_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> EmbedSettingsResponse:
+    """Get embed settings for an agent."""
+    result = await db.execute(
+        select(Agent).where(
+            Agent.id == agent_id,
+            Agent.workspace_id == workspace_id,
+        )
+    )
+    agent = result.scalar_one_or_none()
+
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent not found",
+        )
+
+    # Generate public ID if not exists
+    if not agent.public_id:
+        agent.public_id = generate_public_id()
+        await db.commit()
+        await db.refresh(agent)
+
+    # Build embed code snippet
+    embed_settings = agent.embed_settings or {}
+    mode = embed_settings.get("mode", "voice")
+    embed_code = None
+
+    if agent.embed_enabled and agent.public_id:
+        # Use relative URL - frontend will determine the base URL
+        embed_code = f'''<script src="/widget/v1/widget.js" defer></script>
+<ai-agent agent-id="{agent.public_id}" mode="{mode}"></ai-agent>'''
+
+    return EmbedSettingsResponse(
+        public_id=agent.public_id,
+        embed_enabled=agent.embed_enabled,
+        allowed_domains=agent.allowed_domains or [],
+        embed_settings=EmbedSettings(**{
+            "button_text": embed_settings.get("button_text", "Talk to AI"),
+            "theme": embed_settings.get("theme", "auto"),
+            "position": embed_settings.get("position", "bottom-right"),
+            "primary_color": embed_settings.get("primary_color", "#6366f1"),
+            "mode": embed_settings.get("mode", "voice"),
+        }),
+        embed_code=embed_code,
+    )
+
+
+@router.put("/{agent_id}/embed", response_model=EmbedSettingsResponse)
+async def update_embed_settings(
+    workspace_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    body: EmbedSettingsUpdate,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> EmbedSettingsResponse:
+    """Update embed settings for an agent."""
+    result = await db.execute(
+        select(Agent).where(
+            Agent.id == agent_id,
+            Agent.workspace_id == workspace_id,
+        )
+    )
+    agent = result.scalar_one_or_none()
+
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent not found",
+        )
+
+    # Generate public ID if enabling embed and none exists
+    if body.embed_enabled and not agent.public_id:
+        agent.public_id = generate_public_id()
+
+    # Update fields
+    if body.embed_enabled is not None:
+        agent.embed_enabled = body.embed_enabled
+
+    if body.allowed_domains is not None:
+        agent.allowed_domains = body.allowed_domains
+
+    if body.embed_settings is not None:
+        # Merge with existing settings
+        current_settings = agent.embed_settings or {}
+        current_settings.update(body.embed_settings)
+        agent.embed_settings = current_settings
+
+    await db.commit()
+    await db.refresh(agent)
+
+    # Build embed code snippet
+    embed_settings = agent.embed_settings or {}
+    mode = embed_settings.get("mode", "voice")
+    embed_code = None
+
+    if agent.embed_enabled and agent.public_id:
+        embed_code = f'''<script src="/widget/v1/widget.js" defer></script>
+<ai-agent agent-id="{agent.public_id}" mode="{mode}"></ai-agent>'''
+
+    return EmbedSettingsResponse(
+        public_id=agent.public_id,
+        embed_enabled=agent.embed_enabled,
+        allowed_domains=agent.allowed_domains or [],
+        embed_settings=EmbedSettings(**{
+            "button_text": embed_settings.get("button_text", "Talk to AI"),
+            "theme": embed_settings.get("theme", "auto"),
+            "position": embed_settings.get("position", "bottom-right"),
+            "primary_color": embed_settings.get("primary_color", "#6366f1"),
+            "mode": embed_settings.get("mode", "voice"),
+        }),
+        embed_code=embed_code,
+    )

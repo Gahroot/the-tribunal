@@ -12,10 +12,13 @@ from app.api.v1 import (
     contacts,
     conversations,
     dashboard,
+    demo,
+    embed,
     find_leads_ai,
     integrations,
     invitations,
     lead_magnets,
+    message_templates,
     message_tests,
     offers,
     opportunities,
@@ -61,6 +64,11 @@ api_router.include_router(
     message_tests.router,
     prefix="/workspaces/{workspace_id}/message-tests",
     tags=["Message Tests"],
+)
+api_router.include_router(
+    message_templates.router,
+    prefix="/workspaces/{workspace_id}/message-templates",
+    tags=["Message Templates"],
 )
 api_router.include_router(
     offers.router,
@@ -133,4 +141,16 @@ api_router.include_router(
     offers.public_router,
     prefix="/p/offers",
     tags=["Public Offers"],
+)
+# Public demo endpoints (no auth, rate limited)
+api_router.include_router(
+    demo.router,
+    prefix="/p/demo",
+    tags=["Public Demo"],
+)
+# Public embed endpoints (no auth, origin-validated)
+api_router.include_router(
+    embed.router,
+    prefix="/p/embed",
+    tags=["Public Embed"],
 )
