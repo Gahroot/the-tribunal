@@ -38,6 +38,19 @@ GROK_REALISM_CUES = [
     "[breath]",
 ]
 
+# Grok built-in tools - these execute automatically, no callback needed
+# Just include them in the session config and Grok handles the rest
+GROK_BUILTIN_TOOLS = {
+    "web_search": {
+        "type": "web_search",
+        # Grok's built-in web search - searches the internet for current information
+    },
+    "x_search": {
+        "type": "x_search",
+        # Grok's built-in X/Twitter search - searches posts on X
+    },
+}
+
 # Voice agent tool definitions for Cal.com booking
 VOICE_BOOKING_TOOLS = [
     {
@@ -205,6 +218,48 @@ You can use these auditory cues naturally in your responses to sound more human:
 """
         return prompt + realism_instructions
 
+    def _get_search_tools_guidance(self) -> str:
+        """Get system prompt guidance for search tools.
+
+        Returns:
+            Search tools instructions if any search tools are enabled, empty string otherwise.
+        """
+        if not self.agent or not self.agent.enabled_tools:
+            return ""
+
+        enabled = self.agent.enabled_tools
+        has_web_search = "web_search" in enabled
+        has_x_search = "x_search" in enabled
+
+        if not has_web_search and not has_x_search:
+            return ""
+
+        guidance_parts = ["\n\n# Search Capabilities"]
+
+        if has_web_search:
+            guidance_parts.append(
+                "You have access to real-time web search. "
+                "Use it when users ask about current events, prices, news, weather, "
+                "facts you're unsure about, or anything that requires up-to-date information. "
+                "Search results are integrated automatically - respond naturally."
+            )
+
+        if has_x_search:
+            guidance_parts.append(
+                "You have access to X (Twitter) search. "
+                "Use it when users ask about trending topics, public opinions, "
+                "what people are saying about something, or recent posts. "
+                "The search results will help you provide current social context."
+            )
+
+        if has_web_search or has_x_search:
+            guidance_parts.append(
+                "Use these search tools proactively when the conversation would benefit "
+                "from current information - don't wait to be asked explicitly."
+            )
+
+        return "\n".join(guidance_parts)
+
     async def _configure_session(self) -> None:
         """Configure the Grok Realtime session with agent settings.
 
@@ -231,6 +286,9 @@ You can use these auditory cues naturally in your responses to sound more human:
 
         # Enhance with realism cues
         enhanced_prompt = self._enhance_prompt_with_realism(base_prompt)
+
+        # Add search tools guidance if enabled
+        enhanced_prompt += self._get_search_tools_guidance()
 
         # Add telephony-specific guidance to prevent hallucination at call start
         enhanced_prompt += """
@@ -324,12 +382,35 @@ DO NOT say things like "I'll check and get back to you" - you can check instantl
             },
         }
 
-        # Add tools if enabled and agent has Cal.com configured
+        # Build tools list from agent's enabled_tools
+        tools: list[dict[str, Any]] = []
+
+        # Add Grok built-in tools if enabled in agent settings
+        agent_enabled_tools = (
+            self.agent.enabled_tools if self.agent and self.agent.enabled_tools else []
+        )
+
+        if "web_search" in agent_enabled_tools:
+            tools.append(GROK_BUILTIN_TOOLS["web_search"])
+            self.logger.info("grok_web_search_enabled")
+
+        if "x_search" in agent_enabled_tools:
+            tools.append(GROK_BUILTIN_TOOLS["x_search"])
+            self.logger.info("grok_x_search_enabled")
+
+        # Add Cal.com booking tools if enabled and configured
         if self._enable_tools:
-            session_config["tools"] = VOICE_BOOKING_TOOLS
+            tools.extend(VOICE_BOOKING_TOOLS)
             self.logger.info(
-                "grok_tools_enabled",
+                "grok_booking_tools_enabled",
                 tool_count=len(VOICE_BOOKING_TOOLS),
+            )
+
+        if tools:
+            session_config["tools"] = tools
+            self.logger.info(
+                "grok_tools_configured",
+                total_tool_count=len(tools),
             )
 
         config: dict[str, Any] = {
@@ -391,8 +472,9 @@ DO NOT say things like "I'll check and get back to you" - you can check instantl
                 )
                 system_prompt = identity_prefix + system_prompt
 
-            # Enhance with realism cues and telephony guidance
+            # Enhance with realism cues, search guidance, and telephony guidance
             enhanced = self._enhance_prompt_with_realism(system_prompt)
+            enhanced += self._get_search_tools_guidance()
             enhanced += """
 
 IMPORTANT: You are on a phone call. When the call connects:

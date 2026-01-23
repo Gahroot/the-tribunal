@@ -47,7 +47,9 @@ import {
   ArrowLeft,
   ChevronDown,
   Code2,
+  Globe,
   Loader2,
+  Search,
   Shield,
   ShieldAlert,
   AlertTriangle,
@@ -152,6 +154,22 @@ const GROK_VOICES = [
   { id: "sal", name: "Sal", description: "Smooth & balanced neutral" },
   { id: "eve", name: "Eve", description: "Energetic & upbeat female" },
   { id: "leo", name: "Leo", description: "Authoritative & strong male" },
+];
+
+// Grok built-in tools - these are native capabilities that auto-execute
+const GROK_BUILTIN_TOOLS = [
+  {
+    id: "web_search",
+    name: "Web Search",
+    description:
+      "Search the web for current events, prices, news, weather, and real-time information. Grok automatically decides when to search.",
+  },
+  {
+    id: "x_search",
+    name: "X (Twitter) Search",
+    description:
+      "Search X/Twitter for trending topics, public opinions, and recent posts. Great for understanding what people are saying.",
+  },
 ];
 
 // Get integrations that have tools defined
@@ -729,12 +747,39 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="openai">OpenAI Realtime</SelectItem>
-                            <SelectItem value="hume">Hume AI</SelectItem>
-                            <SelectItem value="grok">Grok (xAI)</SelectItem>
+                            <SelectItem value="openai">
+                              <div className="flex flex-col">
+                                <span>OpenAI Realtime</span>
+                                <span className="text-xs text-muted-foreground">
+                                  Best voice quality, fastest response
+                                </span>
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="grok">
+                              <div className="flex flex-col">
+                                <span>Grok (xAI)</span>
+                                <span className="text-xs text-muted-foreground">
+                                  Built-in web & X search, realism cues
+                                </span>
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="hume">
+                              <div className="flex flex-col">
+                                <span>Hume AI</span>
+                                <span className="text-xs text-muted-foreground">
+                                  Emotion-aware voice synthesis
+                                </span>
+                              </div>
+                            </SelectItem>
                           </SelectContent>
                         </Select>
-                        <FormDescription>Choose your voice synthesis provider</FormDescription>
+                        <FormDescription>
+                          {field.value === "grok"
+                            ? "Grok includes built-in search tools and supports realism cues like [whisper], [sigh], [laugh]"
+                            : field.value === "hume"
+                              ? "Hume AI provides emotional intelligence in voice synthesis"
+                              : "OpenAI Realtime offers the best voice quality and lowest latency"}
+                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -769,6 +814,68 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
                   />
                 </CardContent>
               </Card>
+
+              {/* Grok-specific built-in tools */}
+              {voiceProvider === "grok" && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium">
+                      Grok Built-in Search Tools
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Grok has built-in search capabilities that execute automatically during
+                      conversations. Enable the ones you want your agent to use.
+                    </p>
+                    <FormField
+                      control={form.control}
+                      name="enabledTools"
+                      render={({ field }) => (
+                        <div className="space-y-3">
+                          {GROK_BUILTIN_TOOLS.map((tool) => {
+                            const isEnabled = field.value?.includes(tool.id);
+                            const Icon = tool.id === "web_search" ? Globe : Search;
+                            return (
+                              <div
+                                key={tool.id}
+                                className={cn(
+                                  "flex items-start gap-3 rounded-lg border p-4 transition-colors",
+                                  isEnabled && "border-primary bg-primary/5"
+                                )}
+                              >
+                                <Checkbox
+                                  checked={isEnabled}
+                                  onCheckedChange={(checked) => {
+                                    const current = field.value ?? [];
+                                    if (checked) {
+                                      field.onChange([...current, tool.id]);
+                                    } else {
+                                      field.onChange(current.filter((v) => v !== tool.id));
+                                    }
+                                  }}
+                                />
+                                <div className="flex-1 space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <Icon className="h-4 w-4 text-muted-foreground" />
+                                    <span className="font-medium">{tool.name}</span>
+                                    <Badge variant="secondary" className="text-xs">
+                                      Auto
+                                    </Badge>
+                                  </div>
+                                  <p className="text-sm text-muted-foreground">
+                                    {tool.description}
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    />
+                  </CardContent>
+                </Card>
+              )}
             </TabsContent>
 
             <TabsContent value="prompt" className="mt-4 space-y-3">
