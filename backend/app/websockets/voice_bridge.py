@@ -199,9 +199,11 @@ async def _lookup_call_context(
             timezone = workspace.settings.get("timezone", "America/New_York")
 
         # Look up the assigned agent
-        if conversation.assigned_agent_id:
+        # Priority: conversation.assigned_agent_id > message.agent_id
+        agent_id = conversation.assigned_agent_id or message.agent_id
+        if agent_id:
             agent_result = await db.execute(
-                select(Agent).where(Agent.id == conversation.assigned_agent_id)
+                select(Agent).where(Agent.id == agent_id)
             )
             agent = agent_result.scalar_one_or_none()
             if agent:
@@ -209,6 +211,7 @@ async def _lookup_call_context(
                     "found_agent_for_call",
                     agent_id=str(agent.id),
                     agent_name=agent.name,
+                    source="conversation" if conversation.assigned_agent_id else "message",
                 )
 
         # Look up contact info
@@ -636,22 +639,45 @@ async def voice_stream_bridge(websocket: WebSocket, call_id: str) -> None:  # no
     connection_start = time.time()
     log = logger.bind(endpoint="voice_stream_bridge", call_id=call_id)
     log.info(
+        "========== VOICE BRIDGE START ==========",
+        call_id=call_id,
+    )
+    log.info(
         "voice_bridge_connection_received",
         client_host=websocket.client.host if websocket.client else "unknown",
+        client_port=websocket.client.port if websocket.client else "unknown",
+        headers=dict(websocket.headers) if hasattr(websocket, "headers") else {},
     )
 
     await websocket.accept()
-    log.info("websocket_accepted")
+    log.info("websocket_accepted", state="connection_established")
 
     # Get agent and conversation context from database first to determine provider
-    log.info("looking_up_call_context")
+    log.info("looking_up_call_context", call_id=call_id)
     agent, contact_info, offer_info, timezone = await _lookup_call_context(call_id, log)
+
+    greeting_preview = None
+    if agent and agent.initial_greeting:
+        greeting_preview = agent.initial_greeting[:50]
+    log.info(
+        "call_context_lookup_result",
+        agent_found=agent is not None,
+        agent_id=str(agent.id) if agent else None,
+        agent_name=agent.name if agent else None,
+        agent_voice_provider=agent.voice_provider if agent else None,
+        agent_voice_id=agent.voice_id if agent else None,
+        agent_initial_greeting=greeting_preview,
+        contact_found=contact_info is not None,
+        contact_name=contact_info.get("name") if contact_info else None,
+        offer_found=offer_info is not None,
+        timezone=timezone,
+    )
 
     if not agent:
         log.warning(
             "no_agent_found_for_call",
             call_id=call_id,
-            hint="Check that call has associated message with agent_id",
+            hint="Check message has agent_id and conversation has assigned_agent_id",
         )
 
     # Determine which voice provider to use
@@ -666,33 +692,51 @@ async def voice_stream_bridge(websocket: WebSocket, call_id: str) -> None:  # no
         agent_id=str(agent.id) if agent else None,
         has_contact=contact_info is not None,
         has_offer=offer_info is not None,
+        openai_key_configured=bool(settings.openai_api_key),
+        xai_key_configured=bool(settings.xai_api_key),
+        elevenlabs_key_configured=bool(settings.elevenlabs_api_key),
     )
 
     # Create appropriate voice session based on provider
+    log.info("creating_voice_session", provider=voice_provider)
     voice_session, error = _create_voice_session(voice_provider, agent)
     if voice_session is None:
         log.error(
-            "api_key_not_configured",
+            "voice_session_creation_failed",
             provider=voice_provider,
             error=error,
+            hint="Check API keys in environment variables",
         )
         await websocket.send_json({"error": error})
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
+    log.info(
+        "voice_session_created",
+        provider=voice_provider,
+        session_type=type(voice_session).__name__,
+    )
+
     relay_task: asyncio.Task[None] | None = None
 
     try:
         # Connect to voice provider
-        log.info("connecting_to_voice_provider", provider=voice_provider)
+        log.info(
+            "connecting_to_voice_provider",
+            provider=voice_provider,
+            session_type=type(voice_session).__name__,
+        )
         connect_start = time.time()
 
-        if not await voice_session.connect():
-            connect_elapsed = time.time() - connect_start
+        connected = await voice_session.connect()
+        connect_elapsed = time.time() - connect_start
+
+        if not connected:
             log.error(
                 "failed_to_connect_to_voice_provider",
                 provider=voice_provider,
                 elapsed_secs=round(connect_elapsed, 2),
+                hint="Check API key validity and network connectivity",
             )
             await websocket.send_json(
                 {"error": f"Failed to connect to {voice_provider} Realtime API"}
@@ -700,25 +744,44 @@ async def voice_stream_bridge(websocket: WebSocket, call_id: str) -> None:  # no
             await websocket.close(code=status.WS_1011_SERVER_ERROR)
             return
 
-        connect_elapsed = time.time() - connect_start
+        def _ws_status() -> str:
+            """Check WebSocket connection status."""
+            if hasattr(voice_session, "is_connected"):
+                return str(voice_session.is_connected())
+            return "unknown"
+
         log.info(
             "connected_to_voice_provider",
             provider=voice_provider,
             connect_time_secs=round(connect_elapsed, 2),
+            ws_connected=_ws_status(),
         )
 
         # Configure session with agent settings and inject context
-        log.info("configuring_voice_session")
+        log.info(
+            "configuring_voice_session",
+            has_agent=agent is not None,
+            has_contact=contact_info is not None,
+            has_offer=offer_info is not None,
+        )
         await _setup_voice_session(voice_session, agent, contact_info, offer_info, timezone, log)
-        log.info("voice_session_configured")
+        log.info(
+            "voice_session_configured",
+            ws_still_connected=_ws_status(),
+        )
 
         # Start bidirectional audio relay
-        log.info("starting_relay_task")
+        log.info(
+            "starting_relay_task",
+            telnyx_ws_open=True,
+            provider_ws_open=_ws_status(),
+        )
         relay_task = asyncio.create_task(
             _relay_audio(websocket, voice_session, log)
         )
 
         # Wait for relay to complete (it will run until disconnect)
+        log.info("waiting_for_relay_completion")
         await relay_task
         log.info("relay_task_completed")
 
@@ -779,17 +842,29 @@ async def _relay_audio(
     # Event to synchronize greeting trigger with audio sending
     greeting_triggered = asyncio.Event()
 
-    log.info("starting_audio_relay")
+    # Shared dict to pass stream_id from Telnyx start event to outbound sender
+    stream_id_holder: dict[str, str] = {}
+
+    def _get_ws_status() -> str:
+        if hasattr(voice_session, "is_connected"):
+            return str(voice_session.is_connected())
+        return "unknown"
+
+    log.info(
+        "========== AUDIO RELAY START ==========",
+        voice_session_type=type(voice_session).__name__,
+        voice_session_connected=_get_ws_status(),
+    )
 
     # Create tasks for bidirectional streaming
     send_task = asyncio.create_task(
         _receive_from_telnyx_and_send_to_provider(
-            websocket, voice_session, log, greeting_triggered
+            websocket, voice_session, log, greeting_triggered, stream_id_holder
         )
     )
     recv_task = asyncio.create_task(
         _receive_from_provider_and_send_to_telnyx(
-            websocket, voice_session, log, greeting_triggered
+            websocket, voice_session, log, greeting_triggered, stream_id_holder
         )
     )
 
@@ -839,6 +914,7 @@ async def _receive_from_telnyx_and_send_to_provider(  # noqa: PLR0912, PLR0915
     voice_session: VoiceSessionType,
     log: Any,
     greeting_triggered: asyncio.Event,
+    stream_id_holder: dict[str, str],
 ) -> None:
     """Receive audio from Telnyx and send to voice provider.
 
@@ -852,6 +928,7 @@ async def _receive_from_telnyx_and_send_to_provider(  # noqa: PLR0912, PLR0915
         voice_session: Voice provider session (OpenAI or Grok)
         log: Logger instance
         greeting_triggered: Event to signal when greeting has been triggered
+        stream_id_holder: Dict to store stream_id for use in outbound messages
     """
     import json
 
@@ -877,21 +954,45 @@ async def _receive_from_telnyx_and_send_to_provider(  # noqa: PLR0912, PLR0915
                     media_format = start_info.get("media_format", {})
                     stream_started = True
 
+                    # Store stream_id for use in outbound messages
+                    stream_id_holder["stream_id"] = stream_id
+
                     log.info(
-                        "telnyx_stream_started",
+                        "========== TELNYX STREAM STARTED ==========",
                         stream_id=stream_id,
                         call_control_id=call_control_id,
                         encoding=media_format.get("encoding", "unknown"),
                         sample_rate=media_format.get("sample_rate", "unknown"),
                         channels=media_format.get("channels", "unknown"),
+                        full_start_info=start_info,
+                        stream_id_stored=True,
                     )
 
                     # Trigger initial greeting - no artificial delay needed
                     # The stream is ready when we receive the "start" event
-                    log.info("triggering_initial_greeting")
-                    await voice_session.trigger_initial_response()
-                    greeting_triggered.set()
-                    log.info("initial_greeting_triggered")
+                    ws_status = "unknown"
+                    if hasattr(voice_session, "is_connected"):
+                        ws_status = str(voice_session.is_connected())
+                    log.info(
+                        "triggering_initial_greeting",
+                        voice_session_connected=ws_status,
+                        stream_id=stream_id,
+                    )
+                    try:
+                        await voice_session.trigger_initial_response()
+                        greeting_triggered.set()
+                        log.info(
+                            "initial_greeting_triggered_successfully",
+                            greeting_event_set=True,
+                            stream_id=stream_id,
+                        )
+                    except Exception as e:
+                        log.exception(
+                            "trigger_initial_response_failed",
+                            error=str(e),
+                            error_type=type(e).__name__,
+                        )
+                        raise
 
                 elif event == "media" and stream_started:
                     # Audio data received from caller
@@ -906,11 +1007,15 @@ async def _receive_from_telnyx_and_send_to_provider(  # noqa: PLR0912, PLR0915
                         audio_chunks_received += 1
                         total_audio_bytes += len(audio_mulaw)
 
-                        # Convert μ-law 8kHz to PCM16 24kHz for OpenAI/Grok
-                        audio_pcm = convert_telnyx_to_openai(audio_mulaw, log)
-
-                        # Send to voice provider
-                        await voice_session.send_audio_chunk(audio_pcm)
+                        # Check if OpenAI with g711_ulaw - send directly, no conversion
+                        is_openai_ulaw = isinstance(voice_session, VoiceAgentSession)
+                        if is_openai_ulaw:
+                            # OpenAI expects g711_ulaw - send directly
+                            await voice_session.send_audio_chunk(audio_mulaw)
+                        else:
+                            # Grok expects PCM16 24kHz - convert
+                            audio_pcm = convert_telnyx_to_openai(audio_mulaw, log)
+                            await voice_session.send_audio_chunk(audio_pcm)
 
                         # Log periodically (every 50 chunks = ~1 second of audio)
                         if audio_chunks_received % 50 == 0:
@@ -923,6 +1028,7 @@ async def _receive_from_telnyx_and_send_to_provider(  # noqa: PLR0912, PLR0915
                                 elapsed_secs=round(elapsed, 1),
                                 timestamp=timestamp,
                                 chunk=chunk_num,
+                                no_conversion=is_openai_ulaw,
                             )
 
                 elif event == "stop":
@@ -975,11 +1081,12 @@ async def _receive_from_provider_and_send_to_telnyx(  # noqa: PLR0915
     voice_session: VoiceSessionType,
     log: Any,
     greeting_triggered: asyncio.Event,
+    stream_id_holder: dict[str, str],
 ) -> None:
     """Receive audio from voice provider and send to Telnyx.
 
     Sends audio in Telnyx's expected JSON format:
-    {"event": "media", "media": {"payload": "<base64-audio>"}}
+    {"event": "media", "stream_id": "...", "media": {"payload": "<base64-audio>"}}
 
     IMPORTANT: Telnyx requires audio chunks to be 20ms-30s in duration.
     At 8kHz μ-law, 20ms = 160 bytes. We buffer audio until we have enough.
@@ -992,6 +1099,7 @@ async def _receive_from_provider_and_send_to_telnyx(  # noqa: PLR0915
         voice_session: Voice provider session (OpenAI, Grok, or ElevenLabs)
         log: Logger instance
         greeting_triggered: Event to wait for before sending audio
+        stream_id_holder: Dict containing stream_id from Telnyx start event
     """
     import json
 
@@ -1009,6 +1117,7 @@ async def _receive_from_provider_and_send_to_telnyx(  # noqa: PLR0915
         nonlocal audio_chunks_sent, total_audio_bytes
 
         audio_b64 = base64.b64encode(audio_data).decode("utf-8")
+        # Telnyx format: NO stream_id needed (unlike Twilio)
         message = json.dumps({
             "event": "media",
             "media": {"payload": audio_b64},
@@ -1018,33 +1127,66 @@ async def _receive_from_provider_and_send_to_telnyx(  # noqa: PLR0915
         audio_chunks_sent += 1
         total_audio_bytes += len(audio_data)
 
+        # Log first few chunks for debugging
+        if audio_chunks_sent <= 3:
+            log.info(
+                "sent_audio_to_telnyx",
+                chunk_num=audio_chunks_sent,
+                bytes_sent=len(audio_data),
+                payload_length=len(audio_b64),
+                first_bytes_hex=audio_data[:10].hex() if audio_data else "empty",
+            )
+
+    def _check_ws_connected() -> str:
+        if hasattr(voice_session, "is_connected"):
+            return str(voice_session.is_connected())
+        return "unknown"
+
     try:
         # Wait for greeting to be triggered before sending audio
         # This ensures the stream is ready
-        log.info("waiting_for_greeting_trigger")
+        log.info(
+            "waiting_for_greeting_trigger",
+            timeout_secs=10.0,
+            voice_session_connected=_check_ws_connected(),
+        )
         await asyncio.wait_for(greeting_triggered.wait(), timeout=10.0)
-        log.info("greeting_triggered_starting_audio_relay")
+        log.info(
+            "greeting_triggered_starting_audio_relay",
+            voice_session_type=type(voice_session).__name__,
+        )
 
         # Check if ElevenLabs - it outputs ulaw_8000 directly (no conversion needed)
         is_elevenlabs = isinstance(voice_session, ElevenLabsVoiceAgentSession)
+
+        log.info(
+            "starting_audio_stream_receive",
+            is_elevenlabs=is_elevenlabs,
+            voice_session_connected=_check_ws_connected(),
+        )
+
+        # Check if this is OpenAI with g711_ulaw output (no conversion needed)
+        is_openai_ulaw = isinstance(voice_session, VoiceAgentSession)
 
         async for audio_chunk in voice_session.receive_audio_stream():
             if first_audio_time is None:
                 first_audio_time = time.time()
                 latency = first_audio_time - start_time
                 log.info(
-                    "first_audio_from_provider",
+                    "========== FIRST AUDIO FROM AI PROVIDER ==========",
                     latency_secs=round(latency, 2),
                     audio_bytes=len(audio_chunk),
                     is_elevenlabs=is_elevenlabs,
+                    is_openai_ulaw=is_openai_ulaw,
+                    chunk_preview_hex=audio_chunk[:20].hex() if audio_chunk else "empty",
                 )
 
             try:
-                if is_elevenlabs:
-                    # ElevenLabs outputs ulaw_8000 directly - no conversion needed!
+                if is_elevenlabs or is_openai_ulaw:
+                    # ElevenLabs and OpenAI (g711_ulaw) output μ-law directly - no conversion!
                     audio_mulaw = audio_chunk
                 else:
-                    # OpenAI/Grok output PCM16 24kHz - convert to μ-law 8kHz for Telnyx
+                    # Grok outputs PCM16 24kHz - convert to μ-law 8kHz for Telnyx
                     audio_mulaw = convert_openai_to_telnyx(audio_chunk, log)
 
                 # Add to buffer
