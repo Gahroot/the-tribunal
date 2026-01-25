@@ -10,7 +10,9 @@ import base64
 import binascii
 import json
 from collections.abc import AsyncIterator, Callable
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import structlog
 import websockets
@@ -309,6 +311,21 @@ You can use these auditory cues naturally in your responses to sound more human:
 
         # Add search tools guidance if enabled
         enhanced_prompt += self._get_search_tools_guidance()
+
+        # Add current date/time context so the model knows the actual date
+        try:
+            now = datetime.now(ZoneInfo("America/New_York"))
+            date_str = now.strftime("%A, %B %d, %Y")
+            time_str = now.strftime("%I:%M %p %Z")
+            year = now.year
+            date_context = f"""
+
+CURRENT DATE AND TIME: Today is {date_str}. The current time is {time_str}.
+You MUST use this date when discussing scheduling, appointments, or any time-related topics.
+Do NOT use any other date - the current year is {year}, not 2024."""
+            enhanced_prompt += date_context
+        except Exception:
+            pass  # If timezone fails, continue without date context
 
         # Add telephony-specific guidance to prevent hallucination at call start
         enhanced_prompt += """

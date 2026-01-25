@@ -179,7 +179,7 @@ async def create_or_update_demo_agent(session: AsyncSession) -> Agent:
             "Uses Grok with web_search and x_search for real-time information."
         )
         existing_agent.voice_provider = "grok"
-        existing_agent.voice_id = "ara"  # Warm & friendly
+        existing_agent.voice_id = "eve"  # Energetic & upbeat (female, US)
         existing_agent.channel_mode = "both"
         existing_agent.language = "en-US"
         existing_agent.temperature = 0.7
@@ -208,7 +208,7 @@ async def create_or_update_demo_agent(session: AsyncSession) -> Agent:
             ),
             channel_mode="both",
             voice_provider="grok",
-            voice_id="ara",  # Warm & friendly
+            voice_id="eve",  # Energetic & upbeat (female, US)
             language="en-US",
             turn_detection_mode="server_vad",
             turn_detection_threshold=0.5,
