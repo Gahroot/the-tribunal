@@ -789,7 +789,9 @@ IMPORTANT: You are on a phone call. When the call connects:
                 is_outbound=True,
                 has_call_context=hasattr(self, "_call_context") and bool(self._call_context),
             )
-            agent_name = self.agent.name if self.agent else "Jess"
+            # Extract just the first name (before any | or - separator)
+            full_name = self.agent.name if self.agent else "Jess"
+            agent_name = full_name.split("|")[0].split("-")[0].strip().split()[0]
             # Pattern interrupt: honest, disarming, gives them a choice
             prompt_text = (
                 f"You just called someone. Open with a pattern interrupt. "
