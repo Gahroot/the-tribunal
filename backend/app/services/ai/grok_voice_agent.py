@@ -1066,13 +1066,13 @@ IMPORTANT: You are on a phone call. When the call connects:
             return
 
         # Timeout for tool execution to prevent blocking audio stream
-        TOOL_TIMEOUT_SECONDS = 10.0
+        tool_timeout_seconds = 10.0
 
         try:
             # Execute the tool callback with timeout protection
             result = await asyncio.wait_for(
                 self._tool_callback(call_id, function_name, arguments),
-                timeout=TOOL_TIMEOUT_SECONDS,
+                timeout=tool_timeout_seconds,
             )
 
             self.logger.info(
@@ -1085,12 +1085,12 @@ IMPORTANT: You are on a phone call. When the call connects:
             # Send result back to Grok
             await self.submit_tool_result(call_id, result)
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self.logger.error(
                 "grok_function_call_timeout",
                 call_id=call_id,
                 function_name=function_name,
-                timeout_seconds=TOOL_TIMEOUT_SECONDS,
+                timeout_seconds=tool_timeout_seconds,
             )
             await self.submit_tool_result(
                 call_id,
