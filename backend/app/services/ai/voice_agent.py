@@ -598,6 +598,18 @@ IMPORTANT: You are on a phone call. When the call connects:
                     )
 
                 elif event_type == "response.created":
+                    # New response starting - reset interrupted flag
+                    # This is critical for outbound calls where the user speaks first:
+                    # 1. User says "hello" -> speech_started -> _is_interrupted = True
+                    # 2. User stops -> OpenAI generates response -> response.created
+                    # 3. Without this reset, all audio would be skipped!
+                    if self._is_interrupted:
+                        self.logger.info(
+                            "resetting_interrupted_flag_on_new_response",
+                            was_interrupted=True,
+                        )
+                        self._is_interrupted = False
+
                     response = event.get("response", {})
                     self.logger.info(
                         "response_created",
