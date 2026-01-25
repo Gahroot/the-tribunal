@@ -185,7 +185,7 @@ Transfer to a human when:
 
 
 async def update_jess():
-    """Update Jess's system prompt."""
+    """Update Jess's system prompt and voice settings."""
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(Agent).where(Agent.id == JESS_AGENT_ID)
@@ -197,23 +197,33 @@ async def update_jess():
             return False
 
         print("=" * 80)
-        print("UPDATING JESS SYSTEM PROMPT")
+        print("UPDATING JESS AGENT")
         print("=" * 80)
-        print(f"\nOLD PROMPT LENGTH: {len(jess.system_prompt)} chars")
+        print(f"\nCURRENT VOICE PROVIDER: {jess.voice_provider}")
+        print(f"NEW VOICE PROVIDER: grok")
+        print(f"\nCURRENT VOICE ID: {jess.voice_id}")
+        print(f"NEW VOICE ID: eve")
+        print(f"\nOLD PROMPT LENGTH: {len(jess.system_prompt or '')} chars")
         print(f"NEW PROMPT LENGTH: {len(UPDATED_JESS_PROMPT)} chars")
-        print(f"ADDED: {len(UPDATED_JESS_PROMPT) - len(jess.system_prompt)} chars")
+
+        # Update voice settings - CRITICAL: Use Grok for pattern interrupt opener
+        jess.voice_provider = "grok"
+        jess.voice_id = "eve"  # American girl voice - energetic & upbeat (options: ara, rex, sal, eve, leo)
+        jess.enabled_tools = [
+            "web_search", "x_search", "book_appointment",
+            "call_control", "crm", "bookings", "twilio-sms", "cal-com"
+        ]
 
         # Update the prompt
         jess.system_prompt = UPDATED_JESS_PROMPT
         await db.commit()
 
-        print("\n✅ Jess's prompt has been updated!")
-        print("\nNew sections added:")
-        print("  - Handling Upset/Rude People (PRIORITY: BE HUMAN FIRST)")
-        print("  - Handling Weird/Techy/Off-Topic Requests")
-        print("  - Protecting Business Info")
-        print("  - Booking Validation")
-        print("  - Improved personality section")
+        print("\n✅ Jess has been updated!")
+        print("\nChanges made:")
+        print("  - voice_provider: grok (enables pattern interrupt opener)")
+        print("  - voice_id: eve (American girl - energetic & upbeat)")
+        print("  - enabled_tools: all tools including web_search, x_search, book_appointment")
+        print("  - system_prompt: Updated with NEPQ sales flow")
 
         return True
 
