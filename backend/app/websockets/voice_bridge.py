@@ -676,7 +676,11 @@ async def _setup_voice_session(
 
 
 @router.websocket("/voice/stream/{call_id}")
-async def voice_stream_bridge(websocket: WebSocket, call_id: str) -> None:  # noqa: PLR0915
+async def voice_stream_bridge(  # noqa: PLR0915
+    websocket: WebSocket,
+    call_id: str,
+    is_outbound: bool = False,
+) -> None:
     """Bridge between Telnyx media stream and voice AI provider.
 
     This WebSocket endpoint receives audio from Telnyx (μ-law 8kHz) and
@@ -689,12 +693,14 @@ async def voice_stream_bridge(websocket: WebSocket, call_id: str) -> None:  # no
     Args:
         websocket: WebSocket connection from Telnyx
         call_id: Telnyx call control ID
+        is_outbound: If True, this is an outbound call - don't greet first
     """
     connection_start = time.time()
-    log = logger.bind(endpoint="voice_stream_bridge", call_id=call_id)
+    log = logger.bind(endpoint="voice_stream_bridge", call_id=call_id, is_outbound=is_outbound)
     log.info(
         "========== VOICE BRIDGE START ==========",
         call_id=call_id,
+        is_outbound=is_outbound,
     )
     log.info(
         "voice_bridge_connection_received",
@@ -829,9 +835,10 @@ async def voice_stream_bridge(websocket: WebSocket, call_id: str) -> None:  # no
             "starting_relay_task",
             telnyx_ws_open=True,
             provider_ws_open=_ws_status(),
+            is_outbound=is_outbound,
         )
         relay_task = asyncio.create_task(
-            _relay_audio(websocket, voice_session, log)
+            _relay_audio(websocket, voice_session, log, is_outbound=is_outbound)
         )
 
         # Wait for relay to complete (it will run until disconnect)
@@ -878,6 +885,8 @@ async def _relay_audio(
     websocket: WebSocket,
     voice_session: VoiceSessionType,
     log: Any,
+    *,
+    is_outbound: bool = False,
 ) -> None:
     """Relay audio bidirectionally between Telnyx and voice provider.
 
@@ -892,6 +901,7 @@ async def _relay_audio(
         websocket: Telnyx WebSocket connection
         voice_session: Voice provider session (OpenAI or Grok)
         log: Logger instance
+        is_outbound: If True, this is an outbound call - don't greet first
     """
     # Event to synchronize greeting trigger with audio sending
     greeting_triggered = asyncio.Event()
@@ -913,7 +923,8 @@ async def _relay_audio(
     # Create tasks for bidirectional streaming
     send_task = asyncio.create_task(
         _receive_from_telnyx_and_send_to_provider(
-            websocket, voice_session, log, greeting_triggered, stream_id_holder
+            websocket, voice_session, log, greeting_triggered, stream_id_holder,
+            is_outbound=is_outbound,
         )
     )
     recv_task = asyncio.create_task(
@@ -969,6 +980,8 @@ async def _receive_from_telnyx_and_send_to_provider(  # noqa: PLR0912, PLR0915
     log: Any,
     greeting_triggered: asyncio.Event,
     stream_id_holder: dict[str, str],
+    *,
+    is_outbound: bool = False,
 ) -> None:
     """Receive audio from Telnyx and send to voice provider.
 
@@ -983,6 +996,7 @@ async def _receive_from_telnyx_and_send_to_provider(  # noqa: PLR0912, PLR0915
         log: Logger instance
         greeting_triggered: Event to signal when greeting has been triggered
         stream_id_holder: Dict to store stream_id for use in outbound messages
+        is_outbound: If True, this is an outbound call - don't greet first
     """
     import json
 
@@ -1024,6 +1038,7 @@ async def _receive_from_telnyx_and_send_to_provider(  # noqa: PLR0912, PLR0915
 
                     # Trigger initial greeting - no artificial delay needed
                     # The stream is ready when we receive the "start" event
+                    # For OUTBOUND calls, we DON'T greet first - we wait for the person to speak
                     ws_status = "unknown"
                     if hasattr(voice_session, "is_connected"):
                         ws_status = str(voice_session.is_connected())
@@ -1031,14 +1046,29 @@ async def _receive_from_telnyx_and_send_to_provider(  # noqa: PLR0912, PLR0915
                         "triggering_initial_greeting",
                         voice_session_connected=ws_status,
                         stream_id=stream_id,
+                        is_outbound=is_outbound,
                     )
                     try:
-                        await voice_session.trigger_initial_response()
+                        # Pass is_outbound to control greeting behavior
+                        # For Grok: trigger_initial_response accepts is_outbound
+                        # For OpenAI: it doesn't, so we handle it here
+                        if isinstance(voice_session, GrokVoiceAgentSession):
+                            await voice_session.trigger_initial_response(is_outbound=is_outbound)
+                        elif not is_outbound:
+                            # Only trigger greeting for inbound calls on non-Grok providers
+                            await voice_session.trigger_initial_response()
+                        else:
+                            # Outbound call on non-Grok provider - skip greeting
+                            log.info(
+                                "skipping_greeting_for_outbound_call",
+                                voice_session_type=type(voice_session).__name__,
+                            )
                         greeting_triggered.set()
                         log.info(
                             "initial_greeting_triggered_successfully",
                             greeting_event_set=True,
                             stream_id=stream_id,
+                            is_outbound=is_outbound,
                         )
                     except Exception as e:
                         log.exception(

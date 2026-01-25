@@ -218,6 +218,32 @@ class GrokVoiceAgentSession:
                 self.logger.exception("grok_disconnect_error", error=str(e))
             self.ws = None
 
+    def _get_date_context(self) -> str:
+        """Get the mandatory date context string.
+
+        This MUST be prepended to ALL prompts to ensure the model
+        knows the correct current date/year for appointment booking.
+
+        Returns:
+            Date context string to prepend to prompts
+        """
+        try:
+            now = datetime.now(ZoneInfo("America/New_York"))
+            date_str = now.strftime("%A, %B %d, %Y")
+            time_str = now.strftime("%I:%M %p %Z")
+            year = now.year
+            return f"""=== MANDATORY DATE CONTEXT ===
+TODAY IS: {date_str}
+CURRENT TIME: {time_str}
+THE YEAR IS {year} - NOT 2024, NOT 2025.
+When booking or discussing dates, use {year} as the current year.
+ALL appointments must be scheduled in {year}.
+=============================
+
+"""
+        except Exception:
+            return ""  # If timezone fails, continue without date context
+
     def _enhance_prompt_with_realism(self, prompt: str) -> str:
         """Enhance system prompt with Grok realism instructions.
 
@@ -282,12 +308,16 @@ You can use these auditory cues naturally in your responses to sound more human:
 
         return "\n".join(guidance_parts)
 
-    async def _configure_session(self) -> None:
+    async def _configure_session(self) -> None:  # noqa: PLR0915
         """Configure the Grok Realtime session with agent settings.
 
         Uses pcm16 at 24kHz - the voice_bridge handles conversion from/to
         Telnyx's μ-law 8kHz format.
         """
+        # Build date context FIRST - this must be at the top of the prompt
+        # so the model absolutely cannot ignore it
+        date_context = self._get_date_context()
+
         # Get base prompt
         base_prompt = (
             self.agent.system_prompt
@@ -306,26 +336,14 @@ You can use these auditory cues naturally in your responses to sound more human:
             )
             base_prompt = identity_prefix + base_prompt
 
+        # Combine: date context (top) + base prompt
+        enhanced_prompt = date_context + base_prompt
+
         # Enhance with realism cues
-        enhanced_prompt = self._enhance_prompt_with_realism(base_prompt)
+        enhanced_prompt = self._enhance_prompt_with_realism(enhanced_prompt)
 
         # Add search tools guidance if enabled
         enhanced_prompt += self._get_search_tools_guidance()
-
-        # Add current date/time context so the model knows the actual date
-        try:
-            now = datetime.now(ZoneInfo("America/New_York"))
-            date_str = now.strftime("%A, %B %d, %Y")
-            time_str = now.strftime("%I:%M %p %Z")
-            year = now.year
-            date_context = f"""
-
-CURRENT DATE AND TIME: Today is {date_str}. The current time is {time_str}.
-You MUST use this date when discussing scheduling, appointments, or any time-related topics.
-Do NOT use any other date - the current year is {year}, not 2024."""
-            enhanced_prompt += date_context
-        except Exception:
-            pass  # If timezone fails, continue without date context
 
         # Add telephony-specific guidance to prevent hallucination at call start
         enhanced_prompt += """
@@ -410,12 +428,12 @@ DO NOT say things like "I'll check and get back to you" - you can check instantl
                 "type": self.agent.turn_detection_mode
                 if self.agent and self.agent.turn_detection_mode
                 else "server_vad",
-                # Higher threshold = less sensitive to background noise
-                "threshold": 0.8,
-                # More padding before speech starts (prevents cutting off beginning)
-                "prefix_padding_ms": 500,
-                # Wait longer after silence before responding (prevents talking over)
-                "silence_duration_ms": 1000,
+                # Lower threshold = more sensitive to speech detection
+                "threshold": 0.5,
+                # Moderate padding before speech starts
+                "prefix_padding_ms": 300,
+                # Wait for silence before responding - middle ground for natural conversation
+                "silence_duration_ms": 700,
             },
         }
 
@@ -518,6 +536,9 @@ DO NOT say things like "I'll check and get back to you" - you can check instantl
                 self.logger.warning("invalid_grok_voice", voice=voice)
 
         if system_prompt:
+            # ALWAYS prepend date context first - critical for appointment booking
+            date_context = self._get_date_context()
+
             # Prepend identity reinforcement if agent has a name configured
             if self.agent and self.agent.name:
                 agent_name = self.agent.name
@@ -529,8 +550,11 @@ DO NOT say things like "I'll check and get back to you" - you can check instantl
                 )
                 system_prompt = identity_prefix + system_prompt
 
+            # Combine: date context (top) + system prompt
+            enhanced = date_context + system_prompt
+
             # Enhance with realism cues, search guidance, and telephony guidance
-            enhanced = self._enhance_prompt_with_realism(system_prompt)
+            enhanced = self._enhance_prompt_with_realism(enhanced)
             enhanced += self._get_search_tools_guidance()
             enhanced += """
 
@@ -606,20 +630,43 @@ IMPORTANT: You are on a phone call. When the call connects:
         except Exception as e:
             self.logger.exception("grok_send_greeting_error", error=str(e))
 
-    async def trigger_initial_response(self, greeting: str | None = None) -> None:
+    async def trigger_initial_response(
+        self,
+        greeting: str | None = None,
+        is_outbound: bool = False,
+    ) -> None:
         """Trigger the AI to start speaking with the initial greeting.
 
         Call this after the audio stream is established to initiate the conversation.
         Creates a user message prompting the AI to greet, then triggers response.create().
 
+        For OUTBOUND calls, we do NOT trigger a greeting - we wait for the person
+        to say "hello" first, then the AI responds naturally using the context
+        already injected via inject_context().
+
         Args:
             greeting: Optional greeting text. If not provided, uses the pending greeting
                      from send_greeting or agent's initial greeting.
+            is_outbound: If True, this is an outbound call and we should NOT greet first.
+                        The AI will wait for the person to speak, then respond.
         """
         if not self.ws:
             self.logger.warning("grok_websocket_not_connected")
             return
 
+        # For OUTBOUND calls: Do NOT trigger a greeting
+        # Wait for the person to say "hello" first, then AI responds naturally
+        if is_outbound:
+            self.logger.info(
+                "grok_outbound_call_waiting_for_user",
+                is_outbound=True,
+                has_call_context=hasattr(self, "_call_context") and bool(self._call_context),
+            )
+            # Don't send any greeting prompt - VAD will detect when the person speaks
+            # and the AI will respond using the context already injected
+            return
+
+        # For INBOUND calls: Trigger greeting as normal
         # Use provided greeting, or pending greeting, or agent's initial greeting
         message = greeting
         if not message and hasattr(self, "_pending_greeting"):
@@ -633,41 +680,16 @@ IMPORTANT: You are on a phone call. When the call connects:
             if message:
                 prompt_text = f"Greet the caller by saying: {message}"
             else:
-                # Build a contextual greeting prompt for outbound calls
+                # Fallback for inbound calls without configured greeting
                 prompt_parts = []
 
                 if self.agent and self.agent.name:
                     prompt_parts.append(f"You are {self.agent.name}.")
 
-                # Check if we have call context stored from inject_context
-                if hasattr(self, "_call_context") and self._call_context:
-                    contact = self._call_context.get("contact", {})
-                    offer = self._call_context.get("offer", {})
-
-                    prompt_parts.append(
-                        "This is an OUTBOUND call that YOU initiated."
-                    )
-
-                    if contact and contact.get("name"):
-                        prompt_parts.append(
-                            f"You are calling {contact['name']}."
-                        )
-
-                    if offer and offer.get("name"):
-                        prompt_parts.append(
-                            f"You are calling about: {offer['name']}."
-                        )
-
-                    prompt_parts.append(
-                        "Greet them, introduce yourself, and explain why "
-                        "you're calling. Be direct - do NOT ask what they "
-                        "want to talk about."
-                    )
-                else:
-                    prompt_parts.append(
-                        "Greet the caller and introduce yourself. Follow your "
-                        "system instructions for the purpose of this call."
-                    )
+                prompt_parts.append(
+                    "Greet the caller and introduce yourself. Follow your "
+                    "system instructions for the purpose of this call."
+                )
 
                 prompt_text = " ".join(prompt_parts)
 
@@ -690,6 +712,7 @@ IMPORTANT: You are on a phone call. When the call connects:
                 "grok_initial_response_triggered",
                 has_greeting=bool(message),
                 greeting_length=len(message) if message else 0,
+                is_outbound=is_outbound,
             )
 
             # Trigger response generation - simple form without extra options
@@ -1171,6 +1194,9 @@ IMPORTANT: You are on a phone call. When the call connects:
         context_section = "\n".join(context_parts)
 
         # Update session with context appended to instructions
+        # ALWAYS start with date context - critical for appointment booking
+        date_context = self._get_date_context()
+
         # Get current base prompt
         base_prompt = (
             self.agent.system_prompt
@@ -1189,8 +1215,8 @@ IMPORTANT: You are on a phone call. When the call connects:
             )
             base_prompt = identity_prefix + base_prompt
 
-        # Combine with context
-        full_prompt = base_prompt + context_section
+        # Combine: date context (top) + base prompt + call context
+        full_prompt = date_context + base_prompt + context_section
 
         # Enhance with realism cues
         enhanced_prompt = self._enhance_prompt_with_realism(full_prompt)

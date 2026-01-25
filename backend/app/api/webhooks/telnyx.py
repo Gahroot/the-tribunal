@@ -288,7 +288,13 @@ async def telnyx_voice_webhook(request: Request) -> dict[str, str]:
     event_payload = data.get("payload", {})
 
     log = log.bind(event_type=event_type)
-    log.info("webhook_received")
+    log.info(
+        "========== TELNYX VOICE WEBHOOK ==========",
+        event_type=event_type,
+        call_control_id=event_payload.get("call_control_id"),
+        call_state=event_payload.get("state"),
+        direction=event_payload.get("direction"),
+    )
 
     # Handle different event types
     if event_type == "call.initiated":
@@ -300,7 +306,7 @@ async def telnyx_voice_webhook(request: Request) -> dict[str, str]:
     elif event_type == "call.machine.detection.ended":
         await handle_machine_detection(event_payload, log)
     else:
-        log.debug("unhandled_event_type")
+        log.info("unhandled_voice_event_type", event_type=event_type)
 
     return {"status": "ok"}
 
@@ -451,10 +457,18 @@ async def handle_call_answered(payload: dict[Any, Any], log: Any) -> None:  # no
     direction = payload.get("direction", "")  # "incoming" or "outgoing"
 
     log = log.bind(call_control_id=call_control_id, call_state=call_state, direction=direction)
-    log.info("call_answered")
+    log.info(
+        "========== CALL ANSWERED ==========",
+        call_control_id=call_control_id,
+        call_state=call_state,
+        direction=direction,
+        from_number=payload.get("from"),
+        to_number=payload.get("to"),
+    )
 
     async with AsyncSessionLocal() as db:
         # Get message with conversation loaded
+        log.info("looking_up_message_for_call", call_control_id=call_control_id)
         result = await db.execute(
             select(Message)
             .options(selectinload(Message.conversation))
@@ -463,8 +477,21 @@ async def handle_call_answered(payload: dict[Any, Any], log: Any) -> None:  # no
         message = result.scalar_one_or_none()
 
         if not message:
-            log.warning("message_not_found_for_call", call_control_id=call_control_id)
+            log.error(
+                "message_not_found_for_call",
+                call_control_id=call_control_id,
+                hint="Message should have been created during call initiation",
+            )
             return
+
+        log.info(
+            "message_found",
+            message_id=str(message.id),
+            message_direction=message.direction,
+            message_channel=message.channel,
+            message_status=message.status,
+            conversation_id=str(message.conversation_id) if message.conversation_id else None,
+        )
 
         message.status = "answered"
         await db.commit()
@@ -528,11 +555,12 @@ async def handle_call_answered(payload: dict[Any, Any], log: Any) -> None:  # no
             voice_service = TelnyxVoiceService(settings.telnyx_api_key)
             try:
                 # Build WebSocket URL for audio streaming
+                # Add is_outbound=true so the voice bridge knows NOT to greet first
                 api_base = settings.api_base_url or "https://example.com"
                 ws_base = api_base.replace("https://", "wss://").replace("http://", "ws://")
-                stream_url = f"{ws_base}/voice/stream/{call_control_id}"
+                stream_url = f"{ws_base}/voice/stream/{call_control_id}?is_outbound=true"
 
-                log.info("starting_audio_streaming", stream_url=stream_url)
+                log.info("starting_audio_streaming", stream_url=stream_url, is_outbound=True)
 
                 # Only stream caller's audio to avoid AI hearing itself
                 streaming_started = await voice_service.start_streaming(
@@ -736,13 +764,29 @@ async def auto_answer_call_if_agent_assigned(
     from app.models.agent import Agent
     from app.services.telephony.telnyx_voice import TelnyxVoiceService
 
+    agent_id_str = str(phone_record.assigned_agent_id) if phone_record.assigned_agent_id else None
+    log.info(
+        "========== AUTO ANSWER CHECK ==========",
+        call_control_id=call_control_id,
+        phone_number=phone_record.phone_number,
+        assigned_agent_id=agent_id_str,
+        conversation_id=str(conversation.id) if conversation else None,
+    )
+
     if not settings.telnyx_api_key:
-        log.warning("no_telnyx_api_key_for_auto_answer")
+        log.warning(
+            "no_telnyx_api_key_for_auto_answer",
+            hint="Set TELNYX_API_KEY environment variable",
+        )
         return
 
     # Check if phone number has an assigned agent
     if not phone_record.assigned_agent_id:
-        log.info("no_agent_assigned_to_phone_number", phone_number=phone_record.phone_number)
+        log.info(
+            "no_agent_assigned_to_phone_number",
+            phone_number=phone_record.phone_number,
+            hint="Assign an agent to this phone number to enable auto-answer",
+        )
         return
 
     async with AsyncSessionLocal() as db:
