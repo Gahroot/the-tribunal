@@ -161,7 +161,11 @@ class TelnyxSMSService:
             }
 
             response = await self.client.post("/messages", json=payload)
-            response_data = response.json()
+            try:
+                response_data = response.json()
+            except (ValueError, TypeError):
+                log.error("telnyx_invalid_json", status_code=response.status_code)
+                response_data = {"errors": [{"detail": "Invalid JSON response"}]}
 
             log.info(
                 "telnyx_response",

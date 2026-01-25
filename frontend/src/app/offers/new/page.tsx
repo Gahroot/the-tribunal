@@ -3,7 +3,6 @@
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { OfferBuilderWizard } from "@/components/offers/offer-builder-wizard";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { Card, CardContent } from "@/components/ui/card";
 
 export default function CreateOfferPage() {
   const workspaceId = useWorkspaceId();

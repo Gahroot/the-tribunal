@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -13,6 +14,7 @@ import {
   Settings2,
   FlaskConical,
   Users,
+  Save,
 } from "lucide-react";
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
@@ -21,9 +23,10 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TestAnalytics } from "@/components/experiments/test-analytics";
+import { SaveTemplateDialog } from "@/components/experiments/save-template-dialog";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { messageTestsApi } from "@/lib/api/message-tests";
-import type { MessageTestStatus } from "@/types";
+import type { MessageTestStatus, TestVariant } from "@/types";
 
 const statusColors: Record<MessageTestStatus, string> = {
   draft: "bg-gray-500/10 text-gray-500 border-gray-500/20",
@@ -37,6 +40,8 @@ export default function ExperimentDetailPage() {
   const router = useRouter();
   const workspaceId = useWorkspaceId();
   const queryClient = useQueryClient();
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [selectedVariant, setSelectedVariant] = useState<TestVariant | null>(null);
 
   const testId = params.id as string;
 
@@ -209,11 +214,24 @@ export default function ExperimentDetailPage() {
               {test.variants?.map((variant) => (
                 <Card key={variant.id}>
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      {variant.name}
-                      {variant.is_control && (
-                        <Badge variant="secondary">Control</Badge>
-                      )}
+                    <CardTitle className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {variant.name}
+                        {variant.is_control && (
+                          <Badge variant="secondary">Control</Badge>
+                        )}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedVariant(variant);
+                          setSaveDialogOpen(true);
+                        }}
+                      >
+                        <Save className="size-4 mr-1" />
+                        Save as Template
+                      </Button>
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -282,6 +300,13 @@ export default function ExperimentDetailPage() {
         </Tabs>
       </div>
       </div>
+
+      <SaveTemplateDialog
+        open={saveDialogOpen}
+        onOpenChange={setSaveDialogOpen}
+        messageTemplate={selectedVariant?.message_template ?? ""}
+        defaultName={selectedVariant?.name ?? ""}
+      />
     </AppSidebar>
   );
 }

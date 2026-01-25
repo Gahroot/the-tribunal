@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { TranscriptViewer } from "@/components/calls/transcript-viewer";
 import type { TimelineItem } from "@/types";
 
 interface MessageItemProps {
@@ -194,10 +195,8 @@ export function MessageItem({ item, contactName }: MessageItemProps) {
           {/* Transcript for calls */}
           {isCall && item.transcript && (
             <div className="mt-3 pt-3 border-t">
-              <p className="text-xs font-medium mb-1 text-muted-foreground">Transcript</p>
-              <p className="text-xs text-muted-foreground whitespace-pre-wrap">
-                {item.transcript}
-              </p>
+              <p className="text-xs font-medium mb-2 text-muted-foreground">Transcript</p>
+              <TranscriptViewer transcript={item.transcript} maxHeight="150px" />
             </div>
           )}
         </div>

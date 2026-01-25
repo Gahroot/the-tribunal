@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2, GripVertical, Star, MessageSquare } from "lucide-react";
+import { Plus, Trash2, GripVertical, Star, MessageSquare, FileText } from "lucide-react";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
 
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { LoadTemplateDialog } from "@/components/experiments/load-template-dialog";
+import type { MessageTemplate } from "@/types";
 
 export interface VariantFormData {
   id: string;
@@ -41,6 +43,7 @@ export function VariantEditor({
   const [activeVariantId, setActiveVariantId] = useState<string | null>(
     variants[0]?.id || null
   );
+  const [loadTemplateOpen, setLoadTemplateOpen] = useState(false);
 
   const generateId = () => `temp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
@@ -102,6 +105,14 @@ export function VariantEditor({
     if (variant) {
       updateVariant(variantId, {
         message_template: variant.message_template + placeholder,
+      });
+    }
+  };
+
+  const handleLoadTemplate = (template: MessageTemplate) => {
+    if (activeVariantId) {
+      updateVariant(activeVariantId, {
+        message_template: template.message_template,
       });
     }
   };
@@ -256,7 +267,17 @@ export function VariantEditor({
                   <div className="flex items-center justify-between">
                     <Label htmlFor="variant-message">Message</Label>
                     <div className="flex items-center gap-1">
-                      <span className="text-xs text-muted-foreground mr-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="text-xs h-6 px-2"
+                        onClick={() => setLoadTemplateOpen(true)}
+                      >
+                        <FileText className="size-3 mr-1" />
+                        Load Template
+                      </Button>
+                      <span className="text-xs text-muted-foreground mx-2">
                         Insert:
                       </span>
                       {placeholders.map((p) => (
@@ -327,6 +348,12 @@ export function VariantEditor({
           </AlertDescription>
         </Alert>
       )}
+
+      <LoadTemplateDialog
+        open={loadTemplateOpen}
+        onOpenChange={setLoadTemplateOpen}
+        onSelect={handleLoadTemplate}
+      />
     </div>
   );
 }

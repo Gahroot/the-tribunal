@@ -451,7 +451,7 @@ export function EmbedAgentDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[600px]">
-        {open && (
+        {open ? (
           <EmbedDialogContent
             key={dialogKey}
             onClose={() => onOpenChange(false)}
@@ -459,6 +459,8 @@ export function EmbedAgentDialog({
             agentName={agentName}
             workspaceId={workspaceId}
           />
+        ) : (
+          <DialogTitle className="sr-only">Embed Agent</DialogTitle>
         )}
       </DialogContent>
     </Dialog>

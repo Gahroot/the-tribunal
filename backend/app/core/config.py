@@ -68,6 +68,13 @@ class Settings(BaseSettings):
     # Enrichment
     enable_ai_enrichment: bool = True  # Toggle AI website summary
 
+    # Demo landing page
+    demo_workspace_id: str = ""  # Workspace ID for demo requests
+    demo_agent_id: str = ""  # Agent ID for demo requests
+    demo_from_phone_number: str = ""  # Phone number to send demo calls/texts from
+    demo_ip_rate_limit: int = 100  # Max requests per IP per hour
+    demo_phone_rate_limit: int = 100  # Max requests per phone per day
+
 
 @lru_cache
 def get_settings() -> Settings:

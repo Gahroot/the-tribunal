@@ -42,6 +42,18 @@ class VoiceAgentSession:
         self.logger = logger.bind(service="voice_agent")
         self._connection_task: asyncio.Task[None] | None = None
 
+        # Transcript tracking
+        self._user_transcript: str = ""
+        self._agent_transcript: str = ""
+        self._transcript_entries: list[dict[str, Any]] = []
+
+        # Interruption handling (barge-in)
+        self._interruption_event: asyncio.Event | None = None
+
+        # Response state tracking for proper interruption handling
+        # When _is_interrupted is True, we skip yielding audio until response.done
+        self._is_interrupted: bool = False
+
     async def connect(self) -> bool:
         """Connect to OpenAI Realtime API.
 
@@ -427,6 +439,11 @@ IMPORTANT: You are on a phone call. When the call connects:
                 event_type = event.get("type", "")
 
                 if event_type == "response.audio.delta":
+                    # Skip audio if we're in interrupted state (barge-in handling)
+                    # OpenAI continues sending audio for a brief period after cancel
+                    if self._is_interrupted:
+                        continue
+
                     # Audio chunk received
                     audio_data = event.get("delta", "")
                     if audio_data:
@@ -460,10 +477,25 @@ IMPORTANT: You are on a phone call. When the call connects:
                         yield decoded
 
                 elif event_type == "response.audio_transcript.delta":
-                    # Transcript chunk - log for debugging
+                    # Agent's speech transcript (what the AI is saying)
                     transcript = event.get("delta", "")
                     if transcript:
+                        self._agent_transcript += transcript
                         self.logger.debug("audio_transcript_chunk", text=transcript[:50])
+
+                elif event_type == "conversation.item.input_audio_transcription.completed":
+                    # User's speech transcript (what the human said)
+                    user_text = event.get("transcript", "")
+                    if user_text:
+                        self._user_transcript = user_text
+                        self._transcript_entries.append({
+                            "role": "user",
+                            "text": user_text,
+                        })
+                        self.logger.info(
+                            "user_transcript_completed",
+                            user_said=user_text,
+                        )
 
                 elif event_type == "response.text.delta":
                     # Text response (not audio) - this means audio is NOT being generated
@@ -489,6 +521,7 @@ IMPORTANT: You are on a phone call. When the call connects:
                     response = event.get("response", {})
                     usage = response.get("usage", {})
                     output = response.get("output", [])
+                    response_status = response.get("status", "")
                     output_summary = [
                         {
                             "type": o.get("type"),
@@ -497,6 +530,28 @@ IMPORTANT: You are on a phone call. When the call connects:
                         }
                         for o in output
                     ]
+
+                    # If this was a cancelled response, clear interrupted flag
+                    # This allows the next response to generate audio
+                    if response_status == "cancelled" or self._is_interrupted:
+                        self._is_interrupted = False
+                        self.logger.info(
+                            "cancelled_response_complete",
+                            status=response_status,
+                        )
+
+                    # Save agent transcript when response completes
+                    if self._agent_transcript:
+                        self._transcript_entries.append({
+                            "role": "agent",
+                            "text": self._agent_transcript,
+                        })
+                        self.logger.info(
+                            "agent_turn_completed",
+                            agent_said=self._agent_transcript[:200],
+                        )
+                        self._agent_transcript = ""
+
                     self.logger.info(
                         "response_completed",
                         response_num=responses_completed,
@@ -515,7 +570,18 @@ IMPORTANT: You are on a phone call. When the call connects:
                     # Continue listening for next response
 
                 elif event_type == "input_audio_buffer.speech_started":
-                    self.logger.debug("user_speech_started")
+                    self.logger.info("user_speech_started_interrupting")
+
+                    # Set interrupted flag BEFORE cancel - blocks audio immediately
+                    # This prevents audio chunks that arrive after cancel from being yielded
+                    self._is_interrupted = True
+
+                    # Cancel response immediately - production pattern from VideoSDK/LiveKit
+                    await self.cancel_response()
+
+                    # Signal voice bridge to clear audio buffer
+                    if self._interruption_event:
+                        self._interruption_event.set()
 
                 elif event_type == "input_audio_buffer.speech_stopped":
                     self.logger.debug("user_speech_stopped")
@@ -615,12 +681,21 @@ IMPORTANT: You are on a phone call. When the call connects:
                 chunks_received=audio_chunks_received,
             )
 
+        # Log full transcript at end of call
         self.logger.info(
             "audio_stream_ended",
             total_chunks=audio_chunks_received,
             total_bytes=total_audio_bytes,
             total_responses=responses_completed,
+            transcript_entry_count=len(self._transcript_entries),
         )
+
+        # Log the full conversation transcript
+        if self._transcript_entries:
+            self.logger.info(
+                "full_conversation_transcript",
+                transcript=json.dumps(self._transcript_entries, indent=2),
+            )
 
     async def inject_context(
         self,
@@ -681,6 +756,28 @@ IMPORTANT: You are on a phone call. When the call connects:
                 self.logger.info("context_injected")
             except Exception as e:
                 self.logger.exception("inject_context_error", error=str(e))
+
+    def set_interruption_event(self, event: asyncio.Event) -> None:
+        """Set event for signaling audio buffer clear on interruption.
+
+        Args:
+            event: asyncio.Event to set when user interrupts (barge-in)
+        """
+        self._interruption_event = event
+
+    async def cancel_response(self) -> None:
+        """Cancel the current response generation (barge-in handling).
+
+        This is called when the user starts speaking during AI response
+        to immediately stop OpenAI's audio generation.
+        """
+        if not self.ws:
+            return
+        try:
+            await self._send_event({"type": "response.cancel"})
+            self.logger.info("response_cancelled_on_interruption")
+        except Exception as e:
+            self.logger.exception("cancel_response_error", error=str(e))
 
     async def _send_event(self, event: dict[str, Any]) -> None:
         """Send event to WebSocket.
@@ -743,3 +840,16 @@ IMPORTANT: You are on a phone call. When the call connects:
             return bool(getattr(self.ws, "open", False))
         except Exception:
             return False
+
+    def get_transcript_json(self) -> str | None:
+        """Get the conversation transcript as JSON string.
+
+        Returns the transcript in a format suitable for storage and display:
+        [{"role": "user", "text": "..."}, {"role": "agent", "text": "..."}]
+
+        Returns:
+            JSON string of transcript entries, or None if no transcript
+        """
+        if not self._transcript_entries:
+            return None
+        return json.dumps(self._transcript_entries)

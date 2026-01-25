@@ -92,6 +92,10 @@ class ElevenLabsVoiceAgentSession:
         self._text_buffer = ""
         self._text_buffer_lock = asyncio.Lock()
 
+        # Response state tracking for proper interruption handling
+        # When _is_interrupted is True, we skip processing until response.done
+        self._is_interrupted: bool = False
+
     def set_tool_callback(
         self,
         callback: Callable[[str, str, dict[str, Any]], Any],
@@ -675,6 +679,11 @@ You have tools to check calendar availability and book appointments. Follow thes
 
                 # Intercept audio transcript and send to ElevenLabs
                 if event_type == "response.audio_transcript.delta":
+                    # Skip transcript if we're in interrupted state (barge-in handling)
+                    # This prevents sending transcript from cancelled response to TTS
+                    if self._is_interrupted:
+                        continue
+
                     transcript = event.get("delta", "")
                     # Send transcript to ElevenLabs for TTS
                     if (
@@ -697,6 +706,16 @@ You have tools to check calendar availability and book appointments. Follow thes
                     responses_completed += 1
                     response_data = event.get("response", {})
                     output_items = response_data.get("output", [])
+                    response_status = response_data.get("status", "")
+
+                    # If this was a cancelled response, clear interrupted flag
+                    # This allows the next response to generate transcript/audio
+                    if response_status == "cancelled" or self._is_interrupted:
+                        self._is_interrupted = False
+                        self.logger.info(
+                            "cancelled_response_complete",
+                            status=response_status,
+                        )
 
                     # Handle function calls
                     for item in output_items:
@@ -714,7 +733,14 @@ You have tools to check calendar availability and book appointments. Follow thes
                         await self._handle_function_call(item)
 
                 elif event_type == "input_audio_buffer.speech_started":
-                    self.logger.debug("user_speech_started")
+                    self.logger.info("user_speech_started_interrupting")
+
+                    # Set interrupted flag BEFORE cancel - blocks transcript processing
+                    # This prevents transcript from cancelled response being sent to TTS
+                    self._is_interrupted = True
+
+                    # Cancel response immediately and clear audio queue
+                    await self.cancel_response()
 
                 elif event_type == "input_audio_buffer.speech_stopped":
                     self.logger.debug("user_speech_stopped")
@@ -828,6 +854,27 @@ You have tools to check calendar availability and book appointments. Follow thes
             self.logger.info("tool_result_submitted", call_id=call_id)
         except Exception as e:
             self.logger.exception("submit_tool_result_error", error=str(e))
+
+    async def cancel_response(self) -> None:
+        """Cancel the current Grok response generation (barge-in handling).
+
+        This is called when the user starts speaking during AI response
+        to immediately stop Grok's generation. Also clears the TTS audio queue.
+        """
+        if not self.grok_ws:
+            return
+        try:
+            await self._send_to_grok({"type": "response.cancel"})
+            self.logger.info("response_cancelled_on_interruption")
+            # Clear the TTS audio queue
+            while not self._audio_queue.empty():
+                try:
+                    self._audio_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+            self.logger.info("tts_audio_queue_cleared")
+        except Exception as e:
+            self.logger.exception("cancel_response_error", error=str(e))
 
     async def inject_context(
         self,

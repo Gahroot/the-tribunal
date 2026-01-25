@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format, formatDistanceToNow } from "date-fns";
+import { useQuery } from "@tanstack/react-query";
 import {
   Search,
   Phone,
@@ -16,6 +17,8 @@ import {
   Download,
   ChevronLeft,
   ChevronRight,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -50,101 +53,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import type { CallRecord } from "@/types";
-
-// Mock data
-const mockCalls: CallRecord[] = [
-  {
-    id: "call-1",
-    user_id: "1",
-    contact_id: 1,
-    agent_id: "agent-1",
-    direction: "outbound",
-    status: "completed",
-    from_number: "+1234567890",
-    to_number: "+1987654321",
-    duration_seconds: 245,
-    recording_url: "https://example.com/recording1.mp3",
-    transcript: "Agent: Hello, this is Sarah from Real Estate Co...\nContact: Hi, yes I was interested in the property...",
-    started_at: "2024-01-20T14:30:00Z",
-    answered_at: "2024-01-20T14:30:15Z",
-    ended_at: "2024-01-20T14:34:20Z",
-    created_at: "2024-01-20T14:30:00Z",
-  },
-  {
-    id: "call-2",
-    user_id: "1",
-    contact_id: 2,
-    direction: "inbound",
-    status: "completed",
-    from_number: "+1555123456",
-    to_number: "+1234567890",
-    duration_seconds: 180,
-    transcript: "Contact: Hi, I'm calling about the listing on Main Street...",
-    started_at: "2024-01-20T12:15:00Z",
-    answered_at: "2024-01-20T12:15:05Z",
-    ended_at: "2024-01-20T12:18:05Z",
-    created_at: "2024-01-20T12:15:00Z",
-  },
-  {
-    id: "call-3",
-    user_id: "1",
-    contact_id: 3,
-    agent_id: "agent-2",
-    direction: "outbound",
-    status: "no_answer",
-    from_number: "+1234567890",
-    to_number: "+1666789012",
-    started_at: "2024-01-20T10:00:00Z",
-    created_at: "2024-01-20T10:00:00Z",
-  },
-  {
-    id: "call-4",
-    user_id: "1",
-    contact_id: 4,
-    agent_id: "agent-1",
-    direction: "outbound",
-    status: "completed",
-    from_number: "+1234567890",
-    to_number: "+1777890123",
-    duration_seconds: 420,
-    recording_url: "https://example.com/recording4.mp3",
-    transcript: "Agent: Good afternoon, this is an AI assistant calling on behalf of...",
-    started_at: "2024-01-19T16:45:00Z",
-    answered_at: "2024-01-19T16:45:20Z",
-    ended_at: "2024-01-19T16:52:20Z",
-    created_at: "2024-01-19T16:45:00Z",
-  },
-  {
-    id: "call-5",
-    user_id: "1",
-    contact_id: 5,
-    direction: "inbound",
-    status: "completed",
-    from_number: "+1888901234",
-    to_number: "+1234567890",
-    duration_seconds: 95,
-    started_at: "2024-01-19T11:30:00Z",
-    answered_at: "2024-01-19T11:30:10Z",
-    ended_at: "2024-01-19T11:31:45Z",
-    created_at: "2024-01-19T11:30:00Z",
-  },
-];
-
-const mockContacts: Record<number, { name: string; initials: string }> = {
-  1: { name: "John Smith", initials: "JS" },
-  2: { name: "Emily Johnson", initials: "EJ" },
-  3: { name: "Michael Brown", initials: "MB" },
-  4: { name: "Sarah Wilson", initials: "SW" },
-  5: { name: "David Lee", initials: "DL" },
-};
-
-const mockAgents: Record<string, string> = {
-  "agent-1": "Sarah - Sales Agent",
-  "agent-2": "Mike - Support Agent",
-};
+import { TranscriptViewer } from "@/components/calls/transcript-viewer";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { callsApi } from "@/lib/api/calls";
 
 const statusConfig: Record<string, { label: string; color: string; icon: React.ElementType }> = {
   completed: { label: "Completed", color: "bg-green-500/10 text-green-500 border-green-500/20", icon: Phone },
@@ -162,32 +74,71 @@ function formatDuration(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
+function getInitials(phoneNumber: string | undefined | null): string {
+  if (!phoneNumber) return "??";
+  // Get last 2 digits of phone number as initials
+  const digits = phoneNumber.replace(/\D/g, "");
+  return digits.slice(-2) || "??";
+}
+
 export function CallsList() {
   const [searchQuery, setSearchQuery] = useState("");
   const [directionFilter, setDirectionFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
 
-  const filteredCalls = mockCalls.filter((call) => {
-    const contact = mockContacts[call.contact_id || 0];
-    const matchesSearch = contact?.name
-      .toLowerCase()
-      .includes(searchQuery.toLowerCase()) ||
-      call.from_number.includes(searchQuery) ||
-      call.to_number.includes(searchQuery);
-    const matchesDirection =
-      directionFilter === "all" || call.direction === directionFilter;
-    const matchesStatus =
-      statusFilter === "all" || call.status === statusFilter;
-    return matchesSearch && matchesDirection && matchesStatus;
+  const workspaceId = useWorkspaceId();
+
+  const { data: callsData, isLoading, error } = useQuery({
+    queryKey: ["calls", workspaceId, page, directionFilter, statusFilter],
+    queryFn: () => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return callsApi.list(workspaceId, {
+        page,
+        page_size: pageSize,
+        direction: directionFilter !== "all" ? directionFilter as "inbound" | "outbound" : undefined,
+        status: statusFilter !== "all" ? statusFilter : undefined,
+      });
+    },
+    enabled: !!workspaceId,
   });
 
-  // Stats
-  const totalCalls = mockCalls.length;
-  const completedCalls = mockCalls.filter((c) => c.status === "completed").length;
-  const totalDuration = mockCalls.reduce((sum, c) => sum + (c.duration_seconds || 0), 0);
+  const calls = callsData?.items ?? [];
+  const totalCalls = callsData?.total ?? 0;
+  const totalPages = callsData?.pages ?? 1;
+
+  // Client-side search filter (API filtering is by direction/status, search is client-side)
+  const filteredCalls = calls.filter((call) => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    const fromNumber = call.from_number?.toLowerCase() || "";
+    const toNumber = call.to_number?.toLowerCase() || "";
+    return fromNumber.includes(query) || toNumber.includes(query);
+  });
+
+  // Calculate stats from current page data
+  const completedCalls = calls.filter((c) => c.status === "completed").length;
+  const totalDuration = calls.reduce((sum, c) => sum + (c.duration_seconds || 0), 0);
   const avgDuration = completedCalls > 0 ? Math.round(totalDuration / completedCalls) : 0;
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="size-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 gap-4">
+        <AlertCircle className="size-12 text-destructive" />
+        <p className="text-muted-foreground">Failed to load calls</p>
+        <p className="text-sm text-muted-foreground">{(error as Error).message}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -214,9 +165,9 @@ export function CallsList() {
       >
         {[
           { label: "Total Calls", value: totalCalls, icon: Phone },
-          { label: "Completed", value: completedCalls, icon: Phone },
-          { label: "Total Duration", value: formatDuration(totalDuration), icon: Clock },
-          { label: "Avg Duration", value: formatDuration(avgDuration), icon: Clock },
+          { label: "Completed (page)", value: completedCalls, icon: Phone },
+          { label: "Total Duration (page)", value: formatDuration(totalDuration), icon: Clock },
+          { label: "Avg Duration (page)", value: formatDuration(avgDuration), icon: Clock },
         ].map((stat) => (
           <Card key={stat.label}>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -237,14 +188,14 @@ export function CallsList() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search by contact or phone number..."
+                placeholder="Search by phone number..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
               />
             </div>
             <div className="flex gap-2">
-              <Select value={directionFilter} onValueChange={setDirectionFilter}>
+              <Select value={directionFilter} onValueChange={(v) => { setDirectionFilter(v); setPage(1); }}>
                 <SelectTrigger className="w-[140px]">
                   <SelectValue placeholder="Direction" />
                 </SelectTrigger>
@@ -254,7 +205,7 @@ export function CallsList() {
                   <SelectItem value="outbound">Outbound</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
                 <SelectTrigger className="w-[140px]">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
@@ -274,215 +225,239 @@ export function CallsList() {
       {/* Calls Table */}
       <Card>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Contact</TableHead>
-                <TableHead>Direction</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Duration</TableHead>
-                <TableHead>Agent</TableHead>
-                <TableHead>Time</TableHead>
-                <TableHead className="w-[100px]">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <AnimatePresence mode="popLayout">
-                {filteredCalls.map((call) => {
-                  const contact = mockContacts[call.contact_id || 0];
-                  const status = statusConfig[call.status];
-                  const DirectionIcon =
-                    call.direction === "inbound" ? PhoneIncoming : PhoneOutgoing;
+          {filteredCalls.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <Phone className="size-12 text-muted-foreground/50 mb-4" />
+              <p className="text-muted-foreground">No calls found</p>
+              <p className="text-sm text-muted-foreground">
+                Voice calls will appear here once made
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Phone Number</TableHead>
+                  <TableHead>Direction</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Duration</TableHead>
+                  <TableHead>Agent</TableHead>
+                  <TableHead>Time</TableHead>
+                  <TableHead className="w-[100px]">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <AnimatePresence mode="popLayout">
+                  {filteredCalls.map((call) => {
+                    const status = statusConfig[call.status] || statusConfig.completed;
+                    const DirectionIcon =
+                      call.direction === "inbound" ? PhoneIncoming : PhoneOutgoing;
+                    const displayNumber = (call.direction === "inbound" ? call.from_number : call.to_number) || "Unknown";
 
-                  return (
-                    <motion.tr
-                      key={call.id}
-                      layout
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="group"
-                    >
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar className="size-8">
-                            <AvatarFallback className="text-xs">
-                              {contact?.initials || "?"}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <div className="font-medium">
-                              {contact?.name || "Unknown"}
+                    return (
+                      <motion.tr
+                        key={call.id}
+                        layout
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="group"
+                      >
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Avatar className="size-8">
+                              <AvatarFallback className="text-xs">
+                                {getInitials(displayNumber)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <div className="font-medium font-mono text-sm">
+                                {displayNumber}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {call.direction === "inbound" ? "From" : "To"}
+                              </div>
                             </div>
-                            <div className="text-xs text-muted-foreground">
-                              {call.direction === "inbound"
-                                ? call.from_number
-                                : call.to_number}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <DirectionIcon
+                              className={`size-4 ${
+                                call.direction === "inbound"
+                                  ? "text-blue-500"
+                                  : "text-green-500"
+                              }`}
+                            />
+                            <span className="capitalize">{call.direction}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={status.color}>
+                            {status.label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {call.duration_seconds
+                            ? formatDuration(call.duration_seconds)
+                            : "-"}
+                        </TableCell>
+                        <TableCell>
+                          {call.is_ai || call.agent_id ? (
+                            <div className="flex items-center gap-2">
+                              <Bot className="size-4 text-primary" />
+                              <span className="text-sm">{call.agent_name || "AI Agent"}</span>
                             </div>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <DirectionIcon
-                            className={`size-4 ${
-                              call.direction === "inbound"
-                                ? "text-blue-500"
-                                : "text-green-500"
-                            }`}
-                          />
-                          <span className="capitalize">{call.direction}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={status.color}>
-                          {status.label}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {call.duration_seconds
-                          ? formatDuration(call.duration_seconds)
-                          : "-"}
-                      </TableCell>
-                      <TableCell>
-                        {call.agent_id ? (
-                          <div className="flex items-center gap-2">
-                            <Bot className="size-4 text-primary" />
-                            <span className="text-sm">
-                              {mockAgents[call.agent_id] || "AI Agent"}
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <User className="size-4 text-muted-foreground" />
-                            <span className="text-sm text-muted-foreground">
-                              Manual
-                            </span>
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          {formatDistanceToNow(new Date(call.started_at), {
-                            addSuffix: true,
-                          })}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {format(new Date(call.started_at), "MMM d, h:mm a")}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          {call.recording_url && (
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              className="opacity-0 group-hover:opacity-100"
-                            >
-                              <Play className="size-4" />
-                            </Button>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <User className="size-4 text-muted-foreground" />
+                              <span className="text-sm text-muted-foreground">
+                                Manual
+                              </span>
+                            </div>
                           )}
-                          <Dialog>
-                            <DialogTrigger asChild>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">
+                            {formatDistanceToNow(new Date(call.created_at), {
+                              addSuffix: true,
+                            })}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {format(new Date(call.created_at), "MMM d, h:mm a")}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            {call.recording_url && (
                               <Button
                                 variant="ghost"
-                                size="sm"
+                                size="icon-sm"
                                 className="opacity-0 group-hover:opacity-100"
-                                onClick={() => setSelectedCall(call)}
                               >
-                                View
+                                <Play className="size-4" />
                               </Button>
-                            </DialogTrigger>
-                            <DialogContent className="max-w-2xl">
-                              <DialogHeader>
-                                <DialogTitle>Call Details</DialogTitle>
-                                <DialogDescription>
-                                  {contact?.name} -{" "}
-                                  {format(
-                                    new Date(call.started_at),
-                                    "MMMM d, yyyy 'at' h:mm a"
-                                  )}
-                                </DialogDescription>
-                              </DialogHeader>
-                              <div className="space-y-4">
-                                <div className="grid grid-cols-2 gap-4 text-sm">
-                                  <div>
-                                    <span className="text-muted-foreground">
-                                      Direction:
-                                    </span>{" "}
-                                    <span className="capitalize">
-                                      {call.direction}
-                                    </span>
+                            )}
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="opacity-0 group-hover:opacity-100"
+                                >
+                                  View
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                                <DialogHeader>
+                                  <DialogTitle>Call Details</DialogTitle>
+                                  <DialogDescription>
+                                    {displayNumber} -{" "}
+                                    {format(
+                                      new Date(call.created_at),
+                                      "MMMM d, yyyy 'at' h:mm a"
+                                    )}
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <div className="space-y-4">
+                                  <div className="grid grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                      <span className="text-muted-foreground">
+                                        Direction:
+                                      </span>{" "}
+                                      <span className="capitalize">
+                                        {call.direction}
+                                      </span>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">
+                                        Status:
+                                      </span>{" "}
+                                      {status.label}
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">
+                                        Duration:
+                                      </span>{" "}
+                                      {call.duration_seconds
+                                        ? formatDuration(call.duration_seconds)
+                                        : "-"}
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">
+                                        Agent:
+                                      </span>{" "}
+                                      {call.is_ai || call.agent_id ? (call.agent_name || "AI Agent") : "Manual"}
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">
+                                        From:
+                                      </span>{" "}
+                                      <span className="font-mono">{call.from_number || "N/A"}</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">
+                                        To:
+                                      </span>{" "}
+                                      <span className="font-mono">{call.to_number || "N/A"}</span>
+                                    </div>
                                   </div>
-                                  <div>
-                                    <span className="text-muted-foreground">
-                                      Status:
-                                    </span>{" "}
-                                    {status.label}
-                                  </div>
-                                  <div>
-                                    <span className="text-muted-foreground">
-                                      Duration:
-                                    </span>{" "}
-                                    {call.duration_seconds
-                                      ? formatDuration(call.duration_seconds)
-                                      : "-"}
-                                  </div>
-                                  <div>
-                                    <span className="text-muted-foreground">
-                                      Agent:
-                                    </span>{" "}
-                                    {call.agent_id
-                                      ? mockAgents[call.agent_id]
-                                      : "Manual"}
-                                  </div>
-                                </div>
-                                {call.transcript && (
-                                  <div className="space-y-2">
-                                    <h4 className="font-medium">Transcript</h4>
-                                    <ScrollArea className="h-[200px] rounded-md border p-4">
-                                      <pre className="text-sm whitespace-pre-wrap">
-                                        {call.transcript}
-                                      </pre>
-                                    </ScrollArea>
-                                  </div>
-                                )}
-                                {call.recording_url && (
-                                  <div className="space-y-2">
-                                    <h4 className="font-medium">Recording</h4>
-                                    <audio controls className="w-full">
-                                      <source
-                                        src={call.recording_url}
-                                        type="audio/mpeg"
+                                  {call.transcript && (
+                                    <div className="space-y-2">
+                                      <h4 className="font-medium">Transcript</h4>
+                                      <TranscriptViewer
+                                        transcript={call.transcript}
+                                        maxHeight="400px"
                                       />
-                                    </audio>
-                                  </div>
-                                )}
-                              </div>
-                            </DialogContent>
-                          </Dialog>
-                        </div>
-                      </TableCell>
-                    </motion.tr>
-                  );
-                })}
-              </AnimatePresence>
-            </TableBody>
-          </Table>
+                                    </div>
+                                  )}
+                                  {call.recording_url && (
+                                    <div className="space-y-2">
+                                      <h4 className="font-medium">Recording</h4>
+                                      <audio controls className="w-full">
+                                        <source
+                                          src={call.recording_url}
+                                          type="audio/mpeg"
+                                        />
+                                      </audio>
+                                    </div>
+                                  )}
+                                </div>
+                              </DialogContent>
+                            </Dialog>
+                          </div>
+                        </TableCell>
+                      </motion.tr>
+                    );
+                  })}
+                </AnimatePresence>
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
       {/* Pagination */}
       <div className="flex items-center justify-between">
         <div className="text-sm text-muted-foreground">
-          Showing {filteredCalls.length} of {mockCalls.length} calls
+          Page {page} of {totalPages} ({totalCalls} total calls)
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" disabled>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+          >
             <ChevronLeft className="size-4" />
             Previous
           </Button>
-          <Button variant="outline" size="sm" disabled>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= totalPages}
+            onClick={() => setPage(p => p + 1)}
+          >
             Next
             <ChevronRight className="size-4" />
           </Button>

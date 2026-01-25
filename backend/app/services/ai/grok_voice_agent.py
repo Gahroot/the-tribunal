@@ -160,6 +160,13 @@ class GrokVoiceAgentSession:
         self._agent_transcript: str = ""
         self._transcript_entries: list[dict[str, Any]] = []
 
+        # Interruption handling (barge-in)
+        self._interruption_event: asyncio.Event | None = None
+
+        # Response state tracking for proper interruption handling
+        # When _is_interrupted is True, we skip yielding audio until response.done
+        self._is_interrupted: bool = False
+
         # Log initialization details
         self.logger.info(
             "grok_voice_agent_initialized",
@@ -185,6 +192,14 @@ class GrokVoiceAgentSession:
             callback_set=callback is not None,
             enable_tools=self._enable_tools,
         )
+
+    def set_interruption_event(self, event: asyncio.Event) -> None:
+        """Set event for signaling audio buffer clear on interruption.
+
+        Args:
+            event: asyncio.Event to set when user interrupts (barge-in)
+        """
+        self._interruption_event = event
 
     async def connect(self) -> bool:
         """Connect to Grok Realtime API.
@@ -906,6 +921,11 @@ IMPORTANT: You are on a phone call. When the call connects:
 
                 # Grok uses same event types as OpenAI Realtime
                 if event_type == "response.audio.delta":
+                    # Skip audio if we're in interrupted state (barge-in handling)
+                    # Grok continues sending audio for 100-500ms after cancel
+                    if self._is_interrupted:
+                        continue
+
                     audio_data = event.get("delta", "")
                     if audio_data:
                         # Decode base64 with error handling
@@ -933,6 +953,10 @@ IMPORTANT: You are on a phone call. When the call connects:
 
                 elif event_type == "response.output_audio.delta":
                     # Alternative event name in Grok API
+                    # Skip audio if we're in interrupted state (barge-in handling)
+                    if self._is_interrupted:
+                        continue
+
                     audio_data = event.get("delta", "")
                     if audio_data:
                         # Decode base64 with error handling
@@ -992,6 +1016,16 @@ IMPORTANT: You are on a phone call. When the call connects:
                     # Log the FULL response for debugging
                     response_data = event.get("response", {})
                     output_items = response_data.get("output", [])
+                    response_status = response_data.get("status", "")
+
+                    # If this was a cancelled response, clear interrupted flag
+                    # This allows the next response to generate audio
+                    if response_status == "cancelled" or self._is_interrupted:
+                        self._is_interrupted = False
+                        self.logger.info(
+                            "grok_cancelled_response_complete",
+                            status=response_status,
+                        )
 
                     # Log complete response structure
                     self.logger.info(
@@ -1064,7 +1098,18 @@ IMPORTANT: You are on a phone call. When the call connects:
                         await self._handle_function_call(item)
 
                 elif event_type == "input_audio_buffer.speech_started":
-                    self.logger.info("grok_user_speech_started")
+                    self.logger.info("grok_user_speech_started_interrupting")
+
+                    # Set interrupted flag BEFORE cancel - blocks audio immediately
+                    # This prevents audio chunks that arrive after cancel from being yielded
+                    self._is_interrupted = True
+
+                    # Cancel response - Grok will send response.done with status=cancelled
+                    await self.cancel_response()
+
+                    # Signal voice bridge to clear audio buffer immediately
+                    if self._interruption_event:
+                        self._interruption_event.set()
 
                 elif event_type == "input_audio_buffer.speech_stopped":
                     self.logger.info("grok_user_speech_stopped")
@@ -1266,6 +1311,21 @@ IMPORTANT: You are on a phone call. When the call connects:
                 call_id=call_id,
                 error=str(e),
             )
+
+    async def cancel_response(self) -> None:
+        """Cancel the current response generation (barge-in handling).
+
+        This is called when the user starts speaking during AI response
+        to immediately stop Grok's audio generation. Production pattern
+        from VideoSDK/LiveKit/OpenAI clients.
+        """
+        if not self.ws:
+            return
+        try:
+            await self._send_event({"type": "response.cancel"})
+            self.logger.info("grok_response_cancelled_on_interruption")
+        except Exception as e:
+            self.logger.exception("grok_cancel_response_error", error=str(e))
 
     async def inject_context(
         self,

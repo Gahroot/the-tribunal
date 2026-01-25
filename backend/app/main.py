@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.router import api_router
 from app.api.webhooks.calcom import router as calcom_webhook_router
@@ -151,6 +152,9 @@ app.include_router(calcom_webhook_router, prefix="/webhooks/calcom", tags=["webh
 # Include WebSocket routers
 app.include_router(voice_bridge_router, tags=["voice"])
 app.include_router(voice_test_router, tags=["voice"])
+
+# Mount static files for lead magnets and other assets
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 @app.get("/health")

@@ -115,7 +115,7 @@ export function ActiveCall({
     const computeInitialDuration = () => {
       const startTime = call.answered_at
         ? new Date(call.answered_at)
-        : new Date(call.started_at);
+        : new Date(call.started_at || call.created_at);
       return Math.max(0, Math.floor((Date.now() - startTime.getTime()) / 1000));
     };
 
@@ -123,7 +123,7 @@ export function ActiveCall({
       setDuration(computeInitialDuration());
     });
     return () => cancelAnimationFrame(frameId);
-  }, [call.answered_at, call.started_at]);
+  }, [call.answered_at, call.started_at, call.created_at]);
 
   // Update duration every second for active calls
   useEffect(() => {

@@ -8,7 +8,6 @@ import {
   Check,
   FileText,
   Users,
-  MessageSquare,
   Bot,
   Eye,
   Send,

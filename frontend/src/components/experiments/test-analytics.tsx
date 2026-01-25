@@ -39,7 +39,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { messageTestsApi } from "@/lib/api/message-tests";
-import type { MessageTestAnalytics, VariantAnalytics } from "@/types";
+import type { VariantAnalytics } from "@/types";
 
 interface TestAnalyticsProps {
   testId: string;

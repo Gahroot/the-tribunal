@@ -550,7 +550,7 @@ async def submit_offer_optin(
     if optin.email:
         contact_result = await db.execute(
             select(Contact).where(
-                Contact.workspace_id == str(offer.workspace_id),
+                Contact.workspace_id == offer.workspace_id,
                 Contact.email == optin.email,
             )
         )
@@ -559,7 +559,7 @@ async def submit_offer_optin(
     if not contact and optin.phone_number:
         contact_result = await db.execute(
             select(Contact).where(
-                Contact.workspace_id == str(offer.workspace_id),
+                Contact.workspace_id == offer.workspace_id,
                 Contact.phone_number == optin.phone_number,
             )
         )

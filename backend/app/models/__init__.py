@@ -7,8 +7,10 @@ from app.models.campaign import Campaign, CampaignContact
 from app.models.campaign_number_pool import CampaignNumberPool
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
+from app.models.demo_request import DemoRequest
 from app.models.invitation import WorkspaceInvitation
 from app.models.lead_magnet import LeadMagnet
+from app.models.message_template import MessageTemplate
 from app.models.message_test import (
     MessageTest,
     MessageTestStatus,
@@ -35,6 +37,7 @@ __all__ = [
     "Contact",
     "Conversation",
     "Message",
+    "DemoRequest",
     "Agent",
     "Campaign",
     "CampaignContact",
@@ -52,6 +55,7 @@ __all__ = [
     "Opportunity",
     "OpportunityLineItem",
     "OpportunityActivity",
+    "MessageTemplate",
     "MessageTest",
     "MessageTestStatus",
     "TestVariant",

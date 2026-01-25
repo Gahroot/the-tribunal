@@ -111,7 +111,12 @@ class TelnyxVoiceService:
             self.logger.info("fetching_call_control_applications")
             # List existing Call Control Applications
             response = await self.client.get("/call_control_applications")
-            data = response.json()
+            try:
+                data = response.json()
+            except (ValueError, TypeError) as json_err:
+                self.logger.error("invalid_json_response", error=str(json_err))
+                msg = f"Telnyx API returned invalid JSON: {json_err}"
+                raise ValueError(msg) from json_err
 
             applications = data.get("data", [])
             self.logger.debug("found_applications", count=len(applications))
@@ -145,7 +150,12 @@ class TelnyxVoiceService:
                 "/call_control_applications",
                 json=app_payload,
             )
-            new_data = response.json()
+            try:
+                new_data = response.json()
+            except (ValueError, TypeError) as json_err:
+                self.logger.error("invalid_json_on_create", error=str(json_err))
+                msg = f"Telnyx API returned invalid JSON on create: {json_err}"
+                raise ValueError(msg) from json_err
             app_id = new_data.get("data", {}).get("id")
 
             if not app_id:
@@ -296,20 +306,44 @@ class TelnyxVoiceService:
         Returns:
             True if successful, False otherwise
         """
-        self.logger.info("answering_call", call_control_id=call_control_id)
+        self.logger.info(
+            "========== ANSWERING CALL ==========",
+            call_control_id=call_control_id,
+        )
 
         try:
             response = await self.client.post(
                 f"/calls/{call_control_id}/actions/answer",
             )
+
+            self.logger.info(
+                "answer_call_response",
+                call_control_id=call_control_id,
+                status_code=response.status_code,
+                response_text=response.text[:500] if response.text else "empty",
+            )
+
             response.raise_for_status()
-            self.logger.info("call_answered", call_control_id=call_control_id)
+            self.logger.info(
+                "call_answered_successfully",
+                call_control_id=call_control_id,
+            )
             return True
+        except httpx.HTTPStatusError as e:
+            self.logger.error(
+                "answer_call_http_error",
+                call_control_id=call_control_id,
+                status_code=e.response.status_code,
+                response_text=e.response.text[:500] if e.response.text else "empty",
+                error=str(e),
+            )
+            return False
         except Exception as e:
             self.logger.exception(
                 "answer_call_failed",
                 call_control_id=call_control_id,
                 error=str(e),
+                error_type=type(e).__name__,
             )
             return False
 
@@ -363,7 +397,7 @@ class TelnyxVoiceService:
             True if successful, False otherwise
         """
         self.logger.info(
-            "starting_stream",
+            "========== STARTING AUDIO STREAM ==========",
             call_control_id=call_control_id,
             stream_url=stream_url,
             stream_track=stream_track,
@@ -379,22 +413,48 @@ class TelnyxVoiceService:
                 "stream_bidirectional_codec": "PCMU",
             }
 
+            self.logger.info(
+                "sending_streaming_start_request",
+                call_control_id=call_control_id,
+                payload=payload,
+                endpoint=f"/calls/{call_control_id}/actions/streaming_start",
+            )
+
             response = await self.client.post(
                 f"/calls/{call_control_id}/actions/streaming_start",
                 json=payload,
             )
+
+            self.logger.info(
+                "streaming_start_response",
+                call_control_id=call_control_id,
+                status_code=response.status_code,
+                response_text=response.text[:500] if response.text else "empty",
+            )
+
             response.raise_for_status()
             self.logger.info(
-                "streaming_started",
+                "streaming_started_successfully",
                 call_control_id=call_control_id,
+                stream_url=stream_url,
                 bidirectional=True,
             )
             return True
+        except httpx.HTTPStatusError as e:
+            self.logger.error(
+                "start_streaming_http_error",
+                call_control_id=call_control_id,
+                status_code=e.response.status_code,
+                response_text=e.response.text[:500] if e.response.text else "empty",
+                error=str(e),
+            )
+            return False
         except Exception as e:
             self.logger.exception(
                 "start_streaming_failed",
                 call_control_id=call_control_id,
                 error=str(e),
+                error_type=type(e).__name__,
             )
             return False
 

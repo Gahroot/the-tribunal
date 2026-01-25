@@ -591,7 +591,7 @@ async def handle_call_answered(payload: dict[Any, Any], log: Any) -> None:  # no
             )
 
 
-async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:
+async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:  # noqa: PLR0915
     """Handle call hangup event.
 
     Triggers SMS fallback for voice campaigns when calls fail.
@@ -672,6 +672,11 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:
                 message.status = "failed"
             else:
                 # Call was answered and had a conversation
+                message.status = "completed"
+
+            # If booking was successful, override failed status
+            if message.booking_outcome == "success" and message.status == "failed":
+                log.info("overriding_failed_status_due_to_successful_booking")
                 message.status = "completed"
 
             await db.commit()

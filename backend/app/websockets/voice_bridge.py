@@ -270,6 +270,7 @@ async def _execute_voice_tool(
     contact_info: dict[str, Any] | None,
     timezone: str,
     log: Any,
+    call_control_id: str | None = None,
 ) -> dict[str, Any]:
     """Execute a tool call from voice agent.
 
@@ -281,6 +282,7 @@ async def _execute_voice_tool(
         contact_info: Contact information
         timezone: Timezone for bookings (from workspace settings)
         log: Logger instance
+        call_control_id: Telnyx call control ID for persisting booking outcome
 
     Returns:
         Tool execution result
@@ -302,7 +304,7 @@ async def _execute_voice_tool(
         )
 
     elif function_name == "book_appointment":
-        return await _execute_book_appointment(
+        result = await _execute_book_appointment(
             agent=agent,
             contact_info=contact_info,
             date_str=arguments.get("date", ""),
@@ -313,6 +315,13 @@ async def _execute_voice_tool(
             timezone=timezone,
             log=log,
         )
+
+        # Persist booking outcome to the message record
+        if call_control_id:
+            outcome = "success" if result.get("success") else "failed"
+            await _persist_booking_outcome(call_control_id, outcome, log)
+
+        return result
 
     else:
         log.warning("unknown_voice_tool", function_name=function_name)
@@ -539,6 +548,28 @@ async def _save_call_transcript(call_id: str, transcript_json: str, log: Any) ->
         )
 
 
+async def _persist_booking_outcome(call_control_id: str, outcome: str, log: Any) -> None:
+    """Persist booking outcome to the message record.
+
+    Args:
+        call_control_id: Telnyx call control ID (provider_message_id)
+        outcome: Booking outcome (e.g., "success", "failed")
+        log: Logger instance
+    """
+    from sqlalchemy import update
+
+    from app.models.conversation import Message as MessageModel
+
+    async with AsyncSessionLocal() as db:
+        await db.execute(
+            update(MessageModel)
+            .where(MessageModel.provider_message_id == call_control_id)
+            .values(booking_outcome=outcome)
+        )
+        await db.commit()
+        log.info("booking_outcome_persisted", call_control_id=call_control_id, outcome=outcome)
+
+
 def _create_voice_session(  # noqa: PLR0911
     voice_provider: str,
     agent: Any,
@@ -630,6 +661,7 @@ async def _setup_voice_session(
     offer_info: dict[str, Any] | None,
     timezone: str,
     log: Any,
+    call_control_id: str | None = None,
 ) -> None:
     """Configure voice session with agent settings and context.
 
@@ -644,6 +676,7 @@ async def _setup_voice_session(
         offer_info: Offer information dict
         timezone: Timezone for bookings (from workspace settings)
         log: Logger instance
+        call_control_id: Telnyx call control ID for persisting booking outcome
     """
     # Set up tool callback for Grok and ElevenLabs voice sessions (both support tools)
     if isinstance(voice_session, (GrokVoiceAgentSession, ElevenLabsVoiceAgentSession)):
@@ -656,7 +689,7 @@ async def _setup_voice_session(
             timezone=timezone,
         )
 
-        # Create a closure to capture agent, contact_info, and timezone for tool execution
+        # Create a closure to capture agent, contact_info, timezone, and call_control_id
         async def tool_callback(
             call_id: str,
             function_name: str,
@@ -676,6 +709,7 @@ async def _setup_voice_session(
                 contact_info=contact_info,
                 timezone=timezone,
                 log=log,
+                call_control_id=call_control_id,
             )
             log.info(
                 "tool_callback_completed",
@@ -869,7 +903,9 @@ async def voice_stream_bridge(  # noqa: PLR0912, PLR0915
             has_contact=contact_info is not None,
             has_offer=offer_info is not None,
         )
-        await _setup_voice_session(voice_session, agent, contact_info, offer_info, timezone, log)
+        await _setup_voice_session(
+            voice_session, agent, contact_info, offer_info, timezone, log, call_control_id=call_id
+        )
         log.info(
             "voice_session_configured",
             ws_still_connected=_ws_status(),
@@ -960,6 +996,14 @@ async def _relay_audio(
     # Event to synchronize greeting trigger with audio sending
     greeting_triggered = asyncio.Event()
 
+    # Event to signal interruption (barge-in) - clear audio buffer when user speaks
+    interruption_event = asyncio.Event()
+
+    # Pass interruption event to voice session for barge-in handling
+    if hasattr(voice_session, "set_interruption_event"):
+        voice_session.set_interruption_event(interruption_event)
+        log.info("interruption_event_configured_for_voice_session")
+
     # Shared dict to pass stream_id from Telnyx start event to outbound sender
     stream_id_holder: dict[str, str] = {}
 
@@ -983,7 +1027,8 @@ async def _relay_audio(
     )
     recv_task = asyncio.create_task(
         _receive_from_provider_and_send_to_telnyx(
-            websocket, voice_session, log, greeting_triggered, stream_id_holder
+            websocket, voice_session, log, greeting_triggered, stream_id_holder,
+            interruption_event
         )
     )
 
@@ -1214,12 +1259,13 @@ async def _receive_from_telnyx_and_send_to_provider(  # noqa: PLR0912, PLR0915
         log.exception("receive_from_telnyx_error", error=str(e))
 
 
-async def _receive_from_provider_and_send_to_telnyx(  # noqa: PLR0915
+async def _receive_from_provider_and_send_to_telnyx(  # noqa: PLR0912, PLR0915
     websocket: WebSocket,
     voice_session: VoiceSessionType,
     log: Any,
     greeting_triggered: asyncio.Event,
     stream_id_holder: dict[str, str],
+    interruption_event: asyncio.Event | None = None,
 ) -> None:
     """Receive audio from voice provider and send to Telnyx.
 
@@ -1238,6 +1284,7 @@ async def _receive_from_provider_and_send_to_telnyx(  # noqa: PLR0915
         log: Logger instance
         greeting_triggered: Event to wait for before sending audio
         stream_id_holder: Dict containing stream_id from Telnyx start event
+        interruption_event: Event signaling user interruption (barge-in)
     """
     import json
 
@@ -1326,6 +1373,13 @@ async def _receive_from_provider_and_send_to_telnyx(  # noqa: PLR0915
                 else:
                     # Grok outputs PCM16 24kHz - convert to μ-law 8kHz for Telnyx
                     audio_mulaw = convert_openai_to_telnyx(audio_chunk, log)
+
+                # Check for interruption - clear buffer and skip sending
+                if interruption_event and interruption_event.is_set():
+                    audio_buffer.clear()
+                    interruption_event.clear()
+                    log.info("audio_buffer_cleared_on_interruption")
+                    continue
 
                 # Add to buffer
                 audio_buffer.extend(audio_mulaw)

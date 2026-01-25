@@ -223,7 +223,7 @@
           try {
             const url = new URL(script.src);
             return url.protocol + "//" + url.host;
-          } catch (_) {}
+          } catch {}
         }
       }
       return window.location.origin;

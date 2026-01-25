@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.core.config import settings
-from app.models.conversation import Message
+from app.models.conversation import Conversation, Message
 from app.models.phone_number import PhoneNumber
 from app.models.workspace import Workspace
 from app.services.telephony.telnyx_voice import TelnyxVoiceService
@@ -37,10 +37,15 @@ class CallResponse(BaseModel):
     status: str  # queued/ringing/answered/completed/failed
     duration_seconds: int | None
     recording_url: str | None
+    transcript: str | None  # JSON array of transcript entries
     created_at: datetime
-
-    class Config:
-        from_attributes = True
+    # Phone numbers from conversation
+    from_number: str | None = None
+    to_number: str | None = None
+    # Agent info
+    agent_id: uuid.UUID | None = None
+    agent_name: str | None = None
+    is_ai: bool = False
 
 
 class PaginatedCalls(BaseModel):
@@ -124,6 +129,38 @@ async def initiate_call(
         await voice_service.close()
 
 
+def _build_call_response(
+    message: Message,
+    conversation: Conversation,
+    agent_name: str | None = None,
+) -> CallResponse:
+    """Build CallResponse with phone numbers from conversation."""
+    # Determine from/to based on direction
+    if message.direction == "outbound":
+        from_number = conversation.workspace_phone
+        to_number = conversation.contact_phone
+    else:
+        from_number = conversation.contact_phone
+        to_number = conversation.workspace_phone
+
+    return CallResponse(
+        id=message.id,
+        conversation_id=message.conversation_id,
+        direction=message.direction,
+        channel=message.channel,
+        status=message.status,
+        duration_seconds=message.duration_seconds,
+        recording_url=message.recording_url,
+        transcript=message.transcript,
+        created_at=message.created_at,
+        from_number=from_number,
+        to_number=to_number,
+        agent_id=message.agent_id,
+        agent_name=agent_name,
+        is_ai=message.is_ai,
+    )
+
+
 @router.get("", response_model=PaginatedCalls)
 async def list_calls(
     workspace_id: uuid.UUID,
@@ -146,18 +183,18 @@ async def list_calls(
     Returns:
         Paginated list of calls
     """
-    # Query voice messages (calls)
-    query = select(Message).where(
-        Message.channel == "voice",
-    )
+    from sqlalchemy.orm import joinedload
 
-    # Filter by conversations in this workspace
-    from app.models.conversation import Conversation
-
-    conv_query = select(Conversation.id).where(
-        Conversation.workspace_id == workspace_id
+    # Query voice messages with their conversations and agents
+    query = (
+        select(Message)
+        .options(joinedload(Message.conversation), joinedload(Message.agent))
+        .join(Conversation, Message.conversation_id == Conversation.id)
+        .where(
+            Message.channel == "voice",
+            Conversation.workspace_id == workspace_id,
+        )
     )
-    query = query.where(Message.conversation_id.in_(conv_query))
 
     # Get total count
     count_query = select(func.count()).select_from(query.subquery())
@@ -168,10 +205,15 @@ async def list_calls(
     query = query.offset((page - 1) * page_size).limit(page_size)
 
     result = await db.execute(query)
-    messages = result.scalars().all()
+    messages = result.unique().scalars().all()
 
     return PaginatedCalls(
-        items=[CallResponse.model_validate(m) for m in messages],
+        items=[
+            _build_call_response(
+                m, m.conversation, agent_name=m.agent.name if m.agent else None
+            )
+            for m in messages
+        ],
         total=total,
         page=page,
         page_size=page_size,
@@ -199,14 +241,18 @@ async def get_call(
     Returns:
         Message record with call details
     """
-    # Get the message
+    from sqlalchemy.orm import joinedload
+
+    # Get the message with conversation and agent
     result = await db.execute(
-        select(Message).where(
+        select(Message)
+        .options(joinedload(Message.conversation), joinedload(Message.agent))
+        .where(
             Message.id == call_id,
             Message.channel == "voice",
         )
     )
-    message = result.scalar_one_or_none()
+    message = result.unique().scalar_one_or_none()
 
     if not message:
         raise HTTPException(
@@ -215,22 +261,15 @@ async def get_call(
         )
 
     # Verify workspace access
-    from app.models.conversation import Conversation
-
-    conv_result = await db.execute(
-        select(Conversation).where(
-            Conversation.id == message.conversation_id,
-            Conversation.workspace_id == workspace_id,
-        )
-    )
-
-    if not conv_result.scalar_one_or_none():
+    if message.conversation.workspace_id != workspace_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied",
         )
 
-    return CallResponse.model_validate(message)
+    return _build_call_response(
+        message, message.conversation, agent_name=message.agent.name if message.agent else None
+    )
 
 
 @router.post("/{call_id}/hangup")

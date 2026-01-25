@@ -145,21 +145,23 @@ export interface FollowupSendResponse {
 
 export interface CallRecord {
   id: string;
-  user_id: string;
-  contact_id?: number;
-  agent_id?: string;
+  conversation_id: string;
   direction: "inbound" | "outbound";
+  channel: string;
   status: "initiated" | "ringing" | "in_progress" | "completed" | "failed" | "busy" | "no_answer";
-  from_number: string;
-  to_number: string;
+  from_number?: string;
+  to_number?: string;
   duration_seconds?: number;
   recording_url?: string;
   transcript?: string;
-  emotion_data?: Record<string, unknown>;
-  started_at: string;
+  agent_id?: string;
+  agent_name?: string;
+  is_ai?: boolean;
+  created_at: string;
+  // Optional fields for active calls
+  started_at?: string;
   answered_at?: string;
   ended_at?: string;
-  created_at: string;
 }
 
 export interface Appointment {
@@ -1032,4 +1034,14 @@ export interface MessageTestAnalytics {
   variants: VariantAnalytics[];
   winning_variant_id?: string;
   statistical_significance: boolean;
+}
+
+// Message Template Types (for saved experiment variations)
+export interface MessageTemplate {
+  id: string;
+  workspace_id: string;
+  name: string;
+  message_template: string;
+  created_at: string;
+  updated_at: string;
 }

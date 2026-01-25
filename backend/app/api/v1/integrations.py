@@ -290,11 +290,20 @@ async def _test_calcom(client: httpx.AsyncClient, api_key: str) -> IntegrationTe
         headers={"Authorization": f"Bearer {api_key}"},
     )
     if response.status_code == 200:
-        return IntegrationTestResult(
-            success=True,
-            message="Successfully connected to Cal.com",
-            details={"user": response.json().get("data", {}).get("name")},
-        )
+        try:
+            data = response.json()
+            user_data = data.get("data", {})
+            user_name = user_data.get("name") if isinstance(user_data, dict) else None
+            return IntegrationTestResult(
+                success=True,
+                message="Successfully connected to Cal.com",
+                details={"user": user_name},
+            )
+        except (ValueError, TypeError):
+            return IntegrationTestResult(
+                success=False,
+                message="Cal.com returned invalid JSON response",
+            )
     return IntegrationTestResult(
         success=False,
         message=f"Cal.com API returned status {response.status_code}",
@@ -308,15 +317,24 @@ async def _test_telnyx(client: httpx.AsyncClient, api_key: str) -> IntegrationTe
         headers={"Authorization": f"Bearer {api_key}"},
     )
     if response.status_code == 200:
-        balance = response.json().get("data", {})
-        return IntegrationTestResult(
-            success=True,
-            message="Successfully connected to Telnyx",
-            details={
-                "balance": balance.get("balance"),
-                "currency": balance.get("currency"),
-            },
-        )
+        try:
+            data = response.json()
+            balance = data.get("data", {})
+            if not isinstance(balance, dict):
+                balance = {}
+            return IntegrationTestResult(
+                success=True,
+                message="Successfully connected to Telnyx",
+                details={
+                    "balance": balance.get("balance"),
+                    "currency": balance.get("currency"),
+                },
+            )
+        except (ValueError, TypeError):
+            return IntegrationTestResult(
+                success=False,
+                message="Telnyx returned invalid JSON response",
+            )
     return IntegrationTestResult(
         success=False,
         message=f"Telnyx API returned status {response.status_code}",
@@ -330,11 +348,21 @@ async def _test_openai(client: httpx.AsyncClient, api_key: str) -> IntegrationTe
         headers={"Authorization": f"Bearer {api_key}"},
     )
     if response.status_code == 200:
-        return IntegrationTestResult(
-            success=True,
-            message="Successfully connected to OpenAI",
-            details={"models_available": len(response.json().get("data", []))},
-        )
+        try:
+            data = response.json()
+            models_data = data.get("data", [])
+            if not isinstance(models_data, list):
+                models_data = []
+            return IntegrationTestResult(
+                success=True,
+                message="Successfully connected to OpenAI",
+                details={"models_available": len(models_data)},
+            )
+        except (ValueError, TypeError):
+            return IntegrationTestResult(
+                success=False,
+                message="OpenAI returned invalid JSON response",
+            )
     return IntegrationTestResult(
         success=False,
         message=f"OpenAI API returned status {response.status_code}",
