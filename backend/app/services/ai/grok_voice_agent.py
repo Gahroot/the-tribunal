@@ -794,9 +794,10 @@ IMPORTANT: You are on a phone call. When the call connects:
             prompt_text = (
                 f"You just called someone. Open with a pattern interrupt. "
                 f"Say: 'Hey! It's {agent_name}. This is a sales call. "
-                f"Do you wanna hang up, or can I tell you why I'm calling?' "
-                f"Slight sigh before 'hang up', enthusiasm before 'tell you why'. "
-                f"Wait for their response."
+                f"Do you wanna [sigh] hang up... or can I tell you why I'm calling?!' "
+                f"Start friendly and upbeat. Sigh right before 'hang up' - sound disappointed. "
+                f"Then get excited on 'or can I tell you why I'm calling?!' "
+                f"Little laugh at the end. Wait for their response."
             )
         else:
             # For INBOUND calls: Use configured greeting or default
