@@ -236,9 +236,15 @@ class GrokVoiceAgentSession:
             tz = ZoneInfo("America/New_York")
 
         now = datetime.now(tz)
-        current_time = now.strftime("%A, %B %d, %Y at %I:%M %p")
+        today_str = now.strftime("%A, %B %d, %Y")
+        today_iso = now.strftime("%Y-%m-%d")
+        current_time = now.strftime("%I:%M %p")
 
-        return f"The current date and time is {current_time}.\n\n"
+        return (
+            f"CRITICAL DATE CONTEXT: Today is {today_str} ({today_iso}). "
+            f"The current time is {current_time}. "
+            f"Your training data may be outdated - ALWAYS use {today_iso} as today's date.\n\n"
+        )
 
     def _enhance_prompt_with_realism(self, prompt: str) -> str:
         """Enhance system prompt with Grok realism instructions.
@@ -304,6 +310,95 @@ You can use these auditory cues naturally in your responses to sound more human:
 
         return "\n".join(guidance_parts)
 
+    def _get_booking_tools(self) -> list[dict[str, Any]]:
+        """Generate booking tools with current date context.
+
+        Based on chatgpt-telegram-bot pattern of including current date
+        in tool descriptions to help the model interpret relative dates.
+
+        Returns:
+            List of tool definitions with date context embedded
+        """
+        try:
+            tz = ZoneInfo(self._timezone)
+        except Exception:
+            tz = ZoneInfo("America/New_York")
+
+        now = datetime.now(tz)
+        today_str = now.strftime("%A, %B %d, %Y")
+        today_iso = now.strftime("%Y-%m-%d")
+
+        return [
+            {
+                "type": "function",
+                "name": "book_appointment",
+                "description": (
+                    f"Book an appointment on Cal.com. TODAY IS {today_str} ({today_iso}). "
+                    f"When converting relative dates to YYYY-MM-DD: 'today' = {today_iso}, "
+                    "'tomorrow' = the day after today, 'Friday' = the NEXT Friday from today. "
+                    "You MUST collect the customer's email address first."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "date": {
+                            "type": "string",
+                            "description": (
+                                f"Appointment date in YYYY-MM-DD format. "
+                                f"TODAY IS {today_iso}. Convert relative dates from this date."
+                            ),
+                        },
+                        "time": {
+                            "type": "string",
+                            "description": "Appointment time in HH:MM 24-hour format",
+                        },
+                        "email": {
+                            "type": "string",
+                            "description": "Customer's email address for booking confirmation",
+                        },
+                        "duration_minutes": {
+                            "type": "integer",
+                            "description": "Duration in minutes. Default is 30.",
+                        },
+                        "notes": {
+                            "type": "string",
+                            "description": "Optional notes about the appointment",
+                        },
+                    },
+                    "required": ["date", "time", "email"],
+                },
+            },
+            {
+                "type": "function",
+                "name": "check_availability",
+                "description": (
+                    f"Check available time slots on Cal.com. "
+                    f"TODAY IS {today_str} ({today_iso}). "
+                    f"When the user says 'Friday', 'tomorrow', or 'next week', "
+                    f"convert to YYYY-MM-DD relative to today ({today_iso}). "
+                    f"Example: if today is {today_iso} and user says 'Friday', "
+                    "calculate the next Friday from this date."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "start_date": {
+                            "type": "string",
+                            "description": (
+                                f"Start date in YYYY-MM-DD format. TODAY IS {today_iso}. "
+                                "Convert relative dates like 'Friday' from this date."
+                            ),
+                        },
+                        "end_date": {
+                            "type": "string",
+                            "description": "End date in YYYY-MM-DD (defaults to start_date)",
+                        },
+                    },
+                    "required": ["start_date"],
+                },
+            },
+        ]
+
     async def _configure_session(self) -> None:  # noqa: PLR0915
         """Configure the Grok Realtime session with agent settings.
 
@@ -352,9 +447,28 @@ IMPORTANT: You are on a phone call. When the call connects:
 
         # Add booking instructions when tools are enabled
         if self._enable_tools:
-            enhanced_prompt += """
+            # Get current date for booking context
+            try:
+                tz = ZoneInfo(self._timezone)
+            except Exception:
+                tz = ZoneInfo("America/New_York")
+            now = datetime.now(tz)
+            today_str = now.strftime("%A, %B %d, %Y")
+            today_iso = now.strftime("%Y-%m-%d")
 
-[APPOINTMENT BOOKING - CRITICAL RULES]
+            enhanced_prompt += f"""
+
+[APPOINTMENT BOOKING - CRITICAL DATE AND RULES]
+TODAY IS {today_str} ({today_iso}).
+Your training data may be outdated - IGNORE IT. The ACTUAL current date is {today_iso}.
+
+When converting relative dates to YYYY-MM-DD format:
+- "today" = {today_iso}
+- "tomorrow" = the day after {today_iso}
+- "Friday" = the NEXT Friday from {today_iso} (calculate it)
+- "next week" = the week starting after {today_iso}
+- "Monday" = the NEXT Monday from {today_iso}
+
 You have tools to check calendar availability and book appointments. Follow these rules:
 
 1. NEVER say "one moment", "let me check", "checking", or "I'll get back to you"
@@ -365,8 +479,9 @@ You have tools to check calendar availability and book appointments. Follow thes
 
 WHEN TO CALL check_availability:
 - Customer asks about availability ("when are you free", "what times work")
-- Customer mentions a day ("Monday", "tomorrow", "next week")
+- Customer mentions a day ("Monday", "tomorrow", "next week", "Friday")
 - Customer wants to schedule or book something
+- ALWAYS use dates relative to {today_iso}, NOT your training data dates
 
 WHEN TO CALL book_appointment:
 - Customer confirms a specific time AND you have their email
@@ -375,7 +490,6 @@ RESPONSE PATTERN:
 - If they ask about times: Call check_availability, then offer 2 specific options
 - If they pick a time and you have email: Call book_appointment immediately
 - If they pick a time but no email: Ask for email, then book once provided
-- Example: "I have Monday at 2pm or Tuesday at 10am. Which works for you?"
 
 DO NOT say things like "I'll check and get back to you" - you can check instantly!"""
 
@@ -450,11 +564,13 @@ DO NOT say things like "I'll check and get back to you" - you can check instantl
             self.logger.info("grok_x_search_enabled")
 
         # Add Cal.com booking tools if enabled and configured
+        # Use dynamic tools with current date context embedded
         if self._enable_tools:
-            tools.extend(VOICE_BOOKING_TOOLS)
+            booking_tools = self._get_booking_tools()
+            tools.extend(booking_tools)
             self.logger.info(
                 "grok_booking_tools_enabled",
-                tool_count=len(VOICE_BOOKING_TOOLS),
+                tool_count=len(booking_tools),
             )
 
         if tools:
