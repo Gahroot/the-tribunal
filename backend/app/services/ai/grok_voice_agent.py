@@ -781,29 +781,31 @@ IMPORTANT: You are on a phone call. When the call connects:
             self.logger.warning("grok_websocket_not_connected")
             return
 
-        # For OUTBOUND calls: Do NOT trigger a greeting
-        # Wait for the person to say "hello" first, then AI responds naturally
+        # For OUTBOUND calls: Use a pattern interrupt opener
+        # Be honest and disarming - give them control
         if is_outbound:
             self.logger.info(
-                "grok_outbound_call_waiting_for_user",
+                "grok_outbound_call_pattern_interrupt",
                 is_outbound=True,
                 has_call_context=hasattr(self, "_call_context") and bool(self._call_context),
             )
-            # Don't send any greeting prompt - VAD will detect when the person speaks
-            # and the AI will respond using the context already injected
-            return
+            agent_name = self.agent.name if self.agent else "Jess"
+            # Pattern interrupt: honest, disarming, gives them a choice
+            prompt_text = (
+                f"You just called someone. Open with a pattern interrupt. "
+                f"Say: 'Hey! It's {agent_name}. This is a sales call. "
+                f"Do you wanna hang up, or can I tell you why I'm calling?' "
+                f"Slight sigh before 'hang up', enthusiasm before 'tell you why'. "
+                f"Wait for their response."
+            )
+        else:
+            # For INBOUND calls: Use configured greeting or default
+            message = greeting
+            if not message and hasattr(self, "_pending_greeting"):
+                message = self._pending_greeting
+            if not message and self.agent and self.agent.initial_greeting:
+                message = self.agent.initial_greeting
 
-        # For INBOUND calls: Trigger greeting as normal
-        # Use provided greeting, or pending greeting, or agent's initial greeting
-        message = greeting
-        if not message and hasattr(self, "_pending_greeting"):
-            message = self._pending_greeting
-        if not message and self.agent and self.agent.initial_greeting:
-            message = self.agent.initial_greeting
-
-        try:
-            # Create a user message that instructs the AI to deliver the greeting
-            # This is the proven pattern from working Realtime API integrations
             if message:
                 prompt_text = f"Greet the caller by saying: {message}"
             else:
@@ -820,6 +822,8 @@ IMPORTANT: You are on a phone call. When the call connects:
 
                 prompt_text = " ".join(prompt_parts)
 
+        # Send the greeting/opener for both inbound and outbound
+        try:
             event = {
                 "type": "conversation.item.create",
                 "item": {
@@ -837,14 +841,13 @@ IMPORTANT: You are on a phone call. When the call connects:
             await self._send_event(event)
             self.logger.info(
                 "grok_initial_response_triggered",
-                has_greeting=bool(message),
-                greeting_length=len(message) if message else 0,
+                prompt_length=len(prompt_text),
                 is_outbound=is_outbound,
             )
 
-            # Trigger response generation - simple form without extra options
+            # Trigger response generation
             await self._send_event({"type": "response.create"})
-            self.logger.info("grok_response_requested")
+            self.logger.info("grok_response_requested", is_outbound=is_outbound)
 
         except Exception as e:
             self.logger.exception("grok_trigger_response_error", error=str(e))
