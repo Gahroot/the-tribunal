@@ -19,7 +19,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import structlog
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
 
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
@@ -758,7 +758,7 @@ async def _setup_voice_session(
 async def voice_stream_bridge(  # noqa: PLR0912, PLR0915
     websocket: WebSocket,
     call_id: str,
-    is_outbound: bool = False,
+    is_outbound: bool = Query(default=False),
 ) -> None:
     """Bridge between Telnyx media stream and voice AI provider.
 
