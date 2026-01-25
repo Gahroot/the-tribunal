@@ -537,11 +537,34 @@ def _create_voice_session(  # noqa: PLR0911
             return None, "xAI API key not configured"
 
         # Enable tools if agent has Cal.com configured
-        enable_tools = bool(
-            agent
-            and agent.calcom_event_type_id
-            and settings.calcom_api_key
+        has_agent = agent is not None
+        has_calcom_event = bool(agent and agent.calcom_event_type_id)
+        has_calcom_key = bool(settings.calcom_api_key)
+        enable_tools = has_agent and has_calcom_event and has_calcom_key
+
+        # Detailed logging for tool enablement debugging
+        logger.info(
+            "grok_voice_session_creating",
+            voice_provider=voice_provider,
+            agent_name=agent.name if agent else None,
+            agent_id=str(agent.id) if agent else None,
+            has_agent=has_agent,
+            calcom_event_type_id=agent.calcom_event_type_id if agent else None,
+            has_calcom_event=has_calcom_event,
+            has_calcom_key=has_calcom_key,
+            calcom_key_length=len(settings.calcom_api_key) if settings.calcom_api_key else 0,
+            enable_tools=enable_tools,
+            agent_enabled_tools=agent.enabled_tools if agent else None,
         )
+
+        if not enable_tools:
+            logger.warning(
+                "grok_tools_disabled",
+                reason="Missing requirements for tool enablement",
+                has_agent=has_agent,
+                has_calcom_event=has_calcom_event,
+                has_calcom_key=has_calcom_key,
+            )
 
         return GrokVoiceAgentSession(
             settings.xai_api_key,
@@ -579,13 +602,28 @@ async def _setup_voice_session(
     """
     # Set up tool callback for Grok and ElevenLabs voice sessions (both support tools)
     if isinstance(voice_session, (GrokVoiceAgentSession, ElevenLabsVoiceAgentSession)):
+        log.info(
+            "setting_up_tool_callback",
+            session_type=type(voice_session).__name__,
+            agent_name=agent.name if agent else None,
+            calcom_event_type_id=agent.calcom_event_type_id if agent else None,
+            contact_info=contact_info,
+            timezone=timezone,
+        )
+
         # Create a closure to capture agent, contact_info, and timezone for tool execution
         async def tool_callback(
             call_id: str,
             function_name: str,
             arguments: dict[str, Any],
         ) -> dict[str, Any]:
-            return await _execute_voice_tool(
+            log.info(
+                "tool_callback_invoked",
+                call_id=call_id,
+                function_name=function_name,
+                arguments=arguments,
+            )
+            result = await _execute_voice_tool(
                 call_id=call_id,
                 function_name=function_name,
                 arguments=arguments,
@@ -594,9 +632,25 @@ async def _setup_voice_session(
                 timezone=timezone,
                 log=log,
             )
+            log.info(
+                "tool_callback_completed",
+                call_id=call_id,
+                function_name=function_name,
+                result=result,
+            )
+            return result
 
         voice_session.set_tool_callback(tool_callback)
-        log.info("tool_callback_configured")
+        log.info(
+            "tool_callback_configured",
+            session_type=type(voice_session).__name__,
+        )
+    else:
+        log.info(
+            "tool_callback_not_configured",
+            session_type=type(voice_session).__name__,
+            reason="Session type does not support tools",
+        )
 
     if agent:
         await voice_session.configure_session(

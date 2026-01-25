@@ -150,6 +150,21 @@ class GrokVoiceAgentSession:
         self._tool_callback: Callable[[str, str, dict[str, Any]], Any] | None = None
         self._pending_function_calls: dict[str, dict[str, Any]] = {}
 
+        # Transcript tracking for debugging
+        self._user_transcript: str = ""
+        self._agent_transcript: str = ""
+        self._transcript_entries: list[dict[str, Any]] = []
+
+        # Log initialization details
+        self.logger.info(
+            "grok_voice_agent_initialized",
+            agent_name=agent.name if agent else None,
+            agent_id=str(agent.id) if agent else None,
+            enable_tools=enable_tools,
+            calcom_event_type_id=agent.calcom_event_type_id if agent else None,
+            enabled_tools=agent.enabled_tools if agent else None,
+        )
+
     def set_tool_callback(
         self,
         callback: Callable[[str, str, dict[str, Any]], Any],
@@ -160,6 +175,11 @@ class GrokVoiceAgentSession:
             callback: Async function(call_id, function_name, arguments) -> result
         """
         self._tool_callback = callback
+        self.logger.info(
+            "grok_tool_callback_set",
+            callback_set=callback is not None,
+            enable_tools=self._enable_tools,
+        )
 
     async def connect(self) -> bool:
         """Connect to Grok Realtime API.
@@ -408,9 +428,20 @@ DO NOT say things like "I'll check and get back to you" - you can check instantl
 
         if tools:
             session_config["tools"] = tools
+            tool_names = [
+                t.get("name", t.get("type", "unknown")) for t in tools
+            ]
             self.logger.info(
                 "grok_tools_configured",
                 total_tool_count=len(tools),
+                tool_names=tool_names,
+                tools_json=json.dumps(tools, indent=2),
+            )
+        else:
+            self.logger.warning(
+                "grok_no_tools_configured",
+                enable_tools=self._enable_tools,
+                agent_enabled_tools=agent_enabled_tools,
             )
 
         config: dict[str, Any] = {
@@ -418,12 +449,21 @@ DO NOT say things like "I'll check and get back to you" - you can check instantl
             "session": session_config,
         }
 
+        # Log the full session config being sent
+        self.logger.info(
+            "grok_sending_session_update",
+            session_config_keys=list(session_config.keys()),
+            has_tools="tools" in session_config,
+            tool_count=len(session_config.get("tools", [])),
+        )
+
         await self._send_event(config)
         self.logger.info(
             "grok_session_configured",
             voice=voice,
             audio_format="pcm16",
             tools_enabled=self._enable_tools,
+            tool_callback_set=self._tool_callback is not None,
         )
 
     async def configure_session(
@@ -699,6 +739,19 @@ IMPORTANT: You are on a phone call. When the call connects:
 
                 event_type = event.get("type", "")
 
+                # Log ALL events for debugging (except high-frequency audio deltas)
+                if event_type not in ("response.audio.delta", "response.output_audio.delta"):
+                    if event_type == "session.created":
+                        event_preview = "..."
+                    else:
+                        event_preview = json.dumps(event)[:500]
+                    self.logger.info(
+                        "grok_event_received",
+                        event_type=event_type,
+                        event_keys=list(event.keys()),
+                        event_preview=event_preview,
+                    )
+
                 # Grok uses same event types as OpenAI Realtime
                 if event_type == "response.audio.delta":
                     audio_data = event.get("delta", "")
@@ -745,21 +798,89 @@ IMPORTANT: You are on a phone call. When the call connects:
                         yield decoded
 
                 elif event_type == "response.audio_transcript.delta":
+                    # Agent's speech transcript (what the AI is saying)
                     transcript = event.get("delta", "")
                     if transcript:
-                        self.logger.debug("grok_transcript_chunk", text=transcript[:50])
+                        self._agent_transcript += transcript
+                        self.logger.info(
+                            "grok_agent_transcript_delta",
+                            delta=transcript,
+                            full_transcript_so_far=self._agent_transcript[-200:],
+                        )
+
+                elif event_type == "response.text.delta":
+                    # Alternative text transcript event
+                    text = event.get("delta", "")
+                    if text:
+                        self._agent_transcript += text
+                        self.logger.info(
+                            "grok_agent_text_delta",
+                            delta=text,
+                        )
+
+                elif event_type == "conversation.item.input_audio_transcription.completed":
+                    # User's speech transcript (what the human said)
+                    user_text = event.get("transcript", "")
+                    if user_text:
+                        self._user_transcript = user_text
+                        self._transcript_entries.append({
+                            "role": "user",
+                            "text": user_text,
+                        })
+                        self.logger.info(
+                            "grok_user_transcript_completed",
+                            user_said=user_text,
+                        )
 
                 elif event_type == "response.done":
                     # Response complete - but DON'T break!
                     # Keep listening for more responses in the conversation
                     responses_completed += 1
 
-                    # Check for function calls in the response
+                    # Log the FULL response for debugging
                     response_data = event.get("response", {})
                     output_items = response_data.get("output", [])
 
+                    # Log complete response structure
+                    self.logger.info(
+                        "grok_response_done_full",
+                        response_id=response_data.get("id"),
+                        response_status=response_data.get("status"),
+                        output_item_count=len(output_items),
+                        output_item_types=[item.get("type") for item in output_items],
+                        full_response=json.dumps(response_data)[:2000],
+                    )
+
+                    # Save agent transcript
+                    if self._agent_transcript:
+                        self._transcript_entries.append({
+                            "role": "agent",
+                            "text": self._agent_transcript,
+                        })
+                        self.logger.info(
+                            "grok_agent_turn_completed",
+                            agent_said=self._agent_transcript,
+                        )
+                        self._agent_transcript = ""
+
+                    # Check for function calls in the response
+                    function_calls_found = 0
                     for item in output_items:
-                        if item.get("type") == "function_call":
+                        item_type = item.get("type")
+                        self.logger.info(
+                            "grok_response_output_item",
+                            item_type=item_type,
+                            item_keys=list(item.keys()),
+                            item_preview=json.dumps(item)[:500],
+                        )
+                        if item_type == "function_call":
+                            function_calls_found += 1
+                            self.logger.info(
+                                "grok_function_call_found_in_response",
+                                function_name=item.get("name"),
+                                call_id=item.get("call_id"),
+                                arguments=item.get("arguments"),
+                            )
                             await self._handle_function_call(item)
 
                     self.logger.info(
@@ -767,27 +888,56 @@ IMPORTANT: You are on a phone call. When the call connects:
                         response_num=responses_completed,
                         total_audio_chunks=audio_chunks_received,
                         total_audio_bytes=total_audio_bytes,
+                        function_calls_found=function_calls_found,
+                        tool_callback_set=self._tool_callback is not None,
                     )
                     # Continue listening for next response
 
                 elif event_type == "response.output_item.done":
                     # Handle completed output items (including function calls)
                     item = event.get("item", {})
-                    if item.get("type") == "function_call":
+                    item_type = item.get("type")
+                    self.logger.info(
+                        "grok_output_item_done",
+                        item_type=item_type,
+                        item_keys=list(item.keys()),
+                        item_preview=json.dumps(item)[:500],
+                    )
+                    if item_type == "function_call":
+                        self.logger.info(
+                            "grok_function_call_in_output_item_done",
+                            function_name=item.get("name"),
+                            call_id=item.get("call_id"),
+                        )
                         await self._handle_function_call(item)
 
                 elif event_type == "input_audio_buffer.speech_started":
-                    self.logger.debug("grok_user_speech_started")
+                    self.logger.info("grok_user_speech_started")
 
                 elif event_type == "input_audio_buffer.speech_stopped":
-                    self.logger.debug("grok_user_speech_stopped")
+                    self.logger.info("grok_user_speech_stopped")
 
                 elif event_type == "session.created":
                     session = event.get("session", {})
+                    session_tools = session.get("tools", [])
                     self.logger.info(
                         "grok_session_created",
                         session_id=session.get("id"),
                         model=session.get("model"),
+                        voice=session.get("voice"),
+                        tools_in_session=[t.get("name", t.get("type")) for t in session_tools],
+                        tool_count=len(session_tools),
+                        full_session_config=json.dumps(session)[:1000],
+                    )
+
+                elif event_type == "session.updated":
+                    session = event.get("session", {})
+                    session_tools = session.get("tools", [])
+                    self.logger.info(
+                        "grok_session_updated",
+                        session_id=session.get("id"),
+                        tools_in_session=[t.get("name", t.get("type")) for t in session_tools],
+                        tool_count=len(session_tools),
                     )
 
                 elif event_type == "error":
@@ -797,11 +947,17 @@ IMPORTANT: You are on a phone call. When the call connects:
                         error_type=error.get("type"),
                         error_message=error.get("message"),
                         error_code=error.get("code"),
+                        full_error=json.dumps(event),
                     )
                     # Don't break - some errors are recoverable
 
                 else:
-                    self.logger.debug("grok_event", event_type=event_type)
+                    # Log unknown events at info level for debugging
+                    self.logger.info(
+                        "grok_unknown_event",
+                        event_type=event_type,
+                        event_keys=list(event.keys()),
+                    )
 
         except websockets.exceptions.ConnectionClosed as e:
             self.logger.warning(
@@ -817,12 +973,21 @@ IMPORTANT: You are on a phone call. When the call connects:
                 chunks_received=audio_chunks_received,
             )
 
+        # Log full transcript at end of call
         self.logger.info(
             "grok_audio_stream_ended",
             total_chunks=audio_chunks_received,
             total_bytes=total_audio_bytes,
             total_responses=responses_completed,
+            transcript_entry_count=len(self._transcript_entries),
         )
+
+        # Log the full conversation transcript
+        if self._transcript_entries:
+            self.logger.info(
+                "grok_full_conversation_transcript",
+                transcript=json.dumps(self._transcript_entries, indent=2),
+            )
 
     async def _handle_function_call(self, item: dict[str, Any]) -> None:
         """Handle a function call from Grok.
