@@ -472,15 +472,29 @@ async def _execute_book_appointment(
                 phone_number=contact_phone,
             )
 
+            # Cal.com API returns response directly with uid at top level
+            booking_uid = booking.get("uid")
+            booking_id = booking.get("id")
+
+            log.info(
+                "calcom_booking_response_debug",
+                response_keys=list(booking.keys()),
+                has_uid=booking_uid is not None,
+                has_id=booking_id is not None,
+            )
+
             log.info(
                 "booking_created",
-                booking_uid=booking.get("data", {}).get("uid"),
+                booking_uid=booking_uid,
+                booking_id=booking_id,
                 email=email,
             )
 
             return {
                 "success": True,
-                "booking_id": booking.get("data", {}).get("uid"),
+                "booking_id": booking_uid,
+                "booking_uid": booking_uid,
+                "calcom_id": booking_id,
                 "message": (
                     f"Appointment booked for {contact_name} on {date_str} at {time_str}. "
                     f"Confirmation email sent to {email}."
@@ -498,15 +512,44 @@ async def _execute_book_appointment(
 VoiceSessionType = VoiceAgentSession | GrokVoiceAgentSession | ElevenLabsVoiceAgentSession
 
 
+async def _save_call_transcript(call_id: str, transcript_json: str, log: Any) -> None:
+    """Save transcript to the message record for this call.
+
+    Args:
+        call_id: Telnyx call control ID (provider_message_id)
+        transcript_json: JSON string of transcript entries
+        log: Logger instance
+    """
+    from sqlalchemy import update
+
+    from app.models.conversation import Message
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            update(Message)
+            .where(Message.provider_message_id == call_id)
+            .values(transcript=transcript_json)
+        )
+        await db.commit()
+        log.info(
+            "transcript_saved",
+            call_id=call_id,
+            rows_updated=result.rowcount,  # type: ignore[attr-defined]
+            transcript_length=len(transcript_json),
+        )
+
+
 def _create_voice_session(  # noqa: PLR0911
     voice_provider: str,
     agent: Any,
+    timezone: str = "America/New_York",
 ) -> tuple[VoiceSessionType | None, str | None]:
     """Create appropriate voice session based on provider.
 
     Args:
         voice_provider: Provider name (openai, grok, elevenlabs)
         agent: Agent model for configuration
+        timezone: Timezone for date context (from workspace settings)
 
     Returns:
         Tuple of (voice_session, error_message)
@@ -530,6 +573,7 @@ def _create_voice_session(  # noqa: PLR0911
             elevenlabs_api_key=settings.elevenlabs_api_key,
             agent=agent,
             enable_tools=enable_tools,
+            timezone=timezone,
         ), None
 
     if voice_provider == "grok":
@@ -570,6 +614,7 @@ def _create_voice_session(  # noqa: PLR0911
             settings.xai_api_key,
             agent,
             enable_tools=enable_tools,
+            timezone=timezone,
         ), None
 
     # Default to OpenAI
@@ -676,7 +721,7 @@ async def _setup_voice_session(
 
 
 @router.websocket("/voice/stream/{call_id}")
-async def voice_stream_bridge(  # noqa: PLR0915
+async def voice_stream_bridge(  # noqa: PLR0912, PLR0915
     websocket: WebSocket,
     call_id: str,
     is_outbound: bool = False,
@@ -759,7 +804,7 @@ async def voice_stream_bridge(  # noqa: PLR0915
 
     # Create appropriate voice session based on provider
     log.info("creating_voice_session", provider=voice_provider)
-    voice_session, error = _create_voice_session(voice_provider, agent)
+    voice_session, error = _create_voice_session(voice_provider, agent, timezone)
     if voice_session is None:
         log.error(
             "voice_session_creation_failed",
@@ -862,11 +907,20 @@ async def voice_stream_bridge(  # noqa: PLR0915
             total_connection_secs=round(elapsed, 1),
         )
     finally:
-        # Clean up
+        # Clean up relay task
         if relay_task and not relay_task.done():
             relay_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await relay_task
+
+        # Save transcript before disconnecting
+        if hasattr(voice_session, "get_transcript_json"):
+            try:
+                transcript_json = voice_session.get_transcript_json()
+                if transcript_json and call_id:
+                    await _save_call_transcript(call_id, transcript_json, log)
+            except Exception as e:
+                log.exception("failed_to_save_transcript", error=str(e))
 
         log.info("disconnecting_from_voice_provider")
         await voice_session.disconnect()

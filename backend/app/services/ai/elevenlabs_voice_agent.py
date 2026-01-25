@@ -13,7 +13,9 @@ import base64
 import contextlib
 import json
 from collections.abc import AsyncIterator, Callable
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import structlog
 import websockets
@@ -51,6 +53,7 @@ class ElevenLabsVoiceAgentSession:
         elevenlabs_api_key: str,
         agent: Agent | None = None,
         enable_tools: bool = False,
+        timezone: str = "America/New_York",
     ) -> None:
         """Initialize hybrid voice agent session.
 
@@ -59,11 +62,13 @@ class ElevenLabsVoiceAgentSession:
             elevenlabs_api_key: ElevenLabs API key for TTS
             agent: Optional Agent model for configuration
             enable_tools: Enable Cal.com booking tools
+            timezone: Timezone for date context (default: America/New_York)
         """
         self.xai_api_key = xai_api_key
         self.elevenlabs_api_key = elevenlabs_api_key
         self.agent = agent
         self._enable_tools = enable_tools
+        self._timezone = timezone
         self.logger = logger.bind(service="elevenlabs_voice_agent")
 
         # Grok WebSocket for STT+LLM
@@ -207,6 +212,25 @@ You can use these cues naturally in your responses to sound more human:
 Note: These cues will be interpreted by the speech synthesis system."""
         return prompt + realism_instructions
 
+    def _get_date_context(self) -> str:
+        """Get the date context string for the system prompt.
+
+        Uses the timezone stored on the session (from workspace settings).
+        Based on LiveKit's production voice agent pattern.
+
+        Returns:
+            Date context string to prepend to prompts
+        """
+        try:
+            tz = ZoneInfo(self._timezone)
+        except Exception:
+            tz = ZoneInfo("America/New_York")
+
+        now = datetime.now(tz)
+        current_time = now.strftime("%A, %B %d, %Y at %I:%M %p")
+
+        return f"The current date and time is {current_time}.\n\n"
+
     def _get_search_tools_guidance(self) -> str:
         """Get system prompt guidance for search tools."""
         if not self.agent or not self.agent.enabled_tools:
@@ -242,6 +266,9 @@ Note: These cues will be interpreted by the speech synthesis system."""
         if not self.grok_ws:
             return
 
+        # Build date context FIRST - this must be at the top of the prompt
+        date_context = self._get_date_context()
+
         # Get base prompt
         base_prompt = (
             self.agent.system_prompt
@@ -259,8 +286,11 @@ Note: These cues will be interpreted by the speech synthesis system."""
             )
             base_prompt = identity_prefix + base_prompt
 
+        # Combine: date context (top) + base prompt
+        enhanced_prompt = date_context + base_prompt
+
         # Enhance prompt
-        enhanced_prompt = self._enhance_prompt_with_realism(base_prompt)
+        enhanced_prompt = self._enhance_prompt_with_realism(enhanced_prompt)
         enhanced_prompt += self._get_search_tools_guidance()
 
         # Add telephony guidance
@@ -365,6 +395,9 @@ You have tools to check calendar availability and book appointments. Follow thes
         session_config: dict[str, Any] = {}
 
         if system_prompt:
+            # ALWAYS prepend date context first
+            date_context = self._get_date_context()
+
             # Enhance prompt
             if self.agent and self.agent.name:
                 agent_name = self.agent.name
@@ -374,7 +407,9 @@ You have tools to check calendar availability and book appointments. Follow thes
                 )
                 system_prompt = identity_prefix + system_prompt
 
-            enhanced = self._enhance_prompt_with_realism(system_prompt)
+            # Combine: date context (top) + system prompt
+            enhanced = date_context + system_prompt
+            enhanced = self._enhance_prompt_with_realism(enhanced)
             enhanced += self._get_search_tools_guidance()
             enhanced += "\n\nIMPORTANT: You are on a phone call. Speak naturally."
             session_config["instructions"] = enhanced
@@ -715,6 +750,9 @@ You have tools to check calendar availability and book appointments. Follow thes
 
         context_section = "\n".join(context_parts)
 
+        # ALWAYS start with date context - critical for appointment booking
+        date_context = self._get_date_context()
+
         # Update session with context
         base_prompt = (
             self.agent.system_prompt
@@ -730,7 +768,8 @@ You have tools to check calendar availability and book appointments. Follow thes
             )
             base_prompt = identity_prefix + base_prompt
 
-        full_prompt = base_prompt + context_section
+        # Combine: date context (top) + base prompt + call context
+        full_prompt = date_context + base_prompt + context_section
         enhanced_prompt = self._enhance_prompt_with_realism(full_prompt)
         enhanced_prompt += "\n\nIMPORTANT: You are on a phone call that YOU initiated."
 

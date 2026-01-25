@@ -133,6 +133,7 @@ class GrokVoiceAgentSession:
         api_key: str,
         agent: Agent | None = None,
         enable_tools: bool = False,
+        timezone: str = "America/New_York",
     ) -> None:
         """Initialize Grok voice agent session.
 
@@ -140,6 +141,7 @@ class GrokVoiceAgentSession:
             api_key: xAI API key
             agent: Optional Agent model for configuration
             enable_tools: Enable booking tools (requires Cal.com config)
+            timezone: Timezone for date context (default: America/New_York)
         """
         self.api_key = api_key
         self.agent = agent
@@ -147,6 +149,7 @@ class GrokVoiceAgentSession:
         self.logger = logger.bind(service="grok_voice_agent")
         self._connection_task: asyncio.Task[None] | None = None
         self._enable_tools = enable_tools
+        self._timezone = timezone
 
         # Tool call handling
         self._tool_callback: Callable[[str, str, dict[str, Any]], Any] | None = None
@@ -219,30 +222,23 @@ class GrokVoiceAgentSession:
             self.ws = None
 
     def _get_date_context(self) -> str:
-        """Get the mandatory date context string.
+        """Get the date context string for the system prompt.
 
-        This MUST be prepended to ALL prompts to ensure the model
-        knows the correct current date/year for appointment booking.
+        Uses the timezone stored on the session (from workspace settings).
+        Based on LiveKit's production voice agent pattern.
 
         Returns:
             Date context string to prepend to prompts
         """
         try:
-            now = datetime.now(ZoneInfo("America/New_York"))
-            date_str = now.strftime("%A, %B %d, %Y")
-            time_str = now.strftime("%I:%M %p %Z")
-            year = now.year
-            return f"""=== MANDATORY DATE CONTEXT ===
-TODAY IS: {date_str}
-CURRENT TIME: {time_str}
-THE YEAR IS {year} - NOT 2024, NOT 2025.
-When booking or discussing dates, use {year} as the current year.
-ALL appointments must be scheduled in {year}.
-=============================
-
-"""
+            tz = ZoneInfo(self._timezone)
         except Exception:
-            return ""  # If timezone fails, continue without date context
+            tz = ZoneInfo("America/New_York")
+
+        now = datetime.now(tz)
+        current_time = now.strftime("%A, %B %d, %Y at %I:%M %p")
+
+        return f"The current date and time is {current_time}.\n\n"
 
     def _enhance_prompt_with_realism(self, prompt: str) -> str:
         """Enhance system prompt with Grok realism instructions.
@@ -1069,9 +1065,15 @@ IMPORTANT: You are on a phone call. When the call connects:
             )
             return
 
+        # Timeout for tool execution to prevent blocking audio stream
+        TOOL_TIMEOUT_SECONDS = 10.0
+
         try:
-            # Execute the tool callback
-            result = await self._tool_callback(call_id, function_name, arguments)
+            # Execute the tool callback with timeout protection
+            result = await asyncio.wait_for(
+                self._tool_callback(call_id, function_name, arguments),
+                timeout=TOOL_TIMEOUT_SECONDS,
+            )
 
             self.logger.info(
                 "grok_function_call_executed",
@@ -1082,6 +1084,18 @@ IMPORTANT: You are on a phone call. When the call connects:
 
             # Send result back to Grok
             await self.submit_tool_result(call_id, result)
+
+        except asyncio.TimeoutError:
+            self.logger.error(
+                "grok_function_call_timeout",
+                call_id=call_id,
+                function_name=function_name,
+                timeout_seconds=TOOL_TIMEOUT_SECONDS,
+            )
+            await self.submit_tool_result(
+                call_id,
+                {"success": False, "error": "Tool execution timed out. Please try again."},
+            )
 
         except Exception as e:
             self.logger.exception(
@@ -1270,3 +1284,16 @@ IMPORTANT: You are on a phone call that YOU initiated.
             return bool(getattr(self.ws, "open", False))
         except Exception:
             return False
+
+    def get_transcript_json(self) -> str | None:
+        """Get the conversation transcript as JSON string.
+
+        Returns the transcript in a format suitable for storage and display:
+        [{"role": "user", "text": "..."}, {"role": "agent", "text": "..."}]
+
+        Returns:
+            JSON string of transcript entries, or None if no transcript
+        """
+        if not self._transcript_entries:
+            return None
+        return json.dumps(self._transcript_entries)
