@@ -531,16 +531,9 @@ IMPORTANT: You are on a phone call. When the call connects:
                         for o in output
                     ]
 
-                    # If this was a cancelled response, clear interrupted flag
-                    # This allows the next response to generate audio
-                    if response_status == "cancelled" or self._is_interrupted:
-                        self._is_interrupted = False
-                        self.logger.info(
-                            "cancelled_response_complete",
-                            status=response_status,
-                        )
-
-                    # Save agent transcript when response completes
+                    # Save agent transcript FIRST before handling cancellation
+                    # This ensures partial transcripts are preserved even if
+                    # interrupted (barge-in) or cancelled
                     if self._agent_transcript:
                         self._transcript_entries.append({
                             "role": "agent",
@@ -551,6 +544,15 @@ IMPORTANT: You are on a phone call. When the call connects:
                             agent_said=self._agent_transcript[:200],
                         )
                         self._agent_transcript = ""
+
+                    # If this was a cancelled response, clear interrupted flag
+                    # This allows the next response to generate audio
+                    if response_status == "cancelled" or self._is_interrupted:
+                        self._is_interrupted = False
+                        self.logger.info(
+                            "cancelled_response_complete",
+                            status=response_status,
+                        )
 
                     self.logger.info(
                         "response_completed",

@@ -1071,6 +1071,20 @@ IMPORTANT: You are on a phone call. When the call connects:
                     output_items = response_data.get("output", [])
                     response_status = response_data.get("status", "")
 
+                    # Save agent transcript FIRST before handling cancellation
+                    # This ensures partial transcripts are preserved even if
+                    # interrupted (barge-in) or cancelled
+                    if self._agent_transcript:
+                        self._transcript_entries.append({
+                            "role": "agent",
+                            "text": self._agent_transcript,
+                        })
+                        self.logger.info(
+                            "grok_agent_turn_completed",
+                            agent_said=self._agent_transcript,
+                        )
+                        self._agent_transcript = ""
+
                     # If this was a cancelled response, clear interrupted flag
                     # This allows the next response to generate audio
                     if response_status == "cancelled" or self._is_interrupted:
@@ -1089,18 +1103,6 @@ IMPORTANT: You are on a phone call. When the call connects:
                         output_item_types=[item.get("type") for item in output_items],
                         full_response=json.dumps(response_data)[:2000],
                     )
-
-                    # Save agent transcript
-                    if self._agent_transcript:
-                        self._transcript_entries.append({
-                            "role": "agent",
-                            "text": self._agent_transcript,
-                        })
-                        self.logger.info(
-                            "grok_agent_turn_completed",
-                            agent_said=self._agent_transcript,
-                        )
-                        self._agent_transcript = ""
 
                     # Check for function calls in the response
                     function_calls_found = 0

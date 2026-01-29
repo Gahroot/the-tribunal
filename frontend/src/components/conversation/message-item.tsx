@@ -18,6 +18,7 @@ import {
   X,
   Clock,
   PhoneMissed,
+  PlayCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -126,7 +127,7 @@ export function MessageItem({ item, contactName }: MessageItemProps) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
       className={cn(
-        "flex gap-3 px-4 py-2",
+        "flex gap-3 px-4 py-2 overflow-hidden",
         isOutbound ? "flex-row-reverse" : "flex-row"
       )}
     >
@@ -162,20 +163,20 @@ export function MessageItem({ item, contactName }: MessageItemProps) {
         {/* Sender info */}
         <div
           className={cn(
-            "flex items-center gap-2 mb-1 text-xs text-muted-foreground",
+            "flex items-center gap-2 mb-1 text-xs text-muted-foreground overflow-hidden",
             isOutbound ? "flex-row-reverse" : "flex-row"
           )}
         >
           {item.is_ai && (
             <Badge
               variant="secondary"
-              className="text-[10px] px-1.5 py-0 h-4 bg-purple-500/10 text-purple-500"
+              className="text-[10px] px-1.5 py-0 h-4 bg-purple-500/10 text-purple-500 shrink-0"
             >
               AI
             </Badge>
           )}
-          <span>{timestamp}</span>
-          {channelIcons[item.type]}
+          <span className="shrink-0">{timestamp}</span>
+          <span className="shrink-0">{channelIcons[item.type]}</span>
         </div>
 
         {/* Content bubble */}
@@ -237,6 +238,26 @@ export function MessageItem({ item, contactName }: MessageItemProps) {
                     url={item.recording_url}
                     duration={item.duration_seconds}
                   />
+                </div>
+              )}
+
+              {/* Recording unavailable indicator */}
+              {!item.recording_url && isCall && (
+                <div className="pt-2 border-t">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <PlayCircle className="h-4 w-4" />
+                    <span>
+                      {item.status === "completed"
+                        ? "Recording not available"
+                        : item.status === "no_answer"
+                          ? "No recording - call not answered"
+                          : item.status === "busy"
+                            ? "No recording - line busy"
+                            : item.status === "failed"
+                              ? "No recording - call failed"
+                              : null}
+                    </span>
+                  </div>
                 </div>
               )}
 
