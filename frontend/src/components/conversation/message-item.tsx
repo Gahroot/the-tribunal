@@ -10,17 +10,19 @@ import {
   MessageSquare,
   Mail,
   Voicemail,
-  Play,
-  Pause,
   Bot,
   User,
   Calendar,
-  FileText
+  FileText,
+  Check,
+  X,
+  Clock,
+  PhoneMissed,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { AudioPlayer } from "@/components/ui/audio-player";
 import { TranscriptViewer } from "@/components/calls/transcript-viewer";
 import type { TimelineItem } from "@/types";
 
@@ -45,43 +47,52 @@ function formatDuration(seconds?: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-function AudioPlayer({ url }: { url: string }) {
-  const [isPlaying, setIsPlaying] = React.useState(false);
-  const audioRef = React.useRef<HTMLAudioElement>(null);
-
-  const togglePlayback = () => {
-    if (!audioRef.current) return;
-
-    if (isPlaying) {
-      audioRef.current.pause();
-    } else {
-      audioRef.current.play();
-    }
-    setIsPlaying(!isPlaying);
-  };
-
-  return (
-    <div className="flex items-center gap-2 mt-2">
-      <audio
-        ref={audioRef}
-        src={url}
-        onEnded={() => setIsPlaying(false)}
-        className="hidden"
-      />
-      <Button
-        size="icon"
-        variant="secondary"
-        className="h-8 w-8 rounded-full"
-        onClick={togglePlayback}
-      >
-        {isPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
-      </Button>
-      <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
-        <div className="h-full w-1/3 bg-primary rounded-full" />
-      </div>
-    </div>
-  );
-}
+// Call status configuration
+const callStatusConfig: Record<
+  string,
+  { icon: React.ReactNode; label: string; color: string }
+> = {
+  completed: {
+    icon: <Check className="h-3 w-3" />,
+    label: "Completed",
+    color: "text-green-500 bg-green-500/10",
+  },
+  failed: {
+    icon: <X className="h-3 w-3" />,
+    label: "Failed",
+    color: "text-red-500 bg-red-500/10",
+  },
+  no_answer: {
+    icon: <PhoneMissed className="h-3 w-3" />,
+    label: "No Answer",
+    color: "text-yellow-500 bg-yellow-500/10",
+  },
+  busy: {
+    icon: <PhoneMissed className="h-3 w-3" />,
+    label: "Busy",
+    color: "text-yellow-500 bg-yellow-500/10",
+  },
+  voicemail: {
+    icon: <Voicemail className="h-3 w-3" />,
+    label: "Voicemail",
+    color: "text-blue-500 bg-blue-500/10",
+  },
+  in_progress: {
+    icon: <Phone className="h-3 w-3" />,
+    label: "In Progress",
+    color: "text-blue-500 bg-blue-500/10",
+  },
+  initiated: {
+    icon: <Clock className="h-3 w-3" />,
+    label: "Initiated",
+    color: "text-muted-foreground bg-muted",
+  },
+  ringing: {
+    icon: <Phone className="h-3 w-3" />,
+    label: "Ringing",
+    color: "text-blue-500 bg-blue-500/10",
+  },
+};
 
 export function MessageItem({ item, contactName }: MessageItemProps) {
   const isOutbound = item.direction === "outbound";
@@ -100,6 +111,15 @@ export function MessageItem({ item, contactName }: MessageItemProps) {
     )
   ) : null;
 
+  // Get call status info
+  const callStatus = item.status
+    ? callStatusConfig[item.status] ?? {
+        icon: <Phone className="h-3 w-3" />,
+        label: item.status,
+        color: "text-muted-foreground bg-muted",
+      }
+    : null;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -112,28 +132,45 @@ export function MessageItem({ item, contactName }: MessageItemProps) {
     >
       {/* Avatar */}
       <Avatar className="h-8 w-8 shrink-0">
-        <AvatarFallback className={cn(
-          "text-xs",
-          item.is_ai ? "bg-purple-500/10 text-purple-500" :
-          isOutbound ? "bg-primary/10 text-primary" : "bg-muted"
-        )}>
-          {item.is_ai ? <Bot className="h-4 w-4" /> :
-           isOutbound ? "You" : contactName?.[0]?.toUpperCase() ?? <User className="h-4 w-4" />}
+        <AvatarFallback
+          className={cn(
+            "text-xs",
+            item.is_ai
+              ? "bg-purple-500/10 text-purple-500"
+              : isOutbound
+                ? "bg-primary/10 text-primary"
+                : "bg-muted"
+          )}
+        >
+          {item.is_ai ? (
+            <Bot className="h-4 w-4" />
+          ) : isOutbound ? (
+            "You"
+          ) : (
+            contactName?.[0]?.toUpperCase() ?? <User className="h-4 w-4" />
+          )}
         </AvatarFallback>
       </Avatar>
 
       {/* Message Bubble */}
-      <div className={cn(
-        "flex flex-col max-w-[70%]",
-        isOutbound ? "items-end" : "items-start"
-      )}>
+      <div
+        className={cn(
+          "flex flex-col max-w-[70%]",
+          isOutbound ? "items-end" : "items-start"
+        )}
+      >
         {/* Sender info */}
-        <div className={cn(
-          "flex items-center gap-2 mb-1 text-xs text-muted-foreground",
-          isOutbound ? "flex-row-reverse" : "flex-row"
-        )}>
+        <div
+          className={cn(
+            "flex items-center gap-2 mb-1 text-xs text-muted-foreground",
+            isOutbound ? "flex-row-reverse" : "flex-row"
+          )}
+        >
           {item.is_ai && (
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-purple-500/10 text-purple-500">
+            <Badge
+              variant="secondary"
+              className="text-[10px] px-1.5 py-0 h-4 bg-purple-500/10 text-purple-500"
+            >
               AI
             </Badge>
           )}
@@ -142,30 +179,78 @@ export function MessageItem({ item, contactName }: MessageItemProps) {
         </div>
 
         {/* Content bubble */}
-        <div className={cn(
-          "rounded-2xl px-4 py-2.5",
-          isCall || isAppointment ? "bg-muted/50 border" :
-          isOutbound ? "bg-primary text-primary-foreground" : "bg-muted"
-        )}>
+        <div
+          className={cn(
+            "rounded-2xl px-4 py-2.5",
+            isCall || isAppointment
+              ? "bg-muted/50 border"
+              : isOutbound
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted"
+          )}
+        >
           {/* Call content */}
           {isCall && (
-            <div className="flex items-center gap-3">
-              <div className={cn(
-                "h-10 w-10 rounded-full flex items-center justify-center",
-                isOutbound ? "bg-green-500/10" : "bg-blue-500/10"
-              )}>
-                {callIcon}
+            <div className="space-y-3">
+              {/* Call header */}
+              <div className="flex items-center gap-3">
+                <div
+                  className={cn(
+                    "h-10 w-10 rounded-full flex items-center justify-center",
+                    isOutbound ? "bg-green-500/10" : "bg-blue-500/10"
+                  )}
+                >
+                  {callIcon}
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium text-sm">
+                      {isOutbound ? "Outgoing Call" : "Incoming Call"}
+                    </p>
+                    {callStatus && (
+                      <Badge
+                        variant="secondary"
+                        className={cn(
+                          "text-[10px] px-1.5 py-0 h-4 gap-0.5",
+                          callStatus.color
+                        )}
+                      >
+                        {callStatus.icon}
+                        <span className="ml-0.5">{callStatus.label}</span>
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {item.status === "completed" && item.duration_seconds
+                      ? `Duration: ${formatDuration(item.duration_seconds)}`
+                      : item.status !== "completed"
+                        ? ""
+                        : "Duration: 0:00"}
+                  </p>
+                </div>
               </div>
-              <div className="flex-1">
-                <p className="font-medium text-sm">
-                  {isOutbound ? "Outgoing Call" : "Incoming Call"}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {item.status === "completed"
-                    ? `Duration: ${formatDuration(item.duration_seconds)}`
-                    : item.status}
-                </p>
-              </div>
+
+              {/* Recording player */}
+              {item.recording_url && (
+                <div className="pt-2 border-t">
+                  <AudioPlayer
+                    url={item.recording_url}
+                    duration={item.duration_seconds}
+                  />
+                </div>
+              )}
+
+              {/* Transcript */}
+              {item.transcript && (
+                <div className="pt-2 border-t">
+                  <TranscriptViewer
+                    transcript={item.transcript}
+                    maxHeight="200px"
+                    collapsible
+                    defaultExpanded={false}
+                  />
+                </div>
+              )}
             </div>
           )}
 
@@ -184,20 +269,9 @@ export function MessageItem({ item, contactName }: MessageItemProps) {
 
           {/* Text content */}
           {!isCall && !isAppointment && (
-            <p className="text-sm whitespace-pre-wrap break-words">{item.content}</p>
-          )}
-
-          {/* Recording player for calls */}
-          {isCall && item.recording_url && (
-            <AudioPlayer url={item.recording_url} />
-          )}
-
-          {/* Transcript for calls */}
-          {isCall && item.transcript && (
-            <div className="mt-3 pt-3 border-t">
-              <p className="text-xs font-medium mb-2 text-muted-foreground">Transcript</p>
-              <TranscriptViewer transcript={item.transcript} maxHeight="150px" />
-            </div>
+            <p className="text-sm whitespace-pre-wrap break-words">
+              {item.content}
+            </p>
           )}
         </div>
       </div>

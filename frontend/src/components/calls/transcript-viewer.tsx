@@ -1,8 +1,15 @@
 "use client";
 
-import { User, Bot } from "lucide-react";
+import * as React from "react";
+import { User, Bot, ChevronDown, ChevronUp, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 interface TranscriptEntry {
   role: "user" | "agent";
@@ -13,6 +20,8 @@ interface TranscriptViewerProps {
   transcript: string;
   maxHeight?: string;
   className?: string;
+  collapsible?: boolean;
+  defaultExpanded?: boolean;
 }
 
 /**
@@ -74,21 +83,15 @@ function parseTranscript(transcript: string): TranscriptEntry[] {
   return entries;
 }
 
-export function TranscriptViewer({
-  transcript,
-  maxHeight = "200px",
+function TranscriptContent({
+  entries,
+  maxHeight,
   className,
-}: TranscriptViewerProps) {
-  const entries = parseTranscript(transcript);
-
-  if (entries.length === 0) {
-    return (
-      <div className="text-sm text-muted-foreground italic">
-        No transcript available
-      </div>
-    );
-  }
-
+}: {
+  entries: TranscriptEntry[];
+  maxHeight: string;
+  className?: string;
+}) {
   return (
     <ScrollArea
       className={cn("rounded-md border", className)}
@@ -127,5 +130,65 @@ export function TranscriptViewer({
         ))}
       </div>
     </ScrollArea>
+  );
+}
+
+export function TranscriptViewer({
+  transcript,
+  maxHeight = "200px",
+  className,
+  collapsible = false,
+  defaultExpanded = true,
+}: TranscriptViewerProps) {
+  const [isExpanded, setIsExpanded] = React.useState(defaultExpanded);
+  const entries = parseTranscript(transcript);
+
+  if (entries.length === 0) {
+    return (
+      <div className="text-sm text-muted-foreground italic">
+        No transcript available
+      </div>
+    );
+  }
+
+  // Non-collapsible mode (original behavior)
+  if (!collapsible) {
+    return (
+      <TranscriptContent
+        entries={entries}
+        maxHeight={maxHeight}
+        className={className}
+      />
+    );
+  }
+
+  // Collapsible mode
+  return (
+    <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+      <CollapsibleTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-between px-2 py-1.5 h-auto hover:bg-muted/50"
+        >
+          <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+            <FileText className="h-3.5 w-3.5" />
+            Transcript ({entries.length} messages)
+          </span>
+          {isExpanded ? (
+            <ChevronUp className="h-4 w-4 text-muted-foreground" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          )}
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pt-2">
+        <TranscriptContent
+          entries={entries}
+          maxHeight={maxHeight}
+          className={className}
+        />
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
