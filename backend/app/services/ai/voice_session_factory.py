@@ -1,0 +1,334 @@
+"""Voice session factory for provider selection.
+
+This module extracts voice session creation logic from voice_bridge.py
+into a factory pattern that cleanly handles provider selection and
+configuration.
+
+Usage:
+    factory = VoiceSessionFactory(settings)
+    session, error = factory.create_session(
+        provider="grok",
+        agent=agent,
+        timezone="America/New_York",
+    )
+"""
+
+from typing import Any
+
+import structlog
+
+from app.core.config import Settings
+from app.models.agent import Agent
+from app.services.ai.elevenlabs_voice_agent import ElevenLabsVoiceAgentSession
+from app.services.ai.grok_voice_agent import GrokVoiceAgentSession
+from app.services.ai.protocols import VoiceAgentProtocol
+from app.services.ai.voice_agent import VoiceAgentSession
+
+logger = structlog.get_logger()
+
+# Type alias for voice session union
+VoiceSessionType = VoiceAgentSession | GrokVoiceAgentSession | ElevenLabsVoiceAgentSession
+
+
+class VoiceSessionFactory:
+    """Factory for creating voice agent sessions.
+
+    Handles provider selection, API key validation, and session
+    configuration based on agent settings.
+
+    Attributes:
+        settings: Application settings with API keys
+        logger: Structured logger
+    """
+
+    def __init__(self, settings: Settings) -> None:
+        """Initialize voice session factory.
+
+        Args:
+            settings: Application settings with API keys
+        """
+        self.settings = settings
+        self.logger = logger.bind(service="voice_session_factory")
+
+    def create_session(
+        self,
+        provider: str,
+        agent: Agent | None = None,
+        timezone: str = "America/New_York",
+    ) -> tuple[VoiceSessionType | None, str | None]:
+        """Create appropriate voice session based on provider.
+
+        Args:
+            provider: Provider name (openai, grok, elevenlabs)
+            agent: Agent model for configuration
+            timezone: Timezone for date context
+
+        Returns:
+            Tuple of (voice_session, error_message)
+            If successful, error_message is None
+            If failed, voice_session is None
+        """
+        provider_lower = provider.lower()
+
+        if provider_lower == "elevenlabs":
+            return self._create_elevenlabs_session(agent, timezone)
+
+        if provider_lower == "grok":
+            return self._create_grok_session(agent, timezone)
+
+        # Default to OpenAI
+        return self._create_openai_session(agent)
+
+    def _create_openai_session(
+        self,
+        agent: Agent | None,
+    ) -> tuple[VoiceSessionType | None, str | None]:
+        """Create OpenAI Realtime API session.
+
+        Args:
+            agent: Agent model for configuration
+
+        Returns:
+            Tuple of (session, error)
+        """
+        if not self.settings.openai_api_key:
+            return None, "OpenAI API key not configured"
+
+        return VoiceAgentSession(self.settings.openai_api_key, agent), None
+
+    def _create_grok_session(
+        self,
+        agent: Agent | None,
+        timezone: str,
+    ) -> tuple[VoiceSessionType | None, str | None]:
+        """Create Grok (xAI) Realtime API session.
+
+        Args:
+            agent: Agent model for configuration
+            timezone: Timezone for date context
+
+        Returns:
+            Tuple of (session, error)
+        """
+        if not self.settings.xai_api_key:
+            return None, "xAI API key not configured"
+
+        # Determine if tools should be enabled
+        enable_tools = self._should_enable_tools(agent)
+
+        self.logger.info(
+            "grok_voice_session_creating",
+            agent_name=agent.name if agent else None,
+            agent_id=str(agent.id) if agent else None,
+            calcom_event_type_id=agent.calcom_event_type_id if agent else None,
+            enable_tools=enable_tools,
+            agent_enabled_tools=agent.enabled_tools if agent else None,
+        )
+
+        if not enable_tools:
+            self.logger.warning(
+                "grok_tools_disabled",
+                reason="Missing requirements for tool enablement",
+            )
+
+        return GrokVoiceAgentSession(
+            self.settings.xai_api_key,
+            agent,
+            enable_tools=enable_tools,
+            timezone=timezone,
+        ), None
+
+    def _create_elevenlabs_session(
+        self,
+        agent: Agent | None,
+        timezone: str,
+    ) -> tuple[VoiceSessionType | None, str | None]:
+        """Create ElevenLabs hybrid session (Grok STT+LLM + ElevenLabs TTS).
+
+        Args:
+            agent: Agent model for configuration
+            timezone: Timezone for date context
+
+        Returns:
+            Tuple of (session, error)
+        """
+        if not self.settings.elevenlabs_api_key:
+            return None, "ElevenLabs API key not configured"
+
+        if not self.settings.xai_api_key:
+            return None, "xAI API key required for ElevenLabs mode (used for STT+LLM)"
+
+        # Enable tools if agent has Cal.com configured
+        enable_tools = self._should_enable_tools(agent)
+
+        return ElevenLabsVoiceAgentSession(
+            xai_api_key=self.settings.xai_api_key,
+            elevenlabs_api_key=self.settings.elevenlabs_api_key,
+            agent=agent,
+            enable_tools=enable_tools,
+            timezone=timezone,
+        ), None
+
+    def _should_enable_tools(self, agent: Agent | None) -> bool:
+        """Determine if tools should be enabled for an agent.
+
+        Tools require:
+        - Agent with calcom_event_type_id configured
+        - Cal.com API key in settings
+
+        Args:
+            agent: Agent to check
+
+        Returns:
+            True if tools should be enabled
+        """
+        if not agent:
+            return False
+
+        if not agent.calcom_event_type_id:
+            return False
+
+        return bool(self.settings.calcom_api_key)
+
+    def get_provider_for_agent(self, agent: Agent | None) -> str:
+        """Get the voice provider for an agent.
+
+        Args:
+            agent: Agent to check
+
+        Returns:
+            Provider name (openai, grok, elevenlabs)
+        """
+        if agent and agent.voice_provider:
+            return agent.voice_provider.lower()
+        return "openai"
+
+    def is_provider_available(self, provider: str) -> bool:
+        """Check if a provider's API key is configured.
+
+        Args:
+            provider: Provider name to check
+
+        Returns:
+            True if provider is available
+        """
+        provider_lower = provider.lower()
+
+        if provider_lower == "openai":
+            return bool(self.settings.openai_api_key)
+
+        if provider_lower == "grok":
+            return bool(self.settings.xai_api_key)
+
+        if provider_lower == "elevenlabs":
+            return bool(self.settings.elevenlabs_api_key) and bool(
+                self.settings.xai_api_key
+            )
+
+        return False
+
+
+def create_voice_session(
+    voice_provider: str,
+    agent: Any,
+    timezone: str = "America/New_York",
+) -> tuple[VoiceSessionType | None, str | None]:
+    """Create appropriate voice session based on provider.
+
+    Convenience function that uses global settings.
+    For more control, use VoiceSessionFactory directly.
+
+    Args:
+        voice_provider: Provider name (openai, grok, elevenlabs)
+        agent: Agent model for configuration
+        timezone: Timezone for date context
+
+    Returns:
+        Tuple of (voice_session, error_message)
+    """
+    from app.core.config import settings
+
+    factory = VoiceSessionFactory(settings)
+    return factory.create_session(voice_provider, agent, timezone)
+
+
+async def setup_voice_session(
+    voice_session: VoiceAgentProtocol,
+    agent: Any,
+    contact_info: dict[str, Any] | None,
+    offer_info: dict[str, Any] | None,
+    timezone: str,
+    log: Any,
+    call_control_id: str | None = None,
+    is_outbound: bool = False,
+) -> None:
+    """Configure voice session with agent settings and context.
+
+    Note: The greeting is NOT triggered here. It's triggered when the
+    Telnyx stream starts to ensure audio is ready before AI speaks.
+
+    Args:
+        voice_session: Voice provider session
+        agent: Agent model for configuration
+        contact_info: Contact information dict
+        offer_info: Offer information dict
+        timezone: Timezone for bookings
+        log: Logger instance
+        call_control_id: Telnyx call control ID
+        is_outbound: True if this is an outbound call
+    """
+    from app.services.ai.protocols import supports_tools
+    from app.services.ai.tool_executor import create_tool_callback
+
+    # Set up tool callback if session supports tools
+    if supports_tools(voice_session):
+        log.info(
+            "setting_up_tool_callback",
+            session_type=type(voice_session).__name__,
+            agent_name=agent.name if agent else None,
+            calcom_event_type_id=agent.calcom_event_type_id if agent else None,
+        )
+
+        callback = create_tool_callback(
+            agent=agent,
+            contact_info=contact_info,
+            timezone=timezone,
+            call_control_id=call_control_id,
+            log=log,
+        )
+
+        voice_session.set_tool_callback(callback)  # type: ignore[attr-defined]
+        log.info("tool_callback_configured", session_type=type(voice_session).__name__)
+    else:
+        log.info(
+            "tool_callback_not_configured",
+            session_type=type(voice_session).__name__,
+            reason="Session type does not support tools",
+        )
+
+    if agent:
+        await voice_session.configure_session(
+            voice=agent.voice_id,
+            system_prompt=agent.system_prompt,
+            temperature=agent.temperature,
+            turn_detection_mode=agent.turn_detection_mode,
+            turn_detection_threshold=agent.turn_detection_threshold,
+            silence_duration_ms=agent.silence_duration_ms,
+        )
+        log.info("session_configured_with_agent_settings", agent_name=agent.name)
+
+    if contact_info or offer_info:
+        await voice_session.inject_context(
+            contact_info=contact_info,
+            offer_info=offer_info,
+            is_outbound=is_outbound,
+        )
+        log.info(
+            "context_injected",
+            has_contact=bool(contact_info),
+            has_offer=bool(offer_info),
+            is_outbound=is_outbound,
+        )
+
+    if agent and agent.initial_greeting:
+        log.info("initial_greeting_prepared", greeting_length=len(agent.initial_greeting))

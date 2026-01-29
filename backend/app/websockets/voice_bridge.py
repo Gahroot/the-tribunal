@@ -7,718 +7,60 @@ and AI voice providers (OpenAI/Grok). Key considerations:
 - OpenAI/Grok Realtime API uses PCM16 at 24kHz
 - Audio must be converted and resampled in both directions (3x ratio)
 - Supports tool calling for Cal.com booking integration
+
+Architecture Note:
+    Audio conversion, tool execution, call context, and session factory
+    logic has been extracted to dedicated modules in app/services/audio/
+    and app/services/ai/ for better testability and maintainability.
 """
 
 import asyncio
-import audioop
 import base64
 import contextlib
 import time
-from datetime import datetime
 from typing import Any
-from zoneinfo import ZoneInfo
 
 import structlog
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
 
 from app.core.config import settings
-from app.db.session import AsyncSessionLocal
+from app.services.ai.call_context import lookup_call_context, save_call_transcript
 from app.services.ai.elevenlabs_voice_agent import ElevenLabsVoiceAgentSession
 from app.services.ai.grok_voice_agent import GrokVoiceAgentSession
+from app.services.ai.tool_executor import create_tool_callback
 from app.services.ai.voice_agent import VoiceAgentSession
-from app.services.calendar.calcom import CalComService
+from app.services.ai.voice_session_factory import create_voice_session
+from app.services.audio import (
+    TELNYX_MIN_CHUNK_BYTES,
+    convert_openai_to_telnyx,
+    convert_telnyx_to_openai,
+)
 
 router = APIRouter()
 logger = structlog.get_logger()
 
-# Audio format constants
-# Telnyx uses μ-law (G.711) at 8kHz, OpenAI/Grok uses PCM16 at 24kHz
-TELNYX_SAMPLE_RATE = 8000  # 8kHz for PSTN/Telnyx (μ-law/G.711)
-OPENAI_SAMPLE_RATE = 24000  # 24kHz for OpenAI/Grok Realtime API
 
-# Telnyx requires audio chunks to be 20ms-30s in duration
-# At 8kHz with 1 byte per sample (μ-law), 20ms = 160 bytes
-TELNYX_MIN_CHUNK_BYTES = 160  # 20ms at 8kHz μ-law
-
-
-def mulaw_to_pcm(data: bytes) -> bytes:
-    """Convert μ-law audio to PCM16 using Python's audioop.
-
-    Args:
-        data: μ-law encoded audio bytes (8kHz)
-
-    Returns:
-        PCM16 audio bytes (little-endian, 8kHz)
-    """
-    # audioop.ulaw2lin converts μ-law to linear PCM
-    # 2 = sample width in bytes (16-bit)
-    return audioop.ulaw2lin(data, 2)
-
-
-def pcm_to_mulaw(data: bytes) -> bytes:
-    """Convert PCM16 audio to μ-law using Python's audioop.
-
-    Args:
-        data: PCM16 audio bytes (little-endian)
-
-    Returns:
-        μ-law encoded audio bytes
-    """
-    # audioop.lin2ulaw converts linear PCM to μ-law
-    # 2 = sample width in bytes (16-bit)
-    return audioop.lin2ulaw(data, 2)
-
-
-def upsample_8k_to_24k(data: bytes) -> bytes:
-    """Upsample PCM16 audio from 8kHz to 24kHz using audioop.ratecv.
-
-    Args:
-        data: PCM16 audio bytes at 8kHz
-
-    Returns:
-        PCM16 audio bytes at 24kHz (3x samples)
-    """
-    if len(data) < 2:
-        return data
-
-    # audioop.ratecv(fragment, width, nchannels, inrate, outrate, state)
-    # width=2 for 16-bit, nchannels=1 for mono
-    # Returns (newfragment, newstate)
-    result, _ = audioop.ratecv(data, 2, 1, TELNYX_SAMPLE_RATE, OPENAI_SAMPLE_RATE, None)
-    return result
-
-
-def downsample_24k_to_8k(data: bytes) -> bytes:
-    """Downsample PCM16 audio from 24kHz to 8kHz using audioop.ratecv.
-
-    Args:
-        data: PCM16 audio bytes at 24kHz
-
-    Returns:
-        PCM16 audio bytes at 8kHz (1/3x samples)
-    """
-    if len(data) < 2:
-        return data
-
-    # audioop.ratecv(fragment, width, nchannels, inrate, outrate, state)
-    result, _ = audioop.ratecv(data, 2, 1, OPENAI_SAMPLE_RATE, TELNYX_SAMPLE_RATE, None)
-    return result
-
-
-def convert_telnyx_to_openai(mulaw_8k: bytes, log: Any) -> bytes:
-    """Convert Telnyx μ-law 8kHz audio to OpenAI/Grok PCM16 24kHz.
-
-    Pipeline: μ-law 8kHz → PCM16 8kHz → PCM16 24kHz
-
-    Args:
-        mulaw_8k: μ-law encoded audio at 8kHz from Telnyx
-        log: Logger instance
-
-    Returns:
-        PCM16 audio at 24kHz for OpenAI/Grok Realtime API
-    """
-    # Step 1: μ-law to PCM16 (still at 8kHz)
-    pcm_8k = mulaw_to_pcm(mulaw_8k)
-
-    # Step 2: Upsample 8kHz to 24kHz (3x)
-    pcm_24k = upsample_8k_to_24k(pcm_8k)
-
-    return pcm_24k
-
-
-def convert_openai_to_telnyx(pcm_24k: bytes, log: Any) -> bytes:
-    """Convert OpenAI/Grok PCM16 24kHz audio to Telnyx μ-law 8kHz.
-
-    Pipeline: PCM16 24kHz → PCM16 8kHz → μ-law 8kHz
-
-    Args:
-        pcm_24k: PCM16 audio at 24kHz from OpenAI/Grok Realtime API
-        log: Logger instance
-
-    Returns:
-        μ-law encoded audio at 8kHz for Telnyx
-    """
-    # Step 1: Downsample 24kHz to 8kHz (3x)
-    pcm_8k = downsample_24k_to_8k(pcm_24k)
-
-    # Step 2: PCM16 to μ-law
-    mulaw_8k = pcm_to_mulaw(pcm_8k)
-
-    return mulaw_8k
-
-
-async def _lookup_call_context(
+async def _lookup_call_context_wrapper(
     call_id: str,
     log: Any,
 ) -> tuple[Any, dict[str, Any] | None, dict[str, Any] | None, str]:
     """Look up agent, contact, and offer context for a call.
 
-    Args:
-        call_id: Telnyx call control ID (provider_message_id)
-        log: Logger instance
-
-    Returns:
-        Tuple of (agent, contact_info dict, offer_info dict, timezone)
+    Wrapper around call_context.lookup_call_context to maintain backward
+    compatibility with existing code.
     """
-    from sqlalchemy import select
-    from sqlalchemy.orm import selectinload
-
-    from app.models.agent import Agent
-    from app.models.campaign import CampaignContact
-    from app.models.contact import Contact
-    from app.models.conversation import Message
-    from app.models.offer import Offer
-    from app.models.workspace import Workspace
-
-    agent = None
-    contact_info = None
-    offer_info = None
-    timezone = "America/New_York"  # Default fallback
-
-    async with AsyncSessionLocal() as db:
-        # Look up the message record for this call
-        msg_result = await db.execute(
-            select(Message)
-            .options(selectinload(Message.conversation))
-            .where(Message.provider_message_id == call_id)
-        )
-        message = msg_result.scalar_one_or_none()
-
-        if not message or not message.conversation:
-            log.warning("message_not_found_for_call", call_id=call_id)
-            return agent, contact_info, offer_info, timezone
-
-        conversation = message.conversation
-
-        # Get workspace timezone
-        workspace_result = await db.execute(
-            select(Workspace).where(Workspace.id == conversation.workspace_id)
-        )
-        workspace = workspace_result.scalar_one_or_none()
-        if workspace and workspace.settings:
-            timezone = workspace.settings.get("timezone", "America/New_York")
-
-        # Look up the assigned agent
-        # Priority: conversation.assigned_agent_id > message.agent_id
-        agent_id = conversation.assigned_agent_id or message.agent_id
-        if agent_id:
-            agent_result = await db.execute(
-                select(Agent).where(Agent.id == agent_id)
-            )
-            agent = agent_result.scalar_one_or_none()
-            if agent:
-                log.info(
-                    "found_agent_for_call",
-                    agent_id=str(agent.id),
-                    agent_name=agent.name,
-                    source="conversation" if conversation.assigned_agent_id else "message",
-                )
-
-        # Look up contact info
-        if conversation.contact_id:
-            contact_result = await db.execute(
-                select(Contact).where(Contact.id == conversation.contact_id)
-            )
-            contact = contact_result.scalar_one_or_none()
-            if contact:
-                contact_info = {
-                    "name": f"{contact.first_name} {contact.last_name or ''}".strip(),
-                    "phone": contact.phone_number,
-                    "email": contact.email,
-                    "company": contact.company_name,
-                    "status": contact.status,
-                }
-                log.info("found_contact_for_call", contact_id=contact.id)
-
-        # Look up offer info from campaign if applicable
-        campaign_contact_result = await db.execute(
-            select(CampaignContact)
-            .options(selectinload(CampaignContact.campaign))
-            .where(CampaignContact.conversation_id == conversation.id)
-        )
-        campaign_contact = campaign_contact_result.scalar_one_or_none()
-
-        if campaign_contact and campaign_contact.campaign:
-            campaign = campaign_contact.campaign
-            if campaign.offer_id:
-                offer_result = await db.execute(
-                    select(Offer).where(Offer.id == campaign.offer_id)
-                )
-                offer = offer_result.scalar_one_or_none()
-                if offer:
-                    offer_info = {
-                        "name": offer.name,
-                        "description": offer.description,
-                        "discount_type": offer.discount_type,
-                        "discount_value": float(offer.discount_value),
-                        "terms": offer.terms,
-                    }
-                    log.info(
-                        "found_offer_for_call",
-                        offer_id=str(offer.id),
-                        offer_name=offer.name,
-                    )
-
-    return agent, contact_info, offer_info, timezone
-
-
-async def _execute_voice_tool(
-    call_id: str,
-    function_name: str,
-    arguments: dict[str, Any],
-    agent: Any,
-    contact_info: dict[str, Any] | None,
-    timezone: str,
-    log: Any,
-    call_control_id: str | None = None,
-) -> dict[str, Any]:
-    """Execute a tool call from voice agent.
-
-    Args:
-        call_id: Function call ID from Grok
-        function_name: Name of function to execute
-        arguments: Function arguments
-        agent: Agent model with Cal.com config
-        contact_info: Contact information
-        timezone: Timezone for bookings (from workspace settings)
-        log: Logger instance
-        call_control_id: Telnyx call control ID for persisting booking outcome
-
-    Returns:
-        Tool execution result
-    """
-    log.info(
-        "executing_voice_tool",
-        call_id=call_id,
-        function_name=function_name,
-        arguments=arguments,
-    )
-
-    if function_name == "check_availability":
-        return await _execute_check_availability(
-            agent=agent,
-            start_date_str=arguments.get("start_date", ""),
-            end_date_str=arguments.get("end_date"),
-            timezone=timezone,
-            log=log,
-        )
-
-    elif function_name == "book_appointment":
-        result = await _execute_book_appointment(
-            agent=agent,
-            contact_info=contact_info,
-            date_str=arguments.get("date", ""),
-            time_str=arguments.get("time", ""),
-            email=arguments.get("email"),
-            duration_minutes=arguments.get("duration_minutes", 30),
-            notes=arguments.get("notes"),
-            timezone=timezone,
-            log=log,
-        )
-
-        # Persist booking outcome to the message record
-        if call_control_id:
-            outcome = "success" if result.get("success") else "failed"
-            await _persist_booking_outcome(call_control_id, outcome, log)
-
-        return result
-
-    elif function_name == "send_dtmf":
-        return await _execute_send_dtmf(
-            call_control_id=call_control_id,
-            digits=arguments.get("digits", ""),
-            log=log,
-        )
-
-    else:
-        log.warning("unknown_voice_tool", function_name=function_name)
-        return {"success": False, "error": f"Unknown function: {function_name}"}
-
-
-async def _execute_check_availability(
-    agent: Any,
-    start_date_str: str,
-    end_date_str: str | None,
-    timezone: str,
-    log: Any,
-) -> dict[str, Any]:
-    """Execute check_availability tool.
-
-    Args:
-        agent: Agent with Cal.com event type ID
-        start_date_str: Start date in YYYY-MM-DD format
-        end_date_str: Optional end date
-        timezone: Timezone for availability
-        log: Logger instance
-
-    Returns:
-        Available slots or error
-    """
-    if not agent or not agent.calcom_event_type_id:
-        return {"success": False, "error": "Cal.com not configured for this agent"}
-
-    if not settings.calcom_api_key:
-        return {"success": False, "error": "Cal.com API key not configured"}
-
-    try:
-        # Parse dates
-        try:
-            tz = ZoneInfo(timezone)
-        except Exception:
-            tz = ZoneInfo("America/New_York")
-
-        start_date = datetime.strptime(start_date_str, "%Y-%m-%d").replace(tzinfo=tz)
-        if end_date_str:
-            end_date = datetime.strptime(end_date_str, "%Y-%m-%d").replace(tzinfo=tz)
-        else:
-            end_date = start_date
-
-        # Get availability from Cal.com
-        calcom_service = CalComService(settings.calcom_api_key)
-        try:
-            slots = await calcom_service.get_availability(
-                event_type_id=agent.calcom_event_type_id,
-                start_date=start_date,
-                end_date=end_date,
-                timezone=timezone,
-            )
-
-            log.info("availability_fetched", slot_count=len(slots))
-
-            # Format slots for voice response
-            if not slots:
-                return {
-                    "success": True,
-                    "available": False,
-                    "message": f"No available slots on {start_date_str}",
-                }
-
-            # Format slots nicely for voice
-            slot_descriptions = []
-            for slot in slots[:5]:  # Limit to 5 for voice
-                slot_time = slot.get("time", "")
-                slot_descriptions.append(slot_time)
-
-            return {
-                "success": True,
-                "available": True,
-                "slots": slots[:10],
-                "message": f"Available times: {', '.join(slot_descriptions)}",
-            }
-
-        finally:
-            await calcom_service.close()
-
-    except Exception as e:
-        log.exception("check_availability_error", error=str(e))
-        return {"success": False, "error": f"Failed to check availability: {str(e)}"}
-
-
-async def _execute_book_appointment(
-    agent: Any,
-    contact_info: dict[str, Any] | None,
-    date_str: str,
-    time_str: str,
-    email: str | None,
-    duration_minutes: int,
-    notes: str | None,
-    timezone: str,
-    log: Any,
-) -> dict[str, Any]:
-    """Execute book_appointment tool.
-
-    Args:
-        agent: Agent with Cal.com event type ID
-        contact_info: Contact information (name, phone)
-        date_str: Date in YYYY-MM-DD format
-        time_str: Time in HH:MM format
-        email: Customer email address
-        duration_minutes: Appointment duration
-        notes: Optional notes
-        timezone: Timezone for booking
-        log: Logger instance
-
-    Returns:
-        Booking confirmation or error
-    """
-    if not agent or not agent.calcom_event_type_id:
-        return {"success": False, "error": "Cal.com not configured for this agent"}
-
-    if not settings.calcom_api_key:
-        return {"success": False, "error": "Cal.com API key not configured"}
-
-    if not email:
-        return {
-            "success": False,
-            "error": "Email address is required for booking",
-            "message": "Please ask the customer for their email address",
-        }
-
-    # Get contact name
-    contact_name = "Customer"
-    contact_phone = None
-    if contact_info:
-        contact_name = contact_info.get("name", "Customer")
-        contact_phone = contact_info.get("phone")
-
-    try:
-        # Parse date and time
-        try:
-            tz = ZoneInfo(timezone)
-        except Exception:
-            tz = ZoneInfo("America/New_York")
-
-        datetime_str = f"{date_str} {time_str}"
-        start_time = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M").replace(tzinfo=tz)
-
-        # Convert to UTC for Cal.com
-        start_utc = start_time.astimezone(ZoneInfo("UTC"))
-
-        # Create booking via Cal.com
-        calcom_service = CalComService(settings.calcom_api_key)
-        try:
-            booking = await calcom_service.create_booking(
-                event_type_id=agent.calcom_event_type_id,
-                contact_email=email,
-                contact_name=contact_name,
-                start_time=start_utc,
-                duration_minutes=duration_minutes,
-                metadata={"notes": notes} if notes else None,
-                timezone=timezone,
-                phone_number=contact_phone,
-            )
-
-            # Cal.com API returns response directly with uid at top level
-            booking_uid = booking.get("uid")
-            booking_id = booking.get("id")
-
-            log.info(
-                "calcom_booking_response_debug",
-                response_keys=list(booking.keys()),
-                has_uid=booking_uid is not None,
-                has_id=booking_id is not None,
-            )
-
-            log.info(
-                "booking_created",
-                booking_uid=booking_uid,
-                booking_id=booking_id,
-                email=email,
-            )
-
-            return {
-                "success": True,
-                "booking_id": booking_uid,
-                "booking_uid": booking_uid,
-                "calcom_id": booking_id,
-                "message": (
-                    f"Appointment booked for {contact_name} on {date_str} at {time_str}. "
-                    f"Confirmation email sent to {email}."
-                ),
-            }
-
-        finally:
-            await calcom_service.close()
-
-    except Exception as e:
-        log.exception("book_appointment_error", error=str(e))
-        return {"success": False, "error": f"Failed to book appointment: {str(e)}"}
-
-
-async def _execute_send_dtmf(
-    call_control_id: str | None,
-    digits: str,
-    log: Any,
-) -> dict[str, Any]:
-    """Execute send_dtmf tool for IVR navigation.
-
-    Args:
-        call_control_id: Telnyx call control ID
-        digits: DTMF digits to send (0-9, *, #, A-D, w/W for pauses)
-        log: Logger instance
-
-    Returns:
-        Success/failure result
-    """
-    from app.services.telephony.telnyx_voice import TelnyxVoiceService
-
-    # Validate inputs
-    error_msg: str | None = None
-    if not call_control_id:
-        log.error("send_dtmf_no_call_control_id")
-        error_msg = "No active call to send DTMF"
-    elif not digits:
-        error_msg = "No digits provided"
-    elif not settings.telnyx_api_key:
-        error_msg = "Telnyx API key not configured"
-    else:
-        # Validate digits - only allow valid DTMF characters
-        valid_chars = set("0123456789*#ABCDabcdwW")
-        invalid = [c for c in digits if c not in valid_chars]
-        if invalid:
-            error_msg = f"Invalid DTMF characters: {invalid}. Valid: 0-9, *, #, A-D, w, W"
-
-    if error_msg:
-        return {"success": False, "error": error_msg}
-
-    # At this point we know call_control_id and telnyx_api_key are not None
-    assert call_control_id is not None
-    assert settings.telnyx_api_key is not None
-
-    try:
-        voice_service = TelnyxVoiceService(settings.telnyx_api_key)
-        try:
-            success = await voice_service.send_dtmf(
-                call_control_id=call_control_id,
-                digits=digits,
-            )
-        finally:
-            await voice_service.close()
-
-        if success:
-            log.info("dtmf_sent_via_tool", call_control_id=call_control_id, digits=digits)
-            return {"success": True, "message": f"Sent DTMF tones: {digits}", "digits": digits}
-        return {"success": False, "error": "Failed to send DTMF tones"}
-
-    except Exception as e:
-        log.exception("send_dtmf_error", error=str(e), digits=digits)
-        return {"success": False, "error": f"Failed to send DTMF: {str(e)}"}
+    context = await lookup_call_context(call_id, log)
+    return context.agent, context.contact_info, context.offer_info, context.timezone
 
 
 VoiceSessionType = VoiceAgentSession | GrokVoiceAgentSession | ElevenLabsVoiceAgentSession
 
 
-async def _save_call_transcript(call_id: str, transcript_json: str, log: Any) -> None:
-    """Save transcript to the message record for this call.
-
-    Args:
-        call_id: Telnyx call control ID (provider_message_id)
-        transcript_json: JSON string of transcript entries
-        log: Logger instance
-    """
-    from sqlalchemy import update
-
-    from app.models.conversation import Message
-
-    async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            update(Message)
-            .where(Message.provider_message_id == call_id)
-            .values(transcript=transcript_json)
-        )
-        await db.commit()
-        log.info(
-            "transcript_saved",
-            call_id=call_id,
-            rows_updated=result.rowcount,  # type: ignore[attr-defined]
-            transcript_length=len(transcript_json),
-        )
-
-
-async def _persist_booking_outcome(call_control_id: str, outcome: str, log: Any) -> None:
-    """Persist booking outcome to the message record.
-
-    Args:
-        call_control_id: Telnyx call control ID (provider_message_id)
-        outcome: Booking outcome (e.g., "success", "failed")
-        log: Logger instance
-    """
-    from sqlalchemy import update
-
-    from app.models.conversation import Message as MessageModel
-
-    async with AsyncSessionLocal() as db:
-        await db.execute(
-            update(MessageModel)
-            .where(MessageModel.provider_message_id == call_control_id)
-            .values(booking_outcome=outcome)
-        )
-        await db.commit()
-        log.info("booking_outcome_persisted", call_control_id=call_control_id, outcome=outcome)
-
-
-def _create_voice_session(  # noqa: PLR0911
-    voice_provider: str,
-    agent: Any,
-    timezone: str = "America/New_York",
-) -> tuple[VoiceSessionType | None, str | None]:
-    """Create appropriate voice session based on provider.
-
-    Args:
-        voice_provider: Provider name (openai, grok, elevenlabs)
-        agent: Agent model for configuration
-        timezone: Timezone for date context (from workspace settings)
-
-    Returns:
-        Tuple of (voice_session, error_message)
-    """
-    if voice_provider == "elevenlabs":
-        # ElevenLabs hybrid mode: Grok STT+LLM + ElevenLabs TTS
-        if not settings.elevenlabs_api_key:
-            return None, "ElevenLabs API key not configured"
-        if not settings.xai_api_key:
-            return None, "xAI API key required for ElevenLabs mode (used for STT+LLM)"
-
-        # Enable tools if agent has Cal.com configured
-        enable_tools = bool(
-            agent
-            and agent.calcom_event_type_id
-            and settings.calcom_api_key
-        )
-
-        return ElevenLabsVoiceAgentSession(
-            xai_api_key=settings.xai_api_key,
-            elevenlabs_api_key=settings.elevenlabs_api_key,
-            agent=agent,
-            enable_tools=enable_tools,
-            timezone=timezone,
-        ), None
-
-    if voice_provider == "grok":
-        if not settings.xai_api_key:
-            return None, "xAI API key not configured"
-
-        # Enable tools if agent has Cal.com configured
-        has_agent = agent is not None
-        has_calcom_event = bool(agent and agent.calcom_event_type_id)
-        has_calcom_key = bool(settings.calcom_api_key)
-        enable_tools = has_agent and has_calcom_event and has_calcom_key
-
-        # Detailed logging for tool enablement debugging
-        logger.info(
-            "grok_voice_session_creating",
-            voice_provider=voice_provider,
-            agent_name=agent.name if agent else None,
-            agent_id=str(agent.id) if agent else None,
-            has_agent=has_agent,
-            calcom_event_type_id=agent.calcom_event_type_id if agent else None,
-            has_calcom_event=has_calcom_event,
-            has_calcom_key=has_calcom_key,
-            calcom_key_length=len(settings.calcom_api_key) if settings.calcom_api_key else 0,
-            enable_tools=enable_tools,
-            agent_enabled_tools=agent.enabled_tools if agent else None,
-        )
-
-        if not enable_tools:
-            logger.warning(
-                "grok_tools_disabled",
-                reason="Missing requirements for tool enablement",
-                has_agent=has_agent,
-                has_calcom_event=has_calcom_event,
-                has_calcom_key=has_calcom_key,
-            )
-
-        return GrokVoiceAgentSession(
-            settings.xai_api_key,
-            agent,
-            enable_tools=enable_tools,
-            timezone=timezone,
-        ), None
-
-    # Default to OpenAI
-    if not settings.openai_api_key:
-        return None, "OpenAI API key not configured"
-    return VoiceAgentSession(settings.openai_api_key, agent), None
+async def _save_call_transcript_wrapper(
+    call_id: str, transcript_json: str, log: Any
+) -> None:
+    """Save transcript - wrapper around call_context.save_call_transcript."""
+    await save_call_transcript(call_id, transcript_json, log)
 
 
 async def _setup_voice_session(
@@ -736,16 +78,6 @@ async def _setup_voice_session(
     Note: The greeting is NOT sent here. It's triggered when the Telnyx
     stream starts (in _receive_from_telnyx_and_send_to_provider) to ensure
     audio is ready before the AI starts speaking.
-
-    Args:
-        voice_session: Voice provider session
-        agent: Agent model for configuration
-        contact_info: Contact information dict
-        offer_info: Offer information dict
-        timezone: Timezone for bookings (from workspace settings)
-        log: Logger instance
-        call_control_id: Telnyx call control ID for persisting booking outcome
-        is_outbound: True if this is an outbound call, False for inbound
     """
     # Set up tool callback for Grok and ElevenLabs voice sessions (both support tools)
     if isinstance(voice_session, (GrokVoiceAgentSession, ElevenLabsVoiceAgentSession)):
@@ -754,45 +86,19 @@ async def _setup_voice_session(
             session_type=type(voice_session).__name__,
             agent_name=agent.name if agent else None,
             calcom_event_type_id=agent.calcom_event_type_id if agent else None,
+        )
+
+        # Use the extracted tool executor to create callback
+        callback = create_tool_callback(
+            agent=agent,
             contact_info=contact_info,
             timezone=timezone,
+            call_control_id=call_control_id,
+            log=log,
         )
 
-        # Create a closure to capture agent, contact_info, timezone, and call_control_id
-        async def tool_callback(
-            call_id: str,
-            function_name: str,
-            arguments: dict[str, Any],
-        ) -> dict[str, Any]:
-            log.info(
-                "tool_callback_invoked",
-                call_id=call_id,
-                function_name=function_name,
-                arguments=arguments,
-            )
-            result = await _execute_voice_tool(
-                call_id=call_id,
-                function_name=function_name,
-                arguments=arguments,
-                agent=agent,
-                contact_info=contact_info,
-                timezone=timezone,
-                log=log,
-                call_control_id=call_control_id,
-            )
-            log.info(
-                "tool_callback_completed",
-                call_id=call_id,
-                function_name=function_name,
-                result=result,
-            )
-            return result
-
-        voice_session.set_tool_callback(tool_callback)
-        log.info(
-            "tool_callback_configured",
-            session_type=type(voice_session).__name__,
-        )
+        voice_session.set_tool_callback(callback)
+        log.info("tool_callback_configured", session_type=type(voice_session).__name__)
     else:
         log.info(
             "tool_callback_not_configured",
@@ -824,7 +130,6 @@ async def _setup_voice_session(
             is_outbound=is_outbound,
         )
 
-    # Note: Greeting is triggered when Telnyx stream starts, not here
     if agent and agent.initial_greeting:
         log.info("initial_greeting_prepared", greeting_length=len(agent.initial_greeting))
 
@@ -868,7 +173,7 @@ async def voice_stream_bridge(  # noqa: PLR0912, PLR0915
 
     # Get agent and conversation context from database first to determine provider
     log.info("looking_up_call_context", call_id=call_id)
-    agent, contact_info, offer_info, timezone = await _lookup_call_context(call_id, log)
+    agent, contact_info, offer_info, timezone = await _lookup_call_context_wrapper(call_id, log)
 
     greeting_preview = None
     if agent and agent.initial_greeting:
@@ -913,7 +218,7 @@ async def voice_stream_bridge(  # noqa: PLR0912, PLR0915
 
     # Create appropriate voice session based on provider
     log.info("creating_voice_session", provider=voice_provider)
-    voice_session, error = _create_voice_session(voice_provider, agent, timezone)
+    voice_session, error = create_voice_session(voice_provider, agent, timezone)
     if voice_session is None:
         log.error(
             "voice_session_creation_failed",
@@ -1036,7 +341,7 @@ async def voice_stream_bridge(  # noqa: PLR0912, PLR0915
             try:
                 transcript_json = voice_session.get_transcript_json()
                 if transcript_json and call_id:
-                    await _save_call_transcript(call_id, transcript_json, log)
+                    await _save_call_transcript_wrapper(call_id, transcript_json, log)
             except Exception as e:
                 log.exception("failed_to_save_transcript", error=str(e))
 
