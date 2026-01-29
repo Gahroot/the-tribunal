@@ -320,3 +320,105 @@ def validate_grok_voice(voice_id: str) -> str | None:
     if voice_lower in GROK_VOICES:
         return voice_lower.capitalize()
     return None
+
+
+# OpenAI function calling format (for text agents)
+# These use the {"type": "function", "function": {...}} wrapper
+def get_text_booking_tools(timezone: str = "America/New_York") -> list[dict[str, Any]]:
+    """Get booking tools in OpenAI function calling format for text agents.
+
+    Text agents use the OpenAI chat completions API which requires tools
+    in the {"type": "function", "function": {...}} format.
+
+    Args:
+        timezone: Timezone for date context (IANA format)
+
+    Returns:
+        List of tool definitions in OpenAI function calling format
+    """
+    try:
+        tz = ZoneInfo(timezone)
+    except Exception:
+        tz = ZoneInfo("America/New_York")
+
+    now = datetime.now(tz)
+    today_str = now.strftime("%A, %B %d, %Y")
+    today_iso = now.strftime("%Y-%m-%d")
+
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": "book_appointment",
+                "description": (
+                    f"Book an appointment/meeting with the customer on Cal.com. "
+                    f"TODAY IS {today_str} ({today_iso}). "
+                    f"Use this when the customer agrees to schedule a call, meeting, "
+                    f"or appointment. Parse relative dates like 'tomorrow at 2pm'. "
+                    f"IMPORTANT: You MUST collect the customer's email address and include "
+                    f"it in this call. Ask for email in the same message as confirming the booking."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "date": {
+                            "type": "string",
+                            "description": (
+                                f"Appointment date in YYYY-MM-DD format. "
+                                f"TODAY IS {today_iso}."
+                            ),
+                        },
+                        "time": {
+                            "type": "string",
+                            "description": "Appointment time in HH:MM 24-hour format",
+                        },
+                        "email": {
+                            "type": "string",
+                            "description": (
+                                "Customer's email address for booking confirmation. "
+                                "REQUIRED - always ask for and include the email."
+                            ),
+                        },
+                        "duration_minutes": {
+                            "type": "integer",
+                            "description": "Duration in minutes. Default is 30.",
+                            "default": 30,
+                        },
+                        "notes": {
+                            "type": "string",
+                            "description": "Optional notes about the appointment",
+                        },
+                    },
+                    "required": ["date", "time", "email"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "check_availability",
+                "description": (
+                    f"Check available time slots on Cal.com for a date range. "
+                    f"TODAY IS {today_str} ({today_iso}). "
+                    f"Use before booking to confirm slot availability."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "start_date": {
+                            "type": "string",
+                            "description": (
+                                f"Start date in YYYY-MM-DD format. "
+                                f"TODAY IS {today_iso}."
+                            ),
+                        },
+                        "end_date": {
+                            "type": "string",
+                            "description": "End date in YYYY-MM-DD (defaults to start)",
+                        },
+                    },
+                    "required": ["start_date"],
+                },
+            },
+        },
+    ]
