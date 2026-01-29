@@ -584,9 +584,9 @@ DO NOT say things like "I'll check and get back to you" - you can check instantl
                 else "server_vad",
                 # Lower threshold = more sensitive to speech detection
                 "threshold": 0.5,
-                # Moderate padding before speech starts
-                "prefix_padding_ms": 300,
-                # Wait for silence before responding - middle ground for natural conversation
+                # More padding before speech starts (captures audio before VAD triggers)
+                "prefix_padding_ms": 800,
+                # Wait for silence before responding
                 "silence_duration_ms": 700,
             },
         }
@@ -748,7 +748,7 @@ IMPORTANT: You are on a phone call. When the call connects:
                 turn_detection["threshold"] = turn_detection_threshold
             if silence_duration_ms is not None:
                 turn_detection["silence_duration_ms"] = silence_duration_ms
-            turn_detection["prefix_padding_ms"] = 500
+            turn_detection["prefix_padding_ms"] = 800
             session_config["turn_detection"] = turn_detection
 
         if session_config:

@@ -148,13 +148,15 @@ IMPORTANT: You are on a phone call. When the call connects:
                     "type": self.agent.turn_detection_mode
                     if self.agent and self.agent.turn_detection_mode
                     else "server_vad",
-                    # Higher threshold = less sensitive to background noise
-                    "threshold": 0.8,
-                    # More padding before speech starts (prevents cutting off beginning)
-                    "prefix_padding_ms": 500,
-                    # Wait longer after silence before responding (prevents talking over)
-                    "silence_duration_ms": 1000,
+                    # Lower threshold = more sensitive to speech detection
+                    "threshold": 0.5,
+                    # More padding before speech starts (captures audio before VAD triggers)
+                    "prefix_padding_ms": 800,
+                    # Wait for silence before responding
+                    "silence_duration_ms": 700,
                 },
+                # Enable noise reduction to reduce static from caller environment
+                "input_audio_noise_reduction": {"type": "near_field"},
                 "temperature": 0.8,
             },
         }
@@ -219,7 +221,7 @@ IMPORTANT: You are on a phone call. When the call connects:
                 turn_detection["threshold"] = turn_detection_threshold
             if silence_duration_ms is not None:
                 turn_detection["silence_duration_ms"] = silence_duration_ms
-            turn_detection["prefix_padding_ms"] = 500
+            turn_detection["prefix_padding_ms"] = 800
             session_config["turn_detection"] = turn_detection
 
         if session_config:

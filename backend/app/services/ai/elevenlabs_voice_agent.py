@@ -678,7 +678,7 @@ You have tools to check calendar availability and book appointments. Follow thes
                 event_type = event.get("type", "")
 
                 # Intercept audio transcript and send to ElevenLabs
-                if event_type == "response.audio_transcript.delta":
+                if event_type == "response.output_audio_transcript.delta":
                     # Skip transcript if we're in interrupted state (barge-in handling)
                     # This prevents sending transcript from cancelled response to TTS
                     if self._is_interrupted:
@@ -744,6 +744,18 @@ You have tools to check calendar availability and book appointments. Follow thes
 
                 elif event_type == "input_audio_buffer.speech_stopped":
                     self.logger.debug("user_speech_stopped")
+
+                elif event_type == "response.created":
+                    # New response starting - reset interrupted flag
+                    # This is critical for proper barge-in handling:
+                    # 1. User speaks -> speech_started -> _is_interrupted = True
+                    # 2. response.cancel sent
+                    # 3. User stops speaking -> audio committed -> response.created
+                    # 4. If we don't reset here, ALL transcript from this response
+                    #    would be skipped and no audio sent to ElevenLabs!
+                    if self._is_interrupted:
+                        self.logger.info("resetting_interrupted_flag_on_new_response")
+                        self._is_interrupted = False
 
                 elif event_type == "session.created":
                     session = event.get("session", {})
