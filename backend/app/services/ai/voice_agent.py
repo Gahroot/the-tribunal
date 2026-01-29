@@ -9,14 +9,14 @@ from typing import Any
 
 import structlog
 import websockets
-from websockets.asyncio.client import ClientConnection
 
 from app.models.agent import Agent
+from app.services.ai.voice_agent_base import VoiceAgentBase
 
 logger = structlog.get_logger()
 
 
-class VoiceAgentSession:
+class VoiceAgentSession(VoiceAgentBase):
     """OpenAI Realtime API session for voice conversations.
 
     Manages:
@@ -24,8 +24,14 @@ class VoiceAgentSession:
     - Audio streaming and format conversion
     - Session configuration and context injection
     - Conversation state management
+
+    Inherits from VoiceAgentBase for:
+    - Transcript tracking
+    - Interruption handling
+    - Prompt building via VoicePromptBuilder
     """
 
+    SERVICE_NAME = "openai_voice_agent"
     BASE_URL = "wss://api.openai.com/v1/realtime"
     MODEL = "gpt-realtime"
 
@@ -36,23 +42,9 @@ class VoiceAgentSession:
             api_key: OpenAI API key
             agent: Optional Agent model for configuration
         """
+        super().__init__(agent)
         self.api_key = api_key
-        self.agent = agent
-        self.ws: ClientConnection | None = None
-        self.logger = logger.bind(service="voice_agent")
         self._connection_task: asyncio.Task[None] | None = None
-
-        # Transcript tracking
-        self._user_transcript: str = ""
-        self._agent_transcript: str = ""
-        self._transcript_entries: list[dict[str, Any]] = []
-
-        # Interruption handling (barge-in)
-        self._interruption_event: asyncio.Event | None = None
-
-        # Response state tracking for proper interruption handling
-        # When _is_interrupted is True, we skip yielding audio until response.done
-        self._is_interrupted: bool = False
 
     async def connect(self) -> bool:
         """Connect to OpenAI Realtime API.
@@ -106,12 +98,7 @@ class VoiceAgentSession:
 
     async def disconnect(self) -> None:
         """Disconnect from OpenAI Realtime API."""
-        if self.ws:
-            try:
-                await self.ws.close()
-            except Exception as e:
-                self.logger.exception("disconnect_error", error=str(e))
-            self.ws = None
+        await self._disconnect_ws()
 
     async def _configure_session(self) -> None:
         """Configure the Realtime session with agent settings.
@@ -119,31 +106,11 @@ class VoiceAgentSession:
         Uses g711_ulaw at 8kHz - this matches Telnyx's format directly,
         eliminating the need for audio conversion (lower latency, no quality loss).
         """
-        # Get base prompt
-        base_instructions = (
-            self.agent.system_prompt
-            if self.agent
-            else "You are a helpful AI voice assistant."
+        # Build full prompt using the prompt builder
+        instructions = self._prompt_builder.build_full_prompt(
+            include_realism=False,
+            include_booking=False,
         )
-
-        # Add identity prefix if agent has a name
-        if self.agent and self.agent.name:
-            agent_name = self.agent.name
-            identity_prefix = (
-                f"CRITICAL IDENTITY INSTRUCTION: Your name is {agent_name}. "
-                f"You MUST always identify yourself as {agent_name}. "
-                f"This is non-negotiable.\n\n"
-            )
-            base_instructions = identity_prefix + base_instructions
-
-        # Add telephony-specific guidance to prevent hallucination at call start
-        instructions = f"""{base_instructions}
-
-IMPORTANT: You are on a phone call. When the call connects:
-- Wait briefly for the caller to speak first, OR
-- If instructed to greet first, deliver your greeting naturally and wait for response
-- Do NOT generate random content, fun facts, or filler - stay focused on your purpose
-- Speak clearly and conversationally as if on a real phone call"""
 
         config: dict[str, Any] = {
             "type": "session.update",
@@ -211,24 +178,12 @@ IMPORTANT: You are on a phone call. When the call connects:
             session_config["voice"] = voice
 
         if system_prompt:
-            # Add identity prefix if agent has a name
-            if self.agent and self.agent.name:
-                agent_name = self.agent.name
-                identity_prefix = (
-                    f"CRITICAL IDENTITY INSTRUCTION: Your name is {agent_name}. "
-                    f"You MUST always identify yourself as {agent_name}. "
-                    f"This is non-negotiable.\n\n"
-                )
-                system_prompt = identity_prefix + system_prompt
-
-            # Add telephony guidance to custom prompts too
-            enhanced_prompt = f"""{system_prompt}
-
-IMPORTANT: You are on a phone call. When the call connects:
-- Wait briefly for the caller to speak first, OR
-- If instructed to greet first, deliver your greeting naturally and wait for response
-- Do NOT generate random content, fun facts, or filler - stay focused on your purpose
-- Speak clearly and conversationally as if on a real phone call"""
+            # Build enhanced prompt using prompt builder
+            enhanced_prompt = self._prompt_builder.build_full_prompt(
+                base_prompt=system_prompt,
+                include_realism=False,
+                include_booking=False,
+            )
             session_config["instructions"] = enhanced_prompt
 
         if temperature is not None:
@@ -340,18 +295,7 @@ IMPORTANT: You are on a phone call. When the call connects:
                 is_outbound=True,
                 has_call_context=hasattr(self, "_call_context") and bool(self._call_context),
             )
-            # Extract just the first name (before any | or - separator)
-            full_name = self.agent.name if self.agent else "Alex"
-            agent_name = full_name.split("|")[0].split("-")[0].strip().split()[0]
-            # Pattern interrupt: honest, disarming, gives them a choice
-            prompt_text = (
-                f"You just called someone. Open with a pattern interrupt. "
-                f"Say: 'Hey! It's {agent_name}. This is a sales call. "
-                f"Do you wanna hang up... or can I tell you why I'm calling?!' "
-                f"Start friendly and upbeat. Sound a bit disappointed on 'hang up'. "
-                f"Then get excited on 'or can I tell you why I'm calling?!' "
-                f"Wait for their response."
-            )
+            prompt_text = self._prompt_builder.get_outbound_opener_prompt()
         else:
             # For INBOUND calls: Use configured greeting or default
             # Use provided greeting, or pending greeting, or agent's initial greeting
@@ -365,12 +309,7 @@ IMPORTANT: You are on a phone call. When the call connects:
                 msg_len = len(message) if message else 0
                 self.logger.debug("using_agent_initial_greeting", greeting_length=msg_len)
 
-            # Create a user message that instructs the AI to deliver the greeting
-            # This is the proven pattern from working OpenAI Realtime integrations
-            if message:
-                prompt_text = f"Greet the caller by saying: {message}"
-            else:
-                prompt_text = "Greet the caller and introduce yourself briefly."
+            prompt_text = self._prompt_builder.get_inbound_greeting_prompt(message)
 
         try:
             self.logger.info(
@@ -428,22 +367,7 @@ IMPORTANT: You are on a phone call. When the call connects:
         Args:
             audio_data: PCM audio data (16-bit, 16kHz)
         """
-        if not self.ws:
-            self.logger.warning("websocket_not_connected")
-            return
-
-        try:
-            # Encode audio as base64
-            encoded = base64.b64encode(audio_data).decode("utf-8")
-
-            event = {
-                "type": "input_audio_buffer.append",
-                "audio": encoded,
-            }
-
-            await self._send_event(event)
-        except Exception as e:
-            self.logger.exception("send_audio_error", error=str(e))
+        await self._send_audio_base64(audio_data)
 
     async def receive_audio_stream(self) -> AsyncIterator[bytes]:  # noqa: PLR0912, PLR0915
         """Stream audio responses from OpenAI.
@@ -534,22 +458,14 @@ IMPORTANT: You are on a phone call. When the call connects:
                     # Agent's speech transcript (what the AI is saying)
                     transcript = event.get("delta", "")
                     if transcript:
-                        self._agent_transcript += transcript
+                        self._append_agent_transcript_delta(transcript)
                         self.logger.debug("audio_transcript_chunk", text=transcript[:50])
 
                 elif event_type == "conversation.item.input_audio_transcription.completed":
                     # User's speech transcript (what the human said)
                     user_text = event.get("transcript", "")
                     if user_text:
-                        self._user_transcript = user_text
-                        self._transcript_entries.append({
-                            "role": "user",
-                            "text": user_text,
-                        })
-                        self.logger.info(
-                            "user_transcript_completed",
-                            user_said=user_text,
-                        )
+                        self._add_user_transcript(user_text)
 
                 elif event_type == "response.text.delta":
                     # Text response (not audio) - this means audio is NOT being generated
@@ -585,28 +501,8 @@ IMPORTANT: You are on a phone call. When the call connects:
                         for o in output
                     ]
 
-                    # Save agent transcript FIRST before handling cancellation
-                    # This ensures partial transcripts are preserved even if
-                    # interrupted (barge-in) or cancelled
-                    if self._agent_transcript:
-                        self._transcript_entries.append({
-                            "role": "agent",
-                            "text": self._agent_transcript,
-                        })
-                        self.logger.info(
-                            "agent_turn_completed",
-                            agent_said=self._agent_transcript[:200],
-                        )
-                        self._agent_transcript = ""
-
-                    # If this was a cancelled response, clear interrupted flag
-                    # This allows the next response to generate audio
-                    if response_status == "cancelled" or self._is_interrupted:
-                        self._is_interrupted = False
-                        self.logger.info(
-                            "cancelled_response_complete",
-                            status=response_status,
-                        )
+                    # Handle response completion - saves transcript and resets flags
+                    self._handle_response_done(response_status)
 
                     self.logger.info(
                         "response_completed",
@@ -626,18 +522,11 @@ IMPORTANT: You are on a phone call. When the call connects:
                     # Continue listening for next response
 
                 elif event_type == "input_audio_buffer.speech_started":
-                    self.logger.info("user_speech_started_interrupting")
-
-                    # Set interrupted flag BEFORE cancel - blocks audio immediately
-                    # This prevents audio chunks that arrive after cancel from being yielded
-                    self._is_interrupted = True
+                    # Handle barge-in using base class helper
+                    self._handle_speech_started()
 
                     # Cancel response immediately - production pattern from VideoSDK/LiveKit
                     await self.cancel_response()
-
-                    # Signal voice bridge to clear audio buffer
-                    if self._interruption_event:
-                        self._interruption_event.set()
 
                 elif event_type == "input_audio_buffer.speech_stopped":
                     self.logger.debug("user_speech_stopped")
@@ -654,17 +543,8 @@ IMPORTANT: You are on a phone call. When the call connects:
                     )
 
                 elif event_type == "response.created":
-                    # New response starting - reset interrupted flag
-                    # This is critical for outbound calls where the user speaks first:
-                    # 1. User says "hello" -> speech_started -> _is_interrupted = True
-                    # 2. User stops -> OpenAI generates response -> response.created
-                    # 3. Without this reset, all audio would be skipped!
-                    if self._is_interrupted:
-                        self.logger.info(
-                            "resetting_interrupted_flag_on_new_response",
-                            was_interrupted=True,
-                        )
-                        self._is_interrupted = False
+                    # Handle new response - resets interrupted flag using base class
+                    self._handle_response_created()
 
                     response = event.get("response", {})
                     self.logger.info(
@@ -749,7 +629,7 @@ IMPORTANT: You are on a phone call. When the call connects:
                 chunks_received=audio_chunks_received,
             )
 
-        # Log full transcript at end of call
+        # Log stream end stats
         self.logger.info(
             "audio_stream_ended",
             total_chunks=audio_chunks_received,
@@ -758,14 +638,7 @@ IMPORTANT: You are on a phone call. When the call connects:
             transcript_entry_count=len(self._transcript_entries),
         )
 
-        # Log the full conversation transcript
-        if self._transcript_entries:
-            self.logger.info(
-                "full_conversation_transcript",
-                transcript=json.dumps(self._transcript_entries, indent=2),
-            )
-
-    async def inject_context(  # noqa: PLR0912
+    async def inject_context(
         self,
         contact_info: dict[str, Any] | None = None,
         offer_info: dict[str, Any] | None = None,
@@ -794,80 +667,14 @@ IMPORTANT: You are on a phone call. When the call connects:
             "offer": offer_info,
         }
 
-        # Build context section for system prompt
-        context_parts = []
-
-        if is_outbound:
-            context_parts.append(
-                "\n\n# CURRENT CALL CONTEXT - THIS IS AN OUTBOUND CALL YOU ARE MAKING"
-            )
-            context_parts.append(
-                "You initiated this call. You know exactly why you're calling. "
-                "Do NOT ask the customer what they want to talk about."
-            )
-        else:
-            context_parts.append("\n\n# CURRENT CALL CONTEXT")
-
-        if contact_info:
-            if is_outbound:
-                context_parts.append("\n## Customer You Are Calling:")
-            else:
-                context_parts.append("\n## Customer Information:")
-            if contact_info.get("name"):
-                context_parts.append(f"- Name: {contact_info['name']}")
-            if contact_info.get("company"):
-                context_parts.append(f"- Company: {contact_info['company']}")
-
-        if offer_info:
-            if is_outbound:
-                context_parts.append("\n## What You Are Calling About:")
-            else:
-                context_parts.append("\n## Offer Information:")
-            if offer_info.get("name"):
-                context_parts.append(f"- Offer: {offer_info['name']}")
-            if offer_info.get("description"):
-                context_parts.append(f"- Details: {offer_info['description']}")
-            if offer_info.get("terms"):
-                context_parts.append(f"- Terms: {offer_info['terms']}")
-
-        context_section = "\n".join(context_parts)
-
-        # Get current base prompt
-        base_instructions = (
-            self.agent.system_prompt
-            if self.agent
-            else "You are a helpful AI voice assistant."
+        # Build full instructions using prompt builder
+        full_instructions = self._prompt_builder.build_full_prompt(
+            include_realism=False,
+            include_booking=False,
+            contact_info=contact_info,
+            offer_info=offer_info,
+            is_outbound=is_outbound,
         )
-
-        # Add identity prefix
-        if self.agent and self.agent.name:
-            agent_name = self.agent.name
-            identity_prefix = (
-                f"CRITICAL IDENTITY INSTRUCTION: Your name is {agent_name}. "
-                f"You MUST always identify yourself as {agent_name}. "
-                f"This is non-negotiable.\n\n"
-            )
-            base_instructions = identity_prefix + base_instructions
-
-        # Combine: base instructions + call context
-        full_instructions = base_instructions + context_section
-
-        # Add telephony guidance based on call direction
-        if is_outbound:
-            full_instructions += """
-
-IMPORTANT: You are on a phone call that YOU initiated.
-- You called THEM - introduce yourself and explain why you're calling
-- Do NOT ask "what would you like to talk about" - YOU know why you called
-- Be direct and professional about the purpose of your call"""
-        else:
-            full_instructions += """
-
-IMPORTANT: You are on a phone call. When the call connects:
-- Wait briefly for the caller to speak first, OR
-- If instructed to greet first, deliver your greeting naturally and wait for response
-- Do NOT generate random content, fun facts, or filler - stay focused on your purpose
-- Speak clearly and conversationally as if on a real phone call"""
 
         # Send session update with full context
         config: dict[str, Any] = {
@@ -889,14 +696,6 @@ IMPORTANT: You are on a phone call. When the call connects:
             )
         except Exception as e:
             self.logger.exception("inject_context_error", error=str(e))
-
-    def set_interruption_event(self, event: asyncio.Event) -> None:
-        """Set event for signaling audio buffer clear on interruption.
-
-        Args:
-            event: asyncio.Event to set when user interrupts (barge-in)
-        """
-        self._interruption_event = event
 
     async def cancel_response(self) -> None:
         """Cancel the current response generation (barge-in handling).
@@ -960,29 +759,3 @@ IMPORTANT: You are on a phone call. When the call connects:
             self.logger.exception("send_event_error", error=str(e))
             raise
 
-    def is_connected(self) -> bool:
-        """Check if WebSocket is connected.
-
-        Returns:
-            True if connected, False otherwise
-        """
-        if self.ws is None:
-            return False
-        try:
-            # websockets library uses 'open' property to check connection state
-            return bool(getattr(self.ws, "open", False))
-        except Exception:
-            return False
-
-    def get_transcript_json(self) -> str | None:
-        """Get the conversation transcript as JSON string.
-
-        Returns the transcript in a format suitable for storage and display:
-        [{"role": "user", "text": "..."}, {"role": "agent", "text": "..."}]
-
-        Returns:
-            JSON string of transcript entries, or None if no transcript
-        """
-        if not self._transcript_entries:
-            return None
-        return json.dumps(self._transcript_entries)

@@ -6,14 +6,17 @@ logic that is duplicated across all three voice agent implementations:
 - Interruption state management
 - Connection status checking
 - Logging configuration
+- Prompt building via VoicePromptBuilder
 
 By inheriting from this class, voice agents automatically get:
 - Consistent transcript management
 - Standard interruption handling pattern
 - Unified logging setup
+- Shared prompt builder for system instructions
 """
 
 import asyncio
+import base64
 import json
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
@@ -23,6 +26,7 @@ import structlog
 from websockets.asyncio.client import ClientConnection
 
 from app.models.agent import Agent
+from app.services.ai.prompt_builder import VoicePromptBuilder
 from app.services.ai.protocols import (
     InterruptibleProtocol,
     VoiceAgentProtocol,
@@ -52,15 +56,22 @@ class VoiceAgentBase(ABC):
     SERVICE_NAME: str = "voice_agent"
     BASE_URL: str = ""
 
-    def __init__(self, agent: Agent | None = None) -> None:
+    def __init__(
+        self, agent: Agent | None = None, timezone: str = "America/New_York"
+    ) -> None:
         """Initialize voice agent base.
 
         Args:
             agent: Optional Agent model for configuration
+            timezone: Timezone for date context in prompts (IANA format)
         """
         self.agent = agent
         self.ws: ClientConnection | None = None
         self.logger = logger.bind(service=self.SERVICE_NAME)
+
+        # Prompt builder for system instructions
+        self._prompt_builder = VoicePromptBuilder(agent, timezone)
+        self._timezone = timezone
 
         # Transcript tracking
         self._user_transcript: str = ""
@@ -250,6 +261,39 @@ class VoiceAgentBase(ABC):
         except Exception as e:
             self.logger.exception("send_event_error", error=str(e))
             raise
+
+    async def _send_audio_base64(
+        self, audio_data: bytes, event_type: str = "input_audio_buffer.append"
+    ) -> None:
+        """Send base64-encoded audio to provider.
+
+        Args:
+            audio_data: Raw audio bytes to encode and send
+            event_type: Event type for the audio message
+        """
+        if not self.ws:
+            self.logger.warning("websocket_not_connected")
+            return
+
+        try:
+            encoded = base64.b64encode(audio_data).decode("utf-8")
+            await self._send_event({"type": event_type, "audio": encoded})
+        except Exception as e:
+            self.logger.exception("send_audio_error", error=str(e))
+
+    async def _disconnect_ws(self) -> None:
+        """Template method for WebSocket disconnect.
+
+        Closes the WebSocket connection and logs the full transcript.
+        Subclasses can call this from their disconnect() implementation.
+        """
+        if self.ws:
+            try:
+                await self.ws.close()
+            except Exception as e:
+                self.logger.exception("disconnect_error", error=str(e))
+            self.ws = None
+        self._log_full_transcript()
 
     # -------------------------------------------------------------------------
     # Abstract methods (must be implemented by subclasses)

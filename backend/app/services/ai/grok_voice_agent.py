@@ -16,9 +16,9 @@ from zoneinfo import ZoneInfo
 
 import structlog
 import websockets
-from websockets.asyncio.client import ClientConnection
 
 from app.models.agent import Agent
+from app.services.ai.voice_agent_base import VoiceAgentBase
 
 logger = structlog.get_logger()
 
@@ -144,7 +144,7 @@ VOICE_BOOKING_TOOLS = [
 ]
 
 
-class GrokVoiceAgentSession:
+class GrokVoiceAgentSession(VoiceAgentBase):
     """Grok (xAI) Realtime API session for voice conversations.
 
     Manages:
@@ -153,8 +153,14 @@ class GrokVoiceAgentSession:
     - Session configuration and context injection
     - Realism enhancements via auditory cues
     - Tool calling for Cal.com booking integration
+
+    Inherits from VoiceAgentBase for:
+    - Transcript tracking
+    - Interruption handling
+    - Prompt building via VoicePromptBuilder
     """
 
+    SERVICE_NAME = "grok_voice_agent"
     BASE_URL = "wss://api.x.ai/v1/realtime"
 
     def __init__(
@@ -172,29 +178,14 @@ class GrokVoiceAgentSession:
             enable_tools: Enable booking tools (requires Cal.com config)
             timezone: Timezone for date context (default: America/New_York)
         """
+        super().__init__(agent, timezone)
         self.api_key = api_key
-        self.agent = agent
-        self.ws: ClientConnection | None = None
-        self.logger = logger.bind(service="grok_voice_agent")
         self._connection_task: asyncio.Task[None] | None = None
         self._enable_tools = enable_tools
-        self._timezone = timezone
 
         # Tool call handling
         self._tool_callback: Callable[[str, str, dict[str, Any]], Any] | None = None
         self._pending_function_calls: dict[str, dict[str, Any]] = {}
-
-        # Transcript tracking for debugging
-        self._user_transcript: str = ""
-        self._agent_transcript: str = ""
-        self._transcript_entries: list[dict[str, Any]] = []
-
-        # Interruption handling (barge-in)
-        self._interruption_event: asyncio.Event | None = None
-
-        # Response state tracking for proper interruption handling
-        # When _is_interrupted is True, we skip yielding audio until response.done
-        self._is_interrupted: bool = False
 
         # Log initialization details
         self.logger.info(
@@ -221,14 +212,6 @@ class GrokVoiceAgentSession:
             callback_set=callback is not None,
             enable_tools=self._enable_tools,
         )
-
-    def set_interruption_event(self, event: asyncio.Event) -> None:
-        """Set event for signaling audio buffer clear on interruption.
-
-        Args:
-            event: asyncio.Event to set when user interrupts (barge-in)
-        """
-        self._interruption_event = event
 
     async def connect(self) -> bool:
         """Connect to Grok Realtime API.
@@ -258,101 +241,7 @@ class GrokVoiceAgentSession:
 
     async def disconnect(self) -> None:
         """Disconnect from Grok Realtime API."""
-        if self.ws:
-            try:
-                await self.ws.close()
-            except Exception as e:
-                self.logger.exception("grok_disconnect_error", error=str(e))
-            self.ws = None
-
-    def _get_date_context(self) -> str:
-        """Get the date context string for the system prompt.
-
-        Uses the timezone stored on the session (from workspace settings).
-        Based on LiveKit's production voice agent pattern.
-
-        Returns:
-            Date context string to prepend to prompts
-        """
-        try:
-            tz = ZoneInfo(self._timezone)
-        except Exception:
-            tz = ZoneInfo("America/New_York")
-
-        now = datetime.now(tz)
-        today_str = now.strftime("%A, %B %d, %Y")
-        today_iso = now.strftime("%Y-%m-%d")
-        current_time = now.strftime("%I:%M %p")
-
-        return (
-            f"CRITICAL DATE CONTEXT: Today is {today_str} ({today_iso}). "
-            f"The current time is {current_time}. "
-            f"Your training data may be outdated - ALWAYS use {today_iso} as today's date.\n\n"
-        )
-
-    def _enhance_prompt_with_realism(self, prompt: str) -> str:
-        """Enhance system prompt with Grok realism instructions.
-
-        Adds guidance for the model to use auditory cues naturally.
-
-        Args:
-            prompt: Original system prompt
-
-        Returns:
-            Enhanced prompt with realism instructions
-        """
-        realism_instructions = """
-
-# Voice Realism Enhancements
-You can use these auditory cues naturally in your responses to sound more human:
-- [sigh] - Express mild frustration, relief, or thoughtfulness
-- [laugh] - React to humor or express friendliness
-- [whisper] - For confidential or emphasis moments
-- Use these sparingly and naturally - don't overuse them.
-"""
-        return prompt + realism_instructions
-
-    def _get_search_tools_guidance(self) -> str:
-        """Get system prompt guidance for search tools.
-
-        Returns:
-            Search tools instructions if any search tools are enabled, empty string otherwise.
-        """
-        if not self.agent or not self.agent.enabled_tools:
-            return ""
-
-        enabled = self.agent.enabled_tools
-        has_web_search = "web_search" in enabled
-        has_x_search = "x_search" in enabled
-
-        if not has_web_search and not has_x_search:
-            return ""
-
-        guidance_parts = ["\n\n# Search Capabilities"]
-
-        if has_web_search:
-            guidance_parts.append(
-                "You have access to real-time web search. "
-                "Use it when users ask about current events, prices, news, weather, "
-                "facts you're unsure about, or anything that requires up-to-date information. "
-                "Search results are integrated automatically - respond naturally."
-            )
-
-        if has_x_search:
-            guidance_parts.append(
-                "You have access to X (Twitter) search. "
-                "Use it when users ask about trending topics, public opinions, "
-                "what people are saying about something, or recent posts. "
-                "The search results will help you provide current social context."
-            )
-
-        if has_web_search or has_x_search:
-            guidance_parts.append(
-                "Use these search tools proactively when the conversation would benefit "
-                "from current information - don't wait to be asked explicitly."
-            )
-
-        return "\n".join(guidance_parts)
+        await self._disconnect_ws()
 
     def _get_booking_tools(self) -> list[dict[str, Any]]:
         """Generate booking tools with current date context.
@@ -449,93 +338,11 @@ You can use these auditory cues naturally in your responses to sound more human:
         Uses pcm16 at 24kHz - the voice_bridge handles conversion from/to
         Telnyx's μ-law 8kHz format.
         """
-        # Build date context FIRST - this must be at the top of the prompt
-        # so the model absolutely cannot ignore it
-        date_context = self._get_date_context()
-
-        # Get base prompt
-        base_prompt = (
-            self.agent.system_prompt
-            if self.agent
-            else "You are a helpful AI voice assistant."
+        # Build full prompt using the prompt builder
+        enhanced_prompt = self._prompt_builder.build_full_prompt(
+            include_realism=True,
+            include_booking=self._enable_tools,
         )
-
-        # Prepend identity reinforcement if agent has a name configured
-        if self.agent and self.agent.name:
-            agent_name = self.agent.name
-            identity_prefix = (
-                f"CRITICAL IDENTITY INSTRUCTION: Your name is {agent_name}. "
-                f"You MUST always identify yourself as {agent_name}. "
-                f"When greeting or introducing yourself, say your name is {agent_name}. "
-                "This is non-negotiable.\n\n"
-            )
-            base_prompt = identity_prefix + base_prompt
-
-        # Combine: date context (top) + base prompt
-        enhanced_prompt = date_context + base_prompt
-
-        # Enhance with realism cues
-        enhanced_prompt = self._enhance_prompt_with_realism(enhanced_prompt)
-
-        # Add search tools guidance if enabled
-        enhanced_prompt += self._get_search_tools_guidance()
-
-        # Add telephony-specific guidance to prevent hallucination at call start
-        enhanced_prompt += """
-
-IMPORTANT: You are on a phone call. When the call connects:
-- Wait briefly for the caller to speak first, OR
-- If instructed to greet first, deliver your greeting naturally and wait for response
-- Do NOT generate random content, fun facts, or filler - stay focused on your purpose
-- Speak clearly and conversationally as if on a real phone call"""
-
-        # Add booking instructions when tools are enabled
-        if self._enable_tools:
-            # Get current date for booking context
-            try:
-                tz = ZoneInfo(self._timezone)
-            except Exception:
-                tz = ZoneInfo("America/New_York")
-            now = datetime.now(tz)
-            today_str = now.strftime("%A, %B %d, %Y")
-            today_iso = now.strftime("%Y-%m-%d")
-
-            enhanced_prompt += f"""
-
-[APPOINTMENT BOOKING - CRITICAL DATE AND RULES]
-TODAY IS {today_str} ({today_iso}).
-Your training data may be outdated - IGNORE IT. The ACTUAL current date is {today_iso}.
-
-When converting relative dates to YYYY-MM-DD format:
-- "today" = {today_iso}
-- "tomorrow" = the day after {today_iso}
-- "Friday" = the NEXT Friday from {today_iso} (calculate it)
-- "next week" = the week starting after {today_iso}
-- "Monday" = the NEXT Monday from {today_iso}
-
-You have tools to check calendar availability and book appointments. Follow these rules:
-
-1. NEVER say "one moment", "let me check", "checking", or "I'll get back to you"
-2. NEVER promise to do something without IMMEDIATELY calling the function
-3. When the customer asks about times, call check_availability RIGHT NOW
-4. When the customer picks a time, call book_appointment RIGHT NOW
-5. EMAIL IS REQUIRED for booking - ask for it when offering time slots
-
-WHEN TO CALL check_availability:
-- Customer asks about availability ("when are you free", "what times work")
-- Customer mentions a day ("Monday", "tomorrow", "next week", "Friday")
-- Customer wants to schedule or book something
-- ALWAYS use dates relative to {today_iso}, NOT your training data dates
-
-WHEN TO CALL book_appointment:
-- Customer confirms a specific time AND you have their email
-
-RESPONSE PATTERN:
-- If they ask about times: Call check_availability, then offer 2 specific options
-- If they pick a time and you have email: Call book_appointment immediately
-- If they pick a time but no email: Ask for email, then book once provided
-
-DO NOT say things like "I'll check and get back to you" - you can check instantly!"""
 
         # Get voice - default to 'Ara' for Grok (capitalized)
         voice = "Ara"
@@ -710,33 +517,12 @@ DO NOT say things like "I'll check and get back to you" - you can check instantl
                 self.logger.warning("invalid_grok_voice", voice=voice)
 
         if system_prompt:
-            # ALWAYS prepend date context first - critical for appointment booking
-            date_context = self._get_date_context()
-
-            # Prepend identity reinforcement if agent has a name configured
-            if self.agent and self.agent.name:
-                agent_name = self.agent.name
-                identity_prefix = (
-                    f"CRITICAL IDENTITY INSTRUCTION: Your name is {agent_name}. "
-                    f"You MUST always identify yourself as {agent_name}. "
-                    f"When greeting or introducing yourself, say your name is {agent_name}. "
-                    "This is non-negotiable.\n\n"
-                )
-                system_prompt = identity_prefix + system_prompt
-
-            # Combine: date context (top) + system prompt
-            enhanced = date_context + system_prompt
-
-            # Enhance with realism cues, search guidance, and telephony guidance
-            enhanced = self._enhance_prompt_with_realism(enhanced)
-            enhanced += self._get_search_tools_guidance()
-            enhanced += """
-
-IMPORTANT: You are on a phone call. When the call connects:
-- Wait briefly for the caller to speak first, OR
-- If instructed to greet first, deliver your greeting naturally and wait for response
-- Do NOT generate random content, fun facts, or filler - stay focused on your purpose
-- Speak clearly and conversationally as if on a real phone call"""
+            # Build enhanced prompt using prompt builder
+            enhanced = self._prompt_builder.build_full_prompt(
+                base_prompt=system_prompt,
+                include_realism=True,
+                include_booking=self._enable_tools,
+            )
             session_config["instructions"] = enhanced
 
         # Configure turn detection
@@ -836,18 +622,13 @@ IMPORTANT: You are on a phone call. When the call connects:
                 is_outbound=True,
                 has_call_context=hasattr(self, "_call_context") and bool(self._call_context),
             )
-            # Extract just the first name (before any | or - separator)
-            full_name = self.agent.name if self.agent else "Jess"
-            agent_name = full_name.split("|")[0].split("-")[0].strip().split()[0]
-            # Pattern interrupt: honest, disarming, gives them a choice
-            prompt_text = (
-                f"You just called someone. Open with a pattern interrupt. "
-                f"Say: 'Hey! It's {agent_name}. This is a sales call. "
-                f"Do you wanna [sigh] hang up... or can I tell you why I'm calling?!' "
-                f"Start friendly and upbeat. Sigh right before 'hang up' - sound disappointed. "
-                f"Then get excited on 'or can I tell you why I'm calling?!' "
-                f"Little laugh at the end. Wait for their response."
-            )
+            # Use prompt builder but add Grok-specific realism cues
+            base_prompt = self._prompt_builder.get_outbound_opener_prompt()
+            # Add Grok realism cues to the pattern interrupt
+            prompt_text = base_prompt.replace(
+                "Sound a bit disappointed on 'hang up'.",
+                "Sigh right before 'hang up' - sound disappointed.",
+            ) + " Little laugh at the end."
         else:
             # For INBOUND calls: Use configured greeting or default
             message = greeting
@@ -856,21 +637,7 @@ IMPORTANT: You are on a phone call. When the call connects:
             if not message and self.agent and self.agent.initial_greeting:
                 message = self.agent.initial_greeting
 
-            if message:
-                prompt_text = f"Greet the caller by saying: {message}"
-            else:
-                # Fallback for inbound calls without configured greeting
-                prompt_parts = []
-
-                if self.agent and self.agent.name:
-                    prompt_parts.append(f"You are {self.agent.name}.")
-
-                prompt_parts.append(
-                    "Greet the caller and introduce yourself. Follow your "
-                    "system instructions for the purpose of this call."
-                )
-
-                prompt_text = " ".join(prompt_parts)
+            prompt_text = self._prompt_builder.get_inbound_greeting_prompt(message)
 
         # Send the greeting/opener for both inbound and outbound
         try:
@@ -908,21 +675,7 @@ IMPORTANT: You are on a phone call. When the call connects:
         Args:
             audio_data: PCM audio data (16-bit, 16kHz)
         """
-        if not self.ws:
-            self.logger.warning("grok_websocket_not_connected")
-            return
-
-        try:
-            encoded = base64.b64encode(audio_data).decode("utf-8")
-
-            event = {
-                "type": "input_audio_buffer.append",
-                "audio": encoded,
-            }
-
-            await self._send_event(event)
-        except Exception as e:
-            self.logger.exception("grok_send_audio_error", error=str(e))
+        await self._send_audio_base64(audio_data)
 
     async def receive_audio_stream(self) -> AsyncIterator[bytes]:  # noqa: PLR0912, PLR0915
         """Stream audio responses from Grok.
@@ -1030,7 +783,7 @@ IMPORTANT: You are on a phone call. When the call connects:
                     # Agent's speech transcript (what the AI is saying)
                     transcript = event.get("delta", "")
                     if transcript:
-                        self._agent_transcript += transcript
+                        self._append_agent_transcript_delta(transcript)
                         self.logger.info(
                             "grok_agent_transcript_delta",
                             delta=transcript,
@@ -1041,7 +794,7 @@ IMPORTANT: You are on a phone call. When the call connects:
                     # Alternative text transcript event
                     text = event.get("delta", "")
                     if text:
-                        self._agent_transcript += text
+                        self._append_agent_transcript_delta(text)
                         self.logger.info(
                             "grok_agent_text_delta",
                             delta=text,
@@ -1051,15 +804,7 @@ IMPORTANT: You are on a phone call. When the call connects:
                     # User's speech transcript (what the human said)
                     user_text = event.get("transcript", "")
                     if user_text:
-                        self._user_transcript = user_text
-                        self._transcript_entries.append({
-                            "role": "user",
-                            "text": user_text,
-                        })
-                        self.logger.info(
-                            "grok_user_transcript_completed",
-                            user_said=user_text,
-                        )
+                        self._add_user_transcript(user_text)
 
                 elif event_type == "response.done":
                     # Response complete - but DON'T break!
@@ -1071,28 +816,8 @@ IMPORTANT: You are on a phone call. When the call connects:
                     output_items = response_data.get("output", [])
                     response_status = response_data.get("status", "")
 
-                    # Save agent transcript FIRST before handling cancellation
-                    # This ensures partial transcripts are preserved even if
-                    # interrupted (barge-in) or cancelled
-                    if self._agent_transcript:
-                        self._transcript_entries.append({
-                            "role": "agent",
-                            "text": self._agent_transcript,
-                        })
-                        self.logger.info(
-                            "grok_agent_turn_completed",
-                            agent_said=self._agent_transcript,
-                        )
-                        self._agent_transcript = ""
-
-                    # If this was a cancelled response, clear interrupted flag
-                    # This allows the next response to generate audio
-                    if response_status == "cancelled" or self._is_interrupted:
-                        self._is_interrupted = False
-                        self.logger.info(
-                            "grok_cancelled_response_complete",
-                            status=response_status,
-                        )
+                    # Handle response completion using base class
+                    self._handle_response_done(response_status)
 
                     # Log complete response structure
                     self.logger.info(
@@ -1153,34 +878,18 @@ IMPORTANT: You are on a phone call. When the call connects:
                         await self._handle_function_call(item)
 
                 elif event_type == "input_audio_buffer.speech_started":
-                    self.logger.info("grok_user_speech_started_interrupting")
-
-                    # Set interrupted flag BEFORE cancel - blocks audio immediately
-                    # This prevents audio chunks that arrive after cancel from being yielded
-                    self._is_interrupted = True
+                    # Handle barge-in using base class helper
+                    self._handle_speech_started()
 
                     # Cancel response - Grok will send response.done with status=cancelled
                     await self.cancel_response()
-
-                    # Signal voice bridge to clear audio buffer immediately
-                    if self._interruption_event:
-                        self._interruption_event.set()
 
                 elif event_type == "input_audio_buffer.speech_stopped":
                     self.logger.info("grok_user_speech_stopped")
 
                 elif event_type == "response.created":
-                    # New response starting - reset interrupted flag
-                    # This is critical for outbound calls where the user speaks first:
-                    # 1. User says "hello" -> speech_started -> _is_interrupted = True
-                    # 2. User stops -> Grok generates response -> response.created
-                    # 3. Without this reset, all audio would be skipped!
-                    if self._is_interrupted:
-                        self.logger.info(
-                            "grok_resetting_interrupted_flag_on_new_response",
-                            was_interrupted=True,
-                        )
-                        self._is_interrupted = False
+                    # Handle new response - resets interrupted flag using base class
+                    self._handle_response_created()
 
                 elif event_type == "session.created":
                     session = event.get("session", {})
@@ -1238,7 +947,7 @@ IMPORTANT: You are on a phone call. When the call connects:
                 chunks_received=audio_chunks_received,
             )
 
-        # Log full transcript at end of call
+        # Log stream end stats
         self.logger.info(
             "grok_audio_stream_ended",
             total_chunks=audio_chunks_received,
@@ -1246,13 +955,6 @@ IMPORTANT: You are on a phone call. When the call connects:
             total_responses=responses_completed,
             transcript_entry_count=len(self._transcript_entries),
         )
-
-        # Log the full conversation transcript
-        if self._transcript_entries:
-            self.logger.info(
-                "grok_full_conversation_transcript",
-                transcript=json.dumps(self._transcript_entries, indent=2),
-            )
 
     async def _handle_function_call(self, item: dict[str, Any]) -> None:
         """Handle a function call from Grok.
@@ -1395,7 +1097,7 @@ IMPORTANT: You are on a phone call. When the call connects:
         except Exception as e:
             self.logger.exception("grok_cancel_response_error", error=str(e))
 
-    async def inject_context(  # noqa: PLR0912
+    async def inject_context(
         self,
         contact_info: dict[str, Any] | None = None,
         offer_info: dict[str, Any] | None = None,
@@ -1424,86 +1126,14 @@ IMPORTANT: You are on a phone call. When the call connects:
             "offer": offer_info,
         }
 
-        # Build context section for system prompt
-        context_parts = []
-
-        if is_outbound:
-            context_parts.append(
-                "\n\n# CURRENT CALL CONTEXT - THIS IS AN OUTBOUND CALL YOU ARE MAKING"
-            )
-            context_parts.append(
-                "You initiated this call. You know exactly why you're calling. "
-                "Do NOT ask the customer what they want to talk about."
-            )
-        else:
-            context_parts.append(
-                "\n\n# CURRENT CALL CONTEXT - THIS IS AN INBOUND CALL"
-            )
-            context_parts.append(
-                "The customer called you. Listen to what they need and assist them."
-            )
-
-        if contact_info:
-            context_parts.append("\n## Customer You Are Calling:")
-            if contact_info.get("name"):
-                context_parts.append(f"- Name: {contact_info['name']}")
-            if contact_info.get("company"):
-                context_parts.append(f"- Company: {contact_info['company']}")
-
-        if offer_info:
-            context_parts.append("\n## What You Are Calling About:")
-            if offer_info.get("name"):
-                context_parts.append(f"- Offer: {offer_info['name']}")
-            if offer_info.get("description"):
-                context_parts.append(f"- Details: {offer_info['description']}")
-            if offer_info.get("terms"):
-                context_parts.append(f"- Terms: {offer_info['terms']}")
-
-        context_section = "\n".join(context_parts)
-
-        # Update session with context appended to instructions
-        # ALWAYS start with date context - critical for appointment booking
-        date_context = self._get_date_context()
-
-        # Get current base prompt
-        base_prompt = (
-            self.agent.system_prompt
-            if self.agent
-            else "You are a helpful AI voice assistant."
+        # Build full instructions using prompt builder
+        enhanced_prompt = self._prompt_builder.build_full_prompt(
+            include_realism=True,
+            include_booking=self._enable_tools,
+            contact_info=contact_info,
+            offer_info=offer_info,
+            is_outbound=is_outbound,
         )
-
-        # Add identity prefix
-        if self.agent and self.agent.name:
-            agent_name = self.agent.name
-            identity_prefix = (
-                f"CRITICAL IDENTITY INSTRUCTION: Your name is {agent_name}. "
-                f"You MUST always identify yourself as {agent_name}. "
-                f"When greeting or introducing yourself, say your name is {agent_name}. "
-                "This is non-negotiable.\n\n"
-            )
-            base_prompt = identity_prefix + base_prompt
-
-        # Combine: date context (top) + base prompt + call context
-        full_prompt = date_context + base_prompt + context_section
-
-        # Enhance with realism cues
-        enhanced_prompt = self._enhance_prompt_with_realism(full_prompt)
-
-        # Add telephony guidance based on call direction
-        if is_outbound:
-            enhanced_prompt += """
-
-IMPORTANT: You are on a phone call that YOU initiated.
-- You called THEM - introduce yourself and explain why you're calling
-- Do NOT ask "what would you like to talk about" - YOU know why you called
-- Be direct and professional about the purpose of your call"""
-        else:
-            enhanced_prompt += """
-
-IMPORTANT: You are on a phone call. The customer called you.
-- Listen to what they need and assist them appropriately
-- Be helpful and responsive to their questions or concerns
-- You may ask clarifying questions to understand their needs"""
 
         # Send session update with full context
         config = {
@@ -1534,28 +1164,3 @@ IMPORTANT: You are on a phone call. The customer called you.
             self.logger.exception("grok_send_event_error", error=str(e))
             raise
 
-    def is_connected(self) -> bool:
-        """Check if WebSocket is connected.
-
-        Returns:
-            True if connected, False otherwise
-        """
-        if self.ws is None:
-            return False
-        try:
-            return bool(getattr(self.ws, "open", False))
-        except Exception:
-            return False
-
-    def get_transcript_json(self) -> str | None:
-        """Get the conversation transcript as JSON string.
-
-        Returns the transcript in a format suitable for storage and display:
-        [{"role": "user", "text": "..."}, {"role": "agent", "text": "..."}]
-
-        Returns:
-            JSON string of transcript entries, or None if no transcript
-        """
-        if not self._transcript_entries:
-            return None
-        return json.dumps(self._transcript_entries)

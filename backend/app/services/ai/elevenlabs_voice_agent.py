@@ -13,9 +13,7 @@ import base64
 import contextlib
 import json
 from collections.abc import AsyncIterator, Callable
-from datetime import datetime
 from typing import Any
-from zoneinfo import ZoneInfo
 
 import structlog
 import websockets
@@ -23,12 +21,13 @@ from websockets.asyncio.client import ClientConnection
 
 from app.models.agent import Agent
 from app.services.ai.elevenlabs_tts import ElevenLabsTTSSession, get_voice_id
-from app.services.ai.grok_voice_agent import GROK_BUILTIN_TOOLS
+from app.services.ai.grok_voice_agent import GROK_BUILTIN_TOOLS, VOICE_BOOKING_TOOLS
+from app.services.ai.voice_agent_base import VoiceAgentBase
 
 logger = structlog.get_logger()
 
 
-class ElevenLabsVoiceAgentSession:
+class ElevenLabsVoiceAgentSession(VoiceAgentBase):
     """Hybrid voice agent using Grok STT+LLM with ElevenLabs TTS.
 
     This session:
@@ -43,8 +42,12 @@ class ElevenLabsVoiceAgentSession:
     - Tool calling preserved (Cal.com booking, web search, X search)
     - ElevenLabs outputs ulaw_8000 directly (no conversion needed)
     - Access to 100+ ElevenLabs voices with rich expressiveness
+
+    Note: This class uses grok_ws instead of ws from base class since it's a hybrid
+    architecture with separate Grok and ElevenLabs connections.
     """
 
+    SERVICE_NAME = "elevenlabs_voice_agent"
     GROK_BASE_URL = "wss://api.x.ai/v1/realtime"
 
     def __init__(
@@ -64,14 +67,12 @@ class ElevenLabsVoiceAgentSession:
             enable_tools: Enable Cal.com booking tools
             timezone: Timezone for date context (default: America/New_York)
         """
+        super().__init__(agent, timezone)
         self.xai_api_key = xai_api_key
         self.elevenlabs_api_key = elevenlabs_api_key
-        self.agent = agent
         self._enable_tools = enable_tools
-        self._timezone = timezone
-        self.logger = logger.bind(service="elevenlabs_voice_agent")
 
-        # Grok WebSocket for STT+LLM
+        # Grok WebSocket for STT+LLM (hybrid - uses grok_ws instead of base ws)
         self.grok_ws: ClientConnection | None = None
 
         # ElevenLabs TTS session
@@ -91,10 +92,6 @@ class ElevenLabsVoiceAgentSession:
         # Text buffer for streaming to TTS
         self._text_buffer = ""
         self._text_buffer_lock = asyncio.Lock()
-
-        # Response state tracking for proper interruption handling
-        # When _is_interrupted is True, we skip processing until response.done
-        self._is_interrupted: bool = False
 
     def set_tool_callback(
         self,
@@ -197,243 +194,16 @@ class ElevenLabsVoiceAgentSession:
                 self.logger.exception("grok_disconnect_error", error=str(e))
             self.grok_ws = None
 
-    def _enhance_prompt_with_realism(self, prompt: str) -> str:
-        """Enhance system prompt with Grok realism instructions.
-
-        Args:
-            prompt: Original system prompt
-
-        Returns:
-            Enhanced prompt with realism instructions
-        """
-        realism_instructions = """
-
-# Voice Realism Enhancements
-You can use these cues naturally in your responses to sound more human:
-- [sigh] - Express mild frustration, relief, or thoughtfulness
-- [laugh] - React to humor or express friendliness
-- Use these sparingly and naturally - don't overuse them.
-Note: These cues will be interpreted by the speech synthesis system."""
-        return prompt + realism_instructions
-
-    def _get_date_context(self) -> str:
-        """Get the date context string for the system prompt.
-
-        Uses the timezone stored on the session (from workspace settings).
-        Based on LiveKit's production voice agent pattern.
-
-        Returns:
-            Date context string to prepend to prompts
-        """
-        try:
-            tz = ZoneInfo(self._timezone)
-        except Exception:
-            tz = ZoneInfo("America/New_York")
-
-        now = datetime.now(tz)
-        today_str = now.strftime("%A, %B %d, %Y")
-        today_iso = now.strftime("%Y-%m-%d")
-        current_time = now.strftime("%I:%M %p")
-
-        return (
-            f"CRITICAL DATE CONTEXT: Today is {today_str} ({today_iso}). "
-            f"The current time is {current_time}. "
-            f"Your training data may be outdated - ALWAYS use {today_iso} as today's date.\n\n"
-        )
-
-    def _get_booking_tools(self) -> list[dict[str, Any]]:
-        """Generate booking tools with current date context.
-
-        Based on chatgpt-telegram-bot pattern of including current date
-        in tool descriptions to help the model interpret relative dates.
-
-        Returns:
-            List of tool definitions with date context embedded
-        """
-        try:
-            tz = ZoneInfo(self._timezone)
-        except Exception:
-            tz = ZoneInfo("America/New_York")
-
-        now = datetime.now(tz)
-        today_str = now.strftime("%A, %B %d, %Y")
-        today_iso = now.strftime("%Y-%m-%d")
-
-        return [
-            {
-                "type": "function",
-                "name": "book_appointment",
-                "description": (
-                    f"Book an appointment on Cal.com. TODAY IS {today_str} ({today_iso}). "
-                    f"When converting relative dates to YYYY-MM-DD: 'today' = {today_iso}, "
-                    "'tomorrow' = the day after today, 'Friday' = the NEXT Friday from today. "
-                    "You MUST collect the customer's email address first."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "date": {
-                            "type": "string",
-                            "description": (
-                                f"Appointment date in YYYY-MM-DD format. "
-                                f"TODAY IS {today_iso}. Convert relative dates from this date."
-                            ),
-                        },
-                        "time": {
-                            "type": "string",
-                            "description": "Appointment time in HH:MM 24-hour format",
-                        },
-                        "email": {
-                            "type": "string",
-                            "description": "Customer's email address for booking confirmation",
-                        },
-                        "duration_minutes": {
-                            "type": "integer",
-                            "description": "Duration in minutes. Default is 30.",
-                        },
-                        "notes": {
-                            "type": "string",
-                            "description": "Optional notes about the appointment",
-                        },
-                    },
-                    "required": ["date", "time", "email"],
-                },
-            },
-            {
-                "type": "function",
-                "name": "check_availability",
-                "description": (
-                    f"Check available time slots on Cal.com. "
-                    f"TODAY IS {today_str} ({today_iso}). "
-                    f"When the user says 'Friday', 'tomorrow', or 'next week', "
-                    f"convert to YYYY-MM-DD relative to today ({today_iso}). "
-                    f"Example: if today is {today_iso} and user says 'Friday', "
-                    "calculate the next Friday from this date."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "start_date": {
-                            "type": "string",
-                            "description": (
-                                f"Start date in YYYY-MM-DD format. TODAY IS {today_iso}. "
-                                "Convert relative dates like 'Friday' from this date."
-                            ),
-                        },
-                        "end_date": {
-                            "type": "string",
-                            "description": "End date in YYYY-MM-DD (defaults to start_date)",
-                        },
-                    },
-                    "required": ["start_date"],
-                },
-            },
-        ]
-
-    def _get_search_tools_guidance(self) -> str:
-        """Get system prompt guidance for search tools."""
-        if not self.agent or not self.agent.enabled_tools:
-            return ""
-
-        enabled = self.agent.enabled_tools
-        has_web_search = "web_search" in enabled
-        has_x_search = "x_search" in enabled
-
-        if not has_web_search and not has_x_search:
-            return ""
-
-        guidance_parts = ["\n\n# Search Capabilities"]
-
-        if has_web_search:
-            guidance_parts.append(
-                "You have access to real-time web search. "
-                "Use it when users ask about current events, prices, news, weather, "
-                "facts you're unsure about, or anything that requires up-to-date information."
-            )
-
-        if has_x_search:
-            guidance_parts.append(
-                "You have access to X (Twitter) search. "
-                "Use it when users ask about trending topics, public opinions, "
-                "what people are saying about something, or recent posts."
-            )
-
-        return "\n".join(guidance_parts)
-
     async def _configure_grok_session(self) -> None:
         """Configure Grok session for text output (we handle TTS separately)."""
         if not self.grok_ws:
             return
 
-        # Build date context FIRST - this must be at the top of the prompt
-        date_context = self._get_date_context()
-
-        # Get base prompt
-        base_prompt = (
-            self.agent.system_prompt
-            if self.agent
-            else "You are a helpful AI voice assistant."
+        # Build full prompt using the prompt builder
+        enhanced_prompt = self._prompt_builder.build_full_prompt(
+            include_realism=True,
+            include_booking=self._enable_tools,
         )
-
-        # Add identity prefix
-        if self.agent and self.agent.name:
-            agent_name = self.agent.name
-            identity_prefix = (
-                f"CRITICAL IDENTITY INSTRUCTION: Your name is {agent_name}. "
-                f"You MUST always identify yourself as {agent_name}. "
-                f"When greeting or introducing yourself, say your name is {agent_name}. "
-                f"This is non-negotiable.\n\n"
-            )
-            base_prompt = identity_prefix + base_prompt
-
-        # Combine: date context (top) + base prompt
-        enhanced_prompt = date_context + base_prompt
-
-        # Enhance prompt
-        enhanced_prompt = self._enhance_prompt_with_realism(enhanced_prompt)
-        enhanced_prompt += self._get_search_tools_guidance()
-
-        # Add telephony guidance
-        enhanced_prompt += """
-
-IMPORTANT: You are on a phone call. When the call connects:
-- Wait briefly for the caller to speak first, OR
-- If instructed to greet first, deliver your greeting naturally
-- Do NOT generate random content, fun facts, or filler
-- Speak clearly and conversationally"""
-
-        # Add booking instructions when tools are enabled
-        if self._enable_tools:
-            # Get current date for booking context
-            try:
-                tz = ZoneInfo(self._timezone)
-            except Exception:
-                tz = ZoneInfo("America/New_York")
-            now = datetime.now(tz)
-            today_str = now.strftime("%A, %B %d, %Y")
-            today_iso = now.strftime("%Y-%m-%d")
-
-            enhanced_prompt += f"""
-
-[APPOINTMENT BOOKING - CRITICAL DATE AND RULES]
-TODAY IS {today_str} ({today_iso}).
-Your training data may be outdated - IGNORE IT. The ACTUAL current date is {today_iso}.
-
-When converting relative dates to YYYY-MM-DD format:
-- "today" = {today_iso}
-- "tomorrow" = the day after {today_iso}
-- "Friday" = the NEXT Friday from {today_iso} (calculate it)
-- "next week" = the week starting after {today_iso}
-- "Monday" = the NEXT Monday from {today_iso}
-
-You have tools to check calendar availability and book appointments. Follow these rules:
-
-1. NEVER say "one moment", "let me check", "checking", or "I'll get back to you"
-2. NEVER promise to do something without IMMEDIATELY calling the function
-3. When the customer asks about times, call check_availability RIGHT NOW
-4. When the customer picks a time, call book_appointment RIGHT NOW
-5. EMAIL IS REQUIRED for booking - ask for it when offering time slots
-6. ALWAYS use dates relative to {today_iso}, NOT your training data dates"""
 
         # Build session config - request TEXT output (we handle TTS)
         session_config: dict[str, Any] = {
@@ -480,11 +250,9 @@ You have tools to check calendar availability and book appointments. Follow thes
             self.logger.info("grok_x_search_enabled")
 
         # Add Cal.com booking tools if enabled and configured
-        # Use dynamic tools with current date context embedded
         if self._enable_tools:
-            booking_tools = self._get_booking_tools()
-            tools.extend(booking_tools)
-            self.logger.info("booking_tools_enabled", tool_count=len(booking_tools))
+            tools.extend(VOICE_BOOKING_TOOLS)
+            self.logger.info("booking_tools_enabled", tool_count=len(VOICE_BOOKING_TOOLS))
 
         if tools:
             session_config["tools"] = tools
@@ -518,23 +286,12 @@ You have tools to check calendar availability and book appointments. Follow thes
         session_config: dict[str, Any] = {}
 
         if system_prompt:
-            # ALWAYS prepend date context first
-            date_context = self._get_date_context()
-
-            # Enhance prompt
-            if self.agent and self.agent.name:
-                agent_name = self.agent.name
-                identity_prefix = (
-                    f"CRITICAL IDENTITY INSTRUCTION: Your name is {agent_name}. "
-                    f"You MUST always identify yourself as {agent_name}.\n\n"
-                )
-                system_prompt = identity_prefix + system_prompt
-
-            # Combine: date context (top) + system prompt
-            enhanced = date_context + system_prompt
-            enhanced = self._enhance_prompt_with_realism(enhanced)
-            enhanced += self._get_search_tools_guidance()
-            enhanced += "\n\nIMPORTANT: You are on a phone call. Speak naturally."
+            # Build enhanced prompt using prompt builder
+            enhanced = self._prompt_builder.build_full_prompt(
+                base_prompt=system_prompt,
+                include_realism=True,
+                include_booking=self._enable_tools,
+            )
             session_config["instructions"] = enhanced
 
         if any([turn_detection_mode, turn_detection_threshold, silence_duration_ms]):
@@ -556,11 +313,14 @@ You have tools to check calendar availability and book appointments. Follow thes
             await self._send_to_grok(config)
             self.logger.info("session_reconfigured", updates=list(session_config.keys()))
 
-    async def trigger_initial_response(self, greeting: str | None = None) -> None:
+    async def trigger_initial_response(
+        self, greeting: str | None = None, is_outbound: bool = False
+    ) -> None:
         """Trigger the AI to start speaking with an initial greeting.
 
         Args:
             greeting: Optional greeting text
+            is_outbound: If True, this is an outbound call
         """
         if not self.grok_ws:
             self.logger.warning("grok_not_connected")
@@ -572,35 +332,11 @@ You have tools to check calendar availability and book appointments. Follow thes
             message = self.agent.initial_greeting
 
         try:
-            # Create user message prompting the AI to greet
-            if message:
-                prompt_text = f"Greet the caller by saying: {message}"
+            # Build prompt using prompt builder
+            if is_outbound:
+                prompt_text = self._prompt_builder.get_outbound_opener_prompt()
             else:
-                prompt_parts = []
-                if self.agent and self.agent.name:
-                    prompt_parts.append(f"You are {self.agent.name}.")
-
-                if hasattr(self, "_call_context") and self._call_context:
-                    contact = self._call_context.get("contact", {})
-                    offer = self._call_context.get("offer", {})
-
-                    prompt_parts.append("This is an OUTBOUND call that YOU initiated.")
-
-                    if contact and contact.get("name"):
-                        prompt_parts.append(f"You are calling {contact['name']}.")
-
-                    if offer and offer.get("name"):
-                        prompt_parts.append(f"You are calling about: {offer['name']}.")
-
-                    prompt_parts.append(
-                        "Greet them, introduce yourself, and explain why you're calling."
-                    )
-                else:
-                    prompt_parts.append(
-                        "Greet the caller and introduce yourself briefly."
-                    )
-
-                prompt_text = " ".join(prompt_parts)
+                prompt_text = self._prompt_builder.get_inbound_greeting_prompt(message)
 
             event = {
                 "type": "conversation.item.create",
@@ -646,6 +382,7 @@ You have tools to check calendar availability and book appointments. Follow thes
             await self._send_to_grok(event)
         except Exception as e:
             self.logger.exception("send_audio_error", error=str(e))
+    # Note: Can't use base _send_audio_base64 since this uses grok_ws not ws
 
     async def receive_audio_stream(self) -> AsyncIterator[bytes]:
         """Stream audio responses from ElevenLabs TTS.
@@ -709,14 +446,8 @@ You have tools to check calendar availability and book appointments. Follow thes
                     output_items = response_data.get("output", [])
                     response_status = response_data.get("status", "")
 
-                    # If this was a cancelled response, clear interrupted flag
-                    # This allows the next response to generate transcript/audio
-                    if response_status == "cancelled" or self._is_interrupted:
-                        self._is_interrupted = False
-                        self.logger.info(
-                            "cancelled_response_complete",
-                            status=response_status,
-                        )
+                    # Handle response completion using base class
+                    self._handle_response_done(response_status)
 
                     # Handle function calls
                     for item in output_items:
@@ -734,11 +465,8 @@ You have tools to check calendar availability and book appointments. Follow thes
                         await self._handle_function_call(item)
 
                 elif event_type == "input_audio_buffer.speech_started":
-                    self.logger.info("user_speech_started_interrupting")
-
-                    # Set interrupted flag BEFORE cancel - blocks transcript processing
-                    # This prevents transcript from cancelled response being sent to TTS
-                    self._is_interrupted = True
+                    # Handle barge-in using base class helper
+                    self._handle_speech_started()
 
                     # Cancel response immediately and clear audio queue
                     await self.cancel_response()
@@ -747,16 +475,8 @@ You have tools to check calendar availability and book appointments. Follow thes
                     self.logger.debug("user_speech_stopped")
 
                 elif event_type == "response.created":
-                    # New response starting - reset interrupted flag
-                    # This is critical for proper barge-in handling:
-                    # 1. User speaks -> speech_started -> _is_interrupted = True
-                    # 2. response.cancel sent
-                    # 3. User stops speaking -> audio committed -> response.created
-                    # 4. If we don't reset here, ALL transcript from this response
-                    #    would be skipped and no audio sent to ElevenLabs!
-                    if self._is_interrupted:
-                        self.logger.info("resetting_interrupted_flag_on_new_response")
-                        self._is_interrupted = False
+                    # Handle new response - resets interrupted flag using base class
+                    self._handle_response_created()
 
                 elif event_type == "session.created":
                     session = event.get("session", {})
@@ -889,7 +609,7 @@ You have tools to check calendar availability and book appointments. Follow thes
         except Exception as e:
             self.logger.exception("cancel_response_error", error=str(e))
 
-    async def inject_context(  # noqa: PLR0912
+    async def inject_context(
         self,
         contact_info: dict[str, Any] | None = None,
         offer_info: dict[str, Any] | None = None,
@@ -914,68 +634,14 @@ You have tools to check calendar availability and book appointments. Follow thes
             "offer": offer_info,
         }
 
-        # Build context section based on call direction
-        if is_outbound:
-            context_parts = [
-                "\n\n# CURRENT CALL CONTEXT - THIS IS AN OUTBOUND CALL YOU ARE MAKING"
-            ]
-            context_parts.append(
-                "You initiated this call. You know exactly why you're calling. "
-                "Do NOT ask the customer what they want to talk about."
-            )
-        else:
-            context_parts = [
-                "\n\n# CURRENT CALL CONTEXT - THIS IS AN INBOUND CALL"
-            ]
-            context_parts.append(
-                "The customer called you. Listen to what they need and assist them."
-            )
-
-        if contact_info:
-            context_parts.append("\n## Customer You Are Calling:")
-            if contact_info.get("name"):
-                context_parts.append(f"- Name: {contact_info['name']}")
-            if contact_info.get("company"):
-                context_parts.append(f"- Company: {contact_info['company']}")
-
-        if offer_info:
-            context_parts.append("\n## What You Are Calling About:")
-            if offer_info.get("name"):
-                context_parts.append(f"- Offer: {offer_info['name']}")
-            if offer_info.get("description"):
-                context_parts.append(f"- Details: {offer_info['description']}")
-
-        context_section = "\n".join(context_parts)
-
-        # ALWAYS start with date context - critical for appointment booking
-        date_context = self._get_date_context()
-
-        # Update session with context
-        base_prompt = (
-            self.agent.system_prompt
-            if self.agent
-            else "You are a helpful AI voice assistant."
+        # Build full instructions using prompt builder
+        enhanced_prompt = self._prompt_builder.build_full_prompt(
+            include_realism=True,
+            include_booking=self._enable_tools,
+            contact_info=contact_info,
+            offer_info=offer_info,
+            is_outbound=is_outbound,
         )
-
-        if self.agent and self.agent.name:
-            agent_name = self.agent.name
-            identity_prefix = (
-                f"CRITICAL IDENTITY INSTRUCTION: Your name is {agent_name}. "
-                f"You MUST always identify yourself as {agent_name}. "
-                f"When greeting or introducing yourself, say your name is {agent_name}. "
-                f"This is non-negotiable.\n\n"
-            )
-            base_prompt = identity_prefix + base_prompt
-
-        # Combine: date context (top) + base prompt + call context
-        full_prompt = date_context + base_prompt + context_section
-        enhanced_prompt = self._enhance_prompt_with_realism(full_prompt)
-
-        # Add telephony guidance based on call direction
-        if is_outbound:
-            enhanced_prompt += "\n\nIMPORTANT: You are on a phone call that YOU initiated."
-        else:
-            enhanced_prompt += "\n\nIMPORTANT: You are on a phone call. The customer called you."
 
         config = {
             "type": "session.update",
