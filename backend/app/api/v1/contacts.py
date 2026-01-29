@@ -959,8 +959,6 @@ async def import_contacts_csv(  # noqa: PLR0912
 
     if created_contacts:
         await db.commit()
-        for contact in created_contacts:
-            await db.refresh(contact)
 
     return ImportResult(
         total_rows=row_num - 1,

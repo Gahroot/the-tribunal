@@ -69,7 +69,8 @@ async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:  # 
 
     # Extract message details
     from_number = payload.get("from", {}).get("phone_number", "")
-    to_number = payload.get("to", [{}])[0].get("phone_number", "")
+    to_list = payload.get("to", [])
+    to_number = to_list[0].get("phone_number", "") if to_list else ""
     body = payload.get("text", "")
     message_id = payload.get("id", "")
 
@@ -197,8 +198,9 @@ async def handle_delivery_status(payload: dict[str, Any], log: Any) -> None:
 
     # Extract error details for bounce classification
     errors = payload.get("errors", [])
-    error_code = errors[0].get("code") if errors else None
-    error_message = errors[0].get("detail") if errors else None
+    first_error = errors[0] if errors else {}
+    error_code = first_error.get("code") if first_error else None
+    error_message = first_error.get("detail") if first_error else None
 
     log = log.bind(message_id=message_id, status=status, error_code=error_code)
     log.info("processing_delivery_status")
@@ -332,7 +334,7 @@ async def handle_call_initiated(payload: dict[Any, Any], log: Any) -> None:
 
     to_raw = payload.get("to", "")
     if isinstance(to_raw, list):
-        to_number = to_raw[0].get("phone_number", "") if to_raw else ""
+        to_number = to_raw[0].get("phone_number", "") if len(to_raw) > 0 else ""
     elif isinstance(to_raw, dict):
         to_number = to_raw.get("phone_number", "")
     else:

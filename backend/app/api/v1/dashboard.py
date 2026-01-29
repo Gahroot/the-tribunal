@@ -268,9 +268,22 @@ async def get_recent_activity(
     )
     recent_messages = recent_messages_result.all()
 
+    # Batch load contact names to avoid N+1 queries
+    contact_ids = {conv.contact_id for _, conv in recent_messages if conv.contact_id}
+    contact_names: dict[int, str] = {}
+    if contact_ids:
+        contacts_result = await db.execute(
+            select(Contact).where(Contact.id.in_(contact_ids))
+        )
+        for contact in contacts_result.scalars():
+            contact_names[contact.id] = contact.full_name
+
     recent_activity: list[RecentActivity] = []
     for msg, conv in recent_messages:
-        contact_name = await _get_contact_name(db, conv.contact_id)
+        if conv.contact_id:
+            contact_name = contact_names.get(conv.contact_id, "Unknown")
+        else:
+            contact_name = "Unknown"
         action, duration = _get_message_action(msg)
 
         recent_activity.append(
@@ -286,17 +299,6 @@ async def get_recent_activity(
         )
 
     return recent_activity
-
-
-async def _get_contact_name(db: AsyncSession, contact_id: int | None) -> str:
-    """Get contact name by ID."""
-    if not contact_id:
-        return "Unknown"
-    contact_result = await db.execute(
-        select(Contact).where(Contact.id == contact_id)
-    )
-    contact = contact_result.scalar_one_or_none()
-    return contact.full_name if contact else "Unknown"
 
 
 def _get_message_action(msg: Message) -> tuple[str, str | None]:

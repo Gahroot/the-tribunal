@@ -1,6 +1,7 @@
 """Database seeding utilities."""
 
 import asyncio
+import os
 import uuid
 
 from sqlalchemy import select
@@ -14,14 +15,20 @@ from app.models.workspace import Workspace, WorkspaceMembership
 # Hardcoded workspace ID used by frontend
 DEFAULT_WORKSPACE_ID = uuid.UUID("ba0e0e99-c7c9-45ec-9625-567d54d6e9c2")
 
+# Default admin credentials from environment (required for seeding)
+DEFAULT_ADMIN_EMAIL = os.environ.get("SEED_ADMIN_EMAIL", "admin@example.com")
+DEFAULT_ADMIN_PASSWORD = os.environ.get("SEED_ADMIN_PASSWORD", "changeme123")
+
 
 async def create_admin_user(
     db: AsyncSession,
-    email: str = "sold@nolangrout.com",
-    password: str = "Monkey8894",
+    email: str | None = None,
+    password: str | None = None,
     full_name: str = "Admin User",
 ) -> User:
     """Create admin user if not exists."""
+    email = email or DEFAULT_ADMIN_EMAIL
+    password = password or DEFAULT_ADMIN_PASSWORD
     result = await db.execute(select(User).where(User.email == email))
     existing = result.scalar_one_or_none()
 

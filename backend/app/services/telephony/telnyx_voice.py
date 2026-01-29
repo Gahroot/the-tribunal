@@ -276,7 +276,8 @@ class TelnyxVoiceService:
                 )
             else:
                 errors = response_data.get("errors", [])
-                error_msg = errors[0].get("detail") if errors else response.text
+                first_error = errors[0] if errors else {}
+                error_msg = first_error.get("detail") if first_error else response.text
                 message.status = "failed"
                 log.error("call_initiation_failed", error=error_msg)
 

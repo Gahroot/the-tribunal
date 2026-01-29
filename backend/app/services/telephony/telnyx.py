@@ -180,7 +180,8 @@ class TelnyxSMSService:
                 log.info("sms_sent", message_id=message.provider_message_id)
             else:
                 errors = response_data.get("errors", [])
-                error_msg = errors[0].get("detail") if errors else response.text
+                first_error = errors[0] if errors else {}
+                error_msg = first_error.get("detail") if first_error else response.text
                 message.status = "failed"
                 log.error("sms_send_failed", error=error_msg)
 
@@ -311,7 +312,6 @@ class TelnyxSMSService:
 
         # Set delivered timestamp
         if message.status == "delivered":
-            from datetime import UTC, datetime
             message.delivered_at = datetime.now(UTC)
 
         await db.commit()
@@ -524,12 +524,13 @@ class TelnyxSMSService:
 
         numbers = []
         for number in data.get("data", []):
-            region_info = number.get("region_information", [{}])
+            region_info = number.get("region_information", [])
+            first_region = region_info[0] if region_info else {}
             numbers.append(
                 PhoneNumberInfo(
                     id="",  # Not purchased yet
                     phone_number=number.get("phone_number", ""),
-                    friendly_name=region_info[0].get("region_name") if region_info else None,
+                    friendly_name=first_region.get("region_name") if first_region else None,
                     capabilities={
                         "voice": "voice" in number.get("features", []),
                         "sms": "sms" in number.get("features", []),

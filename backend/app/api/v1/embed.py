@@ -331,7 +331,9 @@ async def send_chat_message(
         data = response.json()
 
     # Extract response
-    ai_response = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+    choices = data.get("choices", [])
+    first_choice = choices[0] if choices else {}
+    ai_response = first_choice.get("message", {}).get("content", "")
 
     return ChatResponse(response=ai_response, tool_calls=[])
 
