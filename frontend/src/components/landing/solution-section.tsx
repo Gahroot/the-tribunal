@@ -39,9 +39,7 @@ const secondaryFeatures = [
 
 export function SolutionSection() {
   return (
-    <section className="py-28 md:py-36 px-4 bg-[#faf8fc] relative overflow-hidden">
-      {/* Decorative blur */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] bg-purple-200/20 rounded-full blur-3xl pointer-events-none" />
+    <section className="py-28 md:py-36 px-4 relative overflow-hidden">
 
       <motion.div
         className="max-w-6xl mx-auto relative z-10"

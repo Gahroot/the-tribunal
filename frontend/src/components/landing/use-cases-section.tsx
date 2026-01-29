@@ -60,7 +60,7 @@ const industries = [
 
 export function UseCasesSection() {
   return (
-    <section className="py-28 md:py-36 px-4 bg-white" aria-labelledby="use-cases-heading">
+    <section className="py-28 md:py-36 px-4" aria-labelledby="use-cases-heading">
       <motion.div
         className="max-w-6xl mx-auto"
         variants={containerVariants}

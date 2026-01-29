@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 OpportunityStatus = Literal["open", "won", "lost", "abandoned"]
 
@@ -44,8 +44,7 @@ class PipelineStageResponse(PipelineStageBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PipelineBase(BaseModel):
@@ -79,8 +78,7 @@ class PipelineResponse(PipelineBase):
     updated_at: datetime
     stages: list[PipelineStageResponse] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Opportunity schemas
@@ -119,8 +117,7 @@ class OpportunityLineItemResponse(OpportunityLineItemBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OpportunityActivityResponse(BaseModel):
@@ -134,8 +131,7 @@ class OpportunityActivityResponse(BaseModel):
     description: str | None = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OpportunityBase(BaseModel):
@@ -195,8 +191,7 @@ class OpportunityResponse(OpportunityBase):
     updated_at: datetime
     line_items: list[OpportunityLineItemResponse] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OpportunityDetailResponse(OpportunityResponse):

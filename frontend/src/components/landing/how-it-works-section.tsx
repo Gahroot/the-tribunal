@@ -48,7 +48,7 @@ const steps = [
 
 export function HowItWorksSection() {
   return (
-    <section className="py-28 md:py-36 px-4 bg-white" aria-labelledby="how-it-works-heading">
+    <section className="py-28 md:py-36 px-4" aria-labelledby="how-it-works-heading">
       <motion.div
         className="max-w-6xl mx-auto"
         variants={containerVariants}

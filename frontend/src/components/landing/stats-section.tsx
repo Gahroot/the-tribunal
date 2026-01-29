@@ -45,7 +45,7 @@ const stats = [
 
 export function StatsSection() {
   return (
-    <section className="py-20 px-4 bg-[#f3eff8]" aria-label="Key statistics">
+    <section className="py-20 px-4" aria-label="Key statistics">
       <motion.div
         className="max-w-6xl mx-auto"
         variants={containerVariants}

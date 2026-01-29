@@ -50,7 +50,7 @@ const metrics = [
 
 export function ResultsSection() {
   return (
-    <section className="py-28 md:py-36 px-4 bg-[#f3eff8]" aria-labelledby="results-heading">
+    <section className="py-28 md:py-36 px-4" aria-labelledby="results-heading">
       <motion.div
         className="max-w-6xl mx-auto"
         variants={containerVariants}

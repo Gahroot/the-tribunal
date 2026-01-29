@@ -490,6 +490,70 @@ class TelnyxVoiceService:
             )
             return False
 
+    async def send_dtmf(
+        self,
+        call_control_id: str,
+        digits: str,
+        duration_millis: int = 250,
+    ) -> bool:
+        """Send DTMF tones during an active call.
+
+        Used for IVR menu navigation. Valid digits: 0-9, A-D, *, #
+        Pauses: 'w' (0.5s), 'W' (1s)
+
+        Args:
+            call_control_id: Telnyx call control ID
+            digits: DTMF digits to send (e.g., "1", "0w0", "123#")
+            duration_millis: Duration per digit in ms (100-500, default 250)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        self.logger.info(
+            "sending_dtmf",
+            call_control_id=call_control_id,
+            digits=digits,
+            duration_millis=duration_millis,
+        )
+
+        try:
+            payload: dict[str, Any] = {
+                "digits": digits,
+                "duration_millis": max(100, min(500, duration_millis)),
+            }
+
+            response = await self.client.post(
+                f"/calls/{call_control_id}/actions/send_dtmf",
+                json=payload,
+            )
+            response.raise_for_status()
+
+            self.logger.info(
+                "dtmf_sent_successfully",
+                call_control_id=call_control_id,
+                digits=digits,
+            )
+            return True
+
+        except httpx.HTTPStatusError as e:
+            self.logger.error(
+                "send_dtmf_http_error",
+                call_control_id=call_control_id,
+                digits=digits,
+                status_code=e.response.status_code,
+                response_text=e.response.text[:500] if e.response.text else "empty",
+                error=str(e),
+            )
+            return False
+        except Exception as e:
+            self.logger.exception(
+                "send_dtmf_failed",
+                call_control_id=call_control_id,
+                digits=digits,
+                error=str(e),
+            )
+            return False
+
     async def update_message_call_status(
         self,
         db: AsyncSession,

@@ -75,4 +75,5 @@ asyncio_default_fixture_loop_scope = "function"
 dev = [
     "mypy>=1.19.1",
     "ruff>=0.14.10",
+    "types-pytz>=2024.2",
 ]

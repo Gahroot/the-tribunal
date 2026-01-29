@@ -110,7 +110,7 @@ export function FinalCtaSection() {
         </motion.div>
 
         <motion.div variants={itemVariants}>
-          <div className="max-w-md mx-auto p-6 rounded-2xl border border-white/5 bg-white/[0.02] backdrop-blur-sm">
+          <div className="max-w-md mx-auto p-6 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm">
             <div aria-live="polite" role="status">
               {isSuccess && (
                 <div className="py-6 space-y-3">

@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime, time
 
-from pydantic import BaseModel, field_serializer, field_validator
+from pydantic import BaseModel, ConfigDict, field_serializer, field_validator
 
 
 class CampaignCreate(BaseModel):
@@ -80,8 +80,7 @@ class CampaignResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
     @field_validator("sending_hours_start", "sending_hours_end", mode="before")
     @classmethod
@@ -122,8 +121,7 @@ class CampaignContactResponse(BaseModel):
     opted_out: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PaginatedCampaigns(BaseModel):
@@ -275,8 +273,7 @@ class VoiceCampaignResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
     @field_validator("sending_hours_start", "sending_hours_end", mode="before")
     @classmethod
@@ -323,8 +320,7 @@ class VoiceCampaignContactResponse(BaseModel):
     opted_out: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class VoiceCampaignAnalytics(BaseModel):

@@ -660,17 +660,23 @@ async def get_contact_timeline(
         messages = msg_result.scalars().all()
 
         for msg in messages:
+            # Determine type based on channel
+            item_type = "call" if msg.channel == "voice" else msg.channel
+
             timeline_items.append(
                 TimelineItem(
                     id=msg.id,
-                    type="sms",
+                    type=item_type,
                     timestamp=msg.created_at,
                     direction=msg.direction,
                     is_ai=msg.is_ai,
                     content=msg.body,
+                    duration_seconds=msg.duration_seconds,
+                    recording_url=msg.recording_url,
+                    transcript=msg.transcript,
                     status=msg.status,
                     original_id=msg.id,
-                    original_type="sms_message",
+                    original_type=f"{msg.channel}_message",
                 )
             )
 

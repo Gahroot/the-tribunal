@@ -53,6 +53,35 @@ GROK_BUILTIN_TOOLS = {
     },
 }
 
+# DTMF tool for IVR menu navigation
+# Allows AI agent to send touch-tone digits during calls
+DTMF_TOOL = {
+    "type": "function",
+    "name": "send_dtmf",
+    "description": (
+        "Send DTMF touch-tone digits during the call for IVR menu navigation. "
+        "Use this when you hear an automated phone menu like 'Press 1 for sales, "
+        "Press 2 for service'. Wait for the menu to finish speaking before sending. "
+        "Common patterns: '0' or '#' often reaches an operator/human. "
+        "Add 'w' between digits for 0.5s pause (e.g., '1w2' sends 1, waits, sends 2)."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "digits": {
+                "type": "string",
+                "description": (
+                    "DTMF digits to send. Valid: 0-9, *, #, A-D. "
+                    "Use 'w' for 0.5s pause, 'W' for 1s pause between digits. "
+                    "Examples: '1' (press 1), '0' (operator), '123#' (enter code), "
+                    "'1w2w3' (digits with pauses for reliability)."
+                ),
+            },
+        },
+        "required": ["digits"],
+    },
+}
+
 # Voice agent tool definitions for Cal.com booking
 VOICE_BOOKING_TOOLS = [
     {
@@ -577,6 +606,24 @@ DO NOT say things like "I'll check and get back to you" - you can check instantl
         if "x_search" in agent_enabled_tools:
             tools.append(GROK_BUILTIN_TOOLS["x_search"])
             self.logger.info("grok_x_search_enabled")
+
+        # Add DTMF tool for IVR navigation if enabled
+        # Check both patterns: direct tool ID in enabled_tools (legacy)
+        # or integration-based: "call_control" in enabled_tools + "send_dtmf" in tool_settings
+        tool_settings = (
+            self.agent.tool_settings if self.agent and self.agent.tool_settings else {}
+        )
+        call_control_tools = tool_settings.get("call_control", []) or []
+        dtmf_enabled = (
+            "send_dtmf" in agent_enabled_tools  # Legacy/direct pattern
+            or (
+                "call_control" in agent_enabled_tools
+                and "send_dtmf" in call_control_tools
+            )  # Integration-based pattern
+        )
+        if dtmf_enabled:
+            tools.append(DTMF_TOOL)
+            self.logger.info("grok_dtmf_tool_enabled")
 
         # Add Cal.com booking tools if enabled and configured
         # Use dynamic tools with current date context embedded

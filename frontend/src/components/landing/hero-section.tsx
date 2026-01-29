@@ -71,19 +71,7 @@ export function HeroSection() {
   const isError = callMutation.isError || textMutation.isError;
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-16 bg-[#faf8fc] relative overflow-hidden">
-      {/* Decorative blur blobs */}
-      <div className="absolute top-20 right-10 w-[500px] h-[500px] bg-purple-200/30 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-20 left-10 w-[400px] h-[400px] bg-pink-200/20 rounded-full blur-3xl pointer-events-none" />
-
-      {/* Subtle grid pattern overlay */}
-      <div
-        className="absolute inset-0 pointer-events-none opacity-[0.03]"
-        style={{
-          backgroundImage: `linear-gradient(to right, #1a1523 1px, transparent 1px), linear-gradient(to bottom, #1a1523 1px, transparent 1px)`,
-          backgroundSize: '60px 60px',
-        }}
-      />
+    <div className="min-h-screen flex items-center justify-center px-4 py-16 relative overflow-hidden">
 
       <motion.div
         className="max-w-6xl w-full grid lg:grid-cols-2 gap-12 lg:gap-20 items-center relative z-10"

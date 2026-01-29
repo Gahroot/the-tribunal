@@ -323,6 +323,13 @@ async def _execute_voice_tool(
 
         return result
 
+    elif function_name == "send_dtmf":
+        return await _execute_send_dtmf(
+            call_control_id=call_control_id,
+            digits=arguments.get("digits", ""),
+            log=log,
+        )
+
     else:
         log.warning("unknown_voice_tool", function_name=function_name)
         return {"success": False, "error": f"Unknown function: {function_name}"}
@@ -516,6 +523,66 @@ async def _execute_book_appointment(
     except Exception as e:
         log.exception("book_appointment_error", error=str(e))
         return {"success": False, "error": f"Failed to book appointment: {str(e)}"}
+
+
+async def _execute_send_dtmf(
+    call_control_id: str | None,
+    digits: str,
+    log: Any,
+) -> dict[str, Any]:
+    """Execute send_dtmf tool for IVR navigation.
+
+    Args:
+        call_control_id: Telnyx call control ID
+        digits: DTMF digits to send (0-9, *, #, A-D, w/W for pauses)
+        log: Logger instance
+
+    Returns:
+        Success/failure result
+    """
+    from app.services.telephony.telnyx_voice import TelnyxVoiceService
+
+    # Validate inputs
+    error_msg: str | None = None
+    if not call_control_id:
+        log.error("send_dtmf_no_call_control_id")
+        error_msg = "No active call to send DTMF"
+    elif not digits:
+        error_msg = "No digits provided"
+    elif not settings.telnyx_api_key:
+        error_msg = "Telnyx API key not configured"
+    else:
+        # Validate digits - only allow valid DTMF characters
+        valid_chars = set("0123456789*#ABCDabcdwW")
+        invalid = [c for c in digits if c not in valid_chars]
+        if invalid:
+            error_msg = f"Invalid DTMF characters: {invalid}. Valid: 0-9, *, #, A-D, w, W"
+
+    if error_msg:
+        return {"success": False, "error": error_msg}
+
+    # At this point we know call_control_id and telnyx_api_key are not None
+    assert call_control_id is not None
+    assert settings.telnyx_api_key is not None
+
+    try:
+        voice_service = TelnyxVoiceService(settings.telnyx_api_key)
+        try:
+            success = await voice_service.send_dtmf(
+                call_control_id=call_control_id,
+                digits=digits,
+            )
+        finally:
+            await voice_service.close()
+
+        if success:
+            log.info("dtmf_sent_via_tool", call_control_id=call_control_id, digits=digits)
+            return {"success": True, "message": f"Sent DTMF tones: {digits}", "digits": digits}
+        return {"success": False, "error": "Failed to send DTMF tones"}
+
+    except Exception as e:
+        log.exception("send_dtmf_error", error=str(e), digits=digits)
+        return {"success": False, "error": f"Failed to send DTMF: {str(e)}"}
 
 
 VoiceSessionType = VoiceAgentSession | GrokVoiceAgentSession | ElevenLabsVoiceAgentSession

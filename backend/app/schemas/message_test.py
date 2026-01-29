@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime, time
 
-from pydantic import BaseModel, field_serializer, field_validator
+from pydantic import BaseModel, ConfigDict, field_serializer, field_validator
 
 # === Variant Schemas ===
 
@@ -44,8 +44,7 @@ class TestVariantResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # === Test Contact Schemas ===
@@ -73,8 +72,7 @@ class TestContactResponse(BaseModel):
     variant_assigned_at: datetime | None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # === Message Test Schemas ===
@@ -146,8 +144,7 @@ class MessageTestResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
     @field_validator("sending_hours_start", "sending_hours_end", mode="before")
     @classmethod

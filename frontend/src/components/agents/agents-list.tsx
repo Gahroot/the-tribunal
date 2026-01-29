@@ -14,6 +14,7 @@ import {
   Trash2,
   Bot,
   Phone,
+  PhoneCall,
   MessageSquare,
   Mic,
   Sparkles,
@@ -41,8 +42,28 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { PhoneInput } from "@/components/landing/phone-input";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { agentsApi } from "@/lib/api/agents";
+import { callsApi } from "@/lib/api/calls";
+import { phoneNumbersApi } from "@/lib/api/phone-numbers";
+import type { Agent } from "@/types";
 
 const channelModeIcons: Record<string, React.ElementType> = {
   voice: Phone,
@@ -65,6 +86,10 @@ const itemVariants = {
 
 export function AgentsList() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [testCallDialogOpen, setTestCallDialogOpen] = useState(false);
+  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  const [toNumber, setToNumber] = useState("");
+  const [fromNumberId, setFromNumberId] = useState("");
   const workspaceId = useWorkspaceId();
   const queryClient = useQueryClient();
 
@@ -146,6 +171,56 @@ export function AgentsList() {
       toast.error("Failed to duplicate agent");
     },
   });
+
+  // Fetch phone numbers for test call
+  const { data: phoneNumbersData } = useQuery({
+    queryKey: ["phoneNumbers", workspaceId],
+    queryFn: () => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return phoneNumbersApi.list(workspaceId, { voice_enabled: true });
+    },
+    enabled: !!workspaceId && testCallDialogOpen,
+  });
+
+  // Initiate test call
+  const initiateCallMutation = useMutation({
+    mutationFn: ({ toNumber, fromNumber, agentId }: { toNumber: string; fromNumber: string; agentId: string }) => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return callsApi.initiate(workspaceId, {
+        to_number: toNumber,
+        from_phone_number: fromNumber,
+        agent_id: agentId,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Call initiated successfully");
+      setTestCallDialogOpen(false);
+      setToNumber("");
+      setFromNumberId("");
+      setSelectedAgent(null);
+    },
+    onError: () => {
+      toast.error("Failed to initiate call");
+    },
+  });
+
+  const phoneNumbers = phoneNumbersData?.items ?? [];
+
+  const handleTestCall = () => {
+    if (!selectedAgent || !toNumber || !fromNumberId) return;
+    const fromPhone = phoneNumbers.find((p) => p.id === fromNumberId);
+    if (!fromPhone) return;
+    initiateCallMutation.mutate({
+      toNumber,
+      fromNumber: fromPhone.phone_number,
+      agentId: selectedAgent.id,
+    });
+  };
+
+  const openTestCallDialog = (agent: Agent) => {
+    setSelectedAgent(agent);
+    setTestCallDialogOpen(true);
+  };
 
   const agents = agentsData?.items ?? [];
 
@@ -305,6 +380,12 @@ export function AgentsList() {
                               Configure
                             </Link>
                           </DropdownMenuItem>
+                          {(agent.channel_mode === "voice" || agent.channel_mode === "both") && (
+                            <DropdownMenuItem onClick={() => openTestCallDialog(agent)}>
+                              <PhoneCall className="mr-2 size-4" />
+                              Test Call
+                            </DropdownMenuItem>
+                          )}
                           {agent.is_active ? (
                             <DropdownMenuItem
                               onClick={() => toggleAgentMutation.mutate({ agentId: agent.id, isActive: false })}
@@ -383,6 +464,70 @@ export function AgentsList() {
           })}
         </AnimatePresence>
       </motion.div>
+
+      {/* Test Call Dialog */}
+      <Dialog open={testCallDialogOpen} onOpenChange={setTestCallDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Test Call with {selectedAgent?.name}</DialogTitle>
+            <DialogDescription>
+              Initiate a test call to verify the AI agent is working correctly.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="to-number">Phone Number to Call</Label>
+              <PhoneInput
+                id="to-number"
+                value={toNumber}
+                onChange={setToNumber}
+                placeholder="(555) 123-4567"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="from-number">Call From</Label>
+              <Select value={fromNumberId} onValueChange={setFromNumberId}>
+                <SelectTrigger id="from-number" className="w-full">
+                  <SelectValue placeholder="Select a phone number" />
+                </SelectTrigger>
+                <SelectContent>
+                  {phoneNumbers.map((phone) => (
+                    <SelectItem key={phone.id} value={phone.id}>
+                      {phone.phone_number}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {phoneNumbers.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  No voice-enabled phone numbers available.
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTestCallDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleTestCall}
+              disabled={!toNumber || !fromNumberId || initiateCallMutation.isPending}
+            >
+              {initiateCallMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Calling...
+                </>
+              ) : (
+                <>
+                  <PhoneCall className="mr-2 size-4" />
+                  Start Call
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
