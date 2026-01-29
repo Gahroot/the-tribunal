@@ -124,7 +124,21 @@ async def initiate_call(
             agent_id=call_data.agent_id,
         )
 
-        return CallResponse.model_validate(message)
+        return CallResponse(
+            id=message.id,
+            conversation_id=message.conversation_id,
+            direction=message.direction,
+            channel=message.channel,
+            status=message.status,
+            duration_seconds=message.duration_seconds,
+            recording_url=message.recording_url,
+            transcript=message.transcript,
+            created_at=message.created_at,
+            from_number=call_data.from_phone_number,
+            to_number=call_data.to_number,
+            agent_id=message.agent_id,
+            is_ai=message.is_ai,
+        )
     finally:
         await voice_service.close()
 
