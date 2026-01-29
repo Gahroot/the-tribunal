@@ -119,12 +119,22 @@ class VoiceAgentSession:
         Uses g711_ulaw at 8kHz - this matches Telnyx's format directly,
         eliminating the need for audio conversion (lower latency, no quality loss).
         """
-        # Build system instructions - be explicit about role and behavior
+        # Get base prompt
         base_instructions = (
             self.agent.system_prompt
             if self.agent
             else "You are a helpful AI voice assistant."
         )
+
+        # Add identity prefix if agent has a name
+        if self.agent and self.agent.name:
+            agent_name = self.agent.name
+            identity_prefix = (
+                f"CRITICAL IDENTITY INSTRUCTION: Your name is {agent_name}. "
+                f"You MUST always identify yourself as {agent_name}. "
+                f"This is non-negotiable.\n\n"
+            )
+            base_instructions = identity_prefix + base_instructions
 
         # Add telephony-specific guidance to prevent hallucination at call start
         instructions = f"""{base_instructions}
@@ -201,6 +211,16 @@ IMPORTANT: You are on a phone call. When the call connects:
             session_config["voice"] = voice
 
         if system_prompt:
+            # Add identity prefix if agent has a name
+            if self.agent and self.agent.name:
+                agent_name = self.agent.name
+                identity_prefix = (
+                    f"CRITICAL IDENTITY INSTRUCTION: Your name is {agent_name}. "
+                    f"You MUST always identify yourself as {agent_name}. "
+                    f"This is non-negotiable.\n\n"
+                )
+                system_prompt = identity_prefix + system_prompt
+
             # Add telephony guidance to custom prompts too
             enhanced_prompt = f"""{system_prompt}
 
@@ -279,15 +299,24 @@ IMPORTANT: You are on a phone call. When the call connects:
         except Exception as e:
             self.logger.exception("send_greeting_error", error=str(e))
 
-    async def trigger_initial_response(self, greeting: str | None = None) -> None:
+    async def trigger_initial_response(
+        self,
+        greeting: str | None = None,
+        is_outbound: bool = False,
+    ) -> None:
         """Trigger the AI to start speaking with the initial greeting.
 
         Call this after the audio stream is established to initiate the conversation.
         Creates a user message prompting the AI to greet, then triggers response.create().
 
+        For OUTBOUND calls, we tell the AI it initiated the call and use a pattern
+        interrupt opener to be honest and disarming.
+
         Args:
             greeting: Optional greeting text. If not provided, uses the pending greeting
                      from send_greeting or agent's initial greeting.
+            is_outbound: If True, this is an outbound call and we use a pattern interrupt
+                        opener instead of waiting for the caller.
         """
         self.logger.info(
             "========== TRIGGER INITIAL RESPONSE ==========",
@@ -303,18 +332,39 @@ IMPORTANT: You are on a phone call. When the call connects:
             )
             return
 
-        # Use provided greeting, or pending greeting, or agent's initial greeting
-        message = greeting
-        if not message and hasattr(self, "_pending_greeting"):
-            message = self._pending_greeting
-            msg_len = len(message) if message else 0
-            self.logger.debug("using_pending_greeting", greeting_length=msg_len)
-        if not message and self.agent and self.agent.initial_greeting:
-            message = self.agent.initial_greeting
-            msg_len = len(message) if message else 0
-            self.logger.debug("using_agent_initial_greeting", greeting_length=msg_len)
+        # For OUTBOUND calls: Use a pattern interrupt opener
+        # Be honest and disarming - give them control
+        if is_outbound:
+            self.logger.info(
+                "openai_outbound_call_pattern_interrupt",
+                is_outbound=True,
+                has_call_context=hasattr(self, "_call_context") and bool(self._call_context),
+            )
+            # Extract just the first name (before any | or - separator)
+            full_name = self.agent.name if self.agent else "Alex"
+            agent_name = full_name.split("|")[0].split("-")[0].strip().split()[0]
+            # Pattern interrupt: honest, disarming, gives them a choice
+            prompt_text = (
+                f"You just called someone. Open with a pattern interrupt. "
+                f"Say: 'Hey! It's {agent_name}. This is a sales call. "
+                f"Do you wanna hang up... or can I tell you why I'm calling?!' "
+                f"Start friendly and upbeat. Sound a bit disappointed on 'hang up'. "
+                f"Then get excited on 'or can I tell you why I'm calling?!' "
+                f"Wait for their response."
+            )
+        else:
+            # For INBOUND calls: Use configured greeting or default
+            # Use provided greeting, or pending greeting, or agent's initial greeting
+            message = greeting
+            if not message and hasattr(self, "_pending_greeting"):
+                message = self._pending_greeting
+                msg_len = len(message) if message else 0
+                self.logger.debug("using_pending_greeting", greeting_length=msg_len)
+            if not message and self.agent and self.agent.initial_greeting:
+                message = self.agent.initial_greeting
+                msg_len = len(message) if message else 0
+                self.logger.debug("using_agent_initial_greeting", greeting_length=msg_len)
 
-        try:
             # Create a user message that instructs the AI to deliver the greeting
             # This is the proven pattern from working OpenAI Realtime integrations
             if message:
@@ -322,10 +372,12 @@ IMPORTANT: You are on a phone call. When the call connects:
             else:
                 prompt_text = "Greet the caller and introduce yourself briefly."
 
+        try:
             self.logger.info(
                 "sending_greeting_prompt",
                 prompt_text=prompt_text[:100],
-                has_custom_greeting=bool(message),
+                has_custom_greeting=bool(message if not is_outbound else False),
+                is_outbound=is_outbound,
             )
 
             event = {
@@ -713,65 +765,130 @@ IMPORTANT: You are on a phone call. When the call connects:
                 transcript=json.dumps(self._transcript_entries, indent=2),
             )
 
-    async def inject_context(
+    async def inject_context(  # noqa: PLR0912
         self,
         contact_info: dict[str, Any] | None = None,
         offer_info: dict[str, Any] | None = None,
+        is_outbound: bool = False,
     ) -> None:
-        """Inject conversation context into the session.
+        """Inject conversation context by updating system instructions.
+
+        This updates the session instructions to include contact and offer
+        context, rather than injecting as user messages which confuses the AI.
 
         Args:
             contact_info: Contact information (name, company, etc.)
             offer_info: Offer/product information
+            is_outbound: If True, this is an outbound call (AI initiated)
         """
         if not self.ws:
             self.logger.warning("websocket_not_connected")
             return
 
-        context_messages = []
+        if not contact_info and not offer_info:
+            return
 
-        # Add contact context
+        # Store context for use in trigger_initial_response
+        self._call_context = {
+            "contact": contact_info,
+            "offer": offer_info,
+        }
+
+        # Build context section for system prompt
+        context_parts = []
+
+        if is_outbound:
+            context_parts.append(
+                "\n\n# CURRENT CALL CONTEXT - THIS IS AN OUTBOUND CALL YOU ARE MAKING"
+            )
+            context_parts.append(
+                "You initiated this call. You know exactly why you're calling. "
+                "Do NOT ask the customer what they want to talk about."
+            )
+        else:
+            context_parts.append("\n\n# CURRENT CALL CONTEXT")
+
         if contact_info:
-            contact_msg = "Customer information:\n"
+            if is_outbound:
+                context_parts.append("\n## Customer You Are Calling:")
+            else:
+                context_parts.append("\n## Customer Information:")
             if contact_info.get("name"):
-                contact_msg += f"Name: {contact_info['name']}\n"
+                context_parts.append(f"- Name: {contact_info['name']}")
             if contact_info.get("company"):
-                contact_msg += f"Company: {contact_info['company']}\n"
-            context_messages.append(contact_msg)
+                context_parts.append(f"- Company: {contact_info['company']}")
 
-        # Add offer context
         if offer_info:
-            offer_msg = "Offer information:\n"
+            if is_outbound:
+                context_parts.append("\n## What You Are Calling About:")
+            else:
+                context_parts.append("\n## Offer Information:")
             if offer_info.get("name"):
-                offer_msg += f"Offer: {offer_info['name']}\n"
+                context_parts.append(f"- Offer: {offer_info['name']}")
             if offer_info.get("description"):
-                offer_msg += f"Description: {offer_info['description']}\n"
+                context_parts.append(f"- Details: {offer_info['description']}")
             if offer_info.get("terms"):
-                offer_msg += f"Terms: {offer_info['terms']}\n"
-            context_messages.append(offer_msg)
+                context_parts.append(f"- Terms: {offer_info['terms']}")
 
-        if context_messages:
-            combined_context = "\n".join(context_messages)
+        context_section = "\n".join(context_parts)
 
-            event = {
-                "type": "conversation.item.create",
-                "item": {
-                    "type": "message",
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "input_text",
-                            "text": combined_context,
-                        }
-                    ],
-                },
-            }
+        # Get current base prompt
+        base_instructions = (
+            self.agent.system_prompt
+            if self.agent
+            else "You are a helpful AI voice assistant."
+        )
 
-            try:
-                await self._send_event(event)
-                self.logger.info("context_injected")
-            except Exception as e:
-                self.logger.exception("inject_context_error", error=str(e))
+        # Add identity prefix
+        if self.agent and self.agent.name:
+            agent_name = self.agent.name
+            identity_prefix = (
+                f"CRITICAL IDENTITY INSTRUCTION: Your name is {agent_name}. "
+                f"You MUST always identify yourself as {agent_name}. "
+                f"This is non-negotiable.\n\n"
+            )
+            base_instructions = identity_prefix + base_instructions
+
+        # Combine: base instructions + call context
+        full_instructions = base_instructions + context_section
+
+        # Add telephony guidance based on call direction
+        if is_outbound:
+            full_instructions += """
+
+IMPORTANT: You are on a phone call that YOU initiated.
+- You called THEM - introduce yourself and explain why you're calling
+- Do NOT ask "what would you like to talk about" - YOU know why you called
+- Be direct and professional about the purpose of your call"""
+        else:
+            full_instructions += """
+
+IMPORTANT: You are on a phone call. When the call connects:
+- Wait briefly for the caller to speak first, OR
+- If instructed to greet first, deliver your greeting naturally and wait for response
+- Do NOT generate random content, fun facts, or filler - stay focused on your purpose
+- Speak clearly and conversationally as if on a real phone call"""
+
+        # Send session update with full context
+        config: dict[str, Any] = {
+            "type": "session.update",
+            "session": {
+                "instructions": full_instructions,
+                # CRITICAL: Always include modalities and audio formats
+                "modalities": ["text", "audio"],
+                "input_audio_format": "g711_ulaw",
+                "output_audio_format": "g711_ulaw",
+            },
+        }
+
+        try:
+            await self._send_event(config)
+            self.logger.info(
+                "context_injected_to_instructions",
+                is_outbound=is_outbound,
+            )
+        except Exception as e:
+            self.logger.exception("inject_context_error", error=str(e))
 
     def set_interruption_event(self, event: asyncio.Event) -> None:
         """Set event for signaling audio buffer clear on interruption.

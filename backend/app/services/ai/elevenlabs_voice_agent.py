@@ -380,8 +380,9 @@ Note: These cues will be interpreted by the speech synthesis system."""
             agent_name = self.agent.name
             identity_prefix = (
                 f"CRITICAL IDENTITY INSTRUCTION: Your name is {agent_name}. "
-                f"You MUST always identify yourself as {agent_name} - never use "
-                "any other name. This is non-negotiable.\n\n"
+                f"You MUST always identify yourself as {agent_name}. "
+                f"When greeting or introducing yourself, say your name is {agent_name}. "
+                f"This is non-negotiable.\n\n"
             )
             base_prompt = identity_prefix + base_prompt
 
@@ -888,12 +889,19 @@ You have tools to check calendar availability and book appointments. Follow thes
         except Exception as e:
             self.logger.exception("cancel_response_error", error=str(e))
 
-    async def inject_context(
+    async def inject_context(  # noqa: PLR0912
         self,
         contact_info: dict[str, Any] | None = None,
         offer_info: dict[str, Any] | None = None,
+        is_outbound: bool = True,
     ) -> None:
-        """Inject conversation context."""
+        """Inject conversation context.
+
+        Args:
+            contact_info: Contact information (name, company, etc.)
+            offer_info: Offer/product information
+            is_outbound: True if this is an outbound call, False for inbound
+        """
         if not self.grok_ws:
             return
 
@@ -906,10 +914,22 @@ You have tools to check calendar availability and book appointments. Follow thes
             "offer": offer_info,
         }
 
-        # Build context section
-        context_parts = [
-            "\n\n# CURRENT CALL CONTEXT - THIS IS AN OUTBOUND CALL YOU ARE MAKING"
-        ]
+        # Build context section based on call direction
+        if is_outbound:
+            context_parts = [
+                "\n\n# CURRENT CALL CONTEXT - THIS IS AN OUTBOUND CALL YOU ARE MAKING"
+            ]
+            context_parts.append(
+                "You initiated this call. You know exactly why you're calling. "
+                "Do NOT ask the customer what they want to talk about."
+            )
+        else:
+            context_parts = [
+                "\n\n# CURRENT CALL CONTEXT - THIS IS AN INBOUND CALL"
+            ]
+            context_parts.append(
+                "The customer called you. Listen to what they need and assist them."
+            )
 
         if contact_info:
             context_parts.append("\n## Customer You Are Calling:")
@@ -941,14 +961,21 @@ You have tools to check calendar availability and book appointments. Follow thes
             agent_name = self.agent.name
             identity_prefix = (
                 f"CRITICAL IDENTITY INSTRUCTION: Your name is {agent_name}. "
-                f"You MUST always identify yourself as {agent_name}.\n\n"
+                f"You MUST always identify yourself as {agent_name}. "
+                f"When greeting or introducing yourself, say your name is {agent_name}. "
+                f"This is non-negotiable.\n\n"
             )
             base_prompt = identity_prefix + base_prompt
 
         # Combine: date context (top) + base prompt + call context
         full_prompt = date_context + base_prompt + context_section
         enhanced_prompt = self._enhance_prompt_with_realism(full_prompt)
-        enhanced_prompt += "\n\nIMPORTANT: You are on a phone call that YOU initiated."
+
+        # Add telephony guidance based on call direction
+        if is_outbound:
+            enhanced_prompt += "\n\nIMPORTANT: You are on a phone call that YOU initiated."
+        else:
+            enhanced_prompt += "\n\nIMPORTANT: You are on a phone call. The customer called you."
 
         config = {
             "type": "session.update",

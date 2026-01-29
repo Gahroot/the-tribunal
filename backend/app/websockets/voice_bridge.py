@@ -729,6 +729,7 @@ async def _setup_voice_session(
     timezone: str,
     log: Any,
     call_control_id: str | None = None,
+    is_outbound: bool = True,
 ) -> None:
     """Configure voice session with agent settings and context.
 
@@ -744,6 +745,7 @@ async def _setup_voice_session(
         timezone: Timezone for bookings (from workspace settings)
         log: Logger instance
         call_control_id: Telnyx call control ID for persisting booking outcome
+        is_outbound: True if this is an outbound call, False for inbound
     """
     # Set up tool callback for Grok and ElevenLabs voice sessions (both support tools)
     if isinstance(voice_session, (GrokVoiceAgentSession, ElevenLabsVoiceAgentSession)):
@@ -813,8 +815,14 @@ async def _setup_voice_session(
         await voice_session.inject_context(
             contact_info=contact_info,
             offer_info=offer_info,
+            is_outbound=is_outbound,
         )
-        log.info("context_injected", has_contact=bool(contact_info), has_offer=bool(offer_info))
+        log.info(
+            "context_injected",
+            has_contact=bool(contact_info),
+            has_offer=bool(offer_info),
+            is_outbound=is_outbound,
+        )
 
     # Note: Greeting is triggered when Telnyx stream starts, not here
     if agent and agent.initial_greeting:
@@ -971,7 +979,14 @@ async def voice_stream_bridge(  # noqa: PLR0912, PLR0915
             has_offer=offer_info is not None,
         )
         await _setup_voice_session(
-            voice_session, agent, contact_info, offer_info, timezone, log, call_control_id=call_id
+            voice_session,
+            agent,
+            contact_info,
+            offer_info,
+            timezone,
+            log,
+            call_control_id=call_id,
+            is_outbound=is_outbound,
         )
         log.info(
             "voice_session_configured",

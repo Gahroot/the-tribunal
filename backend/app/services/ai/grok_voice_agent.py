@@ -465,8 +465,8 @@ You can use these auditory cues naturally in your responses to sound more human:
             agent_name = self.agent.name
             identity_prefix = (
                 f"CRITICAL IDENTITY INSTRUCTION: Your name is {agent_name}. "
-                f"You MUST always identify yourself as {agent_name} - never use "
-                "any other name like \"Alex\" or any default AI name. "
+                f"You MUST always identify yourself as {agent_name}. "
+                f"When greeting or introducing yourself, say your name is {agent_name}. "
                 "This is non-negotiable.\n\n"
             )
             base_prompt = identity_prefix + base_prompt
@@ -718,8 +718,8 @@ DO NOT say things like "I'll check and get back to you" - you can check instantl
                 agent_name = self.agent.name
                 identity_prefix = (
                     f"CRITICAL IDENTITY INSTRUCTION: Your name is {agent_name}. "
-                    f"You MUST always identify yourself as {agent_name} - never use "
-                    "any other name like \"Alex\" or any default AI name. "
+                    f"You MUST always identify yourself as {agent_name}. "
+                    f"When greeting or introducing yourself, say your name is {agent_name}. "
                     "This is non-negotiable.\n\n"
                 )
                 system_prompt = identity_prefix + system_prompt
@@ -1395,10 +1395,11 @@ IMPORTANT: You are on a phone call. When the call connects:
         except Exception as e:
             self.logger.exception("grok_cancel_response_error", error=str(e))
 
-    async def inject_context(
+    async def inject_context(  # noqa: PLR0912
         self,
         contact_info: dict[str, Any] | None = None,
         offer_info: dict[str, Any] | None = None,
+        is_outbound: bool = True,
     ) -> None:
         """Inject conversation context by updating system instructions.
 
@@ -1408,6 +1409,7 @@ IMPORTANT: You are on a phone call. When the call connects:
         Args:
             contact_info: Contact information (name, company, etc.)
             offer_info: Offer/product information
+            is_outbound: True if this is an outbound call, False for inbound
         """
         if not self.ws:
             self.logger.warning("grok_websocket_not_connected")
@@ -1425,13 +1427,21 @@ IMPORTANT: You are on a phone call. When the call connects:
         # Build context section for system prompt
         context_parts = []
 
-        context_parts.append(
-            "\n\n# CURRENT CALL CONTEXT - THIS IS AN OUTBOUND CALL YOU ARE MAKING"
-        )
-        context_parts.append(
-            "You initiated this call. You know exactly why you're calling. "
-            "Do NOT ask the customer what they want to talk about."
-        )
+        if is_outbound:
+            context_parts.append(
+                "\n\n# CURRENT CALL CONTEXT - THIS IS AN OUTBOUND CALL YOU ARE MAKING"
+            )
+            context_parts.append(
+                "You initiated this call. You know exactly why you're calling. "
+                "Do NOT ask the customer what they want to talk about."
+            )
+        else:
+            context_parts.append(
+                "\n\n# CURRENT CALL CONTEXT - THIS IS AN INBOUND CALL"
+            )
+            context_parts.append(
+                "The customer called you. Listen to what they need and assist them."
+            )
 
         if contact_info:
             context_parts.append("\n## Customer You Are Calling:")
@@ -1467,8 +1477,8 @@ IMPORTANT: You are on a phone call. When the call connects:
             agent_name = self.agent.name
             identity_prefix = (
                 f"CRITICAL IDENTITY INSTRUCTION: Your name is {agent_name}. "
-                f"You MUST always identify yourself as {agent_name} - never use "
-                "any other name like \"Alex\" or any default AI name. "
+                f"You MUST always identify yourself as {agent_name}. "
+                f"When greeting or introducing yourself, say your name is {agent_name}. "
                 "This is non-negotiable.\n\n"
             )
             base_prompt = identity_prefix + base_prompt
@@ -1479,13 +1489,21 @@ IMPORTANT: You are on a phone call. When the call connects:
         # Enhance with realism cues
         enhanced_prompt = self._enhance_prompt_with_realism(full_prompt)
 
-        # Add telephony guidance
-        enhanced_prompt += """
+        # Add telephony guidance based on call direction
+        if is_outbound:
+            enhanced_prompt += """
 
 IMPORTANT: You are on a phone call that YOU initiated.
 - You called THEM - introduce yourself and explain why you're calling
 - Do NOT ask "what would you like to talk about" - YOU know why you called
 - Be direct and professional about the purpose of your call"""
+        else:
+            enhanced_prompt += """
+
+IMPORTANT: You are on a phone call. The customer called you.
+- Listen to what they need and assist them appropriately
+- Be helpful and responsive to their questions or concerns
+- You may ask clarifying questions to understand their needs"""
 
         # Send session update with full context
         config = {
