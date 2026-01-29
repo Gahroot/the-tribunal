@@ -11,13 +11,20 @@ from sqlalchemy.orm import selectinload
 from app.core.config import settings
 from app.core.webhook_security import verify_telnyx_webhook
 from app.db.session import AsyncSessionLocal
-from app.models.campaign import CampaignContact
 from app.models.phone_number import PhoneNumber
 from app.services.ai.text_agent import schedule_ai_response
+from app.services.campaigns.conversation_syncer import CampaignConversationSyncer
+from app.services.telephony.call_outcome_classifier import CallOutcomeClassifier
 from app.services.telephony.telnyx import TelnyxSMSService
+from app.services.telephony.voice_agent_resolver import VoiceAgentResolver
 
 router = APIRouter()
 logger = structlog.get_logger()
+
+# Shared service instances
+_conversation_syncer = CampaignConversationSyncer()
+_call_classifier = CallOutcomeClassifier()
+_voice_agent_resolver = VoiceAgentResolver()
 
 
 @router.post("/sms")
@@ -58,13 +65,8 @@ async def telnyx_sms_webhook(request: Request) -> dict[str, str]:
     return {"status": "ok"}
 
 
-async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:  # noqa: PLR0915
-    """Handle inbound SMS message.
-
-    Args:
-        payload: Telnyx message payload
-        log: Logger instance
-    """
+async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:
+    """Handle inbound SMS message."""
     from app.services.telephony.telnyx import normalize_phone_number
 
     # Extract message details
@@ -78,11 +80,7 @@ async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:  # 
     from_number = normalize_phone_number(from_number)
     to_number = normalize_phone_number(to_number)
 
-    log = log.bind(
-        from_number=from_number,
-        to_number=to_number,
-        message_id=message_id,
-    )
+    log = log.bind(from_number=from_number, to_number=to_number, message_id=message_id)
     log.info("processing_inbound_sms")
 
     if not all([from_number, to_number, body]):
@@ -121,52 +119,23 @@ async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:  # 
 
             # Schedule AI response with debounce
             if message.conversation_id:
-                # Get conversation to check if AI is enabled
                 from app.models.conversation import Conversation
+
                 conv_result = await db.execute(
                     select(Conversation).where(Conversation.id == message.conversation_id)
                 )
                 conversation = conv_result.scalar_one_or_none()
 
                 if conversation:
-                    # Check if conversation is part of a campaign and sync campaign agent
-                    # Campaign agent always overrides any existing agent assignment
-                    campaign_contact_result = await db.execute(
-                        select(CampaignContact)
-                        .options(selectinload(CampaignContact.campaign))
-                        .where(CampaignContact.conversation_id == conversation.id)
-                    )
-                    campaign_contact = campaign_contact_result.scalar_one_or_none()
-
-                    if (
-                        campaign_contact
-                        and campaign_contact.campaign
-                        and campaign_contact.campaign.agent_id
-                    ):
-                        # Always sync campaign's agent to the conversation (campaign overrides)
-                        if conversation.assigned_agent_id != campaign_contact.campaign.agent_id:
-                            conversation.assigned_agent_id = campaign_contact.campaign.agent_id
-                            log.info(
-                                "synced_campaign_agent",
-                                conversation_id=str(conversation.id),
-                                campaign_id=str(campaign_contact.campaign_id),
-                                agent_id=str(campaign_contact.campaign.agent_id),
-                            )
-                        # Ensure AI is enabled for campaign conversations
-                        if not conversation.ai_enabled and campaign_contact.campaign.ai_enabled:
-                            conversation.ai_enabled = True
-                            log.info(
-                                "enabled_ai_for_campaign_conversation",
-                                conversation_id=str(conversation.id),
-                            )
-                        await db.commit()
-                        await db.refresh(conversation)
+                    # Sync campaign agent and AI settings
+                    await _conversation_syncer.sync_conversation(db, conversation, log)
 
                     if conversation.ai_enabled and not conversation.ai_paused:
                         # Use agent's delay setting or default
                         delay_ms = settings.ai_response_delay_ms
                         if conversation.assigned_agent_id:
                             from app.models.agent import Agent
+
                             agent_result = await db.execute(
                                 select(Agent).where(Agent.id == conversation.assigned_agent_id)
                             )
@@ -186,12 +155,7 @@ async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:  # 
 
 
 async def handle_delivery_status(payload: dict[str, Any], log: Any) -> None:
-    """Handle delivery status update with bounce classification.
-
-    Args:
-        payload: Telnyx status payload
-        log: Logger instance
-    """
+    """Handle delivery status update with bounce classification."""
     message_id = payload.get("id", "")
     to_info = payload.get("to", [{}])[0] if payload.get("to") else {}
     status = to_info.get("status", "unknown")
@@ -313,19 +277,11 @@ async def telnyx_voice_webhook(request: Request) -> dict[str, str]:
     return {"status": "ok"}
 
 
-async def handle_call_initiated(payload: dict[Any, Any], log: Any) -> None:
-    """Handle incoming call.
-
-    Args:
-        payload: Telnyx call event payload
-        log: Logger instance
-    """
+def _extract_phone_numbers(payload: dict[Any, Any]) -> tuple[str, str]:
+    """Extract and normalize phone numbers from Telnyx payload."""
     from app.services.telephony.telnyx import normalize_phone_number
 
-    call_control_id = payload.get("call_control_id", "")
-
-    # Telnyx voice webhooks send "from" and "to" as strings directly
-    # (unlike SMS webhooks which use nested objects)
+    # Telnyx voice webhooks send "from" and "to" as strings or nested objects
     from_raw = payload.get("from", "")
     if isinstance(from_raw, dict):
         from_number = from_raw.get("phone_number", "")
@@ -339,11 +295,15 @@ async def handle_call_initiated(payload: dict[Any, Any], log: Any) -> None:
         to_number = to_raw.get("phone_number", "")
     else:
         to_number = str(to_raw) if to_raw else ""
-    call_state = payload.get("state", "")
 
-    # Normalize phone numbers to E.164 format for consistent lookups
-    from_number = normalize_phone_number(from_number)
-    to_number = normalize_phone_number(to_number)
+    return normalize_phone_number(from_number), normalize_phone_number(to_number)
+
+
+async def handle_call_initiated(payload: dict[Any, Any], log: Any) -> None:
+    """Handle incoming call."""
+    call_control_id = payload.get("call_control_id", "")
+    call_state = payload.get("state", "")
+    from_number, to_number = _extract_phone_numbers(payload)
 
     log = log.bind(
         call_control_id=call_control_id,
@@ -371,7 +331,7 @@ async def handle_call_initiated(payload: dict[Any, Any], log: Any) -> None:
         workspace_id = phone_record.workspace_id
 
         # Create message record for incoming call
-        from app.models.conversation import Conversation
+        from app.models.conversation import Conversation, Message
 
         # Get or create conversation
         conv_result = await db.execute(
@@ -407,14 +367,12 @@ async def handle_call_initiated(payload: dict[Any, Any], log: Any) -> None:
             await db.flush()
 
         # Create inbound message
-        from app.models.conversation import Message
-
         message = Message(
             conversation_id=conversation.id,
             provider_message_id=call_control_id,
             direction="inbound",
             channel="voice",
-            body="",  # Voice calls don't have body
+            body="",
             status="ringing",
         )
         db.add(message)
@@ -438,39 +396,21 @@ async def handle_call_initiated(payload: dict[Any, Any], log: Any) -> None:
         )
 
 
-async def handle_call_answered(payload: dict[Any, Any], log: Any) -> None:  # noqa: PLR0915
-    """Handle call answered event.
-
-    For outbound calls initiated by AI agents, this starts the audio streaming
-    to connect the call to our WebSocket voice bridge.
-
-    Args:
-        payload: Telnyx call event payload
-        log: Logger instance
-    """
-    from sqlalchemy.orm import selectinload
-
+async def handle_call_answered(payload: dict[Any, Any], log: Any) -> None:
+    """Handle call answered event."""
     from app.models.agent import Agent
     from app.models.conversation import Conversation, Message
     from app.services.telephony.telnyx_voice import TelnyxVoiceService
 
     call_control_id = payload.get("call_control_id", "")
     call_state = payload.get("state", "")
-    direction = payload.get("direction", "")  # "incoming" or "outgoing"
+    direction = payload.get("direction", "")
 
     log = log.bind(call_control_id=call_control_id, call_state=call_state, direction=direction)
-    log.info(
-        "========== CALL ANSWERED ==========",
-        call_control_id=call_control_id,
-        call_state=call_state,
-        direction=direction,
-        from_number=payload.get("from"),
-        to_number=payload.get("to"),
-    )
+    log.info("========== CALL ANSWERED ==========")
 
     async with AsyncSessionLocal() as db:
         # Get message with conversation loaded
-        log.info("looking_up_message_for_call", call_control_id=call_control_id)
         result = await db.execute(
             select(Message)
             .options(selectinload(Message.conversation))
@@ -479,62 +419,28 @@ async def handle_call_answered(payload: dict[Any, Any], log: Any) -> None:  # no
         message = result.scalar_one_or_none()
 
         if not message:
-            log.error(
-                "message_not_found_for_call",
-                call_control_id=call_control_id,
-                hint="Message should have been created during call initiation",
-            )
+            log.error("message_not_found_for_call", call_control_id=call_control_id)
             return
-
-        log.info(
-            "message_found",
-            message_id=str(message.id),
-            message_direction=message.direction,
-            message_channel=message.channel,
-            message_status=message.status,
-            conversation_id=str(message.conversation_id) if message.conversation_id else None,
-        )
 
         message.status = "answered"
         await db.commit()
+
         # Determine agent_id: prefer message.agent_id, fall back to conversation's assigned_agent_id
         agent_id = message.agent_id
         if not agent_id and message.conversation and message.conversation.assigned_agent_id:
             agent_id = message.conversation.assigned_agent_id
-            log.info(
-                "using_conversation_assigned_agent",
-                agent_id=str(agent_id),
-            )
-
-        conv_agent = message.conversation.assigned_agent_id if message.conversation else None
-        log.info(
-            "message_status_updated",
-            message_id=str(message.id),
-            message_direction=message.direction,
-            message_agent_id=str(message.agent_id) if message.agent_id else None,
-            conversation_agent_id=str(conv_agent) if conv_agent else None,
-            resolved_agent_id=str(agent_id) if agent_id else None,
-        )
 
         # For outbound calls with an agent, start audio streaming
         if message.direction == "outbound" and agent_id:
-            log.info(
-                "outbound_call_answered_starting_stream",
-                agent_id=str(agent_id),
-            )
+            log.info("outbound_call_answered_starting_stream", agent_id=str(agent_id))
 
             # Get agent to check if it supports voice
-            agent_result = await db.execute(
-                select(Agent).where(Agent.id == agent_id)
-            )
+            agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
             agent = agent_result.scalar_one_or_none()
 
-            if not agent:
-                log.warning("agent_not_found", agent_id=str(agent_id))
-                return
-
-            if not agent.is_active:
-                log.info("agent_not_active", agent_id=str(agent.id))
+            if not agent or not agent.is_active:
+                agent_str = str(agent_id) if agent_id else None
+                log.info("agent_not_found_or_inactive", agent_id=agent_str)
                 return
 
             # Assign agent to conversation if not already assigned
@@ -549,72 +455,39 @@ async def handle_call_answered(payload: dict[Any, Any], log: Any) -> None:  # no
                     await db.commit()
                     log.info("assigned_agent_to_conversation", agent_id=str(agent.id))
 
-            # Start audio streaming to the voice bridge WebSocket
+            # Start audio streaming
             if not settings.telnyx_api_key:
                 log.error("no_telnyx_api_key_for_streaming")
                 return
 
             voice_service = TelnyxVoiceService(settings.telnyx_api_key)
             try:
-                # Build WebSocket URL for audio streaming
-                # Add is_outbound=true so the voice bridge knows NOT to greet first
                 api_base = settings.api_base_url or "https://example.com"
-                ws_base = api_base.replace("https://", "wss://").replace("http://", "ws://")
-                stream_url = f"{ws_base}/voice/stream/{call_control_id}?is_outbound=true"
-
-                log.info("starting_audio_streaming", stream_url=stream_url, is_outbound=True)
-
-                # Only stream caller's audio to avoid AI hearing itself
-                streaming_started = await voice_service.start_streaming(
+                streaming_started = await voice_service.start_audio_streaming(
                     call_control_id=call_control_id,
-                    stream_url=stream_url,
-                    stream_track="inbound_track",
+                    api_base_url=api_base,
+                    is_outbound=True,
                 )
 
                 if streaming_started:
-                    log.info(
-                        "audio_streaming_started",
-                        call_control_id=call_control_id,
-                        stream_url=stream_url,
-                    )
+                    log.info("audio_streaming_started", call_control_id=call_control_id)
                 else:
-                    log.error(
-                        "failed_to_start_audio_streaming",
-                        call_control_id=call_control_id,
-                    )
+                    log.error("failed_to_start_audio_streaming", call_control_id=call_control_id)
             finally:
                 await voice_service.close()
-        else:
-            log.info(
-                "streaming_skipped",
-                reason="not outbound with agent",
-                direction=message.direction,
-                has_agent_id=bool(message.agent_id),
-            )
 
 
-async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:  # noqa: PLR0915
-    """Handle call hangup event.
-
-    Triggers SMS fallback for voice campaigns when calls fail.
-
-    Args:
-        payload: Telnyx call event payload
-        log: Logger instance
-    """
+async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:
+    """Handle call hangup event."""
     call_control_id = payload.get("call_control_id", "")
-    call_state = payload.get("state", "")
     duration_secs = payload.get("duration_seconds", 0)
-    hangup_cause = payload.get("hangup_cause", "").upper()  # Normalize to uppercase
-    sip_hangup_cause = payload.get("sip_hangup_cause", "")
-    hangup_source = payload.get("hangup_source", "")  # "callee" if user rejected
+    hangup_cause = payload.get("hangup_cause", "")
+    hangup_source = payload.get("hangup_source", "")
 
     log = log.bind(
         call_control_id=call_control_id,
-        call_state=call_state,
         duration=duration_secs,
         hangup_cause=hangup_cause,
-        sip_hangup_cause=sip_hangup_cause,
         hangup_source=hangup_source,
     )
     log.info("call_hangup")
@@ -623,9 +496,7 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:  # noqa
         from app.models.conversation import Message
 
         result = await db.execute(
-            select(Message).where(
-                Message.provider_message_id == call_control_id
-            )
+            select(Message).where(Message.provider_message_id == call_control_id)
         )
         message = result.scalar_one_or_none()
 
@@ -635,49 +506,24 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:  # noqa
             # Get recording URL if available
             recordings = payload.get("recordings", [])
             if recordings:
-                recording = recordings[0]
-                message.recording_url = recording.get("public_url")
-                log.info(
-                    "recording_available",
-                    recording_url=message.recording_url,
-                )
+                message.recording_url = recordings[0].get("public_url")
+                log.info("recording_available", recording_url=message.recording_url)
 
-            # Threshold for detecting rejected calls (quick hangup by callee)
-            rejected_call_threshold_secs = 15
-
-            # Detect rejected call: callee hung up quickly without answering
-            is_rejected_call = (
-                duration_secs < rejected_call_threshold_secs
-                and hangup_cause in ("NORMAL_CLEARING", "NORMAL_RELEASE")
-                and hangup_source == "callee"
+            # Classify the call outcome
+            classification = _call_classifier.classify(
+                hangup_cause=hangup_cause,
+                duration_secs=duration_secs,
+                hangup_source=hangup_source,
+                booking_outcome=message.booking_outcome,
             )
 
-            # Determine call outcome based on hangup cause
-            call_outcome = None
-            if hangup_cause in ("NO_ANSWER", "TIMEOUT"):
-                call_outcome = "no_answer"
-                message.status = "failed"
-            elif hangup_cause == "USER_BUSY":
-                call_outcome = "busy"
-                message.status = "failed"
-            elif hangup_cause == "CALL_REJECTED" or is_rejected_call:
-                call_outcome = "rejected"
-                message.status = "failed"
-                log.info("rejected_call_detected", hangup_source=hangup_source)
-            elif hangup_cause == "ORIGINATOR_CANCEL":
-                # We cancelled the call (e.g., voicemail detection)
-                call_outcome = "no_answer"
-                message.status = "failed"
-            elif duration_secs < 5 and hangup_cause in ("NORMAL_CLEARING", "NORMAL_RELEASE"):
-                # Very short call with normal clearing = likely no real conversation
-                call_outcome = "no_answer"
-                message.status = "failed"
-            else:
-                # Call was answered and had a conversation
-                message.status = "completed"
+            message.status = classification.message_status
 
-            # If booking was successful, override failed status
-            if message.booking_outcome == "success" and message.status == "failed":
+            if classification.is_rejection:
+                log.info("rejected_call_detected", hangup_source=hangup_source)
+
+            # Override if booking was successful
+            if message.booking_outcome == "success" and classification.message_status == "failed":
                 log.info("overriding_failed_status_due_to_successful_booking")
                 message.status = "completed"
 
@@ -685,16 +531,14 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:  # noqa
             log.info("message_updated", message_id=str(message.id), status=message.status)
 
             # Trigger SMS fallback for failed calls
-            if call_outcome:
-                log.info("triggering_sms_fallback", call_outcome=call_outcome)
+            if classification.outcome:
+                log.info("triggering_sms_fallback", call_outcome=classification.outcome)
                 try:
-                    from app.services.campaigns.sms_fallback import (
-                        trigger_sms_fallback_for_call,
-                    )
+                    from app.services.campaigns.sms_fallback import trigger_sms_fallback_for_call
 
                     await trigger_sms_fallback_for_call(
                         call_control_id=call_control_id,
-                        call_outcome=call_outcome,
+                        call_outcome=classification.outcome,
                         log=log,
                     )
                 except Exception as e:
@@ -702,50 +546,44 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:  # noqa
 
 
 async def handle_machine_detection(payload: dict[Any, Any], log: Any) -> None:
-    """Handle voicemail/machine detection result.
-
-    When voicemail is detected, hangs up the call and triggers SMS fallback.
-
-    Args:
-        payload: Telnyx machine detection payload
-        log: Logger instance
-    """
+    """Handle voicemail/machine detection result."""
     call_control_id = payload.get("call_control_id", "")
-    result_type = payload.get("result", "")  # human, machine, silence
+    result_type = payload.get("result", "")
 
     log = log.bind(call_control_id=call_control_id, detection_result=result_type)
     log.info("machine_detection_result")
 
-    # If voicemail/machine detected, hang up and send SMS instead
-    if result_type in ("machine", "fax"):
-        log.info("voicemail_detected_hanging_up")
+    # Check if voicemail/machine detected
+    call_outcome = _call_classifier.classify_machine_detection(result_type)
+    if not call_outcome:
+        return
 
-        # Hang up the call
-        from app.services.telephony.telnyx_voice import TelnyxVoiceService
+    log.info("voicemail_detected_hanging_up")
 
-        if settings.telnyx_api_key:
-            voice_service = TelnyxVoiceService(settings.telnyx_api_key)
-            try:
-                await voice_service.hangup_call(call_control_id)
-                log.info("call_hung_up_on_voicemail")
-            except Exception as e:
-                log.exception("hangup_failed", error=str(e))
-            finally:
-                await voice_service.close()
+    # Hang up the call
+    from app.services.telephony.telnyx_voice import TelnyxVoiceService
 
-            # Trigger SMS fallback
-            try:
-                from app.services.campaigns.sms_fallback import (
-                    trigger_sms_fallback_for_call,
-                )
+    if settings.telnyx_api_key:
+        voice_service = TelnyxVoiceService(settings.telnyx_api_key)
+        try:
+            await voice_service.hangup_call(call_control_id)
+            log.info("call_hung_up_on_voicemail")
+        except Exception as e:
+            log.exception("hangup_failed", error=str(e))
+        finally:
+            await voice_service.close()
 
-                await trigger_sms_fallback_for_call(
-                    call_control_id=call_control_id,
-                    call_outcome="voicemail",
-                    log=log,
-                )
-            except Exception as e:
-                log.exception("sms_fallback_trigger_failed", error=str(e))
+        # Trigger SMS fallback
+        try:
+            from app.services.campaigns.sms_fallback import trigger_sms_fallback_for_call
+
+            await trigger_sms_fallback_for_call(
+                call_control_id=call_control_id,
+                call_outcome=call_outcome,
+                log=log,
+            )
+        except Exception as e:
+            log.exception("sms_fallback_trigger_failed", error=str(e))
 
 
 async def auto_answer_call_if_agent_assigned(
@@ -754,91 +592,50 @@ async def auto_answer_call_if_agent_assigned(
     conversation: Any,
     log: Any,
 ) -> None:
-    """Auto-answer incoming call if an active agent is assigned to the phone number.
-
-    This function:
-    1. Checks if the phone number has an assigned agent
-    2. Verifies the agent is active and supports voice
-    3. Answers the call via Telnyx API
-    4. Starts audio streaming to the voice bridge WebSocket
-
-    Args:
-        call_control_id: Telnyx call control ID
-        phone_record: PhoneNumber database record
-        conversation: Conversation database record
-        log: Logger instance
-    """
-    from app.models.agent import Agent
+    """Auto-answer incoming call if an active agent is assigned."""
+    from app.models.conversation import Conversation
     from app.services.telephony.telnyx_voice import TelnyxVoiceService
 
-    agent_id_str = str(phone_record.assigned_agent_id) if phone_record.assigned_agent_id else None
     log.info(
         "========== AUTO ANSWER CHECK ==========",
         call_control_id=call_control_id,
         phone_number=phone_record.phone_number,
-        assigned_agent_id=agent_id_str,
+        phone_assigned_agent_id=str(phone_record.assigned_agent_id)
+        if phone_record.assigned_agent_id
+        else None,
         conversation_id=str(conversation.id) if conversation else None,
     )
 
     if not settings.telnyx_api_key:
-        log.warning(
-            "no_telnyx_api_key_for_auto_answer",
-            hint="Set TELNYX_API_KEY environment variable",
-        )
-        return
-
-    # Check if phone number has an assigned agent
-    if not phone_record.assigned_agent_id:
-        log.info(
-            "no_agent_assigned_to_phone_number",
-            phone_number=phone_record.phone_number,
-            hint="Assign an agent to this phone number to enable auto-answer",
-        )
+        log.warning("no_telnyx_api_key_for_auto_answer")
         return
 
     async with AsyncSessionLocal() as db:
-        # Look up the agent
-        result = await db.execute(
-            select(Agent).where(Agent.id == phone_record.assigned_agent_id)
-        )
-        agent = result.scalar_one_or_none()
+        resolved = await _voice_agent_resolver.resolve(db, conversation, phone_record, log)
 
-        if not agent:
-            log.warning(
-                "assigned_agent_not_found",
-                agent_id=str(phone_record.assigned_agent_id),
-            )
-            return
-
-        # Check if agent is active and supports voice
-        if not agent.is_active:
-            log.info("agent_not_active", agent_id=str(agent.id))
-            return
-
-        if agent.channel_mode not in ("voice", "both"):
+        if not resolved:
             log.info(
-                "agent_does_not_support_voice",
-                agent_id=str(agent.id),
-                channel_mode=agent.channel_mode,
+                "no_valid_voice_agent_found",
+                phone_number=phone_record.phone_number,
+                hint="Assign a voice-capable agent to the phone number or campaign",
             )
             return
 
         log.info(
             "auto_answering_call_with_agent",
-            agent_id=str(agent.id),
-            agent_name=agent.name,
+            agent_id=str(resolved.agent.id),
+            agent_name=resolved.agent.name,
+            agent_source=resolved.source,
             call_control_id=call_control_id,
         )
 
         # Update conversation with assigned agent
-        from app.models.conversation import Conversation
-
         conv_result = await db.execute(
             select(Conversation).where(Conversation.id == conversation.id)
         )
         conv = conv_result.scalar_one_or_none()
         if conv:
-            conv.assigned_agent_id = agent.id
+            conv.assigned_agent_id = resolved.agent.id
             conv.ai_enabled = True
             await db.commit()
 
@@ -853,41 +650,18 @@ async def auto_answer_call_if_agent_assigned(
 
             log.info("call_answered_successfully", call_control_id=call_control_id)
 
-            # Start audio streaming to the voice bridge WebSocket
-            # The stream URL should point to our WebSocket endpoint at /voice/stream/
+            # Start audio streaming
             api_base = settings.api_base_url or "https://example.com"
-            # Convert https to wss for WebSocket
-            ws_base = api_base.replace("https://", "wss://").replace("http://", "ws://")
-            # NOTE: Path is /voice/stream/ (not /ws/voice/stream/)
-            stream_url = f"{ws_base}/voice/stream/{call_control_id}"
-
-            log.info(
-                "starting_audio_streaming",
+            streaming_started = await voice_service.start_audio_streaming(
                 call_control_id=call_control_id,
-                stream_url=stream_url,
-                stream_track="inbound_track",
-            )
-
-            # Use inbound_track to only stream caller's audio to AI
-            # This prevents the AI from hearing itself (audio feedback)
-            streaming_started = await voice_service.start_streaming(
-                call_control_id=call_control_id,
-                stream_url=stream_url,
-                stream_track="inbound_track",
+                api_base_url=api_base,
+                is_outbound=False,
             )
 
             if streaming_started:
-                log.info(
-                    "audio_streaming_started",
-                    call_control_id=call_control_id,
-                    stream_url=stream_url,
-                )
+                log.info("audio_streaming_started", call_control_id=call_control_id)
             else:
-                log.error(
-                    "failed_to_start_audio_streaming",
-                    call_control_id=call_control_id,
-                    stream_url=stream_url,
-                )
+                log.error("failed_to_start_audio_streaming", call_control_id=call_control_id)
 
         finally:
             await voice_service.close()

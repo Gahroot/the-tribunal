@@ -290,6 +290,12 @@ class TelnyxVoiceService:
         conversation.last_message_preview = "Voice call"
         conversation.last_message_at = datetime.now(UTC)
 
+        # Assign agent to conversation when initiating call with specific agent
+        # This ensures the selected agent overrides any existing phone number assignment
+        if agent_id:
+            conversation.assigned_agent_id = agent_id
+            conversation.ai_enabled = True
+
         await db.commit()
         await db.refresh(message)
 
@@ -682,3 +688,61 @@ class TelnyxVoiceService:
         )
 
         return conversation
+
+    @staticmethod
+    def build_stream_url(
+        call_control_id: str,
+        api_base_url: str,
+        is_outbound: bool = False,
+    ) -> str:
+        """Build WebSocket URL for audio streaming.
+
+        Args:
+            call_control_id: Telnyx call control ID
+            api_base_url: Base API URL (e.g., https://example.com)
+            is_outbound: If True, adds is_outbound=true query param
+
+        Returns:
+            WebSocket URL for audio streaming
+        """
+        # Convert https to wss for WebSocket
+        ws_base = api_base_url.replace("https://", "wss://").replace("http://", "ws://")
+        # Path is /voice/stream/ (not /ws/voice/stream/)
+        stream_url = f"{ws_base}/voice/stream/{call_control_id}"
+        if is_outbound:
+            stream_url += "?is_outbound=true"
+        return stream_url
+
+    async def start_audio_streaming(
+        self,
+        call_control_id: str,
+        api_base_url: str,
+        is_outbound: bool = False,
+    ) -> bool:
+        """Start audio streaming with automatic URL building.
+
+        Convenience method that builds the stream URL and starts streaming.
+
+        Args:
+            call_control_id: Telnyx call control ID
+            api_base_url: Base API URL (e.g., https://example.com)
+            is_outbound: If True, adds is_outbound=true to URL
+
+        Returns:
+            True if streaming started successfully, False otherwise
+        """
+        stream_url = self.build_stream_url(call_control_id, api_base_url, is_outbound)
+
+        self.logger.info(
+            "starting_audio_streaming",
+            call_control_id=call_control_id,
+            stream_url=stream_url,
+            is_outbound=is_outbound,
+        )
+
+        # Only stream caller's audio to avoid AI hearing itself
+        return await self.start_streaming(
+            call_control_id=call_control_id,
+            stream_url=stream_url,
+            stream_track="inbound_track",
+        )
