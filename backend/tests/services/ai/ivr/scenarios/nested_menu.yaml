@@ -1,0 +1,95 @@
+# Nested IVR Menu - Multi-level navigation test
+# Tests: Nested menus, back navigation, multiple paths
+
+name: nested_menu
+description: Multi-level IVR with nested submenus
+initial_state: main_menu
+
+states:
+  main_menu:
+    transcript: |
+      Welcome to Tech Solutions.
+      Press 1 for sales.
+      Press 2 for technical support.
+      Press 3 for billing.
+    options:
+      - digit: "1"
+        description: Sales
+        next_state: sales_menu
+      - digit: "2"
+        description: Technical support
+        next_state: support_menu
+      - digit: "3"
+        description: Billing
+        next_state: billing
+    timeout_action: main_menu
+
+  sales_menu:
+    transcript: |
+      Sales department.
+      Press 1 for new customers.
+      Press 2 for existing accounts.
+      Press 9 to return to the main menu.
+    options:
+      - digit: "1"
+        description: New customers
+        next_state: new_customer
+      - digit: "2"
+        description: Existing accounts
+        next_state: existing_account
+      - digit: "9"
+        description: Return to main menu
+        next_state: main_menu
+    timeout_action: sales_menu
+
+  support_menu:
+    transcript: |
+      Technical support.
+      Press 1 for product issues.
+      Press 2 for account issues.
+      Press 0 to speak with an operator.
+      Press 9 to return to the main menu.
+    options:
+      - digit: "1"
+        description: Product issues
+        next_state: product_support
+      - digit: "2"
+        description: Account issues
+        next_state: account_support
+      - digit: "0"
+        description: Speak with operator
+        next_state: operator
+      - digit: "9"
+        description: Return to main menu
+        next_state: main_menu
+    timeout_action: support_menu
+
+  new_customer:
+    transcript: Thank you for your interest. A sales representative will be with you shortly.
+    state_type: operator
+    is_terminal: true
+
+  existing_account:
+    transcript: Please hold while we connect you to your account manager.
+    state_type: operator
+    is_terminal: true
+
+  product_support:
+    transcript: Connecting you to product support. Please hold.
+    state_type: operator
+    is_terminal: true
+
+  account_support:
+    transcript: Connecting you to account support. Please hold.
+    state_type: operator
+    is_terminal: true
+
+  operator:
+    transcript: Please hold for the next available representative.
+    state_type: operator
+    is_terminal: true
+
+  billing:
+    transcript: Connecting you to our billing department.
+    state_type: operator
+    is_terminal: true

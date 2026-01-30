@@ -1,0 +1,50 @@
+# Voicemail Option Menu - Critical edge case test
+# Tests: IVR vs voicemail classification when menu has voicemail option
+# This is the CRITICAL bug case: "Press 1 to leave a message" should be IVR, not voicemail
+
+name: voicemail_option
+description: IVR menu with voicemail as an option (critical edge case for classifier)
+initial_state: main_menu
+
+states:
+  main_menu:
+    transcript: |
+      Press 1 to leave a message.
+      Press 2 for sales.
+      Press 0 to speak with an operator.
+    options:
+      - digit: "1"
+        description: Leave voicemail
+        next_state: voicemail
+      - digit: "2"
+        description: Sales
+        next_state: sales_queue
+      - digit: "0"
+        description: Operator
+        next_state: operator
+    timeout_action: main_menu
+
+  voicemail:
+    transcript: |
+      Please leave your message after the beep.
+      When you are finished, you may hang up or press pound for more options.
+    state_type: voicemail
+    is_terminal: true
+
+  sales_queue:
+    transcript: |
+      All of our sales representatives are currently assisting other customers.
+      Your call is important to us. Please hold for the next available representative.
+    state_type: queue
+    is_terminal: true
+
+  operator:
+    transcript: Please hold while we connect you to an operator.
+    state_type: operator
+    is_terminal: true
+
+# Expected: Agent should recognize this as IVR and navigate to sales (2)
+# NOT immediately assume voicemail and hang up
+expected_path:
+  - main_menu
+  - sales_queue

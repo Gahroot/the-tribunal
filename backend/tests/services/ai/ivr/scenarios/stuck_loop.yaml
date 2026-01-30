@@ -1,0 +1,51 @@
+# Stuck Loop Menu - Loop detection test
+# Tests: Loop detection when menu keeps repeating
+
+name: stuck_loop
+description: IVR menu that loops when certain options are selected
+initial_state: main_menu
+
+states:
+  main_menu:
+    transcript: |
+      Welcome to Endless Corp.
+      Press 1 for sales.
+      Press 2 for support.
+      Press 3 for more options.
+    options:
+      - digit: "1"
+        description: Sales (loops back)
+        next_state: main_menu  # This creates a loop!
+      - digit: "2"
+        description: Support (loops back)
+        next_state: main_menu  # This also loops!
+      - digit: "3"
+        description: More options
+        next_state: more_options
+      - digit: "0"
+        description: Operator
+        next_state: operator
+    timeout_action: main_menu
+    max_repeats: 3
+
+  more_options:
+    transcript: |
+      Press 1 to return to the main menu.
+      Press 0 for an operator.
+    options:
+      - digit: "1"
+        description: Return to main
+        next_state: main_menu
+      - digit: "0"
+        description: Operator
+        next_state: operator
+    timeout_action: more_options
+
+  operator:
+    transcript: Please hold for an operator.
+    state_type: operator
+    is_terminal: true
+
+# This scenario tests:
+# 1. Loop detection when pressing 1 or 2 doesn't change the menu
+# 2. Agent should eventually try 0 for operator after detecting loop

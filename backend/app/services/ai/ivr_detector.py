@@ -70,6 +70,9 @@ class IVRStatus:
         consecutive_ivr_count: Consecutive IVR classifications
         consecutive_human_count: Consecutive human classifications
         last_dtmf_sent: Last DTMF digits detected/sent
+        attempted_dtmf: Set of all DTMF digits that have been tried
+        failed_dtmf: Set of DTMF digits that didn't change the menu
+        last_menu_transcript: Last menu transcript for change detection
     """
 
     mode: IVRMode = IVRMode.UNKNOWN
@@ -77,6 +80,9 @@ class IVRStatus:
     consecutive_ivr_count: int = 0
     consecutive_human_count: int = 0
     last_dtmf_sent: str | None = None
+    attempted_dtmf: set[str] = field(default_factory=set)
+    failed_dtmf: set[str] = field(default_factory=set)
+    last_menu_transcript: str | None = None
 
 
 class IVRClassifier:
@@ -84,9 +90,27 @@ class IVRClassifier:
 
     Uses regex patterns to quickly classify transcripts without API latency.
     Patterns are based on common IVR menu phrases and human speech indicators.
+
+    IMPORTANT: When exclusive IVR patterns (DTMF prompts) are detected, the
+    classifier will ALWAYS return IVR, even if voicemail patterns also match.
+    This prevents misclassification of "Press 1 to leave a message" as voicemail.
     """
 
+    # EXCLUSIVE IVR patterns - DTMF prompts that indicate a navigable menu
+    # If ANY of these match, the transcript is ALWAYS IVR, never voicemail
+    # These are patterns where user input is expected/requested
+    EXCLUSIVE_IVR_PATTERNS: list[str] = [
+        r"press\s+[0-9*#]",  # "Press 1", "Press 2", "Press star"
+        r"dial\s+[0-9*#]",  # "Dial 0 for operator"
+        r"for\s+\w+\s*,?\s*press",  # "For sales, press 1"
+        r"to\s+\w+\s*,?\s*press",  # "To speak to a representative, press 0"
+        r"option\s+[0-9]",  # "Option 1 is for billing"
+        r"say\s+or\s+press",  # "Say or press 1"
+        r"enter\s+your\s+(account|pin|phone|extension)",  # "Enter your account number"
+    ]
+
     # IVR menu patterns - phrases that indicate automated phone systems
+    # (Does NOT include "leave a message" or "at the beep" which are voicemail-only)
     IVR_PATTERNS: list[str] = [
         r"press\s+[0-9*#]",
         r"dial\s+[0-9*#]",
@@ -113,8 +137,6 @@ class IVRClassifier:
         r"thank\s+you\s+for\s+calling",
         r"business\s+hours\s+are",
         r"we\s+are\s+(currently\s+)?closed",
-        r"leave\s+a\s+(voice\s*)?message",
-        r"at\s+the\s+(tone|beep)",
     ]
 
     # Human conversation patterns - indicate a real person
@@ -138,7 +160,7 @@ class IVRClassifier:
         r"of\s+course",
     ]
 
-    # Voicemail patterns
+    # Voicemail patterns - ONLY match when NO exclusive IVR patterns present
     VOICEMAIL_PATTERNS: list[str] = [
         r"leave\s+a\s+(voice\s*)?message",
         r"at\s+the\s+(tone|beep)",
@@ -149,11 +171,13 @@ class IVRClassifier:
         r"not\s+available\s+to\s+take\s+your\s+call",
         r"please\s+leave\s+your\s+name\s+and\s+number",
         r"we('ll)?\s+get\s+back\s+to\s+you",
-        r"press\s+[0-9*#]\s+to\s+leave\s+a\s+(callback|message)",
     ]
 
     def __init__(self) -> None:
         """Initialize classifier with compiled regex patterns."""
+        self._exclusive_ivr_patterns = [
+            re.compile(p, re.IGNORECASE) for p in self.EXCLUSIVE_IVR_PATTERNS
+        ]
         self._ivr_patterns = [
             re.compile(p, re.IGNORECASE) for p in self.IVR_PATTERNS
         ]
@@ -168,6 +192,13 @@ class IVRClassifier:
     def classify(self, transcript: str) -> tuple[IVRMode, float]:
         """Classify a transcript as IVR, human, or voicemail.
 
+        Priority order:
+        1. If ANY exclusive IVR pattern matches (DTMF prompts) → IVR (always)
+        2. If human patterns dominate → CONVERSATION
+        3. If voicemail patterns match AND no IVR patterns → VOICEMAIL
+        4. If IVR patterns match → IVR
+        5. Otherwise → UNKNOWN
+
         Args:
             transcript: Speech transcript to classify
 
@@ -178,42 +209,56 @@ class IVRClassifier:
             return IVRMode.UNKNOWN, 0.0
 
         text = transcript.lower().strip()
+        counts = self._count_pattern_matches(text)
 
-        # Count pattern matches
-        ivr_matches = sum(1 for p in self._ivr_patterns if p.search(text))
-        human_matches = sum(1 for p in self._human_patterns if p.search(text))
-        voicemail_matches = sum(1 for p in self._voicemail_patterns if p.search(text))
+        self.logger.debug("ivr_classification", transcript_preview=text[:100], **counts)
 
-        total_matches = ivr_matches + human_matches + voicemail_matches
+        return self._determine_mode(counts)
 
-        # Log classification details
-        self.logger.debug(
-            "ivr_classification",
-            transcript_preview=text[:100],
-            ivr_matches=ivr_matches,
-            human_matches=human_matches,
-            voicemail_matches=voicemail_matches,
-        )
+    def _count_pattern_matches(self, text: str) -> dict[str, int]:
+        """Count pattern matches for each category."""
+        exclusive = sum(1 for p in self._exclusive_ivr_patterns if p.search(text))
+        ivr = sum(1 for p in self._ivr_patterns if p.search(text))
+        human = sum(1 for p in self._human_patterns if p.search(text))
+        voicemail = sum(1 for p in self._voicemail_patterns if p.search(text))
 
-        # No patterns matched - unknown
-        if total_matches == 0:
+        return {
+            "exclusive_ivr_matches": exclusive,
+            "ivr_matches": ivr,
+            "human_matches": human,
+            "voicemail_matches": voicemail,
+            "total_matches": ivr + human + voicemail,
+        }
+
+    def _determine_mode(self, counts: dict[str, int]) -> tuple[IVRMode, float]:
+        """Determine mode based on pattern match counts."""
+        exclusive = counts["exclusive_ivr_matches"]
+        ivr = counts["ivr_matches"]
+        human = counts["human_matches"]
+        voicemail = counts["voicemail_matches"]
+        total = counts["total_matches"]
+
+        # PRIORITY 1: Exclusive IVR patterns ALWAYS win (DTMF prompts)
+        if exclusive > 0:
+            ratio = (exclusive + ivr) / max(1, total)
+            return IVRMode.IVR, min(1.0, ratio + 0.3)
+
+        # No patterns matched
+        if total == 0:
             return IVRMode.UNKNOWN, 0.0
 
-        # Calculate confidence based on match ratio
-        # Higher confidence when one category dominates
-        if voicemail_matches > 0 and voicemail_matches >= ivr_matches:
-            confidence = min(1.0, voicemail_matches / max(1, total_matches) + 0.2)
-            return IVRMode.VOICEMAIL, confidence
+        # PRIORITY 2: Human patterns dominate
+        if human > ivr and human > voicemail:
+            return IVRMode.CONVERSATION, min(1.0, human / total + 0.2)
 
-        if ivr_matches > human_matches:
-            confidence = min(1.0, ivr_matches / max(1, total_matches) + 0.2)
-            return IVRMode.IVR, confidence
+        # PRIORITY 3: Voicemail ONLY if no IVR patterns
+        if voicemail > 0 and ivr == 0:
+            return IVRMode.VOICEMAIL, min(1.0, voicemail / total + 0.2)
 
-        if human_matches > ivr_matches:
-            confidence = min(1.0, human_matches / max(1, total_matches) + 0.2)
-            return IVRMode.CONVERSATION, confidence
+        # PRIORITY 4: IVR patterns present (or tie/unclear → unknown)
+        if ivr > 0:
+            return IVRMode.IVR, min(1.0, ivr / total + 0.2)
 
-        # Tie - default to unknown with low confidence
         return IVRMode.UNKNOWN, 0.3
 
 
@@ -602,6 +647,90 @@ class IVRDetector:
         """
         return self._dtmf_parser.strip_dtmf_tags(text)
 
+    def record_dtmf_attempt(self, digits: str) -> None:
+        """Record a DTMF attempt.
+
+        Args:
+            digits: The DTMF digits that were sent
+        """
+        self._status.attempted_dtmf.add(digits)
+        self._status.last_dtmf_sent = digits
+        self.logger.debug(
+            "dtmf_attempt_recorded",
+            digits=digits,
+            total_attempted=len(self._status.attempted_dtmf),
+        )
+
+    def record_dtmf_failed(self, digits: str) -> None:
+        """Record that a DTMF didn't change the menu.
+
+        Args:
+            digits: The DTMF digits that failed to produce a change
+        """
+        self._status.failed_dtmf.add(digits)
+        self.logger.info(
+            "dtmf_marked_as_failed",
+            digits=digits,
+            total_failed=len(self._status.failed_dtmf),
+        )
+
+    def get_untried_digits(self) -> list[str]:
+        """Get menu digits (1-9) not yet attempted.
+
+        Returns:
+            Sorted list of digits that haven't been tried yet
+        """
+        all_digits = set("123456789")
+        return sorted(all_digits - self._status.attempted_dtmf)
+
+    def should_skip_digit(self, digits: str) -> bool:
+        """Check if digit already failed.
+
+        Args:
+            digits: The DTMF digits to check
+
+        Returns:
+            True if the digits have already been tried and failed
+        """
+        return digits in self._status.failed_dtmf
+
+    def validate_menu_changed(self, new_transcript: str) -> bool:
+        """Check if menu changed after DTMF.
+
+        Compares the new transcript with the last menu transcript to determine
+        if the DTMF press actually navigated to a different menu.
+
+        Args:
+            new_transcript: The new transcript from the IVR
+
+        Returns:
+            True if menu is different (DTMF worked), False if same (DTMF failed)
+        """
+        if not self._status.last_menu_transcript:
+            self._status.last_menu_transcript = new_transcript
+            return True
+
+        similarity = self._loop_detector._calculate_similarity(
+            self._status.last_menu_transcript,
+            new_transcript,
+        )
+
+        menu_changed = similarity < self.config.loop_similarity_threshold
+
+        # If menu didn't change and we sent DTMF, mark it as failed
+        if not menu_changed and self._status.last_dtmf_sent:
+            self.record_dtmf_failed(self._status.last_dtmf_sent)
+            self.logger.warning(
+                "dtmf_did_not_change_menu",
+                digits=self._status.last_dtmf_sent,
+                similarity=similarity,
+                threshold=self.config.loop_similarity_threshold,
+            )
+
+        # Update last menu transcript
+        self._status.last_menu_transcript = new_transcript
+        return menu_changed
+
     def reset(self) -> None:
         """Reset all detection state."""
         self._status = IVRStatus()
@@ -627,10 +756,23 @@ class IVRDetector:
         if goal:
             parts.append(f"\nYour goal: {goal}")
 
+        # Add info about tried digits
+        if self._status.attempted_dtmf:
+            tried = ", ".join(sorted(self._status.attempted_dtmf))
+            parts.append(f"\nDigits already tried: {tried}")
+
+        if self._status.failed_dtmf:
+            failed = ", ".join(sorted(self._status.failed_dtmf))
+            parts.append(f"Digits that didn't work: {failed}")
+
+        untried = self.get_untried_digits()
+        if untried and self._status.attempted_dtmf:
+            parts.append(f"Try one of these next: {', '.join(untried[:3])}")
+
         if self._status.loop_detected:
             parts.append(
-                "\nWARNING: The menu is repeating. Consider pressing '0' "
-                "or '#' to reach a human operator, or try a different option."
+                "\nWARNING: The menu is repeating. Try a DIFFERENT numbered option (1-9) "
+                "that you haven't tried yet. Only use '0' or '#' as a last resort."
             )
 
         parts.append(

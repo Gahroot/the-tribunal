@@ -1,0 +1,35 @@
+# Simple IVR Menu - Basic navigation test
+# Tests: Basic DTMF navigation, state transitions
+
+name: simple_menu
+description: A simple IVR menu with sales and support options
+initial_state: main_menu
+
+states:
+  main_menu:
+    transcript: |
+      Thank you for calling Acme Corp.
+      Press 1 for sales.
+      Press 2 for support.
+    options:
+      - digit: "1"
+        description: Sales department
+        next_state: sales
+      - digit: "2"
+        description: Support department
+        next_state: support
+    timeout_action: main_menu
+
+  sales:
+    transcript: Connecting you to our sales department. Please hold.
+    state_type: operator
+    is_terminal: true
+
+  support:
+    transcript: Connecting you to technical support. Please hold.
+    state_type: operator
+    is_terminal: true
+
+expected_path:
+  - main_menu
+  - sales

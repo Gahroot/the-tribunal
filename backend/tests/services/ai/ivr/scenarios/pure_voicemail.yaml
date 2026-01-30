@@ -1,0 +1,18 @@
+# Pure Voicemail - No menu options
+# Tests: Voicemail detection when there are NO DTMF prompts
+
+name: pure_voicemail
+description: Direct voicemail with no menu options
+initial_state: voicemail_greeting
+
+states:
+  voicemail_greeting:
+    transcript: |
+      Hi, you've reached John Smith. I'm not available to take your call right now.
+      Please leave your name, phone number, and a brief message after the beep,
+      and I'll get back to you as soon as possible.
+    state_type: voicemail
+    is_terminal: true
+
+# Expected: Agent should recognize this as VOICEMAIL (no DTMF prompts)
+# and either leave a message or hang up appropriately
