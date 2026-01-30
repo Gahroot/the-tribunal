@@ -10,10 +10,8 @@ This background worker:
 7. Enforces global opt-out list
 """
 
-import asyncio
-import contextlib
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from typing import Any
 
 import pytz
@@ -39,23 +37,22 @@ from app.services.rate_limiting.rate_limiter import RateLimiter
 from app.services.rate_limiting.reputation_tracker import ReputationTracker
 from app.services.rate_limiting.warming_scheduler import WarmingScheduler
 from app.services.telephony.telnyx import TelnyxSMSService
+from app.workers.base import BaseWorker, WorkerRegistry
 
 logger = structlog.get_logger()
 
 # Worker configuration
-POLL_INTERVAL_SECONDS = settings.campaign_poll_interval
 MAX_MESSAGES_PER_TICK = 20
 
 
-class CampaignWorker:
+class CampaignWorker(BaseWorker):
     """Background worker for processing SMS campaigns."""
 
-    def __init__(self) -> None:
-        """Initialize the campaign worker."""
-        self.running = False
-        self.logger = logger.bind(component="campaign_worker")
-        self._task: asyncio.Task[None] | None = None
+    POLL_INTERVAL_SECONDS = settings.campaign_poll_interval
+    COMPONENT_NAME = "campaign_worker"
 
+    def __init__(self) -> None:
+        super().__init__()
         # Rate limiting services (Redis-based)
         self.number_pool = NumberPoolManager()
         self.rate_limiter = RateLimiter()
@@ -63,37 +60,7 @@ class CampaignWorker:
         self.warming_scheduler = WarmingScheduler()
         self.reputation_tracker = ReputationTracker()
 
-    async def start(self) -> None:
-        """Start the campaign worker background task."""
-        if self.running:
-            self.logger.warning("Campaign worker already running")
-            return
-
-        self.running = True
-        self._task = asyncio.create_task(self._run_loop())
-        self.logger.info("Campaign worker started")
-
-    async def stop(self) -> None:
-        """Stop the campaign worker."""
-        self.running = False
-        if self._task:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-            self._task = None
-        self.logger.info("Campaign worker stopped")
-
-    async def _run_loop(self) -> None:
-        """Main worker loop that polls for campaigns to process."""
-        while self.running:
-            try:
-                await self._process_campaigns()
-            except Exception:
-                self.logger.exception("Error in campaign worker loop")
-
-            await asyncio.sleep(POLL_INTERVAL_SECONDS)
-
-    async def _process_campaigns(self) -> None:
+    async def _process_items(self) -> None:
         """Process all running SMS campaigns (not voice campaigns)."""
         async with AsyncSessionLocal() as db:
             result = await db.execute(
@@ -529,7 +496,6 @@ class CampaignWorker:
             return False
 
         # Handle both time objects and datetime objects from SQLAlchemy Time column
-        from datetime import time
         start_val = campaign.sending_hours_start
         end_val = campaign.sending_hours_end
         start_time: time = start_val.time() if isinstance(start_val, datetime) else start_val
@@ -639,27 +605,8 @@ class CampaignWorker:
             return template
 
 
-# Global worker instance
-_campaign_worker: CampaignWorker | None = None
-
-
-async def start_campaign_worker() -> CampaignWorker:
-    """Start the global campaign worker."""
-    global _campaign_worker
-    if _campaign_worker is None:
-        _campaign_worker = CampaignWorker()
-        await _campaign_worker.start()
-    return _campaign_worker
-
-
-async def stop_campaign_worker() -> None:
-    """Stop the global campaign worker."""
-    global _campaign_worker
-    if _campaign_worker:
-        await _campaign_worker.stop()
-        _campaign_worker = None
-
-
-def get_campaign_worker() -> CampaignWorker | None:
-    """Get the global campaign worker instance."""
-    return _campaign_worker
+# Singleton registry
+_registry = WorkerRegistry(CampaignWorker)
+start_campaign_worker = _registry.start
+stop_campaign_worker = _registry.stop
+get_campaign_worker = _registry.get

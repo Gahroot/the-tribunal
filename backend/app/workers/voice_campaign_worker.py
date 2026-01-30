@@ -7,13 +7,10 @@ This background worker:
 4. Tracks call outcomes via webhook handlers
 """
 
-import asyncio
-import contextlib
 from datetime import UTC, datetime, time, timedelta
 from typing import Any
 
 import pytz
-import structlog
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -28,55 +25,23 @@ from app.models.campaign import (
     CampaignType,
 )
 from app.services.telephony.telnyx_voice import TelnyxVoiceService
-
-logger = structlog.get_logger()
+from app.workers.base import BaseWorker, WorkerRegistry
 
 # Worker configuration - more conservative for voice
-POLL_INTERVAL_SECONDS = 10
 MAX_CALLS_PER_TICK = 5
 
 
-class VoiceCampaignWorker:
+class VoiceCampaignWorker(BaseWorker):
     """Background worker for processing voice campaigns."""
 
+    POLL_INTERVAL_SECONDS = 10
+    COMPONENT_NAME = "voice_campaign_worker"
+
     def __init__(self) -> None:
-        """Initialize the voice campaign worker."""
-        self.running = False
-        self.logger = logger.bind(component="voice_campaign_worker")
-        self._task: asyncio.Task[None] | None = None
+        super().__init__()
         self._rate_trackers: dict[str, list[datetime]] = {}
 
-    async def start(self) -> None:
-        """Start the voice campaign worker background task."""
-        if self.running:
-            self.logger.warning("Voice campaign worker already running")
-            return
-
-        self.running = True
-        self._task = asyncio.create_task(self._run_loop())
-        self.logger.info("Voice campaign worker started")
-
-    async def stop(self) -> None:
-        """Stop the voice campaign worker."""
-        self.running = False
-        if self._task:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-            self._task = None
-        self.logger.info("Voice campaign worker stopped")
-
-    async def _run_loop(self) -> None:
-        """Main worker loop that polls for voice campaigns to process."""
-        while self.running:
-            try:
-                await self._process_campaigns()
-            except Exception:
-                self.logger.exception("Error in voice campaign worker loop")
-
-            await asyncio.sleep(POLL_INTERVAL_SECONDS)
-
-    async def _process_campaigns(self) -> None:
+    async def _process_items(self) -> None:
         """Process all running voice campaigns."""
         async with AsyncSessionLocal() as db:
             result = await db.execute(
@@ -347,27 +312,8 @@ class VoiceCampaignWorker:
         self._rate_trackers[campaign_id].append(datetime.now(UTC))
 
 
-# Global worker instance
-_voice_campaign_worker: VoiceCampaignWorker | None = None
-
-
-async def start_voice_campaign_worker() -> VoiceCampaignWorker:
-    """Start the global voice campaign worker."""
-    global _voice_campaign_worker
-    if _voice_campaign_worker is None:
-        _voice_campaign_worker = VoiceCampaignWorker()
-        await _voice_campaign_worker.start()
-    return _voice_campaign_worker
-
-
-async def stop_voice_campaign_worker() -> None:
-    """Stop the global voice campaign worker."""
-    global _voice_campaign_worker
-    if _voice_campaign_worker:
-        await _voice_campaign_worker.stop()
-        _voice_campaign_worker = None
-
-
-def get_voice_campaign_worker() -> VoiceCampaignWorker | None:
-    """Get the global voice campaign worker instance."""
-    return _voice_campaign_worker
+# Singleton registry
+_registry = WorkerRegistry(VoiceCampaignWorker)
+start_voice_campaign_worker = _registry.start
+stop_voice_campaign_worker = _registry.stop
+get_voice_campaign_worker = _registry.get

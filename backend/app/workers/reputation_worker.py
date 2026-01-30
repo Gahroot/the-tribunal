@@ -1,9 +1,5 @@
 """Background worker for phone number reputation updates."""
 
-import asyncio
-import contextlib
-
-import structlog
 from sqlalchemy import select
 
 from app.core.config import settings
@@ -11,14 +7,10 @@ from app.db.session import AsyncSessionLocal
 from app.models.phone_number import PhoneNumber
 from app.services.rate_limiting.reputation_tracker import ReputationTracker
 from app.services.rate_limiting.warming_scheduler import WarmingScheduler
-
-logger = structlog.get_logger()
-
-# Run reputation updates every 5 minutes
-POLL_INTERVAL_SECONDS = getattr(settings, "reputation_poll_interval", 300)
+from app.workers.base import BaseWorker
 
 
-class ReputationWorker:
+class ReputationWorker(BaseWorker):
     """Background worker for phone number reputation management.
 
     Periodically:
@@ -27,43 +19,15 @@ class ReputationWorker:
     - Logs quarantine events for alerting
     """
 
+    POLL_INTERVAL_SECONDS = getattr(settings, "reputation_poll_interval", 300)
+    COMPONENT_NAME = "reputation_worker"
+
     def __init__(self) -> None:
-        self.running = False
-        self.logger = logger.bind(component="reputation_worker")
-        self._task: asyncio.Task[None] | None = None
+        super().__init__()
         self.tracker = ReputationTracker()
         self.warming = WarmingScheduler()
 
-    async def start(self) -> None:
-        """Start the reputation worker."""
-        if self.running:
-            return
-
-        self.running = True
-        self._task = asyncio.create_task(self._run_loop())
-        self.logger.info("reputation_worker_started", interval=POLL_INTERVAL_SECONDS)
-
-    async def stop(self) -> None:
-        """Stop the reputation worker."""
-        self.running = False
-        if self._task:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-            self._task = None
-        self.logger.info("reputation_worker_stopped")
-
-    async def _run_loop(self) -> None:
-        """Main worker loop."""
-        while self.running:
-            try:
-                await self._update_all_reputations()
-            except Exception:
-                self.logger.exception("error_in_reputation_worker")
-
-            await asyncio.sleep(POLL_INTERVAL_SECONDS)
-
-    async def _update_all_reputations(self) -> None:
+    async def _process_items(self) -> None:
         """Update reputation for all active phone numbers."""
         async with AsyncSessionLocal() as db:
             # Get all active phone numbers
@@ -122,5 +86,7 @@ class ReputationWorker:
             )
 
 
-# Global worker instance
+# Global worker instance (kept for backward compatibility with main.py)
+# main.py uses: from app.workers.reputation_worker import reputation_worker
+# main.py calls: await reputation_worker.start()
 reputation_worker = ReputationWorker()

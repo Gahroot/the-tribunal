@@ -7,11 +7,8 @@ This background worker:
 4. Updates conversation follow-up tracking
 """
 
-import asyncio
-import contextlib
 from datetime import UTC, datetime, timedelta
 
-import structlog
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,54 +17,19 @@ from app.db.session import AsyncSessionLocal
 from app.models.conversation import Conversation
 from app.services.ai.text_agent import generate_followup_message
 from app.services.telephony.telnyx import TelnyxSMSService
-
-logger = structlog.get_logger()
+from app.workers.base import BaseWorker, WorkerRegistry
 
 # Worker configuration
-POLL_INTERVAL_SECONDS = 60  # Check every minute
-MAX_FOLLOWUPS_PER_TICK = 10  # Limit batch size
+MAX_FOLLOWUPS_PER_TICK = 10
 
 
-class FollowupWorker:
+class FollowupWorker(BaseWorker):
     """Background worker for processing conversation follow-ups."""
 
-    def __init__(self) -> None:
-        """Initialize the follow-up worker."""
-        self.running = False
-        self.logger = logger.bind(component="followup_worker")
-        self._task: asyncio.Task[None] | None = None
+    POLL_INTERVAL_SECONDS = 60
+    COMPONENT_NAME = "followup_worker"
 
-    async def start(self) -> None:
-        """Start the follow-up worker background task."""
-        if self.running:
-            self.logger.warning("Follow-up worker already running")
-            return
-
-        self.running = True
-        self._task = asyncio.create_task(self._run_loop())
-        self.logger.info("Follow-up worker started")
-
-    async def stop(self) -> None:
-        """Stop the follow-up worker."""
-        self.running = False
-        if self._task:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-            self._task = None
-        self.logger.info("Follow-up worker stopped")
-
-    async def _run_loop(self) -> None:
-        """Main worker loop that polls for follow-ups to process."""
-        while self.running:
-            try:
-                await self._process_followups()
-            except Exception:
-                self.logger.exception("Error in follow-up worker loop")
-
-            await asyncio.sleep(POLL_INTERVAL_SECONDS)
-
-    async def _process_followups(self) -> None:
+    async def _process_items(self) -> None:
         """Process all pending follow-ups."""
         async with AsyncSessionLocal() as db:
             now = datetime.now(UTC)
@@ -183,27 +145,8 @@ class FollowupWorker:
             await sms_service.close()
 
 
-# Global worker instance
-_followup_worker: FollowupWorker | None = None
-
-
-async def start_followup_worker() -> FollowupWorker:
-    """Start the global follow-up worker."""
-    global _followup_worker
-    if _followup_worker is None:
-        _followup_worker = FollowupWorker()
-        await _followup_worker.start()
-    return _followup_worker
-
-
-async def stop_followup_worker() -> None:
-    """Stop the global follow-up worker."""
-    global _followup_worker
-    if _followup_worker:
-        await _followup_worker.stop()
-        _followup_worker = None
-
-
-def get_followup_worker() -> FollowupWorker | None:
-    """Get the global follow-up worker instance."""
-    return _followup_worker
+# Singleton registry
+_registry = WorkerRegistry(FollowupWorker)
+start_followup_worker = _registry.start
+stop_followup_worker = _registry.stop
+get_followup_worker = _registry.get

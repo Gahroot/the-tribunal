@@ -9,13 +9,10 @@ This background worker:
 6. Enforces global opt-out list
 """
 
-import asyncio
-import contextlib
 import re
 from datetime import UTC, datetime
 from typing import Any
 
-import structlog
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -34,60 +31,27 @@ from app.services.rate_limiting.opt_out_manager import OptOutManager
 from app.services.rate_limiting.rate_limiter import RateLimiter
 from app.services.rate_limiting.reputation_tracker import ReputationTracker
 from app.services.telephony.telnyx import TelnyxSMSService
-
-logger = structlog.get_logger()
+from app.workers.base import BaseWorker, WorkerRegistry
 
 # Worker configuration
-POLL_INTERVAL_SECONDS = settings.campaign_poll_interval
 MAX_MESSAGES_PER_TICK = 20
 
 
-class MessageTestWorker:
+class MessageTestWorker(BaseWorker):
     """Background worker for processing message tests with round-robin variant assignment."""
 
-    def __init__(self) -> None:
-        """Initialize the message test worker."""
-        self.running = False
-        self.logger = logger.bind(component="message_test_worker")
-        self._task: asyncio.Task[None] | None = None
+    POLL_INTERVAL_SECONDS = settings.campaign_poll_interval
+    COMPONENT_NAME = "message_test_worker"
 
+    def __init__(self) -> None:
+        super().__init__()
         # Rate limiting services (Redis-based)
         self.number_pool = NumberPoolManager()
         self.rate_limiter = RateLimiter()
         self.opt_out_manager = OptOutManager()
         self.reputation_tracker = ReputationTracker()
 
-    async def start(self) -> None:
-        """Start the message test worker background task."""
-        if self.running:
-            self.logger.warning("Message test worker already running")
-            return
-
-        self.running = True
-        self._task = asyncio.create_task(self._run_loop())
-        self.logger.info("Message test worker started")
-
-    async def stop(self) -> None:
-        """Stop the message test worker."""
-        self.running = False
-        if self._task:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-            self._task = None
-        self.logger.info("Message test worker stopped")
-
-    async def _run_loop(self) -> None:
-        """Main worker loop that polls for tests to process."""
-        while self.running:
-            try:
-                await self._process_message_tests()
-            except Exception:
-                self.logger.exception("Error in message test worker loop")
-
-            await asyncio.sleep(POLL_INTERVAL_SECONDS)
-
-    async def _process_message_tests(self) -> None:
+    async def _process_items(self) -> None:
         """Process all running message tests."""
         async with AsyncSessionLocal() as db:
             result = await db.execute(
@@ -351,7 +315,7 @@ class MessageTestWorker:
                     pattern = re.compile(rf"\{{{placeholder}\}}", re.IGNORECASE)
                     message = pattern.sub(value, message)
                 except Exception as e:
-                    logger.warning(
+                    self.logger.warning(
                         "placeholder_replacement_error",
                         placeholder=placeholder,
                         error=str(e),
@@ -360,7 +324,7 @@ class MessageTestWorker:
             return message
 
         except Exception as e:
-            logger.error(
+            self.logger.error(
                 "template_rendering_failed",
                 error=str(e),
                 template_length=len(template) if template else 0,
@@ -368,27 +332,8 @@ class MessageTestWorker:
             return template
 
 
-# Global worker instance
-_message_test_worker: MessageTestWorker | None = None
-
-
-async def start_message_test_worker() -> MessageTestWorker:
-    """Start the global message test worker."""
-    global _message_test_worker
-    if _message_test_worker is None:
-        _message_test_worker = MessageTestWorker()
-        await _message_test_worker.start()
-    return _message_test_worker
-
-
-async def stop_message_test_worker() -> None:
-    """Stop the global message test worker."""
-    global _message_test_worker
-    if _message_test_worker:
-        await _message_test_worker.stop()
-        _message_test_worker = None
-
-
-def get_message_test_worker() -> MessageTestWorker | None:
-    """Get the global message test worker instance."""
-    return _message_test_worker
+# Singleton registry
+_registry = WorkerRegistry(MessageTestWorker)
+start_message_test_worker = _registry.start
+stop_message_test_worker = _registry.stop
+get_message_test_worker = _registry.get

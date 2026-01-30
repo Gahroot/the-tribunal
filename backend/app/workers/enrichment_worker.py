@@ -7,12 +7,9 @@ This background worker:
 4. Handles errors gracefully with status tracking
 """
 
-import asyncio
-import contextlib
 from datetime import UTC, datetime
 from typing import Any
 
-import structlog
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,63 +18,37 @@ from app.db.session import AsyncSessionLocal
 from app.models.contact import Contact
 from app.services.scraping.ai_content_analyzer import AIContentAnalyzerService
 from app.services.scraping.website_scraper import WebsiteScraperError, WebsiteScraperService
-
-logger = structlog.get_logger()
+from app.workers.base import BaseWorker, WorkerRegistry
 
 # Worker configuration
-POLL_INTERVAL_SECONDS = getattr(settings, "enrichment_poll_interval", 30)
 MAX_CONTACTS_PER_TICK = 10
 
 
-class EnrichmentWorker:
+class EnrichmentWorker(BaseWorker):
     """Background worker for enriching contacts with website data."""
 
+    POLL_INTERVAL_SECONDS = getattr(settings, "enrichment_poll_interval", 30)
+    COMPONENT_NAME = "enrichment_worker"
+
     def __init__(self) -> None:
-        """Initialize the enrichment worker."""
-        self.running = False
-        self.logger = logger.bind(component="enrichment_worker")
-        self._task: asyncio.Task[None] | None = None
+        super().__init__()
         self._scraper: WebsiteScraperService | None = None
         self._ai_analyzer: AIContentAnalyzerService | None = None
 
-    async def start(self) -> None:
-        """Start the enrichment worker background task."""
-        if self.running:
-            self.logger.warning("Enrichment worker already running")
-            return
-
-        self.running = True
+    async def _on_start(self) -> None:
+        """Initialize scraper and AI analyzer services."""
         self._scraper = WebsiteScraperService()
         if settings.enable_ai_enrichment:
             self._ai_analyzer = AIContentAnalyzerService()
-        self._task = asyncio.create_task(self._run_loop())
-        self.logger.info("Enrichment worker started")
 
-    async def stop(self) -> None:
-        """Stop the enrichment worker."""
-        self.running = False
-        if self._task:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-            self._task = None
+    async def _on_stop(self) -> None:
+        """Clean up scraper and AI analyzer services."""
         if self._scraper:
             await self._scraper.close()
             self._scraper = None
         self._ai_analyzer = None
-        self.logger.info("Enrichment worker stopped")
 
-    async def _run_loop(self) -> None:
-        """Main worker loop that polls for contacts to enrich."""
-        while self.running:
-            try:
-                await self._process_pending_contacts()
-            except Exception:
-                self.logger.exception("Error in enrichment worker loop")
-
-            await asyncio.sleep(POLL_INTERVAL_SECONDS)
-
-    async def _process_pending_contacts(self) -> None:
+    async def _process_items(self) -> None:
         """Process all pending contacts for enrichment."""
         async with AsyncSessionLocal() as db:
             # Find contacts with pending enrichment that have a website
@@ -196,27 +167,8 @@ class EnrichmentWorker:
             contact.enrichment_status = "failed"
 
 
-# Global worker instance
-_enrichment_worker: EnrichmentWorker | None = None
-
-
-async def start_enrichment_worker() -> EnrichmentWorker:
-    """Start the global enrichment worker."""
-    global _enrichment_worker
-    if _enrichment_worker is None:
-        _enrichment_worker = EnrichmentWorker()
-        await _enrichment_worker.start()
-    return _enrichment_worker
-
-
-async def stop_enrichment_worker() -> None:
-    """Stop the global enrichment worker."""
-    global _enrichment_worker
-    if _enrichment_worker:
-        await _enrichment_worker.stop()
-        _enrichment_worker = None
-
-
-def get_enrichment_worker() -> EnrichmentWorker | None:
-    """Get the global enrichment worker instance."""
-    return _enrichment_worker
+# Singleton registry
+_registry = WorkerRegistry(EnrichmentWorker)
+start_enrichment_worker = _registry.start
+stop_enrichment_worker = _registry.stop
+get_enrichment_worker = _registry.get
