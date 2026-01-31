@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 
 from app.api.deps import DB
 from app.core.config import settings
+from app.core.utils import get_client_ip
 from app.models.contact import Contact
 from app.models.demo_request import DemoRequest
 from app.services.telephony.telnyx import TelnyxSMSService
@@ -165,15 +166,6 @@ async def check_rate_limits(
         )
 
 
-def get_client_ip(request: Request) -> str:
-    """Extract client IP from request, handling proxies."""
-    # Check X-Forwarded-For header (for reverse proxy setups)
-    forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        # Take the first IP in the chain
-        return forwarded_for.split(",")[0].strip()
-    # Fall back to direct client IP
-    return request.client.host if request.client else "unknown"
 
 
 @router.post("/call", response_model=DemoResponse)
@@ -199,7 +191,7 @@ async def trigger_demo_call(
             detail="Voice service not available",
         )
 
-    client_ip = get_client_ip(request)
+    client_ip = get_client_ip(request, settings.trusted_proxies)
 
     # Check rate limits
     await check_rate_limits(db, client_ip, demo_request.phone_number, "call")
@@ -277,7 +269,7 @@ async def trigger_demo_text(
             detail="SMS service not available",
         )
 
-    client_ip = get_client_ip(request)
+    client_ip = get_client_ip(request, settings.trusted_proxies)
 
     # Check rate limits
     await check_rate_limits(db, client_ip, demo_request.phone_number, "text")
@@ -398,7 +390,7 @@ async def submit_lead(
             detail="Lead submission not configured",
         )
 
-    client_ip = get_client_ip(request)
+    client_ip = get_client_ip(request, settings.trusted_proxies)
     await check_rate_limits(db, client_ip, lead_request.phone_number, "lead")
 
     # Check if contact already exists in demo workspace

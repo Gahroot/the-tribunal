@@ -297,6 +297,16 @@ class VoiceToolExecutor:
             invalid = [c for c in digits if c not in valid_chars]
             if invalid:
                 error_msg = f"Invalid DTMF characters: {invalid}. Valid: 0-9, *, #, A-D, w, W"
+            else:
+                # Ensure at least one actual digit is present (not just pause chars)
+                actual_digits = set("0123456789*#ABCDabcd")
+                has_actual_digit = any(c in actual_digits for c in digits)
+                if not has_actual_digit:
+                    error_msg = (
+                        "DTMF must include at least one digit (0-9, *, #, A-D). "
+                        "You sent only pause characters. To navigate an IVR menu, "
+                        "send the number for the option you want (e.g., '2' for sales)."
+                    )
 
         if error_msg:
             return {"success": False, "error": error_msg}
@@ -346,17 +356,26 @@ class VoiceToolExecutor:
         from app.models.conversation import Message as MessageModel
 
         async with AsyncSessionLocal() as db:
-            await db.execute(
-                update(MessageModel)
-                .where(MessageModel.provider_message_id == self.call_control_id)
-                .values(booking_outcome=outcome)
-            )
-            await db.commit()
-            self.logger.info(
-                "booking_outcome_persisted",
-                call_control_id=self.call_control_id,
-                outcome=outcome,
-            )
+            try:
+                await db.execute(
+                    update(MessageModel)
+                    .where(MessageModel.provider_message_id == self.call_control_id)
+                    .values(booking_outcome=outcome)
+                )
+                await db.commit()
+                self.logger.info(
+                    "booking_outcome_persisted",
+                    call_control_id=self.call_control_id,
+                    outcome=outcome,
+                )
+            except Exception as e:
+                await db.rollback()
+                self.logger.error(
+                    "booking_outcome_persistence_failed",
+                    call_control_id=self.call_control_id,
+                    outcome=outcome,
+                    error=str(e),
+                )
 
     def _get_timezone(self) -> ZoneInfo:
         """Get ZoneInfo for configured timezone.

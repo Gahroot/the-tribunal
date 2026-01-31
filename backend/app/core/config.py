@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     # SendGrid
     sendgrid_api_key: str = ""
     sendgrid_from_email: str = "noreply@example.com"
+    sendgrid_from_name: str = "AI CRM"
 
     # Google Places API
     google_places_api_key: str = ""
@@ -75,6 +76,9 @@ class Settings(BaseSettings):
     demo_from_phone_number: str = ""  # Phone number to send demo calls/texts from
     demo_ip_rate_limit: int = 100  # Max requests per IP per hour
     demo_phone_rate_limit: int = 100  # Max requests per phone per day
+
+    # Security - Trusted Proxies
+    trusted_proxies: list[str] = ["127.0.0.1", "::1"]  # IPs allowed to set X-Forwarded-For
 
 
 @lru_cache

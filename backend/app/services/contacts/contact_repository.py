@@ -247,26 +247,33 @@ async def bulk_delete_contacts(
     Returns:
         Tuple of (deleted_count, list_of_errors)
     """
-    deleted = 0
     errors: list[str] = []
 
-    for contact_id in contact_ids:
-        result = await db.execute(
-            select(Contact).where(
-                Contact.id == contact_id,
-                Contact.workspace_id == workspace_id,
-            )
+    # Single query to fetch all contacts at once
+    result = await db.execute(
+        select(Contact).where(
+            Contact.id.in_(contact_ids),
+            Contact.workspace_id == workspace_id,
         )
-        contact = result.scalar_one_or_none()
+    )
+    contacts = result.scalars().all()
 
-        if contact is None:
+    # Track found contact IDs
+    found_ids = {contact.id for contact in contacts}
+
+    # Track missing contact IDs
+    for contact_id in contact_ids:
+        if contact_id not in found_ids:
             errors.append(f"Contact {contact_id} not found")
-            continue
 
+    # Delete all found contacts in one operation
+    # Database CASCADE will handle related deletions
+    for contact in contacts:
         await db.delete(contact)
-        deleted += 1
 
     await db.commit()
+
+    deleted = len(contacts)
 
     return deleted, errors
 
@@ -323,34 +330,47 @@ async def get_contact_timeline(
     conv_result = await db.execute(conv_query)
     conversations = conv_result.scalars().all()
 
-    # Get all messages from these conversations
-    for conversation in conversations:
+    # Get all conversation IDs
+    conversation_ids = [conv.id for conv in conversations]
+
+    if conversation_ids:
+        # Single query to get all messages from all conversations
         msg_result = await db.execute(
             select(Message)
-            .where(Message.conversation_id == conversation.id)
+            .where(Message.conversation_id.in_(conversation_ids))
             .order_by(Message.created_at.desc())
-            .limit(limit)
         )
-        messages = msg_result.scalars().all()
+        all_messages = msg_result.scalars().all()
 
-        for msg in messages:
-            # Determine type based on channel
-            item_type = "call" if msg.channel == "voice" else msg.channel
+        # Group messages by conversation_id in memory
+        messages_by_conv: dict[uuid.UUID, list[Message]] = {}
+        for msg in all_messages:
+            if msg.conversation_id not in messages_by_conv:
+                messages_by_conv[msg.conversation_id] = []
+            messages_by_conv[msg.conversation_id].append(msg)
 
-            timeline_items.append({
-                "id": msg.id,
-                "type": item_type,
-                "timestamp": msg.created_at,
-                "direction": msg.direction,
-                "is_ai": msg.is_ai,
-                "content": msg.body,
-                "duration_seconds": msg.duration_seconds,
-                "recording_url": msg.recording_url,
-                "transcript": msg.transcript,
-                "status": msg.status,
-                "original_id": msg.id,
-                "original_type": f"{msg.channel}_message",
-            })
+        # Process messages for each conversation, limiting in memory
+        for conversation in conversations:
+            messages = messages_by_conv.get(conversation.id, [])
+            # Limit messages per conversation in memory
+            for msg in messages[:limit]:
+                # Determine type based on channel
+                item_type = "call" if msg.channel == "voice" else msg.channel
+
+                timeline_items.append({
+                    "id": msg.id,
+                    "type": item_type,
+                    "timestamp": msg.created_at,
+                    "direction": msg.direction,
+                    "is_ai": msg.is_ai,
+                    "content": msg.body,
+                    "duration_seconds": msg.duration_seconds,
+                    "recording_url": msg.recording_url,
+                    "transcript": msg.transcript,
+                    "status": msg.status,
+                    "original_id": msg.id,
+                    "original_type": f"{msg.channel}_message",
+                })
 
     # Sort by timestamp (oldest first)
     timeline_items.sort(key=lambda x: x["timestamp"])

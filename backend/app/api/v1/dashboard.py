@@ -1,5 +1,7 @@
 """Dashboard statistics endpoints."""
 
+import json
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -9,12 +11,14 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import DB, CurrentUser, get_workspace
+from app.db.redis import get_redis
 from app.models.agent import Agent
 from app.models.campaign import Campaign
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
 from app.models.workspace import Workspace
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -436,6 +440,63 @@ async def get_today_overview(
     )
 
 
+async def get_cached_dashboard(
+    db: AsyncSession, workspace: Workspace
+) -> DashboardResponse:
+    """Get dashboard data with Redis caching.
+
+    Cache key: dashboard:stats:{workspace_id}
+    TTL: 300 seconds (5 minutes)
+
+    Gracefully degrades to direct computation if Redis is unavailable.
+    """
+    cache_key = f"dashboard:stats:{workspace.id}"
+    cache_ttl = 300  # 5 minutes
+
+    # Try to get from cache first
+    try:
+        redis = await get_redis()
+        cached_data = await redis.get(cache_key)
+
+        if cached_data:
+            logger.debug(f"Cache hit for dashboard stats: {workspace.id}")
+            data = json.loads(cached_data)
+            return DashboardResponse(**data)
+    except Exception as e:
+        # Log error but continue to compute normally
+        logger.warning(f"Redis cache read failed for dashboard {workspace.id}: {e}")
+
+    # Cache miss or Redis unavailable - compute stats
+    logger.debug(f"Cache miss for dashboard stats: {workspace.id}")
+
+    stats = await get_core_stats(db, workspace)
+    recent_activity = await get_recent_activity(db, workspace)
+    campaign_stats = await get_campaign_stats(db, workspace)
+    agent_stats = await get_agent_stats(db, workspace)
+    today_overview = await get_today_overview(db, workspace)
+
+    response = DashboardResponse(
+        stats=stats,
+        recent_activity=recent_activity,
+        campaign_stats=campaign_stats,
+        agent_stats=agent_stats,
+        today_overview=today_overview,
+    )
+
+    # Try to cache the result
+    try:
+        redis = await get_redis()
+        # Convert Pydantic model to dict for JSON serialization
+        cache_data = response.model_dump(mode="json")
+        await redis.setex(cache_key, cache_ttl, json.dumps(cache_data))
+        logger.debug(f"Cached dashboard stats for {workspace.id} (TTL: {cache_ttl}s)")
+    except Exception as e:
+        # Log error but don't fail the request
+        logger.warning(f"Redis cache write failed for dashboard {workspace.id}: {e}")
+
+    return response
+
+
 @router.get("/stats", response_model=DashboardResponse)
 async def get_dashboard_stats(
     workspace_id: uuid.UUID,
@@ -450,19 +511,8 @@ async def get_dashboard_stats(
     - Active campaign progress
     - Agent performance metrics
     - Today's overview
+
+    Results are cached in Redis for 5 minutes to reduce database load.
     """
     workspace = await get_workspace(workspace_id, current_user, db)
-
-    stats = await get_core_stats(db, workspace)
-    recent_activity = await get_recent_activity(db, workspace)
-    campaign_stats = await get_campaign_stats(db, workspace)
-    agent_stats = await get_agent_stats(db, workspace)
-    today_overview = await get_today_overview(db, workspace)
-
-    return DashboardResponse(
-        stats=stats,
-        recent_activity=recent_activity,
-        campaign_stats=campaign_stats,
-        agent_stats=agent_stats,
-        today_overview=today_overview,
-    )
+    return await get_cached_dashboard(db, workspace)
