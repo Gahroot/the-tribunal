@@ -10,8 +10,9 @@ from typing import Any
 
 import structlog
 from openai import AsyncOpenAI
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.models.contact import Contact
@@ -97,9 +98,11 @@ async def get_conversation_transcript(
     Returns:
         Tuple of (formatted transcript, conversation count)
     """
-    # Get all conversations for this contact
+    # Use selectinload to eager load messages (2 queries instead of 1+N)
     result = await db.execute(
-        select(Conversation).where(Conversation.contact_id == contact_id)
+        select(Conversation)
+        .options(selectinload(Conversation.messages))
+        .where(Conversation.contact_id == contact_id)
     )
     conversations = result.scalars().all()
 
@@ -110,14 +113,12 @@ async def get_conversation_transcript(
     conversation_count = len(conversations)
 
     for conversation in conversations:
-        # Get messages for this conversation
-        msg_result = await db.execute(
-            select(Message)
-            .where(Message.conversation_id == conversation.id)
-            .order_by(Message.created_at.asc())
-            .limit(max_messages)
-        )
-        messages = msg_result.scalars().all()
+        # Messages already loaded via selectinload
+        # Sort and limit in Python (acceptable since building full transcript)
+        messages = sorted(
+            conversation.messages,
+            key=lambda m: m.created_at
+        )[:max_messages]
 
         for msg in messages:
             direction = "Contact" if msg.direction == "inbound" else "Agent"
@@ -284,35 +285,34 @@ async def calculate_response_rate(contact_id: int, db: AsyncSession) -> float:
     Returns:
         Response rate (0.0-1.0)
     """
-    # Get conversations for contact
-    conv_result = await db.execute(
-        select(Conversation.id).where(Conversation.contact_id == contact_id)
+    # Single query with conditional aggregation (1 query instead of 3)
+    result = await db.execute(
+        select(
+            func.sum(
+                case(
+                    (Message.direction == "outbound", 1),
+                    else_=0
+                )
+            ).label("outbound_count"),
+            func.sum(
+                case(
+                    (Message.direction == "inbound", 1),
+                    else_=0
+                )
+            ).label("inbound_count"),
+        )
+        .select_from(Message)
+        .join(Conversation, Message.conversation_id == Conversation.id)
+        .where(Conversation.contact_id == contact_id)
     )
-    conversation_ids = [row[0] for row in conv_result.all()]
 
-    if not conversation_ids:
+    row = result.first()
+
+    if not row:
         return 0.0
 
-    # Count inbound and outbound messages
-    outbound_result = await db.execute(
-        select(func.count())
-        .select_from(Message)
-        .where(
-            Message.conversation_id.in_(conversation_ids),
-            Message.direction == "outbound",
-        )
-    )
-    outbound_count = outbound_result.scalar() or 0
-
-    inbound_result = await db.execute(
-        select(func.count())
-        .select_from(Message)
-        .where(
-            Message.conversation_id.in_(conversation_ids),
-            Message.direction == "inbound",
-        )
-    )
-    inbound_count = inbound_result.scalar() or 0
+    outbound_count = row.outbound_count or 0
+    inbound_count = row.inbound_count or 0
 
     if outbound_count == 0:
         return 0.0
