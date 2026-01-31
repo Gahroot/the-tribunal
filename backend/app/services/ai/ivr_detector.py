@@ -41,6 +41,26 @@ class IVRMode(Enum):
     VOICEMAIL = "voicemail"  # Voicemail system detected
 
 
+class DTMFContext(Enum):
+    """Context for DTMF input expectations."""
+
+    UNKNOWN = "unknown"
+    MENU = "menu"  # Single digit (1-9, 0, *, #)
+    EXTENSION = "extension"  # Multi-digit with # terminator
+    PIN = "pin"  # Multi-digit PIN
+    VOICEMAIL = "voicemail"  # Don't press buttons
+
+
+@dataclass
+class IVRMenuState:
+    """State of current IVR menu."""
+
+    context: DTMFContext = DTMFContext.UNKNOWN
+    attempted_dtmf: set[str] = field(default_factory=set)
+    failed_dtmf: set[str] = field(default_factory=set)
+    last_menu_text: str | None = None
+
+
 @dataclass
 class IVRDetectorConfig:
     """Configuration for IVR detection behavior.
@@ -73,6 +93,7 @@ class IVRStatus:
         attempted_dtmf: Set of all DTMF digits that have been tried
         failed_dtmf: Set of DTMF digits that didn't change the menu
         last_menu_transcript: Last menu transcript for change detection
+        menu_state: Current IVR menu state
     """
 
     mode: IVRMode = IVRMode.UNKNOWN
@@ -83,6 +104,7 @@ class IVRStatus:
     attempted_dtmf: set[str] = field(default_factory=set)
     failed_dtmf: set[str] = field(default_factory=set)
     last_menu_transcript: str | None = None
+    menu_state: IVRMenuState = field(default_factory=IVRMenuState)
 
 
 class IVRClassifier:
@@ -260,6 +282,56 @@ class IVRClassifier:
             return IVRMode.IVR, min(1.0, ivr / total + 0.2)
 
         return IVRMode.UNKNOWN, 0.3
+
+    def detect_context(self, transcript: str) -> DTMFContext:
+        """Detect what type of DTMF input is expected.
+
+        Args:
+            transcript: The IVR menu transcript
+
+        Returns:
+            DTMFContext indicating expected input type
+        """
+        text = transcript.lower()
+
+        if re.search(r"enter.*extension|dial.*extension", text):
+            return DTMFContext.EXTENSION
+        if re.search(r"enter.*pin|enter.*password", text):
+            return DTMFContext.PIN
+        if re.search(r"leave.*message|after.*beep", text):
+            return DTMFContext.VOICEMAIL
+        if re.search(r"press\s+[0-9]|option\s+[0-9]", text):
+            return DTMFContext.MENU
+
+        return DTMFContext.UNKNOWN
+
+
+class DTMFValidator:
+    """Validate and split DTMF based on context."""
+
+    def split_dtmf_by_context(self, digits: str, context: DTMFContext) -> list[str]:
+        """Split multi-digit string based on IVR context.
+
+        Examples:
+            ("220", MENU) -> ["2", "2", "0"]  # Individual presses
+            ("220", EXTENSION) -> ["220#"]     # Together with terminator
+
+        Args:
+            digits: The DTMF digits to split
+            context: The IVR context indicating expected input type
+
+        Returns:
+            List of DTMF sequences to send
+        """
+        if context == DTMFContext.MENU:
+            return list(digits)  # Split into individual
+        elif context == DTMFContext.EXTENSION:
+            return [f"{digits}#"] if not digits.endswith("#") else [digits]
+        elif context in {DTMFContext.PIN}:
+            return [digits]  # Together, no terminator
+        else:
+            # Unknown: default to individual (safe)
+            return list(digits)
 
 
 class LoopDetector:
@@ -551,13 +623,29 @@ class IVRDetector:
         if not transcript or len(transcript.strip()) < self.config.min_transcript_length:
             return self._status.mode
 
-        # For agent transcripts, check for DTMF tags
+        # For agent transcripts, check DTMF AND add to loop detection
         if is_agent:
             self._check_dtmf_tags(transcript)
+
+            # Track agent DTMF for loop detection
+            if self._status.mode == IVRMode.IVR and self._status.last_dtmf_sent:
+                synthetic = f"Pressed {self._status.last_dtmf_sent}"
+                self._loop_detector.add_transcript(synthetic)
+
+                if self._loop_detector.is_loop_detected():
+                    self._status.loop_detected = True
+                    self.logger.warning("agent_dtmf_loop_detected")
+
             return self._status.mode
 
         # For remote party transcripts, classify and detect loops
         mode, confidence = self._classifier.classify(transcript)
+
+        # Detect context from transcript
+        detected_context = self._classifier.detect_context(transcript)
+        if detected_context != DTMFContext.UNKNOWN:
+            self._status.menu_state.context = detected_context
+            self.logger.info("ivr_context_detected", context=detected_context.value)
 
         self.logger.info(
             "ivr_transcript_classified",
@@ -655,6 +743,9 @@ class IVRDetector:
         """
         self._status.attempted_dtmf.add(digits)
         self._status.last_dtmf_sent = digits
+        # Also record in menu_state
+        if self._status.menu_state:
+            self._status.menu_state.attempted_dtmf.add(digits)
         self.logger.debug(
             "dtmf_attempt_recorded",
             digits=digits,

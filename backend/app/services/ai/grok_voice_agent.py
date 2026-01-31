@@ -9,9 +9,10 @@ import asyncio
 import base64
 import binascii
 import json
+import uuid as uuid_module
 from collections.abc import AsyncIterator, Callable
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 import structlog
@@ -19,6 +20,9 @@ import websockets
 
 from app.models.agent import Agent
 from app.services.ai.voice_agent_base import VoiceAgentBase
+
+if TYPE_CHECKING:
+    from app.services.ai.ivr_detector import IVRMode
 
 logger = structlog.get_logger()
 
@@ -417,6 +421,7 @@ class GrokVoiceAgentSession(VoiceAgentBase):
         # Add DTMF tool for IVR navigation if enabled
         # Check both patterns: direct tool ID in enabled_tools (legacy)
         # or integration-based: "call_control" in enabled_tools + "send_dtmf" in tool_settings
+        # Also auto-enable if IVR detector is active (for outbound calls)
         tool_settings = (
             self.agent.tool_settings if self.agent and self.agent.tool_settings else {}
         )
@@ -427,10 +432,16 @@ class GrokVoiceAgentSession(VoiceAgentBase):
                 "call_control" in agent_enabled_tools
                 and "send_dtmf" in call_control_tools
             )  # Integration-based pattern
+            or self._ivr_detector is not None  # Auto-enable if IVR detection active
         )
         if dtmf_enabled:
             tools.append(DTMF_TOOL)
-            self.logger.info("grok_dtmf_tool_enabled")
+            dtmf_reason = (
+                "ivr_detector_active"
+                if self._ivr_detector is not None
+                else "explicit_config"
+            )
+            self.logger.info("grok_dtmf_tool_enabled", reason=dtmf_reason)
 
         # Add Cal.com booking tools if enabled and configured
         # Use dynamic tools with current date context embedded
@@ -790,6 +801,36 @@ class GrokVoiceAgentSession(VoiceAgentBase):
                             full_transcript_so_far=self._agent_transcript[-200:],
                         )
 
+                        # ALWAYS check for DTMF tags - primary mechanism for IVR navigation
+                        # This works regardless of whether function calling is supported
+                        await self._check_and_send_dtmf_tags(self._agent_transcript)
+
+                        # Also process through IVR detector if enabled
+                        if self._ivr_detector:
+                            await self.process_ivr_transcript(
+                                self._agent_transcript, is_agent=True
+                            )
+
+                elif event_type == "response.output_audio_transcript.delta":
+                    # Alternative transcript event format from Grok API
+                    transcript = event.get("delta", "")
+                    if transcript:
+                        self._append_agent_transcript_delta(transcript)
+                        self.logger.info(
+                            "grok_agent_output_transcript_delta",
+                            delta=transcript,
+                            full_transcript_so_far=self._agent_transcript[-200:],
+                        )
+
+                        # ALWAYS check for DTMF tags - primary mechanism for IVR navigation
+                        await self._check_and_send_dtmf_tags(self._agent_transcript)
+
+                        # Also process through IVR detector if enabled
+                        if self._ivr_detector:
+                            await self.process_ivr_transcript(
+                                self._agent_transcript, is_agent=True
+                            )
+
                 elif event_type == "response.text.delta":
                     # Alternative text transcript event
                     text = event.get("delta", "")
@@ -805,6 +846,15 @@ class GrokVoiceAgentSession(VoiceAgentBase):
                     user_text = event.get("transcript", "")
                     if user_text:
                         self._add_user_transcript(user_text)
+
+                        # Process through IVR detector if enabled
+                        if self._ivr_detector:
+                            old_mode = self._ivr_mode
+                            new_mode = await self.process_ivr_transcript(
+                                user_text, is_agent=False
+                            )
+                            if new_mode != old_mode:
+                                await self._handle_ivr_mode_switch(old_mode, new_mode)
 
                 elif event_type == "response.done":
                     # Response complete - but DON'T break!
@@ -924,6 +974,18 @@ class GrokVoiceAgentSession(VoiceAgentBase):
                         full_error=json.dumps(event),
                     )
                     # Don't break - some errors are recoverable
+
+                elif event_type in (
+                    "response.output_item.added",
+                    "conversation.item.added",
+                    "response.content_part.added",
+                    "response.content_part.done",
+                ):
+                    # Informational events - log at debug level
+                    self.logger.debug(
+                        "grok_informational_event",
+                        event_type=event_type,
+                    )
 
                 else:
                     # Log unknown events at info level for debugging
@@ -1162,5 +1224,232 @@ class GrokVoiceAgentSession(VoiceAgentBase):
             await self.ws.send(json.dumps(event))
         except Exception as e:
             self.logger.exception("grok_send_event_error", error=str(e))
+
+    # -------------------------------------------------------------------------
+    # IVR Detection Overrides
+    # -------------------------------------------------------------------------
+
+    async def _handle_ivr_mode_switch(
+        self,
+        old_mode: "IVRMode",
+        new_mode: "IVRMode",
+    ) -> None:
+        """Handle IVR mode switching with Grok-specific behavior.
+
+        Args:
+            old_mode: Previous IVR mode
+            new_mode: New IVR mode
+        """
+        from app.services.ai.ivr_detector import IVRMode
+
+        self.logger.info(
+            "grok_ivr_mode_switch",
+            old_mode=old_mode.value,
+            new_mode=new_mode.value,
+        )
+
+        if new_mode == IVRMode.IVR:
+            await self._switch_to_ivr_mode()
+        elif new_mode == IVRMode.CONVERSATION:
+            await self._switch_to_conversation_mode()
+        elif new_mode == IVRMode.VOICEMAIL:
+            await self._switch_to_voicemail_mode()
+
+    async def _switch_to_ivr_mode(self) -> None:
+        """Switch to IVR navigation mode.
+
+        Adjusts turn detection for IVR menus which often have longer pauses.
+        """
+        self.logger.info("grok_switching_to_ivr_mode")
+
+        # Increase silence duration for IVR menus
+        # IVR systems have longer pauses between options
+        await self.configure_session(
+            silence_duration_ms=1500,  # Longer pause for IVR menus
+            turn_detection_threshold=0.6,  # Less sensitive
+        )
+
+        # Update prompt to include IVR navigation guidance
+        if self._ivr_detector and self._ivr_navigation_goal:
+            ivr_prompt = self._ivr_detector.get_ivr_navigation_prompt(
+                self._ivr_navigation_goal
+            )
+            # Inject IVR navigation context
+            await self._inject_ivr_context(ivr_prompt)
+
+    async def _switch_to_conversation_mode(self) -> None:
+        """Switch back to normal conversation mode.
+
+        Restores normal turn detection settings.
+        """
+        self.logger.info("grok_switching_to_conversation_mode")
+
+        # Restore normal settings
+        silence_ms = 700
+        threshold = 0.5
+
+        if self.agent:
+            silence_ms = self.agent.silence_duration_ms or 700
+            threshold = self.agent.turn_detection_threshold or 0.5
+
+        await self.configure_session(
+            silence_duration_ms=silence_ms,
+            turn_detection_threshold=threshold,
+        )
+
+    async def _switch_to_voicemail_mode(self) -> None:
+        """Switch to voicemail handling mode.
+
+        Similar to IVR mode but with voicemail-specific guidance.
+        """
+        self.logger.info("grok_switching_to_voicemail_mode")
+
+        # Voicemail systems often have beeps and long pauses
+        await self.configure_session(
+            silence_duration_ms=2000,  # Wait for beep
+            turn_detection_threshold=0.7,  # Less sensitive during recording prompt
+        )
+
+    async def _inject_ivr_context(self, ivr_prompt: str) -> None:
+        """Inject IVR navigation context into session.
+
+        Args:
+            ivr_prompt: IVR navigation prompt to inject
+        """
+        if not self.ws:
+            return
+
+        # Create a user message with IVR instructions
+        event = {
+            "type": "conversation.item.create",
+            "item": {
+                "type": "message",
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": f"[SYSTEM IVR NAVIGATION] {ivr_prompt}",
+                    }
+                ],
+            },
+        }
+
+        try:
+            await self._send_event(event)
+            self.logger.info("grok_ivr_context_injected")
+        except Exception as e:
+            self.logger.exception("grok_ivr_context_inject_error", error=str(e))
+
+    def _handle_ivr_dtmf(self, digits: str) -> None:
+        """Handle DTMF digits detected in agent response.
+
+        Calls the tool callback to send DTMF via telephony provider.
+
+        Args:
+            digits: DTMF digits to send (0-9, *, #, A-D)
+        """
+        self.logger.info("grok_ivr_dtmf_auto_send", digits=digits)
+
+        # Send DTMF via tool callback if available
+        if self._tool_callback:
+            import asyncio
+
+            # Schedule DTMF send via tool callback
+            # The callback is async but this method is sync
+            asyncio.create_task(
+                self._send_dtmf_via_callback(digits)
+            )
+
+    async def _send_dtmf_via_callback(self, digits: str) -> None:
+        """Send DTMF via tool callback.
+
+        Args:
+            digits: DTMF digits to send
+        """
+        if not self._tool_callback:
+            self.logger.warning("no_tool_callback_for_dtmf")
+            return
+
+        try:
+            # Generate a unique call ID for this DTMF send
+            call_id = f"dtmf_{uuid_module.uuid4().hex[:8]}"
+
+            result = await self._tool_callback(
+                call_id,
+                "send_dtmf",
+                {"digits": digits},
+            )
+
+            self.logger.info(
+                "grok_dtmf_sent_via_callback",
+                digits=digits,
+                result=result,
+            )
+        except Exception as e:
+            self.logger.exception(
+                "grok_dtmf_send_error",
+                digits=digits,
+                error=str(e),
+            )
             raise
+
+    async def _check_and_send_dtmf_tags(self, text: str) -> None:
+        """Check for DTMF tags in text and send them.
+
+        This is the PRIMARY mechanism for DTMF detection since xAI function
+        calling may not work reliably. Parses <dtmf>X</dtmf> tags from agent
+        transcript and sends the digits via the tool callback.
+
+        Args:
+            text: Text to check for DTMF tags
+        """
+        import re
+
+        from app.services.ai.ivr_detector import DTMFContext, DTMFValidator
+
+        # Track which DTMF sequences we've already sent to avoid duplicates
+        if not hasattr(self, "_sent_dtmf_sequences"):
+            self._sent_dtmf_sequences: set[str] = set()
+
+        pattern = re.compile(r"<dtmf>([0-9*#A-Dw]+)</dtmf>", re.IGNORECASE)
+        matches = pattern.findall(text)
+
+        for digits in matches:
+            # Create a unique key for this specific occurrence
+            # Use position in text to allow same digits to be sent multiple times
+            # if they appear at different positions
+            occurrence_key = f"{text.find(f'<dtmf>{digits}</dtmf>')}:{digits}"
+            if occurrence_key in self._sent_dtmf_sequences:
+                continue
+
+            # Filter to only valid DTMF characters
+            valid_chars = set("0123456789*#ABCDabcd")
+            actual_digits = "".join(c for c in digits if c in valid_chars)
+
+            if actual_digits:
+                # Get current IVR context
+                ivr_status = self.get_ivr_status()
+                context = DTMFContext.MENU  # Default
+                if ivr_status and hasattr(ivr_status, "menu_state") and ivr_status.menu_state:
+                    context = ivr_status.menu_state.context
+
+                # Split digits based on context (fixes multi-digit bug)
+                validator = DTMFValidator()
+                digit_sequences = validator.split_dtmf_by_context(actual_digits, context)
+
+                self.logger.info(
+                    "dtmf_tag_detected_with_context",
+                    raw_digits=digits,
+                    context=context.value if hasattr(context, "value") else str(context),
+                    will_send_as=digit_sequences,
+                )
+
+                # Send each sequence separately with delay
+                self._sent_dtmf_sequences.add(occurrence_key)
+                for seq in digit_sequences:
+                    await self._send_dtmf_via_callback(seq)
+                    if self._ivr_detector:
+                        self._ivr_detector.record_dtmf_attempt(seq)
+                    if len(digit_sequences) > 1:
+                        await asyncio.sleep(0.3)  # Delay between presses
 

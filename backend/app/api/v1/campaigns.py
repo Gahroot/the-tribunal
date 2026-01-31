@@ -1,7 +1,7 @@
 """Campaign management endpoints."""
 
 import uuid
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -21,19 +21,9 @@ from app.schemas.campaign import (
     CampaignUpdate,
     PaginatedCampaigns,
 )
+from app.utils.datetime import parse_time_string
 
 router = APIRouter()
-
-
-def _parse_time_string(time_str: str | None) -> time | None:
-    """Parse a time string like '09:00' into a datetime.time object."""
-    if time_str is None:
-        return None
-    try:
-        parts = time_str.split(":")
-        return time(int(parts[0]), int(parts[1]))
-    except (ValueError, IndexError):
-        return None
 
 
 @router.get("", response_model=PaginatedCampaigns)
@@ -98,11 +88,11 @@ async def create_campaign(
     # Convert time strings to datetime.time objects
     campaign_data = campaign_in.model_dump()
     if "sending_hours_start" in campaign_data:
-        campaign_data["sending_hours_start"] = _parse_time_string(
+        campaign_data["sending_hours_start"] = parse_time_string(
             campaign_data["sending_hours_start"]
         )
     if "sending_hours_end" in campaign_data:
-        campaign_data["sending_hours_end"] = _parse_time_string(
+        campaign_data["sending_hours_end"] = parse_time_string(
             campaign_data["sending_hours_end"]
         )
 
@@ -179,11 +169,11 @@ async def update_campaign(
 
     # Convert time strings to datetime.time objects
     if "sending_hours_start" in update_data:
-        update_data["sending_hours_start"] = _parse_time_string(
+        update_data["sending_hours_start"] = parse_time_string(
             update_data["sending_hours_start"]
         )
     if "sending_hours_end" in update_data:
-        update_data["sending_hours_end"] = _parse_time_string(
+        update_data["sending_hours_end"] = parse_time_string(
             update_data["sending_hours_end"]
         )
 

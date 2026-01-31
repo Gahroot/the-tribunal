@@ -1,30 +1,25 @@
 """Contact endpoints."""
 
-import csv
-import io
 import uuid
 from datetime import datetime
-from math import ceil
 from typing import Any
 
 from fastapi import APIRouter, Form, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
-from sqlalchemy import func, or_, select
+from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.core.config import settings
 from app.models.contact import Contact
-from app.models.conversation import Conversation, Message
-from app.models.phone_number import PhoneNumber
 from app.schemas.contact import (
     ContactCreate,
     ContactListResponse,
     ContactResponse,
     ContactUpdate,
-    ContactWithConversationResponse,
     QualificationSignals,
 )
-from app.services.telephony.telnyx import TelnyxSMSService, normalize_phone_number
+from app.services.contacts import ContactImportService, ContactService
+from app.services.contacts.contact_import import ImportErrorDetail
 
 router = APIRouter()
 
@@ -72,101 +67,17 @@ async def list_contacts(
     # Verify workspace access
     workspace = await get_workspace(workspace_id, current_user, db)
 
-    # Subquery to get conversation data per contact (aggregated across all conversations)
-    conv_subquery = (
-        select(
-            Conversation.contact_id,
-            func.sum(Conversation.unread_count).label("total_unread"),
-            func.max(Conversation.last_message_at).label("max_message_at"),
-            # Get the direction of the most recent message
-            func.max(Conversation.last_message_direction).label("last_direction"),
-        )
-        .where(Conversation.workspace_id == workspace.id)
-        .where(Conversation.contact_id.isnot(None))
-        .group_by(Conversation.contact_id)
-        .subquery()
-    )
-
-    # Build query with conversation data
-    query = (
-        select(
-            Contact,
-            func.coalesce(conv_subquery.c.total_unread, 0).label("unread_count"),
-            conv_subquery.c.max_message_at.label("last_message_at"),
-            conv_subquery.c.last_direction.label("last_message_direction"),
-        )
-        .outerjoin(conv_subquery, Contact.id == conv_subquery.c.contact_id)
-        .where(Contact.workspace_id == workspace.id)
-    )
-
-    # Apply filters
-    if status_filter:
-        query = query.where(Contact.status == status_filter)
-
-    if search:
-        search_term = f"%{search}%"
-        query = query.where(
-            (Contact.first_name.ilike(search_term))
-            | (Contact.last_name.ilike(search_term))
-            | (Contact.email.ilike(search_term))
-            | (Contact.phone_number.ilike(search_term))
-            | (Contact.company_name.ilike(search_term))
-        )
-
-    # Get total count (from base contact query without conversation columns)
-    base_count_query = select(Contact).where(Contact.workspace_id == workspace.id)
-    if status_filter:
-        base_count_query = base_count_query.where(Contact.status == status_filter)
-    if search:
-        search_term = f"%{search}%"
-        base_count_query = base_count_query.where(
-            (Contact.first_name.ilike(search_term))
-            | (Contact.last_name.ilike(search_term))
-            | (Contact.email.ilike(search_term))
-            | (Contact.phone_number.ilike(search_term))
-            | (Contact.company_name.ilike(search_term))
-        )
-    count_query = select(func.count()).select_from(base_count_query.subquery())
-    total_result = await db.execute(count_query)
-    total = total_result.scalar() or 0
-
-    # Apply sorting
-    if sort_by == "unread_first":
-        # Unread contacts first (by unread count desc), then by last message time
-        query = query.order_by(
-            conv_subquery.c.total_unread.desc().nullslast(),
-            conv_subquery.c.max_message_at.desc().nullslast(),
-        )
-    elif sort_by == "last_conversation":
-        # Sort by most recent conversation first, contacts with no conversation go last
-        query = query.order_by(conv_subquery.c.max_message_at.desc().nullslast())
-    else:
-        query = query.order_by(Contact.created_at.desc())
-
-    # Apply pagination
-    query = query.offset((page - 1) * page_size).limit(page_size)
-
-    # Execute query
-    result = await db.execute(query)
-    rows = result.all()
-
-    # Build response with conversation data
-    items = []
-    for row in rows:
-        contact = row[0]  # Contact object
-        contact_data = ContactWithConversationResponse.model_validate(contact)
-        contact_data.unread_count = row[1] or 0
-        contact_data.last_message_at = row[2]
-        contact_data.last_message_direction = row[3]
-        items.append(contact_data)
-
-    return ContactListResponse(
-        items=items,
-        total=total,
+    service = ContactService(db)
+    result = await service.list_contacts(
+        workspace_id=workspace.id,
         page=page,
         page_size=page_size,
-        pages=ceil(total / page_size) if total > 0 else 1,
+        status_filter=status_filter,
+        search=search,
+        sort_by=sort_by,
     )
+
+    return ContactListResponse(**result)
 
 
 @router.post("", response_model=ContactResponse, status_code=status.HTTP_201_CREATED)
@@ -180,24 +91,19 @@ async def create_contact(
     # Verify workspace access
     workspace = await get_workspace(workspace_id, current_user, db)
 
-    # Create contact
-    contact = Contact(
+    service = ContactService(db)
+    return await service.create_contact(
         workspace_id=workspace.id,
         first_name=contact_in.first_name,
         last_name=contact_in.last_name,
         email=contact_in.email,
         phone_number=contact_in.phone_number,
         company_name=contact_in.company_name,
-        status=contact_in.status,
+        contact_status=contact_in.status,
         tags=contact_in.tags,
         notes=contact_in.notes,
         source=contact_in.source,
     )
-    db.add(contact)
-    await db.commit()
-    await db.refresh(contact)
-
-    return contact
 
 
 @router.get("/{contact_id}", response_model=ContactResponse)
@@ -211,22 +117,8 @@ async def get_contact(
     # Verify workspace access
     workspace = await get_workspace(workspace_id, current_user, db)
 
-    # Get contact
-    result = await db.execute(
-        select(Contact).where(
-            Contact.id == contact_id,
-            Contact.workspace_id == workspace.id,
-        )
-    )
-    contact = result.scalar_one_or_none()
-
-    if contact is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Contact not found",
-        )
-
-    return contact
+    service = ContactService(db)
+    return await service.get_contact(contact_id, workspace.id)
 
 
 @router.put("/{contact_id}", response_model=ContactResponse)
@@ -241,30 +133,9 @@ async def update_contact(
     # Verify workspace access
     workspace = await get_workspace(workspace_id, current_user, db)
 
-    # Get contact
-    result = await db.execute(
-        select(Contact).where(
-            Contact.id == contact_id,
-            Contact.workspace_id == workspace.id,
-        )
-    )
-    contact = result.scalar_one_or_none()
-
-    if contact is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Contact not found",
-        )
-
-    # Update fields
+    service = ContactService(db)
     update_data = contact_in.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(contact, field, value)
-
-    await db.commit()
-    await db.refresh(contact)
-
-    return contact
+    return await service.update_contact(contact_id, workspace.id, update_data)
 
 
 @router.delete("/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -278,23 +149,8 @@ async def delete_contact(
     # Verify workspace access
     workspace = await get_workspace(workspace_id, current_user, db)
 
-    # Get contact
-    result = await db.execute(
-        select(Contact).where(
-            Contact.id == contact_id,
-            Contact.workspace_id == workspace.id,
-        )
-    )
-    contact = result.scalar_one_or_none()
-
-    if contact is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Contact not found",
-        )
-
-    await db.delete(contact)
-    await db.commit()
+    service = ContactService(db)
+    await service.delete_contact(contact_id, workspace.id)
 
 
 class BulkDeleteRequest(BaseModel):
@@ -322,38 +178,10 @@ async def bulk_delete_contacts(
     # Verify workspace access
     workspace = await get_workspace(workspace_id, current_user, db)
 
-    if not request.ids:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No contact IDs provided",
-        )
+    service = ContactService(db)
+    result = await service.bulk_delete_contacts(request.ids, workspace.id)
 
-    deleted = 0
-    errors: list[str] = []
-
-    for contact_id in request.ids:
-        result = await db.execute(
-            select(Contact).where(
-                Contact.id == contact_id,
-                Contact.workspace_id == workspace.id,
-            )
-        )
-        contact = result.scalar_one_or_none()
-
-        if contact is None:
-            errors.append(f"Contact {contact_id} not found")
-            continue
-
-        await db.delete(contact)
-        deleted += 1
-
-    await db.commit()
-
-    return BulkDeleteResponse(
-        deleted=deleted,
-        failed=len(errors),
-        errors=errors,
-    )
+    return BulkDeleteResponse(**result)
 
 
 @router.post("/{contact_id}/messages", response_model=MessageResponse)
@@ -363,7 +191,7 @@ async def send_message_to_contact(
     message_in: SendMessageToContactRequest,
     current_user: CurrentUser,
     db: DB,
-) -> Message:
+) -> Any:
     """Send an SMS message to a contact.
 
     This endpoint finds or creates a conversation for the contact and sends the message.
@@ -371,81 +199,14 @@ async def send_message_to_contact(
     # Verify workspace access
     workspace = await get_workspace(workspace_id, current_user, db)
 
-    # Get contact
-    result = await db.execute(
-        select(Contact).where(
-            Contact.id == contact_id,
-            Contact.workspace_id == workspace.id,
-        )
+    service = ContactService(db)
+    return await service.send_message(
+        contact_id=contact_id,
+        workspace_id=workspace.id,
+        message_body=message_in.body,
+        from_number=message_in.from_number,
+        telnyx_api_key=settings.telnyx_api_key,
     )
-    contact = result.scalar_one_or_none()
-
-    if contact is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Contact not found",
-        )
-
-    if not contact.phone_number:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Contact does not have a phone number",
-        )
-
-    # Get workspace phone number for sending
-    if message_in.from_number:
-        # Use the specified phone number
-        phone_result = await db.execute(
-            select(PhoneNumber).where(
-                PhoneNumber.workspace_id == workspace_id,
-                PhoneNumber.phone_number == message_in.from_number,
-                PhoneNumber.sms_enabled.is_(True),
-                PhoneNumber.is_active.is_(True),
-            )
-        )
-        workspace_phone = phone_result.scalar_one_or_none()
-        if workspace_phone is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Specified phone number not found or not SMS-enabled",
-            )
-    else:
-        # Use the first available SMS-enabled phone number
-        phone_result = await db.execute(
-            select(PhoneNumber).where(
-                PhoneNumber.workspace_id == workspace_id,
-                PhoneNumber.sms_enabled.is_(True),
-                PhoneNumber.is_active.is_(True),
-            ).limit(1)
-        )
-        workspace_phone = phone_result.scalar_one_or_none()
-        if workspace_phone is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No SMS-enabled phone number configured for this workspace",
-            )
-
-    # Check for Telnyx API key
-    telnyx_api_key = settings.telnyx_api_key
-    if not telnyx_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="SMS service not configured",
-        )
-
-    # Send message via Telnyx (this creates/gets conversation automatically)
-    sms_service = TelnyxSMSService(telnyx_api_key)
-    try:
-        message = await sms_service.send_message(
-            to_number=contact.phone_number,
-            from_number=workspace_phone.phone_number,
-            body=message_in.body,
-            db=db,
-            workspace_id=workspace_id,
-        )
-        return message
-    finally:
-        await sms_service.close()
 
 
 class AIToggleRequest(BaseModel):
@@ -476,101 +237,14 @@ async def toggle_contact_ai(
     # Verify workspace access
     workspace = await get_workspace(workspace_id, current_user, db)
 
-    # Get contact
-    result = await db.execute(
-        select(Contact).where(
-            Contact.id == contact_id,
-            Contact.workspace_id == workspace.id,
-        )
+    service = ContactService(db)
+    result = await service.toggle_ai(
+        contact_id=contact_id,
+        workspace_id=workspace.id,
+        enabled=toggle_in.enabled,
     )
-    contact = result.scalar_one_or_none()
 
-    if contact is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Contact not found",
-        )
-
-    if not contact.phone_number:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Contact does not have a phone number",
-        )
-
-    # Normalize the contact phone number for matching
-    normalized_contact_phone = normalize_phone_number(contact.phone_number)
-
-    # Try to find existing conversation by contact_id first (get most recent)
-    conv_result = await db.execute(
-        select(Conversation)
-        .where(
-            Conversation.workspace_id == workspace_id,
-            Conversation.contact_id == contact_id,
-        )
-        .order_by(Conversation.updated_at.desc())
-        .limit(1)
-    )
-    conversation = conv_result.scalars().first()
-
-    # If not found by contact_id, try finding by phone number
-    if conversation is None:
-        conv_result = await db.execute(
-            select(Conversation)
-            .where(
-                Conversation.workspace_id == workspace_id,
-                or_(
-                    Conversation.contact_phone == contact.phone_number,
-                    Conversation.contact_phone == normalized_contact_phone,
-                ),
-            )
-            .order_by(Conversation.updated_at.desc())
-            .limit(1)
-        )
-        conversation = conv_result.scalars().first()
-
-        # If found by phone, link it to this contact
-        if conversation is not None:
-            conversation.contact_id = contact_id
-
-    # If still no conversation, create one
-    if conversation is None:
-        # Get a workspace phone number
-        phone_result = await db.execute(
-            select(PhoneNumber).where(
-                PhoneNumber.workspace_id == workspace_id,
-                PhoneNumber.sms_enabled.is_(True),
-                PhoneNumber.is_active.is_(True),
-            ).limit(1)
-        )
-        workspace_phone = phone_result.scalar_one_or_none()
-
-        if workspace_phone is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No SMS-enabled phone number configured for this workspace",
-            )
-
-        # Create conversation
-        conversation = Conversation(
-            workspace_id=workspace_id,
-            contact_id=contact_id,
-            workspace_phone=workspace_phone.phone_number,
-            contact_phone=normalized_contact_phone,
-            channel="sms",
-            ai_enabled=toggle_in.enabled,
-        )
-        db.add(conversation)
-    else:
-        # Update existing conversation
-        conversation.ai_enabled = toggle_in.enabled
-
-    await db.commit()
-    await db.refresh(conversation)
-
-    return AIToggleResponse(
-        ai_enabled=conversation.ai_enabled,
-        conversation_id=conversation.id,
-    )
+    return AIToggleResponse(**result)
 
 
 class TimelineItem(BaseModel):
@@ -608,96 +282,20 @@ async def get_contact_timeline(
     # Verify workspace access
     workspace = await get_workspace(workspace_id, current_user, db)
 
-    # Get contact
-    contact_result = await db.execute(
-        select(Contact).where(
-            Contact.id == contact_id,
-            Contact.workspace_id == workspace.id,
-        )
-    )
-    contact = contact_result.scalar_one_or_none()
-
-    if contact is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Contact not found",
-        )
-
-    timeline_items: list[TimelineItem] = []
-
-    # Normalize contact phone for matching
-    normalized_contact_phone = (
-        normalize_phone_number(contact.phone_number) if contact.phone_number else None
+    service = ContactService(db)
+    timeline_items_data = await service.get_contact_timeline(
+        contact_id=contact_id,
+        workspace_id=workspace.id,
+        limit=limit,
     )
 
-    # Get conversations for this contact (by contact_id or phone number)
-    conv_query = select(Conversation).where(
-        Conversation.workspace_id == workspace_id,
-    )
-
-    if contact.phone_number and normalized_contact_phone:
-        conv_query = conv_query.where(
-            or_(
-                Conversation.contact_id == contact_id,
-                Conversation.contact_phone == contact.phone_number,
-                Conversation.contact_phone == normalized_contact_phone,
-            )
-        )
-    else:
-        conv_query = conv_query.where(Conversation.contact_id == contact_id)
-
-    conv_result = await db.execute(conv_query)
-    conversations = conv_result.scalars().all()
-
-    # Get all messages from these conversations
-    for conversation in conversations:
-        msg_result = await db.execute(
-            select(Message)
-            .where(Message.conversation_id == conversation.id)
-            .order_by(Message.created_at.desc())
-            .limit(limit)
-        )
-        messages = msg_result.scalars().all()
-
-        for msg in messages:
-            # Determine type based on channel
-            item_type = "call" if msg.channel == "voice" else msg.channel
-
-            timeline_items.append(
-                TimelineItem(
-                    id=msg.id,
-                    type=item_type,
-                    timestamp=msg.created_at,
-                    direction=msg.direction,
-                    is_ai=msg.is_ai,
-                    content=msg.body,
-                    duration_seconds=msg.duration_seconds,
-                    recording_url=msg.recording_url,
-                    transcript=msg.transcript,
-                    status=msg.status,
-                    original_id=msg.id,
-                    original_type=f"{msg.channel}_message",
-                )
-            )
-
-    # Sort by timestamp (oldest first)
-    timeline_items.sort(key=lambda x: x.timestamp)
-
-    # Return the last `limit` items
-    return timeline_items[-limit:]
+    # Convert dicts to TimelineItem models
+    return [TimelineItem(**item) for item in timeline_items_data]
 
 
 # ============================================================================
 # CSV Import
 # ============================================================================
-
-
-class ImportErrorDetail(BaseModel):
-    """Detail about a single import error."""
-
-    row: int
-    field: str | None = None
-    error: str
 
 
 class ImportResult(BaseModel):
@@ -711,139 +309,8 @@ class ImportResult(BaseModel):
     created_contacts: list[ContactResponse]
 
 
-# Expected CSV columns and their mappings
-CSV_FIELD_MAPPING = {
-    "first_name": ["first_name", "first name", "firstname", "first", "name"],
-    "last_name": ["last_name", "last name", "lastname", "last", "surname"],
-    "email": ["email", "email_address", "email address", "e-mail"],
-    "phone_number": ["phone_number", "phone number", "phone", "mobile", "cell", "telephone", "tel"],
-    "company_name": ["company_name", "company name", "company", "organization", "org"],
-    "status": ["status", "lead_status", "lead status"],
-    "tags": ["tags", "tag", "labels"],
-    "notes": ["notes", "note", "comments", "comment", "description"],
-}
-
-VALID_STATUSES = {"new", "contacted", "qualified", "converted", "lost"}
-
-
-def find_csv_column(headers: list[str] | tuple[str, ...], field_name: str) -> str | None:
-    """Find the CSV column that matches a field name."""
-    possible_names = CSV_FIELD_MAPPING.get(field_name, [field_name])
-    headers_lower = [h.lower().strip() for h in headers]
-
-    for name in possible_names:
-        if name.lower() in headers_lower:
-            idx = headers_lower.index(name.lower())
-            return headers[idx]
-    return None
-
-
-def validate_email(email: str) -> bool:
-    """Validate email format."""
-    if not email:
-        return True
-    import re
-    pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
-    return bool(re.match(pattern, email))
-
-
-def clean_phone_number(phone: str) -> str | None:
-    """Clean and validate phone number."""
-    if not phone:
-        return None
-    # Remove common formatting characters
-    cleaned = "".join(c for c in phone if c.isdigit() or c == "+")
-    if len(cleaned) < 10:
-        return None
-    return normalize_phone_number(cleaned)
-
-
-def _get_csv_field(
-    row: dict[str, str],
-    column_mapping: dict[str, str | None],
-    field: str,
-) -> str | None:
-    """Extract and clean a field from a CSV row."""
-    col = column_mapping.get(field)
-    if not col:
-        return None
-    return row.get(col, "").strip() or None
-
-
-def _read_csv_content(file_content: bytes) -> str:
-    """Decode CSV file content, trying UTF-8 first then latin-1."""
-    try:
-        return file_content.decode("utf-8")
-    except UnicodeDecodeError:
-        return file_content.decode("latin-1")
-
-
-def _process_csv_row(  # noqa: PLR0911
-    row: dict[str, str],
-    row_num: int,
-    column_mapping: dict[str, str | None],
-    default_status: str,
-    existing_phones: set[str],
-    skip_duplicates: bool,
-    errors: list[ImportErrorDetail],
-) -> tuple[dict[str, Any] | None, bool]:
-    """Process a single CSV row and return contact data or None if invalid.
-
-    Returns:
-        Tuple of (contact_data or None, is_duplicate)
-    """
-    first_name = _get_csv_field(row, column_mapping, "first_name") or ""
-    if not first_name:
-        errors.append(ImportErrorDetail(
-            row=row_num, field="first_name", error="First name is required"
-        ))
-        return None, False
-
-    phone_raw = _get_csv_field(row, column_mapping, "phone_number") or ""
-    phone_number = clean_phone_number(phone_raw)
-    if not phone_number:
-        errors.append(ImportErrorDetail(
-            row=row_num, field="phone_number", error=f"Invalid phone: {phone_raw}"
-        ))
-        return None, False
-
-    if skip_duplicates and phone_number in existing_phones:
-        return None, True
-
-    email = _get_csv_field(row, column_mapping, "email")
-    if email and not validate_email(email):
-        errors.append(ImportErrorDetail(
-            row=row_num, field="email", error=f"Invalid email: {email}"
-        ))
-        return None, False
-
-    status_val = (_get_csv_field(row, column_mapping, "status") or "").lower()
-    contact_status = default_status
-    if status_val and status_val in VALID_STATUSES:
-        contact_status = status_val
-    elif status_val:
-        errors.append(ImportErrorDetail(
-            row=row_num, field="status",
-            error=f"Invalid status '{status_val}', using default"
-        ))
-
-    tags_raw = _get_csv_field(row, column_mapping, "tags")
-    tags_list = [t.strip() for t in tags_raw.split(",") if t.strip()] if tags_raw else None
-
-    return {
-        "first_name": first_name,
-        "last_name": _get_csv_field(row, column_mapping, "last_name"),
-        "email": email,
-        "phone_number": phone_number,
-        "company_name": _get_csv_field(row, column_mapping, "company_name"),
-        "status": contact_status,
-        "tags": tags_list,
-        "notes": _get_csv_field(row, column_mapping, "notes"),
-    }, False
-
-
 @router.post("/import", response_model=ImportResult)
-async def import_contacts_csv(  # noqa: PLR0912
+async def import_contacts_csv(
     workspace_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
@@ -866,6 +333,8 @@ async def import_contacts_csv(  # noqa: PLR0912
 
     Column names are case-insensitive and support common variations.
     """
+    from app.services.contacts.contact_import import VALID_STATUSES
+
     workspace = await get_workspace(workspace_id, current_user, db)
 
     if not file.filename or not file.filename.lower().endswith(".csv"):
@@ -882,92 +351,37 @@ async def import_contacts_csv(  # noqa: PLR0912
 
     try:
         content = await file.read()
-        text_content = _read_csv_content(content)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to read file: {e!s}",
         ) from e
 
+    # Use import service
+    import_service = ContactImportService(db)
     try:
-        reader = csv.DictReader(io.StringIO(text_content))
-        headers = reader.fieldnames or []
-    except Exception as e:
+        result = await import_service.import_csv(
+            workspace_id=workspace.id,
+            file_content=content,
+            skip_duplicates=skip_duplicates,
+            default_status=default_status,
+            source=source,
+        )
+    except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to parse CSV: {e!s}",
+            detail=str(e),
         ) from e
 
-    if not headers:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="CSV file has no headers",
-        )
-
-    headers_list = list(headers)
-    column_mapping = {f: find_csv_column(headers_list, f) for f in CSV_FIELD_MAPPING}
-
-    if not column_mapping["first_name"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="CSV must have a 'first_name' column",
-        )
-    if not column_mapping["phone_number"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="CSV must have a 'phone_number' column",
-        )
-
-    existing_phones: set[str] = set()
-    if skip_duplicates:
-        phone_result = await db.execute(
-            select(Contact.phone_number).where(
-                Contact.workspace_id == workspace.id
-            )
-        )
-        for db_row in phone_result:
-            if db_row[0]:
-                existing_phones.add(normalize_phone_number(db_row[0]))
-
-    errors: list[ImportErrorDetail] = []
-    created_contacts: list[Contact] = []
-    skipped_duplicates_count = 0
-    row_num = 1
-
-    for row in reader:
-        row_num += 1
-        contact_data, is_dup = _process_csv_row(
-            row, row_num, column_mapping, default_status,
-            existing_phones, skip_duplicates, errors
-        )
-
-        if is_dup:
-            skipped_duplicates_count += 1
-            continue
-
-        if not contact_data:
-            continue
-
-        contact = Contact(
-            workspace_id=workspace.id,
-            source=source,
-            **contact_data,
-        )
-        db.add(contact)
-        created_contacts.append(contact)
-        existing_phones.add(contact_data["phone_number"])
-
-    if created_contacts:
-        await db.commit()
-
+    # Convert to response format
     return ImportResult(
-        total_rows=row_num - 1,
-        successful=len(created_contacts),
-        failed=len([e for e in errors if "using default" not in e.error]),
-        skipped_duplicates=skipped_duplicates_count,
-        errors=errors[:100],
+        total_rows=result.total_rows,
+        successful=result.successful,
+        failed=result.failed,
+        skipped_duplicates=result.skipped_duplicates,
+        errors=result.errors,
         created_contacts=[
-            ContactResponse.model_validate(c) for c in created_contacts[:100]
+            ContactResponse.model_validate(c) for c in result.created_contacts
         ],
     )
 
@@ -981,26 +395,7 @@ async def get_import_template(
     """Get CSV import template information."""
     await get_workspace(workspace_id, current_user, db)
 
-    example_rows = [
-        "first_name,last_name,phone_number,email,company_name,status,tags,notes",
-        'John,Doe,+15551234567,john@example.com,Acme Inc,new,"vip,priority",',
-        "Jane,Smith,5559876543,jane@example.com,Tech Corp,contacted,lead,",
-    ]
-
-    return {
-        "columns": [
-            {"name": "first_name", "required": True, "description": "First name"},
-            {"name": "last_name", "required": False, "description": "Last name"},
-            {"name": "email", "required": False, "description": "Email address"},
-            {"name": "phone_number", "required": True, "description": "Phone"},
-            {"name": "company_name", "required": False, "description": "Company"},
-            {"name": "status", "required": False, "description": "Lead status"},
-            {"name": "tags", "required": False, "description": "Comma-separated"},
-            {"name": "notes", "required": False, "description": "Notes"},
-        ],
-        "example_csv": "\n".join(example_rows),
-        "supported_aliases": CSV_FIELD_MAPPING,
-    }
+    return ContactImportService.get_template_info()
 
 
 # ============================================================================

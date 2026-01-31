@@ -21,10 +21,13 @@ Usage:
 """
 
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 from app.models.agent import Agent
+
+if TYPE_CHECKING:
+    from app.services.ai.ivr_detector import IVRStatus
 
 
 class VoicePromptBuilder:
@@ -169,6 +172,108 @@ You can use these auditory cues naturally in your responses to sound more human:
 
         return "\n".join(parts)
 
+    def get_ivr_navigation_guidance(
+        self,
+        ivr_status: "IVRStatus | None" = None,
+        is_outbound: bool = False,
+    ) -> str:
+        """Get IVR/automated menu navigation guidance.
+
+        Args:
+            ivr_status: Optional IVR status for enhanced guidance
+            is_outbound: If True, always return guidance for outbound calls
+
+        Returns:
+            IVR navigation instructions string
+        """
+        # For outbound calls, always include IVR guidance since they commonly hit IVRs
+        if not is_outbound:
+            if not self.agent or not self.agent.enabled_tools:
+                return ""
+
+            enabled = self.agent.enabled_tools
+            tool_settings = self.agent.tool_settings or {}
+            call_control_tools = tool_settings.get("call_control", []) or []
+
+            # Check if DTMF is enabled
+            dtmf_enabled = "send_dtmf" in enabled or (
+                "call_control" in enabled and "send_dtmf" in call_control_tools
+            )
+
+            if not dtmf_enabled:
+                return ""
+
+        # Import DTMFContext for context detection
+        from app.services.ai.ivr_detector import DTMFContext
+
+        # Get current context
+        context = DTMFContext.MENU
+        if ivr_status and hasattr(ivr_status, "menu_state") and ivr_status.menu_state:
+            context = ivr_status.menu_state.context
+
+        # Context-specific guidance
+        if context == DTMFContext.EXTENSION:
+            context_guidance = """EXTENSION entry mode:
+- Enter ALL digits together: <dtmf>1234</dtmf>
+- System will add # terminator automatically"""
+        elif context == DTMFContext.MENU:
+            context_guidance = """MENU selection mode:
+- Send ONE digit at a time: <dtmf>1</dtmf>
+- Do NOT send multiple selections together"""
+        elif context == DTMFContext.VOICEMAIL:
+            context_guidance = """VOICEMAIL detected:
+- Do NOT use <dtmf> tags
+- Wait for beep, then speak your message"""
+        else:
+            context_guidance = ""
+
+        # Add attempt history
+        attempt_info = ""
+        if ivr_status and hasattr(ivr_status, "menu_state") and ivr_status.menu_state:
+            if ivr_status.menu_state.attempted_dtmf:
+                tried = ", ".join(sorted(ivr_status.menu_state.attempted_dtmf))
+                attempt_info += f"\n✓ Already tried: {tried}"
+            if ivr_status.menu_state.failed_dtmf:
+                failed = ", ".join(sorted(ivr_status.menu_state.failed_dtmf))
+                attempt_info += f"\n✗ These didn't work: {failed}"
+
+        # Tag-based DTMF is the PRIMARY mechanism - works regardless of function calling
+        base_guidance = f"""
+
+# IVR/AUTOMATED MENU NAVIGATION - CRITICAL
+
+When you hear an automated phone menu (IVR):
+
+1. RECOGNIZE: "Press 1 for...", "dial extension" = automated machine, NOT human
+2. DO NOT SPEAK to machines - they only understand touch-tones
+3. TO PRESS A BUTTON: Include <dtmf>X</dtmf> in your response
+   - Example: "Selecting sales. <dtmf>2</dtmf>"
+   - Example: "Trying option 1. <dtmf>1</dtmf>"
+   - Example: "Entering extension. <dtmf>123</dtmf>"
+4. WAIT SILENTLY after sending - don't speak until human responds
+5. If menu repeats, try a DIFFERENT numbered option (1-9) you haven't tried yet
+
+Format: <dtmf>X</dtmf> where X is digit(s) (0-9, *, #)
+
+WRONG: Hearing "Press 1 for sales" and saying "I'd like to speak to sales please"
+RIGHT: Hearing "Press 1 for sales" and responding "Selecting sales. <dtmf>1</dtmf>"
+
+{context_guidance}
+{attempt_info}
+
+IMPORTANT: Try numbered options (1-9) systematically before resorting to "0" or "#".
+You can also use the send_dtmf tool if available, but <dtmf> tags are preferred."""
+
+        # Add loop warning if applicable
+        if ivr_status and ivr_status.loop_detected:
+            base_guidance += """
+
+WARNING: IVR LOOP DETECTED - The menu is repeating itself.
+ACTION REQUIRED: Try a DIFFERENT numbered option (1-9) that you haven't tried yet.
+Only use "0" for operator or "#" to skip as a LAST RESORT after trying other options."""
+
+        return base_guidance
+
     def get_telephony_guidance(self, is_outbound: bool = False) -> str:
         """Get telephony-specific behavior guidance.
 
@@ -184,7 +289,8 @@ You can use these auditory cues naturally in your responses to sound more human:
 IMPORTANT: You are on a phone call that YOU initiated.
 - You called THEM - introduce yourself and explain why you're calling
 - Do NOT ask "what would you like to talk about" - YOU know why you called
-- Be direct and professional about the purpose of your call"""
+- Be direct and professional about the purpose of your call
+- If you reach an automated menu (IVR), use send_dtmf to navigate - do NOT speak to machines"""
         else:
             return """
 
@@ -320,6 +426,7 @@ DO NOT say things like "I'll check and get back to you" - you can check instantl
         include_search: bool = True,
         include_telephony: bool = True,
         include_booking: bool = False,
+        include_ivr_guidance: bool = True,
         contact_info: dict[str, Any] | None = None,
         offer_info: dict[str, Any] | None = None,
         is_outbound: bool = False,
@@ -334,6 +441,7 @@ DO NOT say things like "I'll check and get back to you" - you can check instantl
             include_search: Include search guidance
             include_telephony: Include telephony guidance
             include_booking: Include booking instructions
+            include_ivr_guidance: Include IVR/DTMF navigation guidance
             contact_info: Contact information for context
             offer_info: Offer information for context
             is_outbound: True if outbound call
@@ -375,11 +483,15 @@ DO NOT say things like "I'll check and get back to you" - you can check instantl
         if include_search:
             parts.append(self.get_search_guidance())
 
-        # 7. Booking instructions
+        # 7. IVR/DTMF navigation guidance (before booking, critical for outbound)
+        if include_ivr_guidance:
+            parts.append(self.get_ivr_navigation_guidance(is_outbound=is_outbound))
+
+        # 8. Booking instructions
         if include_booking:
             parts.append(self.get_booking_instructions())
 
-        # 8. Telephony guidance (last)
+        # 9. Telephony guidance (last)
         if include_telephony:
             parts.append(self.get_telephony_guidance(is_outbound))
 
@@ -428,3 +540,82 @@ DO NOT say things like "I'll check and get back to you" - you can check instantl
         )
 
         return " ".join(parts)
+
+    def get_ivr_mode_prompt(
+        self,
+        goal: str | None = None,
+        loop_detected: bool = False,
+    ) -> str:
+        """Get full IVR navigation mode prompt.
+
+        This prompt is used when the agent detects it's navigating an IVR
+        system and needs specialized navigation instructions.
+
+        Args:
+            goal: Navigation goal (e.g., "reach sales department")
+            loop_detected: Whether an IVR loop has been detected
+
+        Returns:
+            Complete IVR navigation prompt
+        """
+        parts = []
+
+        parts.append("# IVR NAVIGATION MODE ACTIVE")
+        parts.append("")
+        parts.append(
+            "You are navigating an automated phone menu (IVR system). "
+            "Follow these critical rules:"
+        )
+        parts.append("")
+
+        # Rules section
+        parts.append("## RULES")
+        parts.append(
+            "1. DO NOT speak conversationally - IVR systems only understand button presses"
+        )
+        parts.append("2. Listen to ALL menu options before selecting")
+        parts.append("3. Select the option that best matches your goal")
+        parts.append("4. Use <dtmf>X</dtmf> tags OR the send_dtmf tool to press buttons")
+        parts.append("")
+
+        # How to respond
+        parts.append("## HOW TO RESPOND")
+        parts.append("When you hear menu options, respond with:")
+        parts.append("1. A brief acknowledgment of what you heard")
+        parts.append("2. Your selection using DTMF")
+        parts.append("")
+        parts.append(
+            'Example: "I heard the menu. Pressing 1 for sales." then call send_dtmf(digits="1")'
+        )
+        parts.append("")
+
+        # Navigation tips
+        parts.append("## NAVIGATION TIPS")
+        parts.append("- Try each numbered menu option (1-9) that might match your goal")
+        parts.append('- If options 1-9 don\'t work, then try "0" (operator) or "#" (skip)')
+        parts.append('- "9" sometimes repeats the menu')
+        parts.append('- "*" sometimes goes back to the previous menu')
+        parts.append("")
+
+        # Goal
+        goal_text = goal or "Navigate to the appropriate department or reach a human operator"
+        parts.append("## YOUR GOAL")
+        parts.append(goal_text)
+        parts.append("")
+
+        # Loop warning
+        if loop_detected:
+            parts.append("## WARNING: LOOP DETECTED")
+            parts.append("The menu is repeating. The system may not have received your input.")
+            parts.append(
+                "ACTION: Try a DIFFERENT numbered option (1-9) that you haven't tried yet."
+            )
+            parts.append("Only use '0' for operator or '#' to skip as a LAST RESORT.")
+            parts.append("")
+
+        parts.append(
+            "Remember: IVR systems CANNOT understand speech - "
+            "you MUST use DTMF tones via send_dtmf or <dtmf></dtmf> tags."
+        )
+
+        return "\n".join(parts)
