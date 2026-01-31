@@ -36,10 +36,20 @@ function setToken(token: string): void {
   }
 }
 
+function setRefreshToken(token: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem("refresh_token", token);
+  } catch (error) {
+    console.error("Failed to save refresh token:", error);
+  }
+}
+
 function removeToken(): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
   } catch (error) {
     console.error("Failed to remove token:", error);
   }
@@ -93,6 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = React.useCallback(async (credentials: LoginCredentials) => {
     const response = await loginApi(credentials);
     setToken(response.access_token);
+    setRefreshToken(response.refresh_token);
     const userData = await getCurrentUser();
     setUser(userData);
     router.replace("/");

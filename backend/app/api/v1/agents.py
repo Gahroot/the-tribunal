@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
 
 from app.api.deps import DB, CurrentUser, get_workspace
@@ -32,6 +32,10 @@ class AgentCreate(BaseModel):
     calcom_event_type_id: int | None = None
     enabled_tools: list[str] = []
     tool_settings: dict[str, list[str]] = {}
+    # IVR navigation settings
+    enable_ivr_navigation: bool = False
+    ivr_navigation_goal: str | None = None
+    ivr_loop_threshold: int = 2
 
 
 class AgentUpdate(BaseModel):
@@ -51,6 +55,10 @@ class AgentUpdate(BaseModel):
     is_active: bool | None = None
     enabled_tools: list[str] | None = None
     tool_settings: dict[str, list[str]] | None = None
+    # IVR navigation settings
+    enable_ivr_navigation: bool | None = None
+    ivr_navigation_goal: str | None = None
+    ivr_loop_threshold: int | None = None
 
 
 class AgentResponse(BaseModel):
@@ -72,11 +80,14 @@ class AgentResponse(BaseModel):
     enabled_tools: list[str]
     tool_settings: dict[str, list[str]]
     is_active: bool
+    # IVR navigation settings
+    enable_ivr_navigation: bool
+    ivr_navigation_goal: str | None
+    ivr_loop_threshold: int
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PaginatedAgents(BaseModel):
@@ -150,6 +161,9 @@ async def create_agent(
         calcom_event_type_id=agent_in.calcom_event_type_id,
         enabled_tools=agent_in.enabled_tools,
         tool_settings=agent_in.tool_settings,
+        enable_ivr_navigation=agent_in.enable_ivr_navigation,
+        ivr_navigation_goal=agent_in.ivr_navigation_goal,
+        ivr_loop_threshold=agent_in.ivr_loop_threshold,
     )
     db.add(agent)
     await db.commit()

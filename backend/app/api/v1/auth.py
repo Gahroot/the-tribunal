@@ -10,11 +10,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import DB, CurrentUser
 from app.core.config import settings
-from app.core.security import create_access_token, get_password_hash, verify_password
+from app.core.security import (
+    create_access_token,
+    create_refresh_token,
+    decode_refresh_token,
+    get_password_hash,
+    verify_password,
+)
 from app.db.session import get_db
 from app.models.user import User
 from app.models.workspace import WorkspaceMembership
-from app.schemas.user import Token, UserCreate, UserResponse, UserWithWorkspace
+from app.schemas.user import RefreshTokenRequest, Token, UserCreate, UserResponse, UserWithWorkspace
 
 router = APIRouter()
 
@@ -69,14 +75,83 @@ async def login(
             detail="Inactive user",
         )
 
-    # Create access token
+    # Create access and refresh tokens
     access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
     access_token = create_access_token(
         data={"sub": str(user.id)},
         expires_delta=access_token_expires,
     )
 
-    return Token(access_token=access_token)
+    refresh_token_expires = timedelta(days=settings.refresh_token_expire_days)
+    refresh_token = create_refresh_token(
+        data={"sub": str(user.id)},
+        expires_delta=refresh_token_expires,
+    )
+
+    return Token(access_token=access_token, refresh_token=refresh_token)
+
+
+@router.post("/refresh", response_model=Token)
+async def refresh_token(
+    refresh_request: RefreshTokenRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Token:
+    """Refresh access token using refresh token."""
+    # Decode and validate refresh token
+    payload = decode_refresh_token(refresh_request.refresh_token)
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Get user ID from token
+    user_id_str = payload.get("sub")
+    if user_id_str is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+        )
+
+    try:
+        user_id = int(user_id_str)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+        ) from exc
+
+    # Verify user exists and is active
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Inactive user",
+        )
+
+    # Create new access and refresh tokens
+    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+    access_token = create_access_token(
+        data={"sub": str(user.id)},
+        expires_delta=access_token_expires,
+    )
+
+    refresh_token_expires = timedelta(days=settings.refresh_token_expire_days)
+    new_refresh_token = create_refresh_token(
+        data={"sub": str(user.id)},
+        expires_delta=refresh_token_expires,
+    )
+
+    return Token(access_token=access_token, refresh_token=new_refresh_token)
 
 
 @router.get("/me", response_model=UserWithWorkspace)

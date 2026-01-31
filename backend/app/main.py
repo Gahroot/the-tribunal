@@ -79,6 +79,25 @@ def _validate_startup_config() -> None:
             message="Telnyx webhook verification disabled",
         )
 
+    # Check secret key security
+    if settings.secret_key == "change-me-in-production":
+        if not settings.debug:
+            log.error(
+                "insecure_secret_key",
+                severity="critical",
+                message="Using default secret_key in production is not allowed",
+            )
+            raise RuntimeError(
+                "SECRET_KEY must be set in production. "
+                "Default value 'change-me-in-production' is insecure."
+            )
+        else:
+            log.warning(
+                "default_secret_key",
+                severity="medium",
+                message="Using default secret_key in development mode",
+            )
+
     # Warn if webhook verification is disabled in non-debug mode
     if settings.skip_webhook_verification and not settings.debug:
         log.warning(

@@ -23,7 +23,8 @@ class Settings(BaseSettings):
     # Security
     secret_key: str = "change-me-in-production"
     algorithm: str = "HS256"
-    access_token_expire_minutes: int = 10080  # 7 days
+    access_token_expire_minutes: int = 30  # 30 minutes (short-lived)
+    refresh_token_expire_days: int = 7  # 7 days (long-lived)
 
     # OpenAI
     openai_api_key: str = ""
