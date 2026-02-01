@@ -131,6 +131,20 @@ class IVRClassifier:
         r"enter\s+your\s+(account|pin|phone|extension)",  # "Enter your account number"
     ]
 
+    # IVR error/retry patterns - indicate IVR detected invalid input
+    # These messages mean we're still in IVR mode and need to retry
+    # NOTE: Patterns must be specific to avoid false positives with voicemail
+    IVR_ERROR_PATTERNS: list[str] = [
+        r"is\s+not\s+a\s+valid\s+extension",  # "That is not a valid extension"
+        r"invalid\s+(selection|option|entry|input)",  # "Invalid selection"
+        r"please\s+try\s+again\b(?!\s+later)",  # "Please try again" but NOT "try again later"
+        r"that\s+is\s+not\s+(a\s+valid\s+)?an?\s+option",  # "That is not an option"
+        r"did\s+not\s+(recognize|understand)",  # "I did not recognize your input"
+        r"not\s+a\s+valid\s+(option|selection|choice|entry)",  # "Not a valid option"
+        r"incorrect\s+(entry|selection|choice|input)",  # "Incorrect entry"
+        r"unrecognized\s+(input|selection)",  # "Unrecognized input"
+    ]
+
     # IVR menu patterns - phrases that indicate automated phone systems
     # (Does NOT include "leave a message" or "at the beep" which are voicemail-only)
     IVR_PATTERNS: list[str] = [
@@ -200,6 +214,9 @@ class IVRClassifier:
         self._exclusive_ivr_patterns = [
             re.compile(p, re.IGNORECASE) for p in self.EXCLUSIVE_IVR_PATTERNS
         ]
+        self._ivr_error_patterns = [
+            re.compile(p, re.IGNORECASE) for p in self.IVR_ERROR_PATTERNS
+        ]
         self._ivr_patterns = [
             re.compile(p, re.IGNORECASE) for p in self.IVR_PATTERNS
         ]
@@ -240,44 +257,51 @@ class IVRClassifier:
     def _count_pattern_matches(self, text: str) -> dict[str, int]:
         """Count pattern matches for each category."""
         exclusive = sum(1 for p in self._exclusive_ivr_patterns if p.search(text))
+        ivr_error = sum(1 for p in self._ivr_error_patterns if p.search(text))
         ivr = sum(1 for p in self._ivr_patterns if p.search(text))
         human = sum(1 for p in self._human_patterns if p.search(text))
         voicemail = sum(1 for p in self._voicemail_patterns if p.search(text))
 
         return {
             "exclusive_ivr_matches": exclusive,
+            "ivr_error_matches": ivr_error,
             "ivr_matches": ivr,
             "human_matches": human,
             "voicemail_matches": voicemail,
-            "total_matches": ivr + human + voicemail,
+            "total_matches": ivr + ivr_error + human + voicemail,
         }
 
     def _determine_mode(self, counts: dict[str, int]) -> tuple[IVRMode, float]:
         """Determine mode based on pattern match counts."""
         exclusive = counts["exclusive_ivr_matches"]
+        ivr_error = counts["ivr_error_matches"]
         ivr = counts["ivr_matches"]
         human = counts["human_matches"]
         voicemail = counts["voicemail_matches"]
         total = counts["total_matches"]
 
         # PRIORITY 1: Exclusive IVR patterns ALWAYS win (DTMF prompts)
-        if exclusive > 0:
-            ratio = (exclusive + ivr) / max(1, total)
-            return IVRMode.IVR, min(1.0, ratio + 0.3)
+        # PRIORITY 2: IVR error patterns (invalid input messages)
+        # Both indicate we're in IVR mode
+        if exclusive > 0 or ivr_error > 0:
+            ratio = (exclusive + ivr + ivr_error) / max(1, total)
+            # Slightly lower confidence boost for error-only matches
+            boost = 0.3 if exclusive > 0 else 0.25
+            return IVRMode.IVR, min(1.0, ratio + boost)
 
         # No patterns matched
         if total == 0:
             return IVRMode.UNKNOWN, 0.0
 
-        # PRIORITY 2: Human patterns dominate
+        # PRIORITY 3: Human patterns dominate
         if human > ivr and human > voicemail:
             return IVRMode.CONVERSATION, min(1.0, human / total + 0.2)
 
-        # PRIORITY 3: Voicemail ONLY if no IVR patterns
+        # PRIORITY 4: Voicemail ONLY if no IVR patterns
         if voicemail > 0 and ivr == 0:
             return IVRMode.VOICEMAIL, min(1.0, voicemail / total + 0.2)
 
-        # PRIORITY 4: IVR patterns present (or tie/unclear → unknown)
+        # PRIORITY 5: IVR patterns present (or tie/unclear → unknown)
         if ivr > 0:
             return IVRMode.IVR, min(1.0, ivr / total + 0.2)
 
@@ -712,7 +736,11 @@ class IVRDetector:
                 self.on_mode_change(old_mode, new_mode)
 
     def _check_dtmf_tags(self, text: str) -> None:
-        """Check agent response for DTMF tags.
+        """Check agent response for DTMF tags and track digits.
+
+        NOTE: This method only TRACKS DTMF digits for loop detection purposes.
+        It does NOT send DTMF. The DTMFHandler.check_and_send() is the single
+        source of truth for sending DTMF to prevent duplication bugs.
 
         Args:
             text: Agent response text
@@ -720,9 +748,9 @@ class IVRDetector:
         digits_list = self._dtmf_parser.parse(text)
 
         for digits in digits_list:
+            # Track the digit for loop detection - but do NOT invoke callback
+            # The DTMFHandler is responsible for actually sending DTMF
             self._status.last_dtmf_sent = digits
-            if self.on_dtmf_detected:
-                self.on_dtmf_detected(digits)
 
     def strip_dtmf_tags(self, text: str) -> str:
         """Strip DTMF tags from text.

@@ -26,6 +26,12 @@ import structlog
 from websockets.asyncio.client import ClientConnection
 
 from app.models.agent import Agent
+from app.services.ai.ivr_detector import (
+    IVRDetector,
+    IVRDetectorConfig,
+    IVRMode,
+    IVRStatus,
+)
 from app.services.ai.prompt_builder import VoicePromptBuilder
 from app.services.ai.protocols import (
     InterruptibleProtocol,
@@ -85,6 +91,11 @@ class VoiceAgentBase(ABC):
         # Call context storage
         self._call_context: dict[str, Any] | None = None
         self._pending_greeting: str | None = None
+
+        # IVR detection
+        self._ivr_detector: IVRDetector | None = None
+        self._ivr_mode: IVRMode = IVRMode.UNKNOWN
+        self._ivr_navigation_goal: str | None = None
 
     # -------------------------------------------------------------------------
     # VoiceAgentProtocol implementations (shared logic)
@@ -239,6 +250,110 @@ class VoiceAgentBase(ABC):
             True if interrupted and audio should be skipped
         """
         return self._is_interrupted
+
+    # -------------------------------------------------------------------------
+    # IVR Detection
+    # -------------------------------------------------------------------------
+
+    def enable_ivr_detection(
+        self,
+        navigation_goal: str | None = None,
+        loop_threshold: int = 2,
+    ) -> None:
+        """Enable IVR detection for this session.
+
+        Args:
+            navigation_goal: Goal for IVR navigation (e.g., "reach sales dept")
+            loop_threshold: Number of menu repeats before triggering loop action
+        """
+        self._ivr_navigation_goal = navigation_goal
+
+        config = IVRDetectorConfig(
+            consecutive_classifications=loop_threshold,
+            loop_similarity_threshold=0.85,
+        )
+
+        # NOTE: on_dtmf_detected callback is intentionally NOT set here.
+        # DTMF sending is handled exclusively by DTMFHandler.check_and_send()
+        # to prevent duplication bugs (same digit sent twice).
+        self._ivr_detector = IVRDetector(
+            config=config,
+            on_mode_change=self._handle_ivr_mode_change,
+            on_loop_detected=self._handle_ivr_loop,
+            on_dtmf_detected=None,
+        )
+
+        self.logger.info(
+            "ivr_detection_enabled",
+            navigation_goal=navigation_goal,
+            loop_threshold=loop_threshold,
+        )
+
+    def _handle_ivr_mode_change(self, old_mode: IVRMode, new_mode: IVRMode) -> None:
+        """Handle IVR mode change callback.
+
+        Override in subclasses to take action on mode changes.
+
+        Args:
+            old_mode: Previous IVR mode
+            new_mode: New IVR mode
+        """
+        self._ivr_mode = new_mode
+        self.logger.info(
+            "ivr_mode_changed",
+            old_mode=old_mode.value,
+            new_mode=new_mode.value,
+        )
+
+    def _handle_ivr_loop(self) -> None:
+        """Handle IVR loop detection callback.
+
+        Override in subclasses to take action when IVR loop detected.
+        Default action is to log the event.
+        """
+        self.logger.warning("ivr_loop_detected_in_base")
+
+    async def process_ivr_transcript(
+        self,
+        transcript: str,
+        is_agent: bool = False,
+    ) -> IVRMode:
+        """Process transcript through IVR detector.
+
+        Args:
+            transcript: Speech transcript to process
+            is_agent: True if agent speech, False for remote party
+
+        Returns:
+            Current IVR mode after processing
+        """
+        if not self._ivr_detector:
+            return IVRMode.UNKNOWN
+
+        return await self._ivr_detector.process_transcript(transcript, is_agent)
+
+    def get_ivr_status(self) -> IVRStatus | None:
+        """Get current IVR detection status.
+
+        Returns:
+            IVRStatus if detection enabled, None otherwise
+        """
+        if not self._ivr_detector:
+            return None
+        return self._ivr_detector.status
+
+    def strip_dtmf_tags(self, text: str) -> str:
+        """Strip DTMF tags from text.
+
+        Args:
+            text: Text that may contain <dtmf>X</dtmf> tags
+
+        Returns:
+            Text with DTMF tags removed
+        """
+        if not self._ivr_detector:
+            return text
+        return self._ivr_detector.strip_dtmf_tags(text)
 
     # -------------------------------------------------------------------------
     # WebSocket helpers
