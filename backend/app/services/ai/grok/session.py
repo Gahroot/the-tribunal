@@ -603,6 +603,24 @@ class GrokVoiceAgentSession(VoiceAgentBase):
             self.logger.exception("grok_send_event_error", error=str(e))
 
     # -------------------------------------------------------------------------
+    # Response Handling Overrides
+    # -------------------------------------------------------------------------
+
+    def _handle_response_created(self) -> None:
+        """Handle new response starting.
+
+        Extends base class to reset DTMF handler scan position for new response.
+        This is critical: the agent transcript resets per response, so the
+        DTMF handler's incremental scan position must also reset.
+        """
+        # Call base class implementation
+        super()._handle_response_created()
+
+        # Reset DTMF handler scan position for the new response
+        # This ensures DTMF tags in the new response will be detected
+        self._dtmf_handler.reset_for_new_response()
+
+    # -------------------------------------------------------------------------
     # IVR Detection Overrides
     # -------------------------------------------------------------------------
 

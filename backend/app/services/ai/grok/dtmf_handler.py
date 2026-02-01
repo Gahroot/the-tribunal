@@ -354,6 +354,18 @@ class DTMFHandler:
         self._first_send_done = False
         self._logger.debug("dtmf_handler_reset")
 
+    def reset_for_new_response(self) -> None:
+        """Reset scan position for a new response.
+
+        Called when a new response starts. Resets the incremental scan position
+        so DTMF tags in the new response transcript will be detected.
+
+        Does NOT clear sent_sequences to maintain deduplication across responses.
+        """
+        self._last_scan_position = 0
+        self._first_send_done = False
+        self._logger.debug("dtmf_handler_reset_for_new_response")
+
     @property
     def pending_task_count(self) -> int:
         """Get the number of pending DTMF send tasks.
