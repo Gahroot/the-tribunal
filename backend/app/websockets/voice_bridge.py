@@ -99,6 +99,50 @@ async def _setup_voice_session(
 
         voice_session.set_tool_callback(callback)
         log.info("tool_callback_configured", session_type=type(voice_session).__name__)
+
+        # Enable IVR detection for outbound Grok calls ONLY if agent has it enabled
+        # This respects the agent's enable_ivr_navigation setting
+        if is_outbound and isinstance(voice_session, GrokVoiceAgentSession):
+            # Check if agent has IVR navigation enabled
+            ivr_enabled = agent and getattr(agent, "enable_ivr_navigation", False)
+
+            if ivr_enabled:
+                # Determine navigation goal from agent config or offer info
+                navigation_goal: str | None = None
+                if agent.ivr_navigation_goal:
+                    navigation_goal = agent.ivr_navigation_goal
+                elif offer_info and offer_info.get("name"):
+                    navigation_goal = f"Reach someone to discuss {offer_info['name']}"
+                else:
+                    navigation_goal = "Reach a human representative"
+
+                # Get loop threshold from agent config or use default
+                loop_threshold = agent.ivr_loop_threshold if agent.ivr_loop_threshold else 2
+
+                # Get IVR timing configuration from agent
+                ivr_config = {
+                    "silence_duration_ms": getattr(agent, "ivr_silence_duration_ms", 3000),
+                    "post_dtmf_cooldown_ms": getattr(agent, "ivr_post_dtmf_cooldown_ms", 3000),
+                    "menu_buffer_silence_ms": getattr(agent, "ivr_menu_buffer_silence_ms", 2000),
+                }
+
+                voice_session.enable_ivr_detection(
+                    navigation_goal=navigation_goal,
+                    loop_threshold=loop_threshold,
+                    ivr_config=ivr_config,
+                )
+                log.info(
+                    "ivr_detection_enabled_for_outbound",
+                    navigation_goal=navigation_goal,
+                    loop_threshold=loop_threshold,
+                    ivr_config=ivr_config,
+                )
+            else:
+                log.info(
+                    "ivr_detection_skipped_agent_disabled",
+                    agent_name=agent.name if agent else None,
+                    enable_ivr_navigation=False,
+                )
     else:
         log.info(
             "tool_callback_not_configured",
@@ -260,7 +304,7 @@ async def voice_stream_bridge(  # noqa: PLR0912, PLR0915
             await websocket.send_json(
                 {"error": f"Failed to connect to {voice_provider} Realtime API"}
             )
-            await websocket.close(code=status.WS_1011_SERVER_ERROR)
+            await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
             return
 
         def _ws_status() -> str:
@@ -534,17 +578,22 @@ async def _receive_from_telnyx_and_send_to_provider(  # noqa: PLR0912, PLR0915
                         stream_id=stream_id,
                         is_outbound=is_outbound,
                     )
+
+                    # Wait for Telnyx to be fully ready to play audio
+                    # This prevents the first few hundred ms of audio from being cut off
+                    await asyncio.sleep(0.3)
+
                     try:
                         # Pass is_outbound to control greeting behavior
-                        # For Grok: trigger_initial_response accepts is_outbound
-                        # For OpenAI: it doesn't, so we handle it here
-                        if isinstance(voice_session, GrokVoiceAgentSession):
+                        # Grok and ElevenLabs accept is_outbound, OpenAI doesn't
+                        session_types = (GrokVoiceAgentSession, ElevenLabsVoiceAgentSession)
+                        if isinstance(voice_session, session_types):
                             await voice_session.trigger_initial_response(is_outbound=is_outbound)
                         elif not is_outbound:
-                            # Only trigger greeting for inbound calls on non-Grok providers
+                            # Only trigger greeting for inbound calls on OpenAI provider
                             await voice_session.trigger_initial_response()
                         else:
-                            # Outbound call on non-Grok provider - skip greeting
+                            # Outbound call on OpenAI provider - skip greeting
                             log.info(
                                 "skipping_greeting_for_outbound_call",
                                 voice_session_type=type(voice_session).__name__,
