@@ -89,9 +89,12 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
         self._grok_receive_task: asyncio.Task[None] | None = None
         self._tts_receive_task: asyncio.Task[None] | None = None
 
-        # Text buffer for streaming to TTS
+        # Text buffer for streaming to TTS (accumulate before flushing)
         self._text_buffer = ""
         self._text_buffer_lock = asyncio.Lock()
+        self._flush_task: asyncio.Task[None] | None = None
+        # Delay before flushing accumulated text (allows text to accumulate)
+        self._flush_delay_ms = 150  # 150ms delay to accumulate text
 
     def set_tool_callback(
         self,
@@ -103,6 +106,94 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
             callback: Async function(call_id, function_name, arguments) -> result
         """
         self._tool_callback = callback
+
+    async def _buffer_text_for_tts(self, text: str) -> None:
+        """Buffer text and schedule delayed flush to ElevenLabs.
+
+        Text is accumulated in a buffer and flushed after a short delay,
+        allowing multiple transcript deltas to be combined into a single
+        TTS request. This prevents rapid successive flush calls that can
+        cause ElevenLabs to drop audio.
+
+        Args:
+            text: Text fragment to buffer
+        """
+        if not text or not self._tts_session or not self._tts_session.is_connected():
+            return
+
+        async with self._text_buffer_lock:
+            self._text_buffer += text
+            buffered_text = self._text_buffer
+
+            self.logger.debug(
+                "text_buffered_for_tts",
+                new_text=text[:30] if text else "",
+                buffer_length=len(self._text_buffer),
+            )
+
+            # Check for sentence-ending punctuation - flush immediately
+            # This ensures natural speech breaks
+            should_flush_now = buffered_text.rstrip().endswith((".", "!", "?", ":", ";"))
+
+            if should_flush_now:
+                # Cancel any pending flush task
+                if self._flush_task and not self._flush_task.done():
+                    self._flush_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await self._flush_task
+
+                # Flush immediately on sentence end
+                await self._flush_text_buffer()
+            else:
+                # Schedule delayed flush (cancel any existing timer)
+                if self._flush_task and not self._flush_task.done():
+                    self._flush_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await self._flush_task
+
+                self._flush_task = asyncio.create_task(self._delayed_flush())
+
+    async def _delayed_flush(self) -> None:
+        """Flush text buffer after a short delay."""
+        try:
+            await asyncio.sleep(self._flush_delay_ms / 1000.0)
+            async with self._text_buffer_lock:
+                await self._flush_text_buffer()
+        except asyncio.CancelledError:
+            # Flush was cancelled (likely due to sentence-end or new text)
+            pass
+
+    async def _flush_text_buffer(self) -> None:
+        """Flush accumulated text to ElevenLabs TTS.
+
+        Note: Must be called with _text_buffer_lock held.
+        """
+        if not self._text_buffer or not self._tts_session:
+            return
+
+        text_to_send = self._text_buffer
+        self._text_buffer = ""
+
+        try:
+            await self._tts_session.send_text(text_to_send, flush=True)
+            self.logger.debug(
+                "transcript_flushed_to_elevenlabs",
+                text_preview=text_to_send[:50] if text_to_send else "",
+                text_length=len(text_to_send),
+            )
+        except Exception as e:
+            self.logger.exception("flush_text_buffer_error", error=str(e))
+
+    async def _flush_text_buffer_final(self) -> None:
+        """Flush any remaining text in buffer (e.g., on response complete)."""
+        # Cancel any pending flush task
+        if self._flush_task and not self._flush_task.done():
+            self._flush_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._flush_task
+
+        async with self._text_buffer_lock:
+            await self._flush_text_buffer()
 
     async def connect(self) -> bool:
         """Connect to both Grok and ElevenLabs.
@@ -124,7 +215,7 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
             self.logger.info("connected_to_grok")
 
             # Determine ElevenLabs voice ID
-            voice_id = "21m00Tcm4TlvDq8ikWAM"  # Default: Rachel
+            voice_id = "gJx1vCzNCD1EQHT212Ls"  # Default: Ava
             if self.agent and self.agent.voice_id:
                 voice_id = get_voice_id(self.agent.voice_id)
 
@@ -171,6 +262,11 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
             self._tts_receive_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._tts_receive_task
+
+        if self._flush_task and not self._flush_task.done():
+            self._flush_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._flush_task
 
         # Disconnect ElevenLabs
         if self._tts_session:
@@ -415,7 +511,7 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
 
                 event_type = event.get("type", "")
 
-                # Intercept audio transcript and send to ElevenLabs
+                # Intercept audio transcript and buffer for ElevenLabs
                 if event_type == "response.output_audio_transcript.delta":
                     # Skip transcript if we're in interrupted state (barge-in handling)
                     # This prevents sending transcript from cancelled response to TTS
@@ -423,17 +519,9 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
                         continue
 
                     transcript = event.get("delta", "")
-                    # Send transcript to ElevenLabs for TTS
-                    if (
-                        transcript
-                        and self._tts_session
-                        and self._tts_session.is_connected()
-                    ):
-                        await self._tts_session.send_text(transcript, flush=True)
-                        self.logger.debug(
-                            "transcript_sent_to_elevenlabs",
-                            text_preview=transcript[:30],
-                        )
+                    # Buffer transcript for ElevenLabs TTS (will flush on sentence end or delay)
+                    if transcript:
+                        await self._buffer_text_for_tts(transcript)
 
                 # Ignore Grok's audio output - we use ElevenLabs TTS instead
                 elif event_type in ("response.audio.delta", "response.output_audio.delta"):
@@ -445,6 +533,9 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
                     response_data = event.get("response", {})
                     output_items = response_data.get("output", [])
                     response_status = response_data.get("status", "")
+
+                    # Flush any remaining buffered text to ElevenLabs
+                    await self._flush_text_buffer_final()
 
                     # Handle response completion using base class
                     self._handle_response_done(response_status)
@@ -592,13 +683,28 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
         """Cancel the current Grok response generation (barge-in handling).
 
         This is called when the user starts speaking during AI response
-        to immediately stop Grok's generation. Also clears the TTS audio queue.
+        to immediately stop Grok's generation. Also clears the TTS text buffer
+        and audio queue.
         """
         if not self.grok_ws:
             return
         try:
             await self._send_to_grok({"type": "response.cancel"})
             self.logger.info("response_cancelled_on_interruption")
+
+            # Cancel any pending text flush and clear the text buffer
+            if self._flush_task and not self._flush_task.done():
+                self._flush_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._flush_task
+            async with self._text_buffer_lock:
+                if self._text_buffer:
+                    self.logger.debug(
+                        "clearing_text_buffer_on_interruption",
+                        buffer_length=len(self._text_buffer),
+                    )
+                    self._text_buffer = ""
+
             # Clear the TTS audio queue
             while not self._audio_queue.empty():
                 try:
