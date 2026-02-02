@@ -217,8 +217,8 @@ class VoiceAgentBase(ABC):
     def _handle_response_created(self) -> None:
         """Handle new response starting.
 
-        Resets interrupted flag to allow audio from new response.
-        Critical for proper barge-in handling.
+        Resets interrupted flag AND clears interruption event to allow
+        audio from new response. Critical for proper barge-in handling.
         """
         if self._is_interrupted:
             self.logger.info(
@@ -226,6 +226,12 @@ class VoiceAgentBase(ABC):
                 was_interrupted=True,
             )
             self._is_interrupted = False
+
+            # Clear the interruption event so voice_bridge doesn't clear
+            # audio from the NEW response
+            if self._interruption_event:
+                self._interruption_event.clear()
+                self.logger.debug("interruption_event_cleared_for_new_response")
 
     def _handle_response_done(self, status: str = "") -> None:
         """Handle response completion.
@@ -259,14 +265,20 @@ class VoiceAgentBase(ABC):
         self,
         navigation_goal: str | None = None,
         loop_threshold: int = 2,
+        ivr_config: dict[str, int] | None = None,
     ) -> None:
         """Enable IVR detection for this session.
 
         Args:
             navigation_goal: Goal for IVR navigation (e.g., "reach sales dept")
             loop_threshold: Number of menu repeats before triggering loop action
+            ivr_config: Optional IVR timing configuration with keys:
+                - silence_duration_ms: Wait time for complete menus (default 3000)
+                - post_dtmf_cooldown_ms: Cooldown after DTMF (default 3000)
+                - menu_buffer_silence_ms: Buffer silence time (default 2000)
         """
         self._ivr_navigation_goal = navigation_goal
+        self._ivr_config = ivr_config or {}
 
         config = IVRDetectorConfig(
             consecutive_classifications=loop_threshold,
@@ -287,6 +299,7 @@ class VoiceAgentBase(ABC):
             "ivr_detection_enabled",
             navigation_goal=navigation_goal,
             loop_threshold=loop_threshold,
+            ivr_config=ivr_config,
         )
 
     def _handle_ivr_mode_change(self, old_mode: IVRMode, new_mode: IVRMode) -> None:
