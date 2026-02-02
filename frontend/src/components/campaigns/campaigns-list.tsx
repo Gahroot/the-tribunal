@@ -21,6 +21,7 @@ import {
   ChevronDown,
   Loader2,
   AlertCircle,
+  type LucideIcon,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -68,7 +69,7 @@ const statusColors: Record<CampaignStatus, string> = {
   cancelled: "bg-red-500/10 text-red-500 border-red-500/20",
 };
 
-const typeIcons: Record<CampaignType, React.ElementType> = {
+const typeIcons: Record<CampaignType, LucideIcon> = {
   sms: MessageSquare,
   email: Mail,
   voice: Phone,

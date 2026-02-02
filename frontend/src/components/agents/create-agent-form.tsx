@@ -30,6 +30,7 @@ import {
   Loader2,
   Globe,
   Search,
+  Phone,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -108,7 +109,9 @@ const GROK_VOICES = [
 
 // ElevenLabs voices - premium TTS with 100+ expressive voices
 const ELEVENLABS_VOICES = [
-  { id: "rachel", name: "Rachel", description: "Calm female (Recommended)", recommended: true },
+  { id: "ava", name: "Ava", description: "Natural female (Recommended)", recommended: true },
+  { id: "sarah_eve", name: "Sarah Eve", description: "Expressive female" },
+  { id: "rachel", name: "Rachel", description: "Calm female" },
   { id: "bella", name: "Bella", description: "Soft female" },
   { id: "antoni", name: "Antoni", description: "Young male" },
   { id: "josh", name: "Josh", description: "Deep male" },
@@ -228,6 +231,13 @@ const agentFormSchema = z.object({
   enabledToolIds: z.record(z.string(), z.array(z.string())),
   enableRecording: z.boolean(),
   enableTranscript: z.boolean(),
+  // IVR navigation settings (Grok only)
+  enableIvrNavigation: z.boolean(),
+  ivrNavigationGoal: z.string().optional(),
+  ivrLoopThreshold: z.number().min(1).max(10),
+  ivrSilenceDurationMs: z.number().min(1000).max(10000),
+  ivrPostDtmfCooldownMs: z.number().min(0).max(10000),
+  ivrMenuBufferSilenceMs: z.number().min(0).max(10000),
 });
 
 type AgentFormValues = z.infer<typeof agentFormSchema>;
@@ -275,6 +285,13 @@ export function CreateAgentForm() {
       enabledToolIds: {},
       enableRecording: true,
       enableTranscript: true,
+      // IVR navigation defaults
+      enableIvrNavigation: false,
+      ivrNavigationGoal: "",
+      ivrLoopThreshold: 2,
+      ivrSilenceDurationMs: 3000,
+      ivrPostDtmfCooldownMs: 3000,
+      ivrMenuBufferSilenceMs: 2000,
     },
   });
 
@@ -322,7 +339,7 @@ export function CreateAgentForm() {
         form.setValue("voice", defaultVoice);
       }
     } else if (pricingTier === "elevenlabs") {
-      defaultVoice = "rachel";
+      defaultVoice = "ava";
       const elevenlabsVoiceIds = ELEVENLABS_VOICES.map((v) => v.id);
       if (!elevenlabsVoiceIds.includes(currentVoice as typeof elevenlabsVoiceIds[number])) {
         form.setValue("voice", defaultVoice);
@@ -401,6 +418,13 @@ export function CreateAgentForm() {
       temperature: data.temperature,
       enabled_tools: data.enabledTools,
       tool_settings: data.enabledToolIds,
+      // Include IVR settings for Grok agents
+      enable_ivr_navigation: data.enableIvrNavigation,
+      ivr_navigation_goal: data.ivrNavigationGoal || undefined,
+      ivr_loop_threshold: data.ivrLoopThreshold,
+      ivr_silence_duration_ms: data.ivrSilenceDurationMs,
+      ivr_post_dtmf_cooldown_ms: data.ivrPostDtmfCooldownMs,
+      ivr_menu_buffer_silence_ms: data.ivrMenuBufferSilenceMs,
     };
 
     createAgentMutation.mutate(apiRequest);
@@ -697,7 +721,7 @@ export function CreateAgentForm() {
                                   <SelectValue placeholder="Select voice" />
                                 </SelectTrigger>
                               </FormControl>
-                              <SelectContent>
+                              <SelectContent className="max-h-[300px]">
                                 {voices.map((voice) => (
                                   <SelectItem key={voice.id} value={voice.id}>
                                     {voice.name} - {voice.description}
@@ -1170,6 +1194,156 @@ Your role:
                     </div>
                   </CardContent>
                 </Card>
+
+                {/* IVR Navigation Settings - Grok only */}
+                {pricingTier === "grok" && (
+                  <Card>
+                    <CardContent className="space-y-4 p-6">
+                      <div className="mb-2">
+                        <h2 className="text-lg font-medium">IVR Navigation Settings</h2>
+                        <p className="text-sm text-muted-foreground">
+                          Configure how your agent navigates automated phone menus (IVR systems)
+                        </p>
+                      </div>
+
+                      <FormField
+                        control={form.control}
+                        name="enableIvrNavigation"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+                            <div className="space-y-0.5">
+                              <FormLabel className="text-sm font-medium">Enable IVR Navigation</FormLabel>
+                              <FormDescription className="text-xs">
+                                Allow agent to detect and navigate through phone menus using DTMF tones
+                              </FormDescription>
+                            </div>
+                            <FormControl>
+                              <Switch checked={field.value} onCheckedChange={field.onChange} />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+
+                      {form.watch("enableIvrNavigation") && (
+                        <>
+                          <FormField
+                            control={form.control}
+                            name="ivrNavigationGoal"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Navigation Goal</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    placeholder="e.g., Reach sales department, Speak to a human representative"
+                                    {...field}
+                                  />
+                                </FormControl>
+                                <FormDescription>
+                                  What should the agent try to achieve when navigating IVR menus?
+                                </FormDescription>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <Collapsible>
+                            <CollapsibleTrigger asChild>
+                              <Button type="button" variant="outline" size="sm" className="w-full justify-between">
+                                <span className="flex items-center gap-2">
+                                  <Phone className="h-4 w-4" />
+                                  Advanced IVR Settings
+                                </span>
+                                <ChevronDown className="h-4 w-4" />
+                              </Button>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="space-y-4 pt-4">
+                              <FormField
+                                control={form.control}
+                                name="ivrSilenceDurationMs"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <div className="flex items-center justify-between">
+                                      <FormLabel>Silence Duration</FormLabel>
+                                      <span className="text-sm font-medium">{field.value}ms</span>
+                                    </div>
+                                    <FormControl>
+                                      <Slider
+                                        min={1000}
+                                        max={10000}
+                                        step={500}
+                                        value={[field.value]}
+                                        onValueChange={(value) => field.onChange(value[0])}
+                                        className="w-full"
+                                      />
+                                    </FormControl>
+                                    <FormDescription>
+                                      How long to wait for menu to complete before responding (default: 3000ms)
+                                    </FormDescription>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+
+                              <FormField
+                                control={form.control}
+                                name="ivrPostDtmfCooldownMs"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <div className="flex items-center justify-between">
+                                      <FormLabel>Post-DTMF Cooldown</FormLabel>
+                                      <span className="text-sm font-medium">{field.value}ms</span>
+                                    </div>
+                                    <FormControl>
+                                      <Slider
+                                        min={0}
+                                        max={10000}
+                                        step={500}
+                                        value={[field.value]}
+                                        onValueChange={(value) => field.onChange(value[0])}
+                                        className="w-full"
+                                      />
+                                    </FormControl>
+                                    <FormDescription>
+                                      Minimum wait time after pressing a button before pressing another (default: 3000ms)
+                                    </FormDescription>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+
+                              <FormField
+                                control={form.control}
+                                name="ivrLoopThreshold"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <div className="flex items-center justify-between">
+                                      <FormLabel>Loop Detection Threshold</FormLabel>
+                                      <span className="text-sm font-medium">{field.value} repeats</span>
+                                    </div>
+                                    <FormControl>
+                                      <Slider
+                                        min={1}
+                                        max={10}
+                                        step={1}
+                                        value={[field.value]}
+                                        onValueChange={(value) => field.onChange(value[0])}
+                                        className="w-full"
+                                      />
+                                    </FormControl>
+                                    <FormDescription>
+                                      Number of menu repeats before trying alternative options (default: 2)
+                                    </FormDescription>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            </CollapsibleContent>
+                          </Collapsible>
+                        </>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
 
                 {/* Summary Card */}
                 <Card className="border-primary/30 bg-primary/5">

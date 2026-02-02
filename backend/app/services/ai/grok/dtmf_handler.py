@@ -10,6 +10,7 @@ It includes:
 
 import asyncio
 import re
+import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -31,11 +32,14 @@ class DTMFHandlerConfig:
         delay_between_sequences_ms: Delay between sending multiple sequences
         delay_before_first_send_ms: Delay before sending the first DTMF in a response.
             This allows IVR systems to fully stop speaking before receiving input.
+        post_dtmf_cooldown_ms: Cooldown period after sending DTMF before sending another.
+            This prevents rapid 0,1,2,0,2,1 patterns that confuse IVR systems.
     """
 
     tag_pattern: str = r"<dtmf>([0-9*#A-Dw]+)</dtmf>"
     delay_between_sequences_ms: int = 300
     delay_before_first_send_ms: int = 200
+    post_dtmf_cooldown_ms: int = 3000
 
 
 @dataclass
@@ -108,6 +112,9 @@ class DTMFHandler:
         # Track if we've sent the first DTMF in current response (for pre-send delay)
         self._first_send_done: bool = False
 
+        # Track last DTMF send time for cooldown enforcement
+        self._last_dtmf_send_time: float = 0.0
+
         # Validator for splitting digits by context
         self._validator = DTMFValidator()
 
@@ -122,7 +129,27 @@ class DTMFHandler:
         """
         self._tool_callback = callback
 
-    async def check_and_send(self, text: str) -> list[DTMFSendResult]:
+    def _is_in_cooldown(self) -> bool:
+        """Check if we're in post-DTMF cooldown period.
+
+        Returns:
+            True if cooldown is active and we should skip sending.
+        """
+        if self._config.post_dtmf_cooldown_ms <= 0 or self._last_dtmf_send_time <= 0:
+            return False
+
+        elapsed_ms = (time.time() - self._last_dtmf_send_time) * 1000
+        if elapsed_ms < self._config.post_dtmf_cooldown_ms:
+            self._logger.debug(
+                "dtmf_cooldown_active",
+                elapsed_ms=int(elapsed_ms),
+                cooldown_ms=self._config.post_dtmf_cooldown_ms,
+                remaining_ms=int(self._config.post_dtmf_cooldown_ms - elapsed_ms),
+            )
+            return True
+        return False
+
+    async def check_and_send(self, text: str) -> list[DTMFSendResult]:  # noqa: PLR0912
         """Check transcript for DTMF tags and send them.
 
         This is the PRIMARY mechanism for DTMF detection since xAI function
@@ -130,6 +157,7 @@ class DTMFHandler:
         transcript and sends the digits via the tool callback.
 
         Uses incremental scanning to only check new content since last scan.
+        Enforces post-DTMF cooldown to prevent rapid presses.
 
         Args:
             text: Full agent transcript text
@@ -138,6 +166,10 @@ class DTMFHandler:
             List of send results for any DTMF sequences found
         """
         if not text or len(text) <= self._last_scan_position:
+            return []
+
+        # Check if we're in cooldown period
+        if self._is_in_cooldown():
             return []
 
         # Only scan new content (with some overlap for safety)
@@ -218,6 +250,8 @@ class DTMFHandler:
     async def _send_dtmf(self, digits: str) -> DTMFSendResult:
         """Send DTMF digits via the tool callback.
 
+        Records send timestamp for cooldown enforcement.
+
         Args:
             digits: DTMF digits to send
 
@@ -241,10 +275,14 @@ class DTMFHandler:
                 {"digits": digits},
             )
 
+            # Record send time for cooldown enforcement
+            self._last_dtmf_send_time = time.time()
+
             self._logger.info(
                 "dtmf_sent",
                 digits=digits,
                 result=result,
+                cooldown_ms=self._config.post_dtmf_cooldown_ms,
             )
 
             return DTMFSendResult(digits=digits, success=True)
@@ -346,12 +384,13 @@ class DTMFHandler:
     def reset(self) -> None:
         """Reset handler state for a new conversation.
 
-        Clears sent sequences and scan position but does NOT cancel pending tasks.
-        Call cleanup() first if you need to cancel tasks.
+        Clears sent sequences, scan position, and cooldown timer.
+        Does NOT cancel pending tasks - call cleanup() first if needed.
         """
         self._sent_sequences.clear()
         self._last_scan_position = 0
         self._first_send_done = False
+        self._last_dtmf_send_time = 0.0
         self._logger.debug("dtmf_handler_reset")
 
     def reset_for_new_response(self) -> None:

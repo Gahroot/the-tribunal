@@ -266,7 +266,7 @@ export function MessageItem({ item, contactName }: MessageItemProps) {
                 <div className="pt-2 border-t">
                   <TranscriptViewer
                     transcript={item.transcript}
-                    maxHeight="200px"
+                    maxHeight="400px"
                     collapsible
                     defaultExpanded={false}
                   />

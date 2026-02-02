@@ -34,11 +34,14 @@ DTMF_TOOL: dict[str, Any] = {
     "type": "function",
     "name": "send_dtmf",
     "description": (
-        "Send DTMF touch-tone digits during the call for IVR menu navigation. "
-        "Use this when you hear an automated phone menu like 'Press 1 for sales, "
-        "Press 2 for service'. Wait for the menu to finish speaking before sending. "
-        "Common patterns: '0' or '#' often reaches an operator/human. "
-        "Add 'w' between digits for 0.5s pause (e.g., '1w2' sends 1, waits, sends 2)."
+        "Send DTMF touch-tone digits to navigate automated phone menus (IVR systems). "
+        "CRITICAL: When you hear 'Press 1 for X, Press 2 for Y', you MUST use this tool "
+        "to send the appropriate digit - do NOT speak to the machine. "
+        "Choose the menu option that best matches your goal (e.g., '2' for 'new car sales'). "
+        "If the menu option for your goal isn't clear, try options 1-9 systematically. "
+        "Only try '0' or '#' as a last resort after other options have failed. "
+        "After sending DTMF, WAIT SILENTLY for either another menu or a human to answer. "
+        "Only speak when a real human responds to you."
     ),
     "parameters": {
         "type": "object",
@@ -46,10 +49,10 @@ DTMF_TOOL: dict[str, Any] = {
             "digits": {
                 "type": "string",
                 "description": (
-                    "DTMF digits to send. Valid: 0-9, *, #, A-D. "
-                    "Use 'w' for 0.5s pause, 'W' for 1s pause between digits. "
-                    "Examples: '1' (press 1), '0' (operator), '123#' (enter code), "
-                    "'1w2w3' (digits with pauses for reliability)."
+                    "The digit(s) to press. MUST include at least one digit (0-9, *, #). "
+                    "Examples: '1' (press 1), '2' (press 2), '0' (operator), '#' (pound key). "
+                    "For multiple digits with pauses: '1w2' (press 1, wait 0.5s, press 2). "
+                    "IMPORTANT: Do not send only 'w' - always include actual digits."
                 ),
             },
         },

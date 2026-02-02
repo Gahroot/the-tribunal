@@ -213,6 +213,49 @@ class InterruptibleProtocol(Protocol):
         ...
 
 
+@runtime_checkable
+class IVRDetectableProtocol(Protocol):
+    """Protocol for voice agents that support IVR detection and navigation.
+
+    Implemented by voice agents that can detect IVR menus, track mode changes,
+    and automatically navigate using DTMF tones.
+    """
+
+    def enable_ivr_detection(
+        self,
+        navigation_goal: str | None = None,
+        loop_threshold: int = 2,
+        ivr_config: dict[str, int] | None = None,
+    ) -> None:
+        """Enable IVR detection with optional navigation goal.
+
+        Args:
+            navigation_goal: Goal for IVR navigation (e.g., "reach sales dept")
+            loop_threshold: Number of menu repeats before triggering loop action
+            ivr_config: Optional IVR timing configuration with keys:
+                - silence_duration_ms: Wait time for complete menus (default 3000)
+                - post_dtmf_cooldown_ms: Cooldown after DTMF (default 3000)
+                - menu_buffer_silence_ms: Buffer silence time (default 2000)
+        """
+        ...
+
+    async def process_ivr_transcript(
+        self,
+        transcript: str,
+        is_agent: bool = False,
+    ) -> Any:
+        """Process a transcript through IVR detection.
+
+        Args:
+            transcript: Speech transcript to analyze
+            is_agent: True if this is agent speech, False for remote party
+
+        Returns:
+            Current IVR mode after processing
+        """
+        ...
+
+
 # Type alias for voice sessions that may or may not support tools
 VoiceAgentType = VoiceAgentProtocol
 
@@ -239,3 +282,15 @@ def supports_interruption(agent: VoiceAgentProtocol) -> bool:
         True if the agent implements InterruptibleProtocol
     """
     return isinstance(agent, InterruptibleProtocol)
+
+
+def supports_ivr_detection(agent: VoiceAgentProtocol) -> bool:
+    """Check if a voice agent supports IVR detection.
+
+    Args:
+        agent: Voice agent to check
+
+    Returns:
+        True if the agent implements IVRDetectableProtocol
+    """
+    return isinstance(agent, IVRDetectableProtocol)

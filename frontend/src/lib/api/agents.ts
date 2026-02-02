@@ -18,6 +18,13 @@ export interface AgentResponse {
   enabled_tools: string[];
   tool_settings: Record<string, string[]>;
   is_active: boolean;
+  // IVR navigation settings
+  enable_ivr_navigation: boolean;
+  ivr_navigation_goal: string | null;
+  ivr_loop_threshold: number;
+  ivr_silence_duration_ms: number;
+  ivr_post_dtmf_cooldown_ms: number;
+  ivr_menu_buffer_silence_ms: number;
   created_at: string;
   updated_at: string;
 }
@@ -50,6 +57,13 @@ export interface CreateAgentRequest {
   calcom_event_type_id?: number;
   enabled_tools?: string[];
   tool_settings?: Record<string, string[]>;
+  // IVR navigation settings
+  enable_ivr_navigation?: boolean;
+  ivr_navigation_goal?: string;
+  ivr_loop_threshold?: number;
+  ivr_silence_duration_ms?: number;
+  ivr_post_dtmf_cooldown_ms?: number;
+  ivr_menu_buffer_silence_ms?: number;
 }
 
 export interface UpdateAgentRequest {
@@ -67,6 +81,13 @@ export interface UpdateAgentRequest {
   is_active?: boolean;
   enabled_tools?: string[];
   tool_settings?: Record<string, string[]>;
+  // IVR navigation settings
+  enable_ivr_navigation?: boolean;
+  ivr_navigation_goal?: string;
+  ivr_loop_threshold?: number;
+  ivr_silence_duration_ms?: number;
+  ivr_post_dtmf_cooldown_ms?: number;
+  ivr_menu_buffer_silence_ms?: number;
 }
 
 // Embed settings types

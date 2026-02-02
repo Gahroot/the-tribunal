@@ -44,6 +44,7 @@ import { OfferSelector } from "./offer-selector";
 
 import type { Contact, Agent, Offer, PhoneNumber, SMSCampaign } from "@/types";
 import type { CreateSMSCampaignRequest } from "@/lib/api/sms-campaigns";
+import { DAYS_OF_WEEK, TIMEZONES } from "@/lib/constants";
 
 // Step definitions
 const STEPS = [
@@ -56,27 +57,6 @@ const STEPS = [
 ] as const;
 
 type StepId = (typeof STEPS)[number]["id"];
-
-// Days of week
-const DAYS_OF_WEEK = [
-  { value: 0, label: "Sun" },
-  { value: 1, label: "Mon" },
-  { value: 2, label: "Tue" },
-  { value: 3, label: "Wed" },
-  { value: 4, label: "Thu" },
-  { value: 5, label: "Fri" },
-  { value: 6, label: "Sat" },
-];
-
-// Timezones
-const TIMEZONES = [
-  "America/New_York",
-  "America/Chicago",
-  "America/Denver",
-  "America/Los_Angeles",
-  "America/Phoenix",
-  "Pacific/Honolulu",
-];
 
 interface SMSCampaignWizardProps {
   contacts: Contact[];

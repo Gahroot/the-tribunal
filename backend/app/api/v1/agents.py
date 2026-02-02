@@ -36,6 +36,10 @@ class AgentCreate(BaseModel):
     enable_ivr_navigation: bool = False
     ivr_navigation_goal: str | None = None
     ivr_loop_threshold: int = 2
+    # IVR timing configuration (milliseconds)
+    ivr_silence_duration_ms: int = 3000
+    ivr_post_dtmf_cooldown_ms: int = 3000
+    ivr_menu_buffer_silence_ms: int = 2000
 
 
 class AgentUpdate(BaseModel):
@@ -59,6 +63,10 @@ class AgentUpdate(BaseModel):
     enable_ivr_navigation: bool | None = None
     ivr_navigation_goal: str | None = None
     ivr_loop_threshold: int | None = None
+    # IVR timing configuration (milliseconds)
+    ivr_silence_duration_ms: int | None = None
+    ivr_post_dtmf_cooldown_ms: int | None = None
+    ivr_menu_buffer_silence_ms: int | None = None
 
 
 class AgentResponse(BaseModel):
@@ -84,6 +92,10 @@ class AgentResponse(BaseModel):
     enable_ivr_navigation: bool
     ivr_navigation_goal: str | None
     ivr_loop_threshold: int
+    # IVR timing configuration (milliseconds)
+    ivr_silence_duration_ms: int
+    ivr_post_dtmf_cooldown_ms: int
+    ivr_menu_buffer_silence_ms: int
     created_at: datetime
     updated_at: datetime
 
@@ -164,6 +176,9 @@ async def create_agent(
         enable_ivr_navigation=agent_in.enable_ivr_navigation,
         ivr_navigation_goal=agent_in.ivr_navigation_goal,
         ivr_loop_threshold=agent_in.ivr_loop_threshold,
+        ivr_silence_duration_ms=agent_in.ivr_silence_duration_ms,
+        ivr_post_dtmf_cooldown_ms=agent_in.ivr_post_dtmf_cooldown_ms,
+        ivr_menu_buffer_silence_ms=agent_in.ivr_menu_buffer_silence_ms,
     )
     db.add(agent)
     await db.commit()

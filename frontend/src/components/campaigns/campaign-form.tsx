@@ -12,6 +12,7 @@ import {
   Save,
   Play,
   Clock,
+  type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -37,7 +38,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import type { CampaignType } from "@/types";
 
-const campaignTypes: { value: CampaignType; label: string; icon: React.ElementType; description: string }[] = [
+const campaignTypes: { value: CampaignType; label: string; icon: LucideIcon; description: string }[] = [
   {
     value: "sms",
     label: "SMS",

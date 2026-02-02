@@ -18,6 +18,7 @@ from typing import Any
 import structlog
 import websockets
 from websockets.asyncio.client import ClientConnection
+from websockets.exceptions import ConnectionClosedError
 
 from app.models.agent import Agent
 from app.services.ai.elevenlabs_tts import ElevenLabsTTSSession, get_voice_id
@@ -476,6 +477,10 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
                 "audio": encoded,
             }
             await self._send_to_grok(event)
+        except ConnectionClosedError as e:
+            # Connection died - set to None to prevent further send attempts
+            self.logger.warning("grok_connection_closed", error=str(e))
+            self.grok_ws = None
         except Exception as e:
             self.logger.exception("send_audio_error", error=str(e))
     # Note: Can't use base _send_audio_base64 since this uses grok_ws not ws
@@ -769,6 +774,11 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
 
         try:
             await self.grok_ws.send(json.dumps(event))
+        except ConnectionClosedError as e:
+            # Mark connection as dead to prevent further send attempts
+            self.grok_ws = None
+            self.logger.warning("grok_connection_closed_on_send", error=str(e))
+            raise
         except Exception as e:
             self.logger.exception("send_to_grok_error", error=str(e))
             raise

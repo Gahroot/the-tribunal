@@ -29,10 +29,17 @@ class IVRModeConfig:
     Attributes:
         default_silence_ms: Default silence duration for conversation mode
         default_threshold: Default VAD threshold for conversation mode
+        ivr_silence_duration_ms: Silence duration for IVR mode (wait for complete menus)
+        post_dtmf_cooldown_ms: Cooldown after DTMF before responding
+        menu_buffer_silence_ms: Buffer silence to accumulate transcript
     """
 
     default_silence_ms: int = 700
     default_threshold: float = 0.5
+    # IVR-specific timing (can be overridden by agent config)
+    ivr_silence_duration_ms: int = 3000
+    post_dtmf_cooldown_ms: int = 3000
+    menu_buffer_silence_ms: int = 2000
 
 
 class IVRModeController:
@@ -132,14 +139,25 @@ class IVRModeController:
         """Switch to IVR navigation mode.
 
         Adjusts turn detection for IVR menus which often have longer pauses.
+        Uses agent-configured silence duration if available.
         """
         self._logger.info("switching_to_ivr_mode")
+
+        # Use agent-configured silence duration, falling back to constants
+        silence_ms = self._config.ivr_silence_duration_ms
+        threshold = IVR_TURN_DETECTION["turn_detection_threshold"]
+
+        self._logger.info(
+            "ivr_mode_timing",
+            silence_duration_ms=silence_ms,
+            turn_detection_threshold=threshold,
+        )
 
         # Increase silence duration for IVR menus
         # IVR systems have longer pauses between options
         await self._configure_session(
-            silence_duration_ms=IVR_TURN_DETECTION["silence_duration_ms"],
-            turn_detection_threshold=IVR_TURN_DETECTION["turn_detection_threshold"],
+            silence_duration_ms=silence_ms,
+            turn_detection_threshold=threshold,
         )
 
         # Update prompt to include IVR navigation guidance

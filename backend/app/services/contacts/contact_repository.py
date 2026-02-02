@@ -97,18 +97,22 @@ async def list_contacts_paginated(
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
 
-    # Apply sorting
+    # Apply sorting (always include Contact.id as final sort key for stable pagination)
     if sort_by == "unread_first":
         # Unread contacts first (by unread count desc), then by last message time
         query = query.order_by(
             conv_subquery.c.total_unread.desc().nullslast(),
             conv_subquery.c.max_message_at.desc().nullslast(),
+            Contact.id.desc(),
         )
     elif sort_by == "last_conversation":
         # Sort by most recent conversation first, contacts with no conversation go last
-        query = query.order_by(conv_subquery.c.max_message_at.desc().nullslast())
+        query = query.order_by(
+            conv_subquery.c.max_message_at.desc().nullslast(),
+            Contact.id.desc(),
+        )
     else:
-        query = query.order_by(Contact.created_at.desc())
+        query = query.order_by(Contact.created_at.desc(), Contact.id.desc())
 
     # Apply pagination
     query = query.offset((page - 1) * page_size).limit(page_size)

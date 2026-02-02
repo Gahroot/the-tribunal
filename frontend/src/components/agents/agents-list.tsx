@@ -21,6 +21,7 @@ import {
   Loader2,
   AlertCircle,
   Copy,
+  type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -65,7 +66,7 @@ import { callsApi } from "@/lib/api/calls";
 import { phoneNumbersApi } from "@/lib/api/phone-numbers";
 import type { Agent } from "@/types";
 
-const channelModeIcons: Record<string, React.ElementType> = {
+const channelModeIcons: Record<string, LucideIcon> = {
   voice: Phone,
   text: MessageSquare,
   both: Sparkles,
@@ -328,7 +329,7 @@ export function AgentsList() {
       >
         <AnimatePresence mode="popLayout">
           {filteredAgents.map((agent) => {
-            const ChannelIcon = channelModeIcons[agent.channel_mode] ?? Sparkles;
+            const ChannelIcon = channelModeIcons[agent.channel_mode as string] ?? Sparkles;
 
             return (
               <motion.div
@@ -490,7 +491,7 @@ export function AgentsList() {
                 <SelectTrigger id="from-number" className="w-full">
                   <SelectValue placeholder="Select a phone number" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-[300px]">
                   {phoneNumbers.map((phone) => (
                     <SelectItem key={phone.id} value={phone.id}>
                       {phone.phone_number}

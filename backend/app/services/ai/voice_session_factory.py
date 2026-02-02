@@ -131,12 +131,27 @@ class VoiceSessionFactory:
                 reason="Missing requirements for tool enablement",
             )
 
-        return GrokVoiceAgentSession(
+        session = GrokVoiceAgentSession(
             self.settings.xai_api_key,
             agent,
             enable_tools=enable_tools,
             timezone=timezone,
-        ), None
+        )
+
+        # Enable IVR detection if configured on agent
+        if agent and agent.enable_ivr_navigation:
+            session.enable_ivr_detection(
+                navigation_goal=agent.ivr_navigation_goal,
+                loop_threshold=agent.ivr_loop_threshold,
+            )
+            self.logger.info(
+                "grok_ivr_detection_enabled",
+                agent_id=str(agent.id),
+                navigation_goal=agent.ivr_navigation_goal,
+                loop_threshold=agent.ivr_loop_threshold,
+            )
+
+        return session, None
 
     def _create_elevenlabs_session(
         self,

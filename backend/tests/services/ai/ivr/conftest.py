@@ -4,8 +4,10 @@ Provides fixtures for testing IVR detection and simulation:
 - IVRClassifier instances
 - IVRDetector instances
 - IVRSimulator with various scenarios
+- Mock agent for harness testing
 """
 
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -16,7 +18,7 @@ from app.services.ai.ivr_detector import (
     IVRDetectorConfig,
     LoopDetector,
 )
-from app.services.ai.testing import IVRSimulator, ScenarioLoader
+from app.services.ai.testing import IVRSimulator, MockLLMClient, ScenarioLoader
 
 
 # Path to scenario files
@@ -122,3 +124,39 @@ def ivr_simulator_pure_voicemail(pure_voicemail_scenario) -> IVRSimulator:
 def ivr_simulator_loop(stuck_loop_scenario) -> IVRSimulator:
     """Create a simulator with the stuck loop scenario."""
     return IVRSimulator(stuck_loop_scenario)
+
+
+# Test harness fixtures
+
+
+@dataclass
+class MockAgent:
+    """Mock agent for testing without database access."""
+
+    name: str = "Test Agent"
+    system_prompt: str = "You are a test agent navigating phone menus."
+    enable_ivr_navigation: bool = True
+    ivr_navigation_goal: str | None = "Reach a human operator"
+    ivr_loop_threshold: int = 2
+
+
+@pytest.fixture
+def mock_agent() -> MockAgent:
+    """Create a mock agent for harness testing."""
+    return MockAgent()
+
+
+@pytest.fixture
+def mock_agent_no_ivr() -> MockAgent:
+    """Create a mock agent with IVR navigation disabled."""
+    return MockAgent(enable_ivr_navigation=False)
+
+
+@pytest.fixture
+def mock_llm_client() -> MockLLMClient:
+    """Create a mock LLM client with default responses."""
+    return MockLLMClient(responses=[
+        "I'll press 1. <dtmf>1</dtmf>",
+        "Let me try 2. <dtmf>2</dtmf>",
+        "Pressing 0 for operator. <dtmf>0</dtmf>",
+    ])

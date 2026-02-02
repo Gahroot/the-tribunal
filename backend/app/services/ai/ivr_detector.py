@@ -869,7 +869,16 @@ class IVRDetector:
 
         parts.append(
             "You are navigating an automated phone menu (IVR). "
-            "Listen carefully to the options and select the best one."
+            "Listen carefully to ALL options before responding."
+        )
+
+        # Critical timing instructions
+        parts.append(
+            "\nIMPORTANT TIMING RULES:"
+            "\n- Wait for the COMPLETE menu to finish speaking before responding"
+            "\n- Don't respond mid-menu - let the IVR system finish all options"
+            "\n- Wait 2-3 seconds of silence after the menu stops before sending DTMF"
+            "\n- Only send ONE digit at a time, then wait for the system's response"
         )
 
         if goal:
@@ -896,7 +905,7 @@ class IVRDetector:
 
         parts.append(
             "\nTo select an option, include the digit in <dtmf>X</dtmf> tags. "
-            "Example: <dtmf>1</dtmf> to press 1."
+            "Example: <dtmf>1</dtmf> to press 1. Send ONLY ONE digit per response."
         )
 
         return "\n".join(parts)

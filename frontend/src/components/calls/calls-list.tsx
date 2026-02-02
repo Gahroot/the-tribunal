@@ -19,6 +19,7 @@ import {
   ChevronRight,
   Loader2,
   AlertCircle,
+  type LucideIcon,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -58,7 +59,7 @@ import { TranscriptViewer } from "@/components/calls/transcript-viewer";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { callsApi } from "@/lib/api/calls";
 
-const statusConfig: Record<string, { label: string; color: string; icon: React.ElementType }> = {
+const statusConfig: Record<string, { label: string; color: string; icon: LucideIcon }> = {
   completed: { label: "Completed", color: "bg-green-500/10 text-green-500 border-green-500/20", icon: Phone },
   in_progress: { label: "In Progress", color: "bg-blue-500/10 text-blue-500 border-blue-500/20", icon: Phone },
   initiated: { label: "Initiated", color: "bg-blue-500/10 text-blue-500 border-blue-500/20", icon: Phone },

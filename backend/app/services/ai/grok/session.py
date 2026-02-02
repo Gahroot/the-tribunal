@@ -628,15 +628,40 @@ class GrokVoiceAgentSession(VoiceAgentBase):
         self,
         navigation_goal: str | None = None,
         loop_threshold: int = 2,
+        ivr_config: dict[str, int] | None = None,
     ) -> None:
         """Enable IVR detection for this session.
 
         Args:
             navigation_goal: Goal for IVR navigation
             loop_threshold: Number of menu repeats before triggering loop action
+            ivr_config: Optional IVR timing configuration with keys:
+                - silence_duration_ms: Wait time for complete menus (default 3000)
+                - post_dtmf_cooldown_ms: Cooldown after DTMF (default 3000)
+                - menu_buffer_silence_ms: Buffer silence time (default 2000)
         """
         # Call base class implementation
-        super().enable_ivr_detection(navigation_goal, loop_threshold)
+        super().enable_ivr_detection(navigation_goal, loop_threshold, ivr_config)
+
+        # Update DTMF handler cooldown if configured
+        if ivr_config and "post_dtmf_cooldown_ms" in ivr_config:
+            self._dtmf_handler._config.post_dtmf_cooldown_ms = ivr_config["post_dtmf_cooldown_ms"]
+            self.logger.info(
+                "dtmf_cooldown_configured",
+                post_dtmf_cooldown_ms=ivr_config["post_dtmf_cooldown_ms"],
+            )
+
+        # Update IVR controller config with timing values
+        if ivr_config:
+            self._ivr_controller._config.ivr_silence_duration_ms = ivr_config.get(
+                "silence_duration_ms", 3000
+            )
+            self._ivr_controller._config.post_dtmf_cooldown_ms = ivr_config.get(
+                "post_dtmf_cooldown_ms", 3000
+            )
+            self._ivr_controller._config.menu_buffer_silence_ms = ivr_config.get(
+                "menu_buffer_silence_ms", 2000
+            )
 
         # Update IVR controller with detector reference
         self._ivr_controller.set_ivr_detector(

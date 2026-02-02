@@ -101,6 +101,9 @@ class VoiceCampaignWorker(BaseWorker):
 
         voice_service = TelnyxVoiceService(settings.telnyx_api_key)
         try:
+            # Clean up stuck calls first (webhooks that never arrived)
+            await self._cleanup_stuck_calls(campaign, db, log)
+
             # Process pending calls
             await self._process_pending_calls(campaign, voice_service, db, log)
 
@@ -220,6 +223,50 @@ class VoiceCampaignWorker(BaseWorker):
                 campaign.error_count += 1
                 campaign.last_error = str(e)
                 campaign.last_error_at = datetime.now(UTC)
+
+    async def _cleanup_stuck_calls(
+        self,
+        campaign: Campaign,
+        db: AsyncSession,
+        log: Any,
+    ) -> None:
+        """Clean up contacts stuck in 'calling' status when webhooks never arrive.
+
+        If a contact has been in 'calling' status for more than 5 minutes,
+        mark it as 'call_failed' so the campaign can complete.
+        """
+        stuck_timeout = timedelta(minutes=5)
+        cutoff_time = datetime.now(UTC) - stuck_timeout
+
+        # Find contacts stuck in calling status
+        stuck_result = await db.execute(
+            select(CampaignContact)
+            .where(
+                and_(
+                    CampaignContact.campaign_id == campaign.id,
+                    CampaignContact.status == CampaignContactStatus.CALLING.value,
+                    CampaignContact.last_call_at < cutoff_time,
+                )
+            )
+        )
+        stuck_contacts = stuck_result.scalars().all()
+
+        if not stuck_contacts:
+            return
+
+        log.warning(
+            "cleaning_up_stuck_calls",
+            count=len(stuck_contacts),
+            timeout_minutes=5,
+        )
+
+        for contact in stuck_contacts:
+            contact.status = CampaignContactStatus.CALL_FAILED.value
+            contact.last_call_status = "no_answer"
+            contact.last_error = "Call webhook timeout - no response after 5 minutes"
+            campaign.calls_no_answer += 1
+
+        log.info("stuck_calls_cleaned_up", count=len(stuck_contacts))
 
     async def _check_completion(
         self,

@@ -160,8 +160,9 @@ DEFAULT_TURN_DETECTION: dict[str, Any] = {
 }
 
 # IVR mode turn detection settings
+# Default silence duration is 3000ms to wait for complete IVR menus
 IVR_TURN_DETECTION: dict[str, Any] = {
-    "silence_duration_ms": 1500,
+    "silence_duration_ms": 3000,
     "turn_detection_threshold": 0.6,
 }
 

@@ -3,7 +3,6 @@
 import * as React from "react";
 import { User, Bot, ChevronDown, ChevronUp, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import {
   Collapsible,
@@ -93,8 +92,8 @@ function TranscriptContent({
   className?: string;
 }) {
   return (
-    <ScrollArea
-      className={cn("rounded-md border", className)}
+    <div
+      className={cn("rounded-md border overflow-y-auto", className)}
       style={{ maxHeight }}
     >
       <div className="p-3 space-y-3">
@@ -129,7 +128,7 @@ function TranscriptContent({
           </div>
         ))}
       </div>
-    </ScrollArea>
+    </div>
   );
 }
 

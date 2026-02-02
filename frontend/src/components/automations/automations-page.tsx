@@ -20,6 +20,7 @@ import {
   ArrowRight,
   Settings2,
   Loader2,
+  type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -68,13 +69,13 @@ import {
 } from "@/hooks/useAutomations";
 import type { Automation, AutomationTriggerType, AutomationActionType } from "@/types";
 
-const triggerTypeConfig: Record<AutomationTriggerType, { label: string; icon: React.ElementType; color: string }> = {
+const triggerTypeConfig: Record<AutomationTriggerType, { label: string; icon: LucideIcon; color: string }> = {
   event: { label: "Event", icon: Zap, color: "text-yellow-500" },
   schedule: { label: "Schedule", icon: Clock, color: "text-blue-500" },
   condition: { label: "Condition", icon: Settings2, color: "text-purple-500" },
 };
 
-const actionTypeConfig: Record<AutomationActionType, { label: string; icon: React.ElementType }> = {
+const actionTypeConfig: Record<AutomationActionType, { label: string; icon: LucideIcon }> = {
   send_sms: { label: "Send SMS", icon: MessageSquare },
   send_email: { label: "Send Email", icon: Mail },
   make_call: { label: "Make Call", icon: Phone },

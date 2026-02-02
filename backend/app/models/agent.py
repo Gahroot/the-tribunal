@@ -89,6 +89,15 @@ class Agent(Base):
     )
     tool_settings: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
 
+    # IVR navigation settings
+    enable_ivr_navigation: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    ivr_navigation_goal: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ivr_loop_threshold: Mapped[int] = mapped_column(Integer, default=2, nullable=False)
+    # IVR timing configuration (milliseconds)
+    ivr_silence_duration_ms: Mapped[int] = mapped_column(Integer, default=3000, nullable=False)
+    ivr_post_dtmf_cooldown_ms: Mapped[int] = mapped_column(Integer, default=3000, nullable=False)
+    ivr_menu_buffer_silence_ms: Mapped[int] = mapped_column(Integer, default=2000, nullable=False)
+
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
