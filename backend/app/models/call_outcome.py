@@ -88,6 +88,9 @@ class CallOutcome(Base):
     # Raw data for debugging
     raw_hangup_cause: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
+    # Decision-time context for bandit learning
+    context: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict, nullable=True)
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False

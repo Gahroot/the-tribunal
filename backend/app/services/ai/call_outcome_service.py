@@ -1,6 +1,7 @@
 """Service for managing call outcomes."""
 
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.call_outcome import CallOutcome
 from app.models.conversation import Message
 from app.models.prompt_version import PromptVersion
+from app.services.ai.bandit_reward_service import record_bandit_reward
 
 logger = structlog.get_logger()
 
@@ -29,6 +31,7 @@ class CallOutcomeService:
         *,
         prompt_version_id: uuid.UUID | None = None,
         signals: dict[str, Any] | None = None,
+        context: dict[str, Any] | None = None,
         classified_by: str = "hangup_cause",
         classification_confidence: float | None = None,
         raw_hangup_cause: str | None = None,
@@ -41,6 +44,7 @@ class CallOutcomeService:
             outcome_type: Type of outcome
             prompt_version_id: Prompt version used for attribution
             signals: Flexible outcome signals
+            context: Decision-time context for bandit learning
             classified_by: Classification method
             classification_confidence: Confidence score
             raw_hangup_cause: Original hangup cause from provider
@@ -84,6 +88,7 @@ class CallOutcomeService:
             prompt_version_id=prompt_version_id,
             outcome_type=outcome_type,
             signals=signals or {},
+            context=context or {},
             classified_by=classified_by,
             classification_confidence=classification_confidence,
             raw_hangup_cause=raw_hangup_cause,
@@ -98,6 +103,13 @@ class CallOutcomeService:
         # Update prompt version counters (denormalized)
         if prompt_version_id:
             await self._update_version_counters(db, prompt_version_id, outcome_type, signals)
+
+        # Record bandit reward if a decision exists for this message
+        try:
+            await record_bandit_reward(db, outcome)
+        except Exception as e:
+            # Don't fail outcome creation if reward recording fails
+            log.warning("bandit_reward_recording_failed", error=str(e))
 
         return outcome
 
@@ -218,11 +230,26 @@ async def create_outcome_from_hangup(
     hangup_cause: str,
     duration_secs: int,
     booking_outcome: str | None = None,
+    *,
+    contact_id: int | None = None,
+    agent_id: uuid.UUID | None = None,
 ) -> CallOutcome:
     """Create call outcome from Telnyx hangup webhook data.
 
     Maps hangup causes to outcome types and builds signals dict.
+    Optionally builds decision context for bandit learning.
+
+    Args:
+        db: Database session
+        message_id: Message (call) ID
+        hangup_cause: Telnyx hangup cause code
+        duration_secs: Call duration in seconds
+        booking_outcome: Optional booking outcome ("success", "failed", etc.)
+        contact_id: Optional contact ID for context building
+        agent_id: Optional agent ID for context building
     """
+    from app.services.ai.bandit_context import build_decision_context
+
     # Map hangup causes to outcome types
     cause_to_outcome = {
         "normal_clearing": "completed",
@@ -252,12 +279,26 @@ async def create_outcome_from_hangup(
         signals["appointment_booked"] = booking_outcome == "success"
         signals["booking_attempted"] = True
 
+    # Build context if we have enough info
+    context: dict[str, Any] | None = None
+    if agent_id is not None:
+        import contextlib
+
+        with contextlib.suppress(Exception):
+            context = await build_decision_context(
+                db=db,
+                contact_id=contact_id,
+                agent_id=agent_id,
+                call_time=datetime.now(UTC),
+            )
+
     service = CallOutcomeService()
     return await service.create_outcome(
         db=db,
         message_id=message_id,
         outcome_type=outcome_type,
         signals=signals,
+        context=context,
         classified_by="hangup_cause",
         raw_hangup_cause=hangup_cause,
     )

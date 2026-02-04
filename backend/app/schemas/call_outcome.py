@@ -12,6 +12,7 @@ class CallOutcomeCreate(BaseModel):
 
     outcome_type: str = Field(..., description="Call outcome type")
     signals: dict[str, Any] = Field(default_factory=dict)
+    context: dict[str, Any] = Field(default_factory=dict, description="Decision-time context")
     classified_by: str = "hangup_cause"
     classification_confidence: float | None = Field(None, ge=0.0, le=1.0)
     raw_hangup_cause: str | None = None
@@ -34,6 +35,7 @@ class CallOutcomeResponse(BaseModel):
     prompt_version_id: uuid.UUID | None
     outcome_type: str
     signals: dict[str, Any]
+    context: dict[str, Any] = Field(default_factory=dict)
     classified_by: str
     classification_confidence: float | None
     raw_hangup_cause: str | None

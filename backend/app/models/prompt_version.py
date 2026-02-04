@@ -67,6 +67,12 @@ class PromptVersion(Base):
     successful_calls: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     booked_appointments: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
+    # Multi-armed bandit statistics (Beta distribution priors)
+    bandit_alpha: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+    bandit_beta: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+    total_reward: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    reward_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
