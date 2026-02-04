@@ -4,10 +4,11 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 
+from app.api.crud import get_or_404
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.db.pagination import paginate
 from app.models.agent import Agent, generate_public_id
@@ -189,21 +190,7 @@ async def get_agent(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> Agent:
     """Get an agent by ID."""
-    result = await db.execute(
-        select(Agent).where(
-            Agent.id == agent_id,
-            Agent.workspace_id == workspace_id,
-        )
-    )
-    agent = result.scalar_one_or_none()
-
-    if not agent:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Agent not found",
-        )
-
-    return agent
+    return await get_or_404(db, Agent, agent_id, workspace_id=workspace_id)
 
 
 @router.put("/{agent_id}", response_model=AgentResponse)
@@ -216,19 +203,7 @@ async def update_agent(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> Agent:
     """Update an agent."""
-    result = await db.execute(
-        select(Agent).where(
-            Agent.id == agent_id,
-            Agent.workspace_id == workspace_id,
-        )
-    )
-    agent = result.scalar_one_or_none()
-
-    if not agent:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Agent not found",
-        )
+    agent = await get_or_404(db, Agent, agent_id, workspace_id=workspace_id)
 
     # Update fields
     update_data = agent_in.model_dump(exclude_unset=True)
@@ -250,20 +225,7 @@ async def delete_agent(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> None:
     """Delete an agent (soft delete by deactivating)."""
-    result = await db.execute(
-        select(Agent).where(
-            Agent.id == agent_id,
-            Agent.workspace_id == workspace_id,
-        )
-    )
-    agent = result.scalar_one_or_none()
-
-    if not agent:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Agent not found",
-        )
-
+    agent = await get_or_404(db, Agent, agent_id, workspace_id=workspace_id)
     agent.is_active = False
     await db.commit()
 
@@ -306,19 +268,7 @@ async def get_embed_settings(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> EmbedSettingsResponse:
     """Get embed settings for an agent."""
-    result = await db.execute(
-        select(Agent).where(
-            Agent.id == agent_id,
-            Agent.workspace_id == workspace_id,
-        )
-    )
-    agent = result.scalar_one_or_none()
-
-    if not agent:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Agent not found",
-        )
+    agent = await get_or_404(db, Agent, agent_id, workspace_id=workspace_id)
 
     # Generate public ID if not exists
     if not agent.public_id:
@@ -361,19 +311,7 @@ async def update_embed_settings(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> EmbedSettingsResponse:
     """Update embed settings for an agent."""
-    result = await db.execute(
-        select(Agent).where(
-            Agent.id == agent_id,
-            Agent.workspace_id == workspace_id,
-        )
-    )
-    agent = result.scalar_one_or_none()
-
-    if not agent:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Agent not found",
-        )
+    agent = await get_or_404(db, Agent, agent_id, workspace_id=workspace_id)
 
     # Generate public ID if enabling embed and none exists
     if body.embed_enabled and not agent.public_id:

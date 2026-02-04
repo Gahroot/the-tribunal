@@ -7,6 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 
+from app.api.crud import get_or_404
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.db.pagination import paginate
 from app.models.agent import Agent
@@ -109,21 +110,7 @@ async def get_campaign(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> Campaign:
     """Get a campaign by ID."""
-    result = await db.execute(
-        select(Campaign).where(
-            Campaign.id == campaign_id,
-            Campaign.workspace_id == workspace_id,
-        )
-    )
-    campaign = result.scalar_one_or_none()
-
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Campaign not found",
-        )
-
-    return campaign
+    return await get_or_404(db, Campaign, campaign_id, workspace_id=workspace_id)
 
 
 @router.put("/{campaign_id}", response_model=CampaignResponse)
@@ -136,19 +123,7 @@ async def update_campaign(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> Campaign:
     """Update a campaign."""
-    result = await db.execute(
-        select(Campaign).where(
-            Campaign.id == campaign_id,
-            Campaign.workspace_id == workspace_id,
-        )
-    )
-    campaign = result.scalar_one_or_none()
-
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Campaign not found",
-        )
+    campaign = await get_or_404(db, Campaign, campaign_id, workspace_id=workspace_id)
 
     # Only allow updates on draft/paused campaigns
     if campaign.status not in ("draft", "paused"):
@@ -188,19 +163,7 @@ async def start_campaign(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> dict[str, str]:
     """Start a campaign."""
-    result = await db.execute(
-        select(Campaign).where(
-            Campaign.id == campaign_id,
-            Campaign.workspace_id == workspace_id,
-        )
-    )
-    campaign = result.scalar_one_or_none()
-
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Campaign not found",
-        )
+    campaign = await get_or_404(db, Campaign, campaign_id, workspace_id=workspace_id)
 
     if campaign.status not in ("draft", "paused", "scheduled"):
         raise HTTPException(
@@ -238,19 +201,7 @@ async def pause_campaign(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> dict[str, str]:
     """Pause a campaign."""
-    result = await db.execute(
-        select(Campaign).where(
-            Campaign.id == campaign_id,
-            Campaign.workspace_id == workspace_id,
-        )
-    )
-    campaign = result.scalar_one_or_none()
-
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Campaign not found",
-        )
+    campaign = await get_or_404(db, Campaign, campaign_id, workspace_id=workspace_id)
 
     if campaign.status != "running":
         raise HTTPException(
@@ -274,19 +225,7 @@ async def add_contacts(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> dict[str, int]:
     """Add contacts to a campaign."""
-    result = await db.execute(
-        select(Campaign).where(
-            Campaign.id == campaign_id,
-            Campaign.workspace_id == workspace_id,
-        )
-    )
-    campaign = result.scalar_one_or_none()
-
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Campaign not found",
-        )
+    campaign = await get_or_404(db, Campaign, campaign_id, workspace_id=workspace_id)
 
     if campaign.status not in ("draft", "paused"):
         raise HTTPException(
@@ -342,17 +281,7 @@ async def list_campaign_contacts(
 ) -> list[CampaignContactResponse]:
     """List contacts in a campaign."""
     # Verify campaign exists
-    result = await db.execute(
-        select(Campaign).where(
-            Campaign.id == campaign_id,
-            Campaign.workspace_id == workspace_id,
-        )
-    )
-    if not result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Campaign not found",
-        )
+    await get_or_404(db, Campaign, campaign_id, workspace_id=workspace_id)
 
     query = select(CampaignContact).where(CampaignContact.campaign_id == campaign_id)
 
@@ -376,19 +305,7 @@ async def get_analytics(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> CampaignAnalytics:
     """Get campaign analytics."""
-    result = await db.execute(
-        select(Campaign).where(
-            Campaign.id == campaign_id,
-            Campaign.workspace_id == workspace_id,
-        )
-    )
-    campaign = result.scalar_one_or_none()
-
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Campaign not found",
-        )
+    campaign = await get_or_404(db, Campaign, campaign_id, workspace_id=workspace_id)
 
     # Calculate rates
     reply_rate = 0.0
@@ -421,19 +338,7 @@ async def delete_campaign(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> None:
     """Delete a campaign."""
-    result = await db.execute(
-        select(Campaign).where(
-            Campaign.id == campaign_id,
-            Campaign.workspace_id == workspace_id,
-        )
-    )
-    campaign = result.scalar_one_or_none()
-
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Campaign not found",
-        )
+    campaign = await get_or_404(db, Campaign, campaign_id, workspace_id=workspace_id)
 
     if campaign.status == "running":
         raise HTTPException(
@@ -458,19 +363,7 @@ async def duplicate_campaign(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> Campaign:
     """Duplicate a campaign."""
-    result = await db.execute(
-        select(Campaign).where(
-            Campaign.id == campaign_id,
-            Campaign.workspace_id == workspace_id,
-        )
-    )
-    campaign = result.scalar_one_or_none()
-
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Campaign not found",
-        )
+    campaign = await get_or_404(db, Campaign, campaign_id, workspace_id=workspace_id)
 
     # Create a new campaign with copied attributes
     new_campaign = Campaign(

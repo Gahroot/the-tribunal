@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 
+from app.api.crud import get_or_404
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.db.pagination import paginate
 from app.models.lead_magnet import LeadMagnet
@@ -139,21 +140,7 @@ async def get_lead_magnet(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> LeadMagnet:
     """Get a lead magnet by ID."""
-    result = await db.execute(
-        select(LeadMagnet).where(
-            LeadMagnet.id == lead_magnet_id,
-            LeadMagnet.workspace_id == workspace_id,
-        )
-    )
-    lead_magnet = result.scalar_one_or_none()
-
-    if not lead_magnet:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Lead magnet not found",
-        )
-
-    return lead_magnet
+    return await get_or_404(db, LeadMagnet, lead_magnet_id, workspace_id=workspace_id)
 
 
 @router.put("/{lead_magnet_id}", response_model=LeadMagnetResponse)
@@ -166,19 +153,7 @@ async def update_lead_magnet(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> LeadMagnet:
     """Update a lead magnet."""
-    result = await db.execute(
-        select(LeadMagnet).where(
-            LeadMagnet.id == lead_magnet_id,
-            LeadMagnet.workspace_id == workspace_id,
-        )
-    )
-    lead_magnet = result.scalar_one_or_none()
-
-    if not lead_magnet:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Lead magnet not found",
-        )
+    lead_magnet = await get_or_404(db, LeadMagnet, lead_magnet_id, workspace_id=workspace_id)
 
     # Update fields
     update_data = lead_magnet_in.model_dump(exclude_unset=True)
@@ -200,20 +175,7 @@ async def delete_lead_magnet(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> None:
     """Delete a lead magnet."""
-    result = await db.execute(
-        select(LeadMagnet).where(
-            LeadMagnet.id == lead_magnet_id,
-            LeadMagnet.workspace_id == workspace_id,
-        )
-    )
-    lead_magnet = result.scalar_one_or_none()
-
-    if not lead_magnet:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Lead magnet not found",
-        )
-
+    lead_magnet = await get_or_404(db, LeadMagnet, lead_magnet_id, workspace_id=workspace_id)
     await db.delete(lead_magnet)
     await db.commit()
 
@@ -227,20 +189,7 @@ async def increment_download_count(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> LeadMagnet:
     """Increment the download count for a lead magnet."""
-    result = await db.execute(
-        select(LeadMagnet).where(
-            LeadMagnet.id == lead_magnet_id,
-            LeadMagnet.workspace_id == workspace_id,
-        )
-    )
-    lead_magnet = result.scalar_one_or_none()
-
-    if not lead_magnet:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Lead magnet not found",
-        )
-
+    lead_magnet = await get_or_404(db, LeadMagnet, lead_magnet_id, workspace_id=workspace_id)
     lead_magnet.download_count += 1
     await db.commit()
     await db.refresh(lead_magnet)

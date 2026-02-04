@@ -6,6 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import and_, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DB, CurrentUser, get_workspace
@@ -29,6 +30,30 @@ from app.schemas.campaign import (
 from app.utils.datetime import parse_time_string
 
 router = APIRouter()
+
+
+async def _get_voice_campaign(
+    db: AsyncSession,
+    campaign_id: uuid.UUID,
+    workspace_id: uuid.UUID,
+) -> Campaign:
+    """Fetch a voice campaign by ID, raising 404 if not found."""
+    result = await db.execute(
+        select(Campaign).where(
+            Campaign.id == campaign_id,
+            Campaign.workspace_id == workspace_id,
+            Campaign.campaign_type == CampaignType.VOICE_SMS_FALLBACK.value,
+        )
+    )
+    campaign = result.scalar_one_or_none()
+
+    if not campaign:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Voice campaign not found",
+        )
+
+    return campaign
 
 
 @router.get("", response_model=list[VoiceCampaignResponse])
@@ -155,6 +180,7 @@ async def get_voice_campaign(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> Campaign:
     """Get a voice campaign by ID."""
+    # Use direct query for eager loading
     result = await db.execute(
         select(Campaign)
         .options(
@@ -188,20 +214,7 @@ async def update_voice_campaign(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> Campaign:
     """Update a voice campaign."""
-    result = await db.execute(
-        select(Campaign).where(
-            Campaign.id == campaign_id,
-            Campaign.workspace_id == workspace_id,
-            Campaign.campaign_type == CampaignType.VOICE_SMS_FALLBACK.value,
-        )
-    )
-    campaign = result.scalar_one_or_none()
-
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Voice campaign not found",
-        )
+    campaign = await _get_voice_campaign(db, campaign_id, workspace_id)
 
     if campaign.status not in ("draft", "paused"):
         raise HTTPException(
@@ -284,20 +297,7 @@ async def start_voice_campaign(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> dict[str, str]:
     """Start a voice campaign."""
-    result = await db.execute(
-        select(Campaign).where(
-            Campaign.id == campaign_id,
-            Campaign.workspace_id == workspace_id,
-            Campaign.campaign_type == CampaignType.VOICE_SMS_FALLBACK.value,
-        )
-    )
-    campaign = result.scalar_one_or_none()
-
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Voice campaign not found",
-        )
+    campaign = await _get_voice_campaign(db, campaign_id, workspace_id)
 
     if campaign.status not in ("draft", "paused", "scheduled"):
         raise HTTPException(
@@ -346,20 +346,7 @@ async def pause_voice_campaign(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> dict[str, str]:
     """Pause a voice campaign."""
-    result = await db.execute(
-        select(Campaign).where(
-            Campaign.id == campaign_id,
-            Campaign.workspace_id == workspace_id,
-            Campaign.campaign_type == CampaignType.VOICE_SMS_FALLBACK.value,
-        )
-    )
-    campaign = result.scalar_one_or_none()
-
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Voice campaign not found",
-        )
+    campaign = await _get_voice_campaign(db, campaign_id, workspace_id)
 
     if campaign.status != "running":
         raise HTTPException(
@@ -383,20 +370,7 @@ async def add_contacts_to_voice_campaign(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> dict[str, int]:
     """Add contacts to a voice campaign."""
-    result = await db.execute(
-        select(Campaign).where(
-            Campaign.id == campaign_id,
-            Campaign.workspace_id == workspace_id,
-            Campaign.campaign_type == CampaignType.VOICE_SMS_FALLBACK.value,
-        )
-    )
-    campaign = result.scalar_one_or_none()
-
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Voice campaign not found",
-        )
+    campaign = await _get_voice_campaign(db, campaign_id, workspace_id)
 
     if campaign.status not in ("draft", "paused"):
         raise HTTPException(
@@ -453,18 +427,7 @@ async def list_voice_campaign_contacts(
 ) -> list[CampaignContact]:
     """List contacts in a voice campaign."""
     # Verify campaign exists
-    result = await db.execute(
-        select(Campaign).where(
-            Campaign.id == campaign_id,
-            Campaign.workspace_id == workspace_id,
-            Campaign.campaign_type == CampaignType.VOICE_SMS_FALLBACK.value,
-        )
-    )
-    if not result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Voice campaign not found",
-        )
+    await _get_voice_campaign(db, campaign_id, workspace_id)
 
     query = select(CampaignContact).where(CampaignContact.campaign_id == campaign_id)
 
@@ -488,20 +451,7 @@ async def get_voice_campaign_analytics(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> VoiceCampaignAnalytics:
     """Get voice campaign analytics."""
-    result = await db.execute(
-        select(Campaign).where(
-            Campaign.id == campaign_id,
-            Campaign.workspace_id == workspace_id,
-            Campaign.campaign_type == CampaignType.VOICE_SMS_FALLBACK.value,
-        )
-    )
-    campaign = result.scalar_one_or_none()
-
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Voice campaign not found",
-        )
+    campaign = await _get_voice_campaign(db, campaign_id, workspace_id)
 
     # Calculate rates
     answer_rate = 0.0
@@ -548,20 +498,7 @@ async def delete_voice_campaign(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> None:
     """Delete a voice campaign."""
-    result = await db.execute(
-        select(Campaign).where(
-            Campaign.id == campaign_id,
-            Campaign.workspace_id == workspace_id,
-            Campaign.campaign_type == CampaignType.VOICE_SMS_FALLBACK.value,
-        )
-    )
-    campaign = result.scalar_one_or_none()
-
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Voice campaign not found",
-        )
+    campaign = await _get_voice_campaign(db, campaign_id, workspace_id)
 
     if campaign.status == "running":
         raise HTTPException(

@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from app.api.crud import get_nested_or_404, get_or_404
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.db.pagination import paginate
 from app.models.opportunity import Opportunity, OpportunityActivity, OpportunityLineItem
@@ -128,16 +129,13 @@ async def get_pipeline(
     """Get a specific pipeline."""
     await get_workspace(workspace_id, current_user, db)
 
-    query = (
-        select(Pipeline)
-        .where((Pipeline.id == pipeline_id) & (Pipeline.workspace_id == workspace_id))
-        .options(selectinload(Pipeline.stages))
+    pipeline = await get_or_404(
+        db,
+        Pipeline,
+        pipeline_id,
+        workspace_id=workspace_id,
+        options=[selectinload(Pipeline.stages)],
     )
-    result = await db.execute(query)
-    pipeline = result.unique().scalar_one_or_none()
-
-    if not pipeline:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pipeline not found")
 
     return PipelineResponse.model_validate(pipeline)
 
@@ -153,14 +151,7 @@ async def update_pipeline(
     """Update a pipeline."""
     await get_workspace(workspace_id, current_user, db)
 
-    query = select(Pipeline).where(
-        (Pipeline.id == pipeline_id) & (Pipeline.workspace_id == workspace_id)
-    )
-    result = await db.execute(query)
-    pipeline = result.scalar_one_or_none()
-
-    if not pipeline:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pipeline not found")
+    pipeline = await get_or_404(db, Pipeline, pipeline_id, workspace_id=workspace_id)
 
     if pipeline_in.name is not None:
         pipeline.name = pipeline_in.name
@@ -185,14 +176,7 @@ async def delete_pipeline(
     """Delete a pipeline."""
     await get_workspace(workspace_id, current_user, db)
 
-    query = select(Pipeline).where(
-        (Pipeline.id == pipeline_id) & (Pipeline.workspace_id == workspace_id)
-    )
-    result = await db.execute(query)
-    pipeline = result.scalar_one_or_none()
-
-    if not pipeline:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pipeline not found")
+    pipeline = await get_or_404(db, Pipeline, pipeline_id, workspace_id=workspace_id)
 
     await db.delete(pipeline)
     await db.commit()
@@ -215,12 +199,7 @@ async def create_pipeline_stage(
     await get_workspace(workspace_id, current_user, db)
 
     # Verify pipeline exists
-    pipeline_query = select(Pipeline).where(
-        (Pipeline.id == pipeline_id) & (Pipeline.workspace_id == workspace_id)
-    )
-    pipeline_result = await db.execute(pipeline_query)
-    if not pipeline_result.scalar_one_or_none():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pipeline not found")
+    await get_or_404(db, Pipeline, pipeline_id, workspace_id=workspace_id)
 
     stage = PipelineStage(
         pipeline_id=pipeline_id,
@@ -249,14 +228,14 @@ async def update_pipeline_stage(
     """Update a pipeline stage."""
     await get_workspace(workspace_id, current_user, db)
 
-    query = select(PipelineStage).where(
-        (PipelineStage.id == stage_id) & (PipelineStage.pipeline_id == pipeline_id)
+    stage = await get_nested_or_404(
+        db,
+        PipelineStage,
+        stage_id,
+        parent_field="pipeline_id",
+        parent_id=pipeline_id,
+        detail="Stage not found",
     )
-    result = await db.execute(query)
-    stage = result.scalar_one_or_none()
-
-    if not stage:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stage not found")
 
     if stage_in.name is not None:
         stage.name = stage_in.name
@@ -370,14 +349,9 @@ async def get_opportunity(
     """Get a specific opportunity."""
     await get_workspace(workspace_id, current_user, db)
 
-    query = select(Opportunity).where(
-        (Opportunity.id == opportunity_id) & (Opportunity.workspace_id == workspace_id)
+    opportunity = await get_or_404(
+        db, Opportunity, opportunity_id, workspace_id=workspace_id
     )
-    result = await db.execute(query)
-    opportunity = result.scalar_one_or_none()
-
-    if not opportunity:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Opportunity not found")
 
     return OpportunityDetailResponse.model_validate(opportunity)
 
@@ -393,14 +367,9 @@ async def update_opportunity(
     """Update an opportunity."""
     await get_workspace(workspace_id, current_user, db)
 
-    query = select(Opportunity).where(
-        (Opportunity.id == opportunity_id) & (Opportunity.workspace_id == workspace_id)
+    opportunity = await get_or_404(
+        db, Opportunity, opportunity_id, workspace_id=workspace_id
     )
-    result = await db.execute(query)
-    opportunity = result.scalar_one_or_none()
-
-    if not opportunity:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Opportunity not found")
 
     # If stage is being updated, update probability and log activity
     if opportunity_in.stage_id and opportunity_in.stage_id != opportunity.stage_id:
@@ -470,14 +439,9 @@ async def delete_opportunity(
     """Delete an opportunity."""
     await get_workspace(workspace_id, current_user, db)
 
-    query = select(Opportunity).where(
-        (Opportunity.id == opportunity_id) & (Opportunity.workspace_id == workspace_id)
+    opportunity = await get_or_404(
+        db, Opportunity, opportunity_id, workspace_id=workspace_id
     )
-    result = await db.execute(query)
-    opportunity = result.scalar_one_or_none()
-
-    if not opportunity:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Opportunity not found")
 
     await db.delete(opportunity)
     await db.commit()
@@ -500,12 +464,7 @@ async def create_line_item(
     await get_workspace(workspace_id, current_user, db)
 
     # Verify opportunity exists
-    opp_query = select(Opportunity).where(
-        (Opportunity.id == opportunity_id) & (Opportunity.workspace_id == workspace_id)
-    )
-    opportunity = (await db.execute(opp_query)).scalar_one_or_none()
-    if not opportunity:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Opportunity not found")
+    await get_or_404(db, Opportunity, opportunity_id, workspace_id=workspace_id)
 
     total = (item_in.quantity * item_in.unit_price) - item_in.discount
 
@@ -540,14 +499,14 @@ async def update_line_item(
     """Update a line item."""
     await get_workspace(workspace_id, current_user, db)
 
-    query = select(OpportunityLineItem).where(
-        (OpportunityLineItem.id == item_id) & (OpportunityLineItem.opportunity_id == opportunity_id)
+    line_item = await get_nested_or_404(
+        db,
+        OpportunityLineItem,
+        item_id,
+        parent_field="opportunity_id",
+        parent_id=opportunity_id,
+        detail="Line item not found",
     )
-    result = await db.execute(query)
-    line_item = result.scalar_one_or_none()
-
-    if not line_item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Line item not found")
 
     if item_in.name is not None:
         line_item.name = item_in.name
@@ -580,14 +539,14 @@ async def delete_line_item(
     """Delete a line item."""
     await get_workspace(workspace_id, current_user, db)
 
-    query = select(OpportunityLineItem).where(
-        (OpportunityLineItem.id == item_id) & (OpportunityLineItem.opportunity_id == opportunity_id)
+    line_item = await get_nested_or_404(
+        db,
+        OpportunityLineItem,
+        item_id,
+        parent_field="opportunity_id",
+        parent_id=opportunity_id,
+        detail="Line item not found",
     )
-    result = await db.execute(query)
-    line_item = result.scalar_one_or_none()
-
-    if not line_item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Line item not found")
 
     await db.delete(line_item)
     await db.commit()

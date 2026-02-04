@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
+from app.api.crud import get_or_404
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.db.pagination import paginate
 from app.models.contact import Contact
@@ -120,21 +121,7 @@ async def get_offer(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> Offer:
     """Get an offer by ID."""
-    result = await db.execute(
-        select(Offer).where(
-            Offer.id == offer_id,
-            Offer.workspace_id == workspace_id,
-        )
-    )
-    offer = result.scalar_one_or_none()
-
-    if not offer:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Offer not found",
-        )
-
-    return offer
+    return await get_or_404(db, Offer, offer_id, workspace_id=workspace_id)
 
 
 @router.put("/{offer_id}", response_model=OfferResponse)
@@ -147,19 +134,7 @@ async def update_offer(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> Offer:
     """Update an offer."""
-    result = await db.execute(
-        select(Offer).where(
-            Offer.id == offer_id,
-            Offer.workspace_id == workspace_id,
-        )
-    )
-    offer = result.scalar_one_or_none()
-
-    if not offer:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Offer not found",
-        )
+    offer = await get_or_404(db, Offer, offer_id, workspace_id=workspace_id)
 
     # Update fields
     update_data = offer_in.model_dump(exclude_unset=True)
@@ -181,20 +156,7 @@ async def delete_offer(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> None:
     """Delete an offer."""
-    result = await db.execute(
-        select(Offer).where(
-            Offer.id == offer_id,
-            Offer.workspace_id == workspace_id,
-        )
-    )
-    offer = result.scalar_one_or_none()
-
-    if not offer:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Offer not found",
-        )
-
+    offer = await get_or_404(db, Offer, offer_id, workspace_id=workspace_id)
     await db.delete(offer)
     await db.commit()
 
@@ -208,23 +170,13 @@ async def get_offer_with_lead_magnets(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> OfferResponseWithLeadMagnets:
     """Get an offer with its attached lead magnets."""
-    result = await db.execute(
-        select(Offer)
-        .options(
-            selectinload(Offer.offer_lead_magnets).selectinload(OfferLeadMagnet.lead_magnet)
-        )
-        .where(
-            Offer.id == offer_id,
-            Offer.workspace_id == workspace_id,
-        )
+    offer = await get_or_404(
+        db,
+        Offer,
+        offer_id,
+        workspace_id=workspace_id,
+        options=[selectinload(Offer.offer_lead_magnets).selectinload(OfferLeadMagnet.lead_magnet)],
     )
-    offer = result.scalar_one_or_none()
-
-    if not offer:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Offer not found",
-        )
 
     # Extract lead magnets and calculate total value
     lead_magnets = [
@@ -262,19 +214,7 @@ async def attach_lead_magnets(
 ) -> OfferResponseWithLeadMagnets:
     """Attach lead magnets to an offer."""
     # Verify offer exists
-    result = await db.execute(
-        select(Offer).where(
-            Offer.id == offer_id,
-            Offer.workspace_id == workspace_id,
-        )
-    )
-    offer = result.scalar_one_or_none()
-
-    if not offer:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Offer not found",
-        )
+    await get_or_404(db, Offer, offer_id, workspace_id=workspace_id)
 
     # Verify all lead magnets exist in this workspace
     result = await db.execute(
@@ -341,17 +281,7 @@ async def detach_lead_magnet(
 ) -> None:
     """Detach a lead magnet from an offer."""
     # Verify offer exists in workspace
-    result = await db.execute(
-        select(Offer).where(
-            Offer.id == offer_id,
-            Offer.workspace_id == workspace_id,
-        )
-    )
-    if not result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Offer not found",
-        )
+    await get_or_404(db, Offer, offer_id, workspace_id=workspace_id)
 
     # Find and delete the association
     result = await db.execute(
@@ -383,17 +313,7 @@ async def reorder_lead_magnets(
 ) -> OfferResponseWithLeadMagnets:
     """Reorder lead magnets attached to an offer."""
     # Verify offer exists
-    result = await db.execute(
-        select(Offer).where(
-            Offer.id == offer_id,
-            Offer.workspace_id == workspace_id,
-        )
-    )
-    if not result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Offer not found",
-        )
+    await get_or_404(db, Offer, offer_id, workspace_id=workspace_id)
 
     # Update sort order for each lead magnet
     for idx, lm_id in enumerate(lead_magnet_ids):

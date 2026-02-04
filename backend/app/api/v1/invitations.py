@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from app.api.crud import get_nested_or_404
 from app.api.deps import DB, CurrentUser, OptionalCurrentUser
 from app.core.config import settings
 from app.models.invitation import WorkspaceInvitation
@@ -211,19 +212,14 @@ async def cancel_invitation(
     """Cancel a pending invitation."""
     await verify_workspace_admin(db, current_user, workspace_id)
 
-    result = await db.execute(
-        select(WorkspaceInvitation).where(
-            WorkspaceInvitation.id == invitation_id,
-            WorkspaceInvitation.workspace_id == workspace_id,
-        )
+    invitation = await get_nested_or_404(
+        db,
+        WorkspaceInvitation,
+        invitation_id,
+        parent_field="workspace_id",
+        parent_id=workspace_id,
+        detail="Invitation not found",
     )
-    invitation = result.scalar_one_or_none()
-
-    if invitation is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Invitation not found",
-        )
 
     if invitation.status != "pending":
         raise HTTPException(
