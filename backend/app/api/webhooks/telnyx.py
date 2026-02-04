@@ -535,6 +535,21 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:
             await db.commit()
             log.info("message_updated", message_id=str(message.id), status=message.status)
 
+            # Create CallOutcome record for attribution and analysis
+            try:
+                from app.services.ai.call_outcome_service import create_outcome_from_hangup
+
+                await create_outcome_from_hangup(
+                    db=db,
+                    message_id=message.id,
+                    hangup_cause=hangup_cause,
+                    duration_secs=duration_secs,
+                    booking_outcome=message.booking_outcome,
+                )
+                log.info("call_outcome_created", message_id=str(message.id))
+            except Exception as e:
+                log.exception("call_outcome_creation_failed", error=str(e))
+
             # Trigger SMS fallback for failed calls
             if classification.outcome:
                 log.info("triggering_sms_fallback", call_outcome=classification.outcome)

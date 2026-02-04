@@ -13,7 +13,6 @@ import { SMSCampaignWizard } from "@/components/campaigns/sms-campaign-wizard";
 import { smsCampaignsApi, type CreateSMSCampaignRequest } from "@/lib/api/sms-campaigns";
 import { offersApi } from "@/lib/api/offers";
 import { phoneNumbersApi } from "@/lib/api/phone-numbers";
-import { contactsApi } from "@/lib/api/contacts";
 import { agentsApi } from "@/lib/api/agents";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import type { Offer, SMSCampaign } from "@/types";
@@ -46,17 +45,6 @@ export default function NewSMSCampaignPage() {
     queryFn: async () => {
       if (!workspaceId) return [];
       const response = await phoneNumbersApi.list(workspaceId, { sms_enabled: true });
-      return response.items;
-    },
-    enabled: !!workspaceId,
-  });
-
-  // Fetch contacts from API (page_size max is 100 per backend limit)
-  const { data: contactsData, isLoading: contactsLoading } = useQuery({
-    queryKey: ["contacts", workspaceId],
-    queryFn: async () => {
-      if (!workspaceId) return [];
-      const response = await contactsApi.list(workspaceId, { page_size: 100 });
       return response.items;
     },
     enabled: !!workspaceId,
@@ -105,15 +93,16 @@ export default function NewSMSCampaignPage() {
       contactIds,
     }: {
       data: CreateSMSCampaignRequest;
-      contactIds: number[];
+      contactIds: Set<number>;
     }) => {
       if (!workspaceId) throw new Error("Workspace not loaded");
       // Create the campaign
       const campaign = await smsCampaignsApi.create(workspaceId, data);
 
       // Add contacts to the campaign
-      if (contactIds.length > 0) {
-        await smsCampaignsApi.addContacts(workspaceId, campaign.id, contactIds);
+      const contactIdsArray = Array.from(contactIds);
+      if (contactIdsArray.length > 0) {
+        await smsCampaignsApi.addContacts(workspaceId, campaign.id, contactIdsArray);
       }
 
       return campaign;
@@ -133,7 +122,7 @@ export default function NewSMSCampaignPage() {
 
   const handleSubmit = async (
     data: CreateSMSCampaignRequest,
-    contactIds: number[]
+    contactIds: Set<number>
   ): Promise<SMSCampaign> => {
     setIsSubmitting(true);
     try {
@@ -148,9 +137,8 @@ export default function NewSMSCampaignPage() {
     await createOfferMutation.mutateAsync(offer);
   };
 
-  const isLoading = !workspaceId || offersLoading || phoneNumbersLoading || contactsLoading || agentsLoading;
+  const isLoading = !workspaceId || offersLoading || phoneNumbersLoading || agentsLoading;
 
-  const contacts = Array.isArray(contactsData) ? contactsData : [];
   const agents = Array.isArray(agentsData) ? agentsData : [];
   const offers = Array.isArray(offersData) ? offersData : [];
   const phoneNumbers = Array.isArray(phoneNumbersData) ? phoneNumbersData : [];
@@ -183,7 +171,7 @@ export default function NewSMSCampaignPage() {
           </div>
         ) : (
           <SMSCampaignWizard
-            contacts={contacts}
+            workspaceId={workspaceId}
             agents={agents}
             offers={offers}
             phoneNumbers={phoneNumbers}

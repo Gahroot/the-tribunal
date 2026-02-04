@@ -79,6 +79,37 @@ async def list_contacts(
     return ContactListResponse(**result)
 
 
+class ContactIdsResponse(BaseModel):
+    """Response schema for contact IDs."""
+
+    ids: list[int]
+    total: int
+
+
+@router.get("/ids", response_model=ContactIdsResponse)
+async def list_contact_ids(
+    workspace_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    status_filter: str | None = Query(None, alias="status"),
+    search: str | None = None,
+) -> ContactIdsResponse:
+    """List all contact IDs matching filters.
+
+    Returns only IDs (not full contact objects) for efficient Select All functionality.
+    """
+    workspace = await get_workspace(workspace_id, current_user, db)
+
+    service = ContactService(db)
+    result = await service.list_contact_ids(
+        workspace_id=workspace.id,
+        status_filter=status_filter,
+        search=search,
+    )
+
+    return ContactIdsResponse(**result)
+
+
 @router.post("", response_model=ContactResponse, status_code=status.HTTP_201_CREATED)
 async def create_contact(
     workspace_id: uuid.UUID,

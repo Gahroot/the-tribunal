@@ -15,7 +15,6 @@ import {
   type CreateVoiceCampaignRequest,
 } from "@/lib/api/voice-campaigns";
 import { phoneNumbersApi } from "@/lib/api/phone-numbers";
-import { contactsApi } from "@/lib/api/contacts";
 import { agentsApi } from "@/lib/api/agents";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import type { VoiceCampaign } from "@/types";
@@ -38,17 +37,6 @@ export default function NewVoiceCampaignPage() {
     enabled: !!workspaceId,
   });
 
-  // Fetch contacts from API
-  const { data: contactsData, isLoading: contactsLoading } = useQuery({
-    queryKey: ["contacts", workspaceId],
-    queryFn: async () => {
-      if (!workspaceId) return [];
-      const response = await contactsApi.list(workspaceId, { page_size: 100 });
-      return response.items;
-    },
-    enabled: !!workspaceId,
-  });
-
   // Fetch agents from API - all active agents
   const { data: agentsData, isLoading: agentsLoading } = useQuery({
     queryKey: ["agents", workspaceId, { active_only: true }],
@@ -67,7 +55,7 @@ export default function NewVoiceCampaignPage() {
       contactIds,
     }: {
       data: CreateVoiceCampaignRequest;
-      contactIds: number[];
+      contactIds: Set<number>;
     }) => {
       if (!workspaceId) throw new Error("Workspace not loaded");
 
@@ -75,9 +63,10 @@ export default function NewVoiceCampaignPage() {
       const campaign = await voiceCampaignsApi.create(workspaceId, data);
 
       // Add contacts to the campaign
-      if (contactIds.length > 0) {
+      const contactIdsArray = Array.from(contactIds);
+      if (contactIdsArray.length > 0) {
         await voiceCampaignsApi.addContacts(workspaceId, campaign.id, {
-          contact_ids: contactIds,
+          contact_ids: contactIdsArray,
         });
       }
 
@@ -101,7 +90,7 @@ export default function NewVoiceCampaignPage() {
 
   const handleSubmit = async (
     data: CreateVoiceCampaignRequest,
-    contactIds: number[]
+    contactIds: Set<number>
   ): Promise<VoiceCampaign> => {
     setIsSubmitting(true);
     try {
@@ -115,10 +104,8 @@ export default function NewVoiceCampaignPage() {
     }
   };
 
-  const isLoading =
-    !workspaceId || phoneNumbersLoading || contactsLoading || agentsLoading;
+  const isLoading = !workspaceId || phoneNumbersLoading || agentsLoading;
 
-  const contacts = Array.isArray(contactsData) ? contactsData : [];
   const agents = Array.isArray(agentsData) ? agentsData : [];
   const phoneNumbers = Array.isArray(phoneNumbersData) ? phoneNumbersData : [];
 
@@ -160,7 +147,7 @@ export default function NewVoiceCampaignPage() {
           </div>
         ) : (
           <VoiceCampaignWizard
-            contacts={contacts}
+            workspaceId={workspaceId}
             voiceAgents={voiceAgents}
             textAgents={textAgents}
             phoneNumbers={phoneNumbers}

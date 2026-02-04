@@ -32,6 +32,7 @@ class CallContext:
     - Contact information for personalization
     - Offer/product information for sales calls
     - Workspace timezone for scheduling
+    - Prompt version for attribution
 
     Attributes:
         agent: Agent model for voice configuration
@@ -40,6 +41,7 @@ class CallContext:
         timezone: Workspace timezone (IANA format)
         workspace_id: UUID of the workspace
         conversation_id: UUID of the conversation
+        prompt_version_id: UUID of the active prompt version for attribution
     """
 
     agent: Agent | None = None
@@ -49,6 +51,7 @@ class CallContext:
     workspace_id: str | None = None
     conversation_id: str | None = None
     is_outbound: bool = False
+    prompt_version_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -120,6 +123,18 @@ async def lookup_call_context(
                     agent_name=context.agent.name,
                     source="conversation" if conversation.assigned_agent_id else "message",
                 )
+
+                # Look up active prompt version for attribution
+                from app.services.ai.prompt_version_service import get_active_prompt_version
+
+                active_version = await get_active_prompt_version(db, context.agent.id)
+                if active_version:
+                    context.prompt_version_id = str(active_version.id)
+                    log.info(
+                        "found_prompt_version_for_call",
+                        prompt_version_id=str(active_version.id),
+                        version_number=active_version.version_number,
+                    )
 
         # Look up contact info
         if conversation.contact_id:

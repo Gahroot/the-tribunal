@@ -43,14 +43,23 @@ logger = structlog.get_logger()
 async def _lookup_call_context_wrapper(
     call_id: str,
     log: Any,
-) -> tuple[Any, dict[str, Any] | None, dict[str, Any] | None, str]:
+) -> tuple[Any, dict[str, Any] | None, dict[str, Any] | None, str, str | None]:
     """Look up agent, contact, and offer context for a call.
 
     Wrapper around call_context.lookup_call_context to maintain backward
     compatibility with existing code.
+
+    Returns:
+        Tuple of (agent, contact_info, offer_info, timezone, prompt_version_id)
     """
     context = await lookup_call_context(call_id, log)
-    return context.agent, context.contact_info, context.offer_info, context.timezone
+    return (
+        context.agent,
+        context.contact_info,
+        context.offer_info,
+        context.timezone,
+        context.prompt_version_id,
+    )
 
 
 VoiceSessionType = VoiceAgentSession | GrokVoiceAgentSession | ElevenLabsVoiceAgentSession
@@ -61,6 +70,35 @@ async def _save_call_transcript_wrapper(
 ) -> None:
     """Save transcript - wrapper around call_context.save_call_transcript."""
     await save_call_transcript(call_id, transcript_json, log)
+
+
+async def _stamp_prompt_version_on_message(
+    call_id: str, prompt_version_id: str, log: Any
+) -> None:
+    """Stamp prompt version ID on the message record for attribution."""
+    import uuid
+
+    from sqlalchemy import update
+
+    from app.db.session import AsyncSessionLocal
+    from app.models.conversation import Message
+
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                update(Message)
+                .where(Message.provider_message_id == call_id)
+                .values(prompt_version_id=uuid.UUID(prompt_version_id))
+            )
+            await db.commit()
+            log.info(
+                "prompt_version_stamped_on_message",
+                call_id=call_id,
+                prompt_version_id=prompt_version_id,
+                rows_updated=result.rowcount,  # type: ignore[attr-defined]
+            )
+    except Exception as e:
+        log.exception("failed_to_stamp_prompt_version", error=str(e), call_id=call_id)
 
 
 async def _setup_voice_session(
@@ -217,7 +255,12 @@ async def voice_stream_bridge(  # noqa: PLR0912, PLR0915
 
     # Get agent and conversation context from database first to determine provider
     log.info("looking_up_call_context", call_id=call_id)
-    agent, contact_info, offer_info, timezone = await _lookup_call_context_wrapper(call_id, log)
+    context_result = await _lookup_call_context_wrapper(call_id, log)
+    agent, contact_info, offer_info, timezone, prompt_version_id = context_result
+
+    # Stamp prompt version on message for attribution
+    if prompt_version_id:
+        await _stamp_prompt_version_on_message(call_id, prompt_version_id, log)
 
     greeting_preview = None
     if agent and agent.initial_greeting:
@@ -234,6 +277,7 @@ async def voice_stream_bridge(  # noqa: PLR0912, PLR0915
         contact_name=contact_info.get("name") if contact_info else None,
         offer_found=offer_info is not None,
         timezone=timezone,
+        prompt_version_id=prompt_version_id,
     )
 
     if not agent:

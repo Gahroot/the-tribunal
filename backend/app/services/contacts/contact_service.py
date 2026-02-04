@@ -16,6 +16,7 @@ from app.schemas.contact import ContactWithConversationResponse
 from app.services.contacts.contact_repository import (
     bulk_delete_contacts,
     get_contact_by_id,
+    list_contact_ids,
     list_contacts_paginated,
 )
 from app.services.contacts.contact_repository import (
@@ -95,6 +96,34 @@ class ContactService:
             "page": page,
             "page_size": page_size,
             "pages": ceil(total / page_size) if total > 0 else 1,
+        }
+
+    async def list_contact_ids(
+        self,
+        workspace_id: uuid.UUID,
+        status_filter: str | None = None,
+        search: str | None = None,
+    ) -> dict[str, Any]:
+        """Get all contact IDs matching filters (for Select All functionality).
+
+        Args:
+            workspace_id: The workspace UUID
+            status_filter: Optional status filter
+            search: Optional search term
+
+        Returns:
+            Dict with ids (list) and total (count)
+        """
+        ids, total = await list_contact_ids(
+            workspace_id=workspace_id,
+            db=self.db,
+            status_filter=status_filter,
+            search=search,
+        )
+
+        return {
+            "ids": ids,
+            "total": total,
         }
 
     async def get_contact(

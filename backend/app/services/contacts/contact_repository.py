@@ -385,6 +385,46 @@ async def get_contact_timeline(
     return timeline_items[-limit:]
 
 
+async def list_contact_ids(
+    workspace_id: uuid.UUID,
+    db: AsyncSession,
+    status_filter: str | None = None,
+    search: str | None = None,
+) -> tuple[list[int], int]:
+    """Get all contact IDs matching filters (for Select All functionality).
+
+    Args:
+        workspace_id: The workspace UUID
+        db: Database session
+        status_filter: Optional status filter
+        search: Optional search term
+
+    Returns:
+        Tuple of (list of contact IDs, total count)
+    """
+    query = select(Contact.id).where(Contact.workspace_id == workspace_id)
+
+    if status_filter:
+        query = query.where(Contact.status == status_filter)
+
+    if search:
+        search_term = f"%{search}%"
+        query = query.where(
+            (Contact.first_name.ilike(search_term))
+            | (Contact.last_name.ilike(search_term))
+            | (Contact.email.ilike(search_term))
+            | (Contact.phone_number.ilike(search_term))
+            | (Contact.company_name.ilike(search_term))
+        )
+
+    query = query.order_by(Contact.id)
+
+    result = await db.execute(query)
+    ids = [row[0] for row in result.all()]
+
+    return ids, len(ids)
+
+
 async def find_or_create_conversation(
     contact_id: int,
     workspace_id: uuid.UUID,

@@ -38,11 +38,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-import { ContactSelector } from "./contact-selector";
+import { VirtualContactSelector } from "./virtual-contact-selector";
 import { AgentSelector } from "./agent-selector";
 import { OfferSelector } from "./offer-selector";
 
-import type { Contact, Agent, Offer, PhoneNumber, SMSCampaign } from "@/types";
+import type { Agent, Offer, PhoneNumber, SMSCampaign } from "@/types";
 import type { CreateSMSCampaignRequest } from "@/lib/api/sms-campaigns";
 import { DAYS_OF_WEEK, TIMEZONES } from "@/lib/constants";
 
@@ -59,13 +59,13 @@ const STEPS = [
 type StepId = (typeof STEPS)[number]["id"];
 
 interface SMSCampaignWizardProps {
-  contacts: Contact[];
+  workspaceId: string;
   agents: Agent[];
   offers: Offer[];
   phoneNumbers: PhoneNumber[];
   onSubmit: (
     data: CreateSMSCampaignRequest,
-    contactIds: number[]
+    contactIds: Set<number>
   ) => Promise<SMSCampaign>;
   onCreateOffer?: (offer: Partial<Offer>) => Promise<void>;
   onCancel?: () => void;
@@ -122,7 +122,7 @@ const initialFormData: CampaignFormData = {
 };
 
 export function SMSCampaignWizard({
-  contacts,
+  workspaceId,
   agents,
   offers,
   phoneNumbers,
@@ -133,7 +133,7 @@ export function SMSCampaignWizard({
 }: SMSCampaignWizardProps) {
   const [currentStep, setCurrentStep] = useState<StepId>("basics");
   const [formData, setFormData] = useState<CampaignFormData>(initialFormData);
-  const [selectedContactIds, setSelectedContactIds] = useState<number[]>([]);
+  const [selectedContactIds, setSelectedContactIds] = useState<Set<number>>(new Set());
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const currentStepIndex = STEPS.findIndex((s) => s.id === currentStep);
@@ -164,7 +164,7 @@ export function SMSCampaignWizard({
             newErrors.from_phone_number = "Phone number is required";
           break;
         case "contacts":
-          if (selectedContactIds.length === 0)
+          if (selectedContactIds.size === 0)
             newErrors.contacts = "Select at least one contact";
           break;
         case "message":
@@ -357,8 +357,8 @@ export function SMSCampaignWizard({
                 <AlertDescription>{errors.contacts}</AlertDescription>
               </Alert>
             )}
-            <ContactSelector
-              contacts={contacts}
+            <VirtualContactSelector
+              workspaceId={workspaceId}
               selectedIds={selectedContactIds}
               onSelectionChange={setSelectedContactIds}
             />
@@ -783,7 +783,7 @@ export function SMSCampaignWizard({
               <CardContent>
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary" className="text-lg px-3 py-1">
-                    {selectedContactIds.length}
+                    {selectedContactIds.size}
                   </Badge>
                   <span className="text-muted-foreground">contacts selected</span>
                 </div>

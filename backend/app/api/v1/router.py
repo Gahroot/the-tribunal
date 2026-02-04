@@ -7,6 +7,8 @@ from app.api.v1 import (
     appointments,
     auth,
     automations,
+    call_feedback,
+    call_outcomes,
     calls,
     campaigns,
     contacts,
@@ -23,6 +25,7 @@ from app.api.v1 import (
     offers,
     opportunities,
     phone_numbers,
+    prompt_versions,
     scraping,
     settings,
     voice_campaigns,
@@ -49,6 +52,11 @@ api_router.include_router(
     agents.router,
     prefix="/workspaces/{workspace_id}/agents",
     tags=["Agents"],
+)
+api_router.include_router(
+    prompt_versions.router,
+    prefix="/workspaces/{workspace_id}/agents/{agent_id}/prompts",
+    tags=["Prompt Versions"],
 )
 api_router.include_router(
     campaigns.router,
@@ -94,6 +102,16 @@ api_router.include_router(
     calls.router,
     prefix="/workspaces/{workspace_id}/calls",
     tags=["Voice Calls"],
+)
+api_router.include_router(
+    call_outcomes.router,
+    prefix="/workspaces/{workspace_id}/calls/{message_id}/outcome",
+    tags=["Call Outcomes"],
+)
+api_router.include_router(
+    call_feedback.router,
+    prefix="/workspaces/{workspace_id}/calls/{message_id}/feedback",
+    tags=["Call Feedback"],
 )
 api_router.include_router(
     automations.router,

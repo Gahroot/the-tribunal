@@ -36,11 +36,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-import { ContactSelector } from "./contact-selector";
+import { VirtualContactSelector } from "./virtual-contact-selector";
 import { AgentSelector } from "./agent-selector";
 import { SMSFallbackStep, type SMSFallbackMode } from "./sms-fallback-step";
 
-import type { Contact, Agent, PhoneNumber, VoiceCampaign } from "@/types";
+import type { Agent, PhoneNumber, VoiceCampaign } from "@/types";
 import type { CreateVoiceCampaignRequest } from "@/lib/api/voice-campaigns";
 import { DAYS_OF_WEEK, TIMEZONES } from "@/lib/constants";
 
@@ -57,13 +57,13 @@ const STEPS = [
 type StepId = (typeof STEPS)[number]["id"];
 
 interface VoiceCampaignWizardProps {
-  contacts: Contact[];
+  workspaceId: string;
   voiceAgents: Agent[];
   textAgents: Agent[];
   phoneNumbers: PhoneNumber[];
   onSubmit: (
     data: CreateVoiceCampaignRequest,
-    contactIds: number[]
+    contactIds: Set<number>
   ) => Promise<VoiceCampaign>;
   onCancel?: () => void;
   isSubmitting?: boolean;
@@ -119,7 +119,7 @@ const initialFormData: CampaignFormData = {
 };
 
 export function VoiceCampaignWizard({
-  contacts,
+  workspaceId,
   voiceAgents,
   textAgents,
   phoneNumbers,
@@ -129,7 +129,7 @@ export function VoiceCampaignWizard({
 }: VoiceCampaignWizardProps) {
   const [currentStep, setCurrentStep] = useState<StepId>("basics");
   const [formData, setFormData] = useState<CampaignFormData>(initialFormData);
-  const [selectedContactIds, setSelectedContactIds] = useState<number[]>([]);
+  const [selectedContactIds, setSelectedContactIds] = useState<Set<number>>(new Set());
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const currentStepIndex = STEPS.findIndex((s) => s.id === currentStep);
@@ -159,7 +159,7 @@ export function VoiceCampaignWizard({
             newErrors.from_phone_number = "Phone number is required";
           break;
         case "contacts":
-          if (selectedContactIds.length === 0)
+          if (selectedContactIds.size === 0)
             newErrors.contacts = "Select at least one contact";
           break;
         case "voice":
@@ -352,8 +352,8 @@ export function VoiceCampaignWizard({
                 <AlertDescription>{errors.contacts}</AlertDescription>
               </Alert>
             )}
-            <ContactSelector
-              contacts={contacts}
+            <VirtualContactSelector
+              workspaceId={workspaceId}
               selectedIds={selectedContactIds}
               onSelectionChange={setSelectedContactIds}
             />
@@ -652,7 +652,7 @@ export function VoiceCampaignWizard({
               <CardContent>
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary" className="text-lg px-3 py-1">
-                    {selectedContactIds.length}
+                    {selectedContactIds.size}
                   </Badge>
                   <span className="text-muted-foreground">
                     contacts will receive calls

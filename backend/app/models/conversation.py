@@ -22,10 +22,13 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.agent import Agent
+    from app.models.call_feedback import CallFeedback
+    from app.models.call_outcome import CallOutcome
     from app.models.campaign import CampaignContact
     from app.models.contact import Contact
     from app.models.message_test import TestContact
     from app.models.phone_number import PhoneNumber
+    from app.models.prompt_version import PromptVersion
     from app.models.workspace import Workspace
 
 
@@ -238,6 +241,14 @@ class Message(Base):
     transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
     booking_outcome: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
+    # Prompt version attribution for calls
+    prompt_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("prompt_versions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     # Timestamps
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -252,6 +263,15 @@ class Message(Base):
     )
     from_phone_number: Mapped["PhoneNumber | None"] = relationship(  # noqa: F821
         "PhoneNumber", foreign_keys=[from_phone_number_id]
+    )
+    prompt_version: Mapped["PromptVersion | None"] = relationship(
+        "PromptVersion", foreign_keys=[prompt_version_id]
+    )
+    call_outcome: Mapped["CallOutcome | None"] = relationship(
+        "CallOutcome", back_populates="message", uselist=False
+    )
+    feedback: Mapped[list["CallFeedback"]] = relationship(
+        "CallFeedback", back_populates="message"
     )
 
     def __repr__(self) -> str:

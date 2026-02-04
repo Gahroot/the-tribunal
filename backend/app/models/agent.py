@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from app.models.conversation import Conversation, Message
     from app.models.message_test import MessageTest
     from app.models.phone_number import PhoneNumber
+    from app.models.prompt_version import PromptVersion
     from app.models.workspace import Workspace
 
 
@@ -145,6 +146,11 @@ class Agent(Base):
     )
     message_tests: Mapped[list["MessageTest"]] = relationship(
         "MessageTest", back_populates="agent"
+    )
+    prompt_versions: Mapped[list["PromptVersion"]] = relationship(
+        "PromptVersion",
+        back_populates="agent",
+        order_by="PromptVersion.version_number.desc()",
     )
 
     def __repr__(self) -> str:
