@@ -6,9 +6,10 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser, get_workspace
+from app.db.pagination import paginate
 from app.models.agent import Agent, generate_public_id
 from app.models.workspace import Workspace
 
@@ -129,23 +130,15 @@ async def list_agents(
     if active_only:
         query = query.where(Agent.is_active.is_(True))
 
-    # Get total count
-    count_query = select(func.count()).select_from(query.subquery())
-    total = (await db.execute(count_query)).scalar() or 0
-
-    # Get paginated results
     query = query.order_by(Agent.created_at.desc())
-    query = query.offset((page - 1) * page_size).limit(page_size)
-
-    result = await db.execute(query)
-    agents = result.scalars().all()
+    result = await paginate(db, query, page=page, page_size=page_size)
 
     return PaginatedAgents(
-        items=[AgentResponse.model_validate(a) for a in agents],
-        total=total,
-        page=page,
-        page_size=page_size,
-        pages=(total + page_size - 1) // page_size,
+        items=[AgentResponse.model_validate(a) for a in result.items],
+        total=result.total,
+        page=result.page,
+        page_size=result.page_size,
+        pages=result.pages,
     )
 
 

@@ -5,10 +5,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.core.config import settings
+from app.db.pagination import paginate
 from app.models.phone_number import PhoneNumber
 from app.models.workspace import Workspace
 from app.services.telephony.telnyx import TelnyxSMSService
@@ -87,23 +88,15 @@ async def list_phone_numbers(
     if sms_enabled is not None:
         query = query.where(PhoneNumber.sms_enabled == sms_enabled)
 
-    # Get total count
-    count_query = select(func.count()).select_from(query.subquery())
-    total = (await db.execute(count_query)).scalar() or 0
-
-    # Get paginated results
     query = query.order_by(PhoneNumber.created_at.desc())
-    query = query.offset((page - 1) * page_size).limit(page_size)
-
-    result = await db.execute(query)
-    phone_numbers = result.scalars().all()
+    result = await paginate(db, query, page=page, page_size=page_size)
 
     return PaginatedPhoneNumbers(
-        items=[PhoneNumberResponse.model_validate(p) for p in phone_numbers],
-        total=total,
-        page=page,
-        page_size=page_size,
-        pages=(total + page_size - 1) // page_size,
+        items=[PhoneNumberResponse.model_validate(p) for p in result.items],
+        total=result.total,
+        page=result.page,
+        page_size=result.page_size,
+        pages=result.pages,
     )
 
 

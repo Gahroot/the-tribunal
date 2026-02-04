@@ -2,14 +2,14 @@
 
 import uuid
 from datetime import UTC, datetime
-from math import ceil
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DB, CurrentUser, get_workspace
+from app.db.pagination import paginate
 from app.models.opportunity import Opportunity, OpportunityActivity, OpportunityLineItem
 from app.models.pipeline import Pipeline, PipelineStage
 from app.schemas.opportunity import (
@@ -302,24 +302,15 @@ async def list_opportunities(
         search_term = f"%{search}%"
         query = query.where(Opportunity.name.ilike(search_term))
 
-    # Get total count
-    count_query = select(func.count()).select_from(query.subquery())
-    total_result = await db.execute(count_query)
-    total = total_result.scalar() or 0
-
-    # Apply pagination
     query = query.order_by(Opportunity.created_at.desc())
-    query = query.offset((page - 1) * page_size).limit(page_size)
-
-    result = await db.execute(query)
-    opportunities = result.scalars().all()
+    result = await paginate(db, query, page=page, page_size=page_size)
 
     return PaginatedOpportunities(
-        items=[OpportunityResponse.model_validate(o) for o in opportunities],
-        total=total,
-        page=page,
-        page_size=page_size,
-        pages=ceil(total / page_size) if total > 0 else 1,
+        items=[OpportunityResponse.model_validate(o) for o in result.items],
+        total=result.total,
+        page=result.page,
+        page_size=result.page_size,
+        pages=result.pages,
     )
 
 

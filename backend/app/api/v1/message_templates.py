@@ -4,9 +4,10 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser, get_workspace
+from app.db.pagination import paginate
 from app.models.message_template import MessageTemplate
 from app.models.workspace import Workspace
 from app.schemas.message_template import (
@@ -30,23 +31,15 @@ async def list_message_templates(
     """List message templates in a workspace."""
     query = select(MessageTemplate).where(MessageTemplate.workspace_id == workspace_id)
 
-    # Get total count
-    count_query = select(func.count()).select_from(query.subquery())
-    total = (await db.execute(count_query)).scalar() or 0
-
-    # Get paginated results
     query = query.order_by(MessageTemplate.created_at.desc())
-    query = query.offset((page - 1) * page_size).limit(page_size)
-
-    result = await db.execute(query)
-    templates = result.scalars().all()
+    result = await paginate(db, query, page=page, page_size=page_size)
 
     return PaginatedMessageTemplates(
-        items=[MessageTemplateResponse.model_validate(t) for t in templates],
-        total=total,
-        page=page,
-        page_size=page_size,
-        pages=(total + page_size - 1) // page_size if total > 0 else 0,
+        items=[MessageTemplateResponse.model_validate(t) for t in result.items],
+        total=result.total,
+        page=result.page,
+        page_size=result.page_size,
+        pages=result.pages,
     )
 
 

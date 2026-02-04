@@ -6,12 +6,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.core.config import settings
+from app.db.pagination import paginate
 from app.models.agent import Agent
 from app.models.campaign import CampaignContact
 from app.models.conversation import Conversation, Message
@@ -167,16 +168,9 @@ async def list_conversations(
     if unread_only:
         query = query.where(Conversation.unread_count > 0)
 
-    # Get total count
-    count_query = select(func.count()).select_from(query.subquery())
-    total = (await db.execute(count_query)).scalar() or 0
-
-    # Get paginated results
     query = query.order_by(Conversation.last_message_at.desc().nullslast())
-    query = query.offset((page - 1) * page_size).limit(page_size)
-
-    result = await db.execute(query)
-    conversations = list(result.scalars().all())
+    result = await paginate(db, query, page=page, page_size=page_size)
+    conversations = list(result.items)
 
     # Sync campaign agents for all conversations in a single batch query
     if conversations:
@@ -215,10 +209,10 @@ async def list_conversations(
 
     return PaginatedConversations(
         items=[ConversationResponse.model_validate(c) for c in conversations],
-        total=total,
-        page=page,
-        page_size=page_size,
-        pages=(total + page_size - 1) // page_size,
+        total=result.total,
+        page=result.page,
+        page_size=result.page_size,
+        pages=result.pages,
     )
 
 

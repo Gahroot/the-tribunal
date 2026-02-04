@@ -4,9 +4,10 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser, get_workspace
+from app.db.pagination import paginate
 from app.models.automation import Automation
 from app.models.workspace import Workspace
 from app.schemas.automation import (
@@ -35,23 +36,15 @@ async def list_automations(
     if active_only:
         query = query.where(Automation.is_active.is_(True))
 
-    # Get total count
-    count_query = select(func.count()).select_from(query.subquery())
-    total = (await db.execute(count_query)).scalar() or 0
-
-    # Get paginated results
     query = query.order_by(Automation.created_at.desc())
-    query = query.offset((page - 1) * page_size).limit(page_size)
-
-    result = await db.execute(query)
-    automations = result.scalars().all()
+    result = await paginate(db, query, page=page, page_size=page_size)
 
     return PaginatedAutomations(
-        items=[AutomationResponse.model_validate(a) for a in automations],
-        total=total,
-        page=page,
-        page_size=page_size,
-        pages=(total + page_size - 1) // page_size if total > 0 else 0,
+        items=[AutomationResponse.model_validate(a) for a in result.items],
+        total=result.total,
+        page=result.page,
+        page_size=result.page_size,
+        pages=result.pages,
     )
 
 

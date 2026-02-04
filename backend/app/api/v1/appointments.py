@@ -5,10 +5,11 @@ from typing import Annotated
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DB, CurrentUser, get_workspace
+from app.db.pagination import paginate_unique
 from app.models.appointment import Appointment
 from app.models.workspace import Workspace
 from app.schemas.appointment import (
@@ -53,25 +54,17 @@ async def list_appointments(
     if status_filter:
         query = query.where(Appointment.status == status_filter)
 
-    # Get total count
-    count_query = select(func.count()).select_from(query.subquery())
-    total = (await db.execute(count_query)).scalar() or 0
-
-    # Get paginated results
     query = query.order_by(Appointment.scheduled_at.desc())
-    query = query.offset((page - 1) * page_size).limit(page_size)
+    result = await paginate_unique(db, query, page=page, page_size=page_size)
 
-    result = await db.execute(query)
-    appointments = result.scalars().all()
-
-    log.info("appointments_listed", count=len(appointments), total=total)
+    log.info("appointments_listed", count=len(result.items), total=result.total)
 
     return PaginatedAppointments(
-        items=[AppointmentResponse.model_validate(a) for a in appointments],
-        total=total,
-        page=page,
-        page_size=page_size,
-        pages=(total + page_size - 1) // page_size,
+        items=[AppointmentResponse.model_validate(a) for a in result.items],
+        total=result.total,
+        page=result.page,
+        page_size=result.page_size,
+        pages=result.pages,
     )
 
 

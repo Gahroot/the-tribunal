@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DB, CurrentUser, get_workspace
+from app.db.pagination import paginate
 from app.models.contact import Contact
 from app.models.lead_magnet import LeadMagnet
 from app.models.lead_magnet_lead import LeadMagnetLead
@@ -78,23 +79,15 @@ async def list_offers(
     if active_only:
         query = query.where(Offer.is_active.is_(True))
 
-    # Get total count
-    count_query = select(func.count()).select_from(query.subquery())
-    total = (await db.execute(count_query)).scalar() or 0
-
-    # Get paginated results
     query = query.order_by(Offer.created_at.desc())
-    query = query.offset((page - 1) * page_size).limit(page_size)
-
-    result = await db.execute(query)
-    offers = result.scalars().all()
+    result = await paginate(db, query, page=page, page_size=page_size)
 
     return PaginatedOffers(
-        items=[OfferResponse.model_validate(o) for o in offers],
-        total=total,
-        page=page,
-        page_size=page_size,
-        pages=(total + page_size - 1) // page_size,
+        items=[OfferResponse.model_validate(o) for o in result.items],
+        total=result.total,
+        page=result.page,
+        page_size=result.page_size,
+        pages=result.pages,
     )
 
 

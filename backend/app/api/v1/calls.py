@@ -6,10 +6,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.core.config import settings
+from app.db.pagination import paginate_unique
 from app.models.conversation import Conversation, Message
 from app.models.phone_number import PhoneNumber
 from app.models.workspace import Workspace
@@ -210,28 +211,20 @@ async def list_calls(
         )
     )
 
-    # Get total count
-    count_query = select(func.count()).select_from(query.subquery())
-    total = (await db.execute(count_query)).scalar() or 0
-
-    # Get paginated results
     query = query.order_by(Message.created_at.desc())
-    query = query.offset((page - 1) * page_size).limit(page_size)
-
-    result = await db.execute(query)
-    messages = result.unique().scalars().all()
+    result = await paginate_unique(db, query, page=page, page_size=page_size)
 
     return PaginatedCalls(
         items=[
             _build_call_response(
                 m, m.conversation, agent_name=m.agent.name if m.agent else None
             )
-            for m in messages
+            for m in result.items
         ],
-        total=total,
-        page=page,
-        page_size=page_size,
-        pages=(total + page_size - 1) // page_size,
+        total=result.total,
+        page=result.page,
+        page_size=result.page_size,
+        pages=result.pages,
     )
 
 

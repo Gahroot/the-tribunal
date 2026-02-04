@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DB, CurrentUser, get_workspace
+from app.db.pagination import paginate
 from app.models.agent import Agent
 from app.models.campaign import Campaign, CampaignContact, CampaignStatus
 from app.models.contact import Contact
@@ -60,23 +61,15 @@ async def list_message_tests(
     if status_filter:
         query = query.where(MessageTest.status == status_filter)
 
-    # Get total count
-    count_query = select(func.count()).select_from(query.subquery())
-    total = (await db.execute(count_query)).scalar() or 0
-
-    # Get paginated results
     query = query.order_by(MessageTest.created_at.desc())
-    query = query.offset((page - 1) * page_size).limit(page_size)
-
-    result = await db.execute(query)
-    tests = result.scalars().all()
+    result = await paginate(db, query, page=page, page_size=page_size)
 
     return PaginatedMessageTests(
-        items=[MessageTestResponse.model_validate(t) for t in tests],
-        total=total,
-        page=page,
-        page_size=page_size,
-        pages=(total + page_size - 1) // page_size,
+        items=[MessageTestResponse.model_validate(t) for t in result.items],
+        total=result.total,
+        page=result.page,
+        page_size=result.page_size,
+        pages=result.pages,
     )
 
 
