@@ -232,11 +232,11 @@ export function VirtualContactSelector({
               )}
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="100">First 100</SelectItem>
-              <SelectItem value="250">First 250</SelectItem>
-              <SelectItem value="500">First 500</SelectItem>
-              <SelectItem value="1000">First 1,000</SelectItem>
-              <SelectItem value="all">All ({total.toLocaleString()})</SelectItem>
+              <SelectItem value="100">Select 100</SelectItem>
+              <SelectItem value="250">Select 250</SelectItem>
+              <SelectItem value="500">Select 500</SelectItem>
+              <SelectItem value="1000">Select 1,000</SelectItem>
+              <SelectItem value="all">Select All ({total.toLocaleString()})</SelectItem>
             </SelectContent>
           </Select>
           <Button

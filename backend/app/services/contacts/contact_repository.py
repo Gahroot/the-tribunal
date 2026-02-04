@@ -417,7 +417,7 @@ async def list_contact_ids(
             | (Contact.company_name.ilike(search_term))
         )
 
-    query = query.order_by(Contact.id)
+    query = query.order_by(Contact.created_at.desc(), Contact.id.desc())
 
     result = await db.execute(query)
     ids = [row[0] for row in result.all()]
