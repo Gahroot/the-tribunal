@@ -70,13 +70,18 @@ export function VirtualContactSelector({
     status: statusFilter,
   });
 
-  // Fetch all IDs for Select All
-  const selectAllMutation = useMutation({
-    mutationFn: async () => {
+  // Fetch IDs for selection (with optional limit)
+  const selectMutation = useMutation({
+    mutationFn: async (limit?: number) => {
       const params: { search?: string; status?: ContactStatus } = {};
       if (debouncedSearch) params.search = debouncedSearch;
       if (statusFilter !== "all") params.status = statusFilter;
-      return contactsApi.listIds(workspaceId, params);
+      const result = await contactsApi.listIds(workspaceId, params);
+      // Apply limit if specified
+      if (limit && limit < result.ids.length) {
+        return { ...result, ids: result.ids.slice(0, limit) };
+      }
+      return result;
     },
     onSuccess: (data) => {
       const newSelected = new Set(selectedIds);
@@ -123,8 +128,12 @@ export function VirtualContactSelector({
     [selectedIds, onSelectionChange]
   );
 
-  const handleSelectAll = () => {
-    selectAllMutation.mutate();
+  const handleQuickSelect = (value: string) => {
+    if (value === "all") {
+      selectMutation.mutate(undefined);
+    } else {
+      selectMutation.mutate(parseInt(value));
+    }
   };
 
   const deselectAll = () => {
@@ -207,21 +216,29 @@ export function VirtualContactSelector({
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleSelectAll}
-            disabled={total === 0 || selectAllMutation.isPending}
+          <Select
+            value=""
+            onValueChange={handleQuickSelect}
+            disabled={total === 0 || selectMutation.isPending}
           >
-            {selectAllMutation.isPending ? (
-              <>
-                <Loader2 className="size-4 mr-2 animate-spin" />
-                Selecting...
-              </>
-            ) : (
-              <>Select All ({total})</>
-            )}
-          </Button>
+            <SelectTrigger className="w-36">
+              {selectMutation.isPending ? (
+                <>
+                  <Loader2 className="size-4 mr-2 animate-spin" />
+                  Selecting...
+                </>
+              ) : (
+                <SelectValue placeholder="Select..." />
+              )}
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="100">First 100</SelectItem>
+              <SelectItem value="250">First 250</SelectItem>
+              <SelectItem value="500">First 500</SelectItem>
+              <SelectItem value="1000">First 1,000</SelectItem>
+              <SelectItem value="all">All ({total.toLocaleString()})</SelectItem>
+            </SelectContent>
+          </Select>
           <Button
             variant="outline"
             size="sm"
