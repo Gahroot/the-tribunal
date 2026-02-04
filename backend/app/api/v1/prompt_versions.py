@@ -15,6 +15,7 @@ from app.models.prompt_version import PromptVersion
 from app.models.prompt_version_stats import PromptVersionStats
 from app.models.workspace import Workspace
 from app.schemas.prompt_version import (
+    ArmStatusUpdate,
     PromptVersionActivateResponse,
     PromptVersionCreate,
     PromptVersionListResponse,
@@ -22,7 +23,11 @@ from app.schemas.prompt_version import (
     PromptVersionRollbackResponse,
     PromptVersionStatsResponse,
     PromptVersionUpdate,
+    VersionComparisonItem,
+    VersionComparisonResponse,
+    WinnerDetectionResponse,
 )
+from app.services.ai.bandit_statistics import BanditStatisticsService
 from app.services.ai.prompt_version_service import PromptVersionService
 
 router = APIRouter()
@@ -59,24 +64,26 @@ async def list_prompt_versions(
     )
 
 
-@router.get("/active", response_model=PromptVersionResponse | None)
-async def get_active_prompt_version(
+@router.get("/active", response_model=list[PromptVersionResponse])
+async def get_active_prompt_versions(
     workspace_id: uuid.UUID,
     agent_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
     workspace: Annotated[Workspace, Depends(get_workspace)],
-) -> PromptVersionResponse | None:
-    """Get the currently active prompt version for an agent."""
+) -> list[PromptVersionResponse]:
+    """Get all active prompt versions for an agent.
+
+    Returns versions that are is_active=True and arm_status='active'.
+    For single-version mode, returns a list with one item.
+    For multi-variant A/B testing, returns all active variants.
+    """
     await get_or_404(db, Agent, agent_id, workspace_id=workspace_id)
 
     service = PromptVersionService()
-    active = await service.get_active_version(db, agent_id)
+    active_versions = await service.get_active_versions(db, agent_id)
 
-    if not active:
-        return None
-
-    return PromptVersionResponse.model_validate(active)
+    return [PromptVersionResponse.model_validate(v) for v in active_versions]
 
 
 @router.post("", response_model=PromptVersionResponse, status_code=status.HTTP_201_CREATED)
@@ -105,6 +112,8 @@ async def create_prompt_version(
         created_by_id=current_user.id,
         is_baseline=body.is_baseline,
         activate=False,
+        traffic_percentage=body.traffic_percentage,
+        experiment_id=body.experiment_id,
     )
 
     return PromptVersionResponse.model_validate(version)
@@ -171,6 +180,12 @@ async def update_prompt_version(
 
     if body.is_baseline is not None:
         version.is_baseline = body.is_baseline
+
+    if body.traffic_percentage is not None:
+        version.traffic_percentage = body.traffic_percentage
+
+    if body.experiment_id is not None:
+        version.experiment_id = body.experiment_id
 
     await db.commit()
     await db.refresh(version)
@@ -340,4 +355,337 @@ async def get_prompt_version_stats(
         avg_quality_score=row.avg_quality,
         stats_from=datetime.combine(row.min_date, datetime.min.time()) if row.min_date else None,
         stats_to=datetime.combine(row.max_date, datetime.min.time()) if row.max_date else None,
+    )
+
+
+# =============================================================================
+# Multi-Variant A/B Testing Endpoints
+# =============================================================================
+
+
+@router.post("/{version_id}/activate-for-testing", response_model=PromptVersionResponse)
+async def activate_version_for_testing(
+    workspace_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    version_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> PromptVersionResponse:
+    """Activate a version for A/B testing without deactivating others.
+
+    Unlike the standard activate endpoint, this allows multiple versions
+    to be active simultaneously for multi-variant testing.
+    """
+    await get_or_404(db, Agent, agent_id, workspace_id=workspace_id)
+
+    result = await db.execute(
+        select(PromptVersion).where(
+            PromptVersion.id == version_id,
+            PromptVersion.agent_id == agent_id,
+        )
+    )
+    version = result.scalar_one_or_none()
+
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Prompt version not found",
+        )
+
+    service = PromptVersionService()
+    activated = await service.activate_for_testing(db, version_id)
+
+    return PromptVersionResponse.model_validate(activated)
+
+
+@router.post("/{version_id}/deactivate", response_model=PromptVersionResponse)
+async def deactivate_prompt_version(
+    workspace_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    version_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> PromptVersionResponse:
+    """Deactivate a version without eliminating it."""
+    await get_or_404(db, Agent, agent_id, workspace_id=workspace_id)
+
+    result = await db.execute(
+        select(PromptVersion).where(
+            PromptVersion.id == version_id,
+            PromptVersion.agent_id == agent_id,
+        )
+    )
+    version = result.scalar_one_or_none()
+
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Prompt version not found",
+        )
+
+    service = PromptVersionService()
+    deactivated = await service.deactivate_version(db, version_id)
+
+    return PromptVersionResponse.model_validate(deactivated)
+
+
+@router.post("/{version_id}/pause", response_model=PromptVersionResponse)
+async def pause_prompt_version(
+    workspace_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    version_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> PromptVersionResponse:
+    """Pause a version (temporarily exclude from bandit selection)."""
+    await get_or_404(db, Agent, agent_id, workspace_id=workspace_id)
+
+    result = await db.execute(
+        select(PromptVersion).where(
+            PromptVersion.id == version_id,
+            PromptVersion.agent_id == agent_id,
+        )
+    )
+    version = result.scalar_one_or_none()
+
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Prompt version not found",
+        )
+
+    try:
+        service = PromptVersionService()
+        paused = await service.pause_version(db, version_id)
+        return PromptVersionResponse.model_validate(paused)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
+
+
+@router.post("/{version_id}/resume", response_model=PromptVersionResponse)
+async def resume_prompt_version(
+    workspace_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    version_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> PromptVersionResponse:
+    """Resume a paused version."""
+    await get_or_404(db, Agent, agent_id, workspace_id=workspace_id)
+
+    result = await db.execute(
+        select(PromptVersion).where(
+            PromptVersion.id == version_id,
+            PromptVersion.agent_id == agent_id,
+        )
+    )
+    version = result.scalar_one_or_none()
+
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Prompt version not found",
+        )
+
+    try:
+        service = PromptVersionService()
+        resumed = await service.resume_version(db, version_id)
+        return PromptVersionResponse.model_validate(resumed)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
+
+
+@router.post("/{version_id}/eliminate", response_model=PromptVersionResponse)
+async def eliminate_prompt_version(
+    workspace_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    version_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> PromptVersionResponse:
+    """Eliminate a version from A/B testing permanently.
+
+    This is a terminal state - eliminated versions cannot be reactivated.
+    Use this when statistical analysis shows a version is clearly inferior.
+    """
+    await get_or_404(db, Agent, agent_id, workspace_id=workspace_id)
+
+    result = await db.execute(
+        select(PromptVersion).where(
+            PromptVersion.id == version_id,
+            PromptVersion.agent_id == agent_id,
+        )
+    )
+    version = result.scalar_one_or_none()
+
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Prompt version not found",
+        )
+
+    service = PromptVersionService()
+    eliminated = await service.eliminate_version(db, version_id)
+
+    return PromptVersionResponse.model_validate(eliminated)
+
+
+@router.put("/{version_id}/arm-status", response_model=PromptVersionResponse)
+async def update_arm_status(
+    workspace_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    version_id: uuid.UUID,
+    body: ArmStatusUpdate,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> PromptVersionResponse:
+    """Update the arm status of a version.
+
+    Valid statuses: active, paused, eliminated
+    """
+    await get_or_404(db, Agent, agent_id, workspace_id=workspace_id)
+
+    result = await db.execute(
+        select(PromptVersion).where(
+            PromptVersion.id == version_id,
+            PromptVersion.agent_id == agent_id,
+        )
+    )
+    version = result.scalar_one_or_none()
+
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Prompt version not found",
+        )
+
+    try:
+        service = PromptVersionService()
+        updated = await service.update_arm_status(db, version_id, body.arm_status)
+        return PromptVersionResponse.model_validate(updated)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
+
+
+# =============================================================================
+# Statistical Comparison Endpoints
+# =============================================================================
+
+
+@router.get("/compare", response_model=VersionComparisonResponse)
+async def compare_versions(
+    workspace_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+    winner_threshold: float = Query(0.95, ge=0.5, le=0.999),
+) -> VersionComparisonResponse:
+    """Compare all active versions with statistical analysis.
+
+    Returns probability each version is best, credible intervals,
+    and recommended actions (continue, declare_winner, eliminate_worst).
+    """
+    await get_or_404(db, Agent, agent_id, workspace_id=workspace_id)
+
+    # Get all active versions
+    service = PromptVersionService()
+    active_versions = await service.get_active_versions(db, agent_id)
+
+    if not active_versions:
+        return VersionComparisonResponse(
+            versions=[],
+            winner_id=None,
+            winner_probability=None,
+            recommended_action="no_versions",
+            min_samples_needed=0,
+        )
+
+    # Run statistical comparison
+    stats_service = BanditStatisticsService()
+    comparison = stats_service.compare_versions(
+        active_versions, winner_threshold=winner_threshold
+    )
+
+    # Convert to response format
+    version_items = [
+        VersionComparisonItem(
+            version_id=v.version_id,
+            version_number=v.version_number,
+            is_active=v.is_active,
+            is_baseline=v.is_baseline,
+            arm_status=v.arm_status,
+            probability_best=v.probability_best,
+            credible_interval_lower=v.credible_interval[0],
+            credible_interval_upper=v.credible_interval[1],
+            sample_size=v.sample_size,
+            booking_rate=v.booking_rate,
+            mean_estimate=v.mean_estimate,
+        )
+        for v in comparison.versions
+    ]
+
+    return VersionComparisonResponse(
+        versions=version_items,
+        winner_id=comparison.winner_id,
+        winner_probability=comparison.winner_probability,
+        recommended_action=comparison.recommended_action,
+        min_samples_needed=comparison.min_samples_needed,
+    )
+
+
+@router.get("/winner", response_model=WinnerDetectionResponse)
+async def detect_winner(
+    workspace_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+    threshold: float = Query(0.95, ge=0.5, le=0.999),
+) -> WinnerDetectionResponse:
+    """Check if a statistical winner can be declared.
+
+    A winner is declared when one version has probability > threshold
+    of being the best performing version.
+    """
+    await get_or_404(db, Agent, agent_id, workspace_id=workspace_id)
+
+    # Get all active versions
+    service = PromptVersionService()
+    active_versions = await service.get_active_versions(db, agent_id)
+
+    if not active_versions:
+        return WinnerDetectionResponse(
+            winner_id=None,
+            winner_probability=None,
+            confidence_threshold=threshold,
+            is_conclusive=False,
+            message="No active versions to compare",
+        )
+
+    # Detect winner
+    stats_service = BanditStatisticsService()
+    result = stats_service.detect_winner(active_versions, threshold=threshold)
+
+    return WinnerDetectionResponse(
+        winner_id=result.winner_id,
+        winner_probability=result.winner_probability,
+        confidence_threshold=result.confidence_threshold,
+        is_conclusive=result.is_conclusive,
+        message=result.message,
     )

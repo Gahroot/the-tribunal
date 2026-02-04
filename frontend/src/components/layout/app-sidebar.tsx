@@ -19,6 +19,7 @@ import {
   FlaskConical,
   MapPin,
   Sparkles,
+  Lightbulb,
 } from "lucide-react";
 import { useAuth } from "@/providers/auth-provider";
 
@@ -102,6 +103,11 @@ const managementNavItems = [
     title: "AI Agents",
     url: "/agents",
     icon: Bot,
+  },
+  {
+    title: "AI Suggestions",
+    url: "/suggestions",
+    icon: Lightbulb,
   },
   {
     title: "Offers",

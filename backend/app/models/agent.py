@@ -116,6 +116,17 @@ class Agent(Base):
     total_calls: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     total_messages: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
 
+    # Auto-improvement settings
+    auto_suggest: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )  # Generate suggestions automatically
+    auto_activate: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )  # Auto-approve and activate suggestions
+    auto_improve_min_calls: Mapped[int] = mapped_column(
+        Integer, default=100, nullable=False
+    )  # Min calls before suggesting
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False

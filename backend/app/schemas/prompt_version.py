@@ -14,6 +14,8 @@ class PromptVersionCreate(BaseModel):
     temperature: float | None = None
     change_summary: str | None = Field(None, max_length=500)
     is_baseline: bool = False
+    traffic_percentage: int | None = Field(None, ge=0, le=100)
+    experiment_id: uuid.UUID | None = None
 
 
 class PromptVersionUpdate(BaseModel):
@@ -21,6 +23,8 @@ class PromptVersionUpdate(BaseModel):
 
     change_summary: str | None = Field(None, max_length=500)
     is_baseline: bool | None = None
+    traffic_percentage: int | None = Field(None, ge=0, le=100)
+    experiment_id: uuid.UUID | None = None
 
 
 class PromptVersionResponse(BaseModel):
@@ -40,6 +44,15 @@ class PromptVersionResponse(BaseModel):
     total_calls: int
     successful_calls: int
     booked_appointments: int
+    # Multi-variant A/B testing fields
+    traffic_percentage: int | None
+    experiment_id: uuid.UUID | None
+    arm_status: str
+    # Bandit statistics
+    bandit_alpha: float
+    bandit_beta: float
+    total_reward: float
+    reward_count: int
     created_at: datetime
     activated_at: datetime | None
 
@@ -99,3 +112,45 @@ class PromptVersionRollbackResponse(BaseModel):
 
     new_version: PromptVersionResponse
     rolled_back_from: uuid.UUID
+
+
+class VersionComparisonItem(BaseModel):
+    """Schema for individual version comparison stats."""
+
+    version_id: uuid.UUID
+    version_number: int
+    is_active: bool
+    is_baseline: bool
+    arm_status: str
+    probability_best: float
+    credible_interval_lower: float
+    credible_interval_upper: float
+    sample_size: int
+    booking_rate: float | None
+    mean_estimate: float
+
+
+class VersionComparisonResponse(BaseModel):
+    """Schema for comparing all active versions."""
+
+    versions: list[VersionComparisonItem]
+    winner_id: uuid.UUID | None
+    winner_probability: float | None
+    recommended_action: str  # "continue", "declare_winner", "eliminate_worst"
+    min_samples_needed: int
+
+
+class WinnerDetectionResponse(BaseModel):
+    """Schema for winner detection result."""
+
+    winner_id: uuid.UUID | None
+    winner_probability: float | None
+    confidence_threshold: float
+    is_conclusive: bool
+    message: str
+
+
+class ArmStatusUpdate(BaseModel):
+    """Schema for updating arm status."""
+
+    arm_status: str = Field(..., pattern="^(active|paused|eliminated)$")

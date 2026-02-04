@@ -84,6 +84,10 @@ import {
 } from "@/lib/voice-constants";
 import { VoiceTestDialog } from "@/components/agents/voice-test-dialog";
 import { EmbedAgentDialog } from "@/components/agents/embed-agent-dialog";
+import { PromptVersionHistory } from "@/components/agents/prompt-version-history";
+import { ABTestDashboard } from "@/components/agents/ab-test-dashboard";
+import { PromptPerformanceChart } from "@/components/agents/prompt-performance-chart";
+import { PromptImprovementDialog } from "@/components/agents/prompt-improvement-dialog";
 
 // Get integrations that have tools defined
 const INTEGRATIONS_WITH_TOOLS = AVAILABLE_INTEGRATIONS.filter(
@@ -526,6 +530,8 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
               <TabTriggerWithErrors value="prompt" label="AI Prompt" />
               <TabTriggerWithErrors value="tools" label="Tools" />
               <TabTriggerWithErrors value="advanced" label="Advanced" />
+              <TabsTrigger value="versions">Versions</TabsTrigger>
+              <TabsTrigger value="ab-testing">A/B Testing</TabsTrigger>
             </TabsList>
 
             <TabsContent value="basic" className="mt-4 space-y-3">
@@ -1392,6 +1398,31 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
                   </div>
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            <TabsContent value="versions" className="mt-4 space-y-3">
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium">Prompt Version History</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <PromptVersionHistory agentId={agentId} />
+                </CardContent>
+              </Card>
+              <PromptPerformanceChart agentId={agentId} />
+            </TabsContent>
+
+            <TabsContent value="ab-testing" className="mt-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-medium">A/B Testing</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Compare prompt variations and optimize performance
+                  </p>
+                </div>
+                <PromptImprovementDialog agentId={agentId} agentName={agent.name} />
+              </div>
+              <ABTestDashboard agentId={agentId} />
             </TabsContent>
           </Tabs>
 

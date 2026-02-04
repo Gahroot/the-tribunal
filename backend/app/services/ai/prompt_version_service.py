@@ -4,13 +4,20 @@ import uuid
 from datetime import UTC, datetime
 
 import structlog
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import Agent
 from app.models.prompt_version import PromptVersion
 
 logger = structlog.get_logger()
+
+# Valid arm status transitions
+ARM_STATUS_TRANSITIONS = {
+    "active": ["paused", "eliminated"],
+    "paused": ["active", "eliminated"],
+    "eliminated": [],  # Terminal state
+}
 
 
 class PromptVersionService:
@@ -33,6 +40,8 @@ class PromptVersionService:
         is_baseline: bool = False,
         activate: bool = False,
         parent_version_id: uuid.UUID | None = None,
+        traffic_percentage: int | None = None,
+        experiment_id: uuid.UUID | None = None,
     ) -> PromptVersion:
         """Create a new prompt version, optionally snapshotting from current agent.
 
@@ -86,6 +95,9 @@ class PromptVersionService:
             is_baseline=is_baseline,
             parent_version_id=parent_version_id,
             is_active=False,
+            traffic_percentage=traffic_percentage,
+            experiment_id=experiment_id,
+            arm_status="active",
         )
 
         db.add(version)
@@ -294,6 +306,334 @@ class PromptVersionService:
             is_baseline=True,
             activate=True,
         )
+
+    async def get_active_versions(
+        self,
+        db: AsyncSession,
+        agent_id: uuid.UUID,
+    ) -> list[PromptVersion]:
+        """Get all active prompt versions for an agent.
+
+        For multi-variant A/B testing, returns all versions that are:
+        - is_active=True
+        - arm_status='active' (not paused or eliminated)
+
+        Args:
+            db: Database session
+            agent_id: Agent ID
+
+        Returns:
+            List of active PromptVersions for bandit selection
+        """
+        result = await db.execute(
+            select(PromptVersion)
+            .where(
+                PromptVersion.agent_id == agent_id,
+                PromptVersion.is_active.is_(True),
+                PromptVersion.arm_status == "active",
+            )
+            .order_by(PromptVersion.version_number.desc())
+        )
+        return list(result.scalars().all())
+
+    async def activate_for_testing(
+        self,
+        db: AsyncSession,
+        version_id: uuid.UUID,
+    ) -> PromptVersion:
+        """Activate a version for A/B testing without deactivating others.
+
+        Unlike activate_version(), this method enables multi-variant testing
+        by allowing multiple active versions simultaneously.
+
+        Args:
+            db: Database session
+            version_id: Version to activate for testing
+
+        Returns:
+            Activated PromptVersion
+        """
+        log = logger.bind(service="prompt_version", version_id=str(version_id))
+
+        version_result = await db.execute(
+            select(PromptVersion).where(PromptVersion.id == version_id)
+        )
+        version = version_result.scalar_one_or_none()
+        if not version:
+            raise ValueError(f"PromptVersion {version_id} not found")
+
+        if version.arm_status == "eliminated":
+            raise ValueError("Cannot activate eliminated version")
+
+        version.is_active = True
+        version.arm_status = "active"
+        version.activated_at = datetime.now(UTC)
+
+        await db.commit()
+        await db.refresh(version)
+
+        log.info(
+            "version_activated_for_testing",
+            version_number=version.version_number,
+        )
+
+        return version
+
+    async def deactivate_version(
+        self,
+        db: AsyncSession,
+        version_id: uuid.UUID,
+    ) -> PromptVersion:
+        """Deactivate a version without eliminating it.
+
+        Version can be reactivated later.
+
+        Args:
+            db: Database session
+            version_id: Version to deactivate
+
+        Returns:
+            Deactivated PromptVersion
+        """
+        log = logger.bind(service="prompt_version", version_id=str(version_id))
+
+        version_result = await db.execute(
+            select(PromptVersion).where(PromptVersion.id == version_id)
+        )
+        version = version_result.scalar_one_or_none()
+        if not version:
+            raise ValueError(f"PromptVersion {version_id} not found")
+
+        version.is_active = False
+
+        await db.commit()
+        await db.refresh(version)
+
+        log.info(
+            "version_deactivated",
+            version_number=version.version_number,
+        )
+
+        return version
+
+    async def pause_version(
+        self,
+        db: AsyncSession,
+        version_id: uuid.UUID,
+    ) -> PromptVersion:
+        """Pause a version (temporarily exclude from bandit selection).
+
+        Paused versions stay is_active=True but arm_status='paused'
+        so they're excluded from bandit selection but can be resumed.
+
+        Args:
+            db: Database session
+            version_id: Version to pause
+
+        Returns:
+            Paused PromptVersion
+        """
+        log = logger.bind(service="prompt_version", version_id=str(version_id))
+
+        version_result = await db.execute(
+            select(PromptVersion).where(PromptVersion.id == version_id)
+        )
+        version = version_result.scalar_one_or_none()
+        if not version:
+            raise ValueError(f"PromptVersion {version_id} not found")
+
+        if version.arm_status == "eliminated":
+            raise ValueError("Cannot pause eliminated version")
+
+        version.arm_status = "paused"
+
+        await db.commit()
+        await db.refresh(version)
+
+        log.info(
+            "version_paused",
+            version_number=version.version_number,
+        )
+
+        return version
+
+    async def resume_version(
+        self,
+        db: AsyncSession,
+        version_id: uuid.UUID,
+    ) -> PromptVersion:
+        """Resume a paused version.
+
+        Args:
+            db: Database session
+            version_id: Version to resume
+
+        Returns:
+            Resumed PromptVersion
+        """
+        log = logger.bind(service="prompt_version", version_id=str(version_id))
+
+        version_result = await db.execute(
+            select(PromptVersion).where(PromptVersion.id == version_id)
+        )
+        version = version_result.scalar_one_or_none()
+        if not version:
+            raise ValueError(f"PromptVersion {version_id} not found")
+
+        if version.arm_status == "eliminated":
+            raise ValueError("Cannot resume eliminated version")
+
+        version.arm_status = "active"
+
+        await db.commit()
+        await db.refresh(version)
+
+        log.info(
+            "version_resumed",
+            version_number=version.version_number,
+        )
+
+        return version
+
+    async def eliminate_version(
+        self,
+        db: AsyncSession,
+        version_id: uuid.UUID,
+    ) -> PromptVersion:
+        """Eliminate a version from A/B testing permanently.
+
+        This is a terminal state - eliminated versions cannot be reactivated.
+        Use this when statistical analysis shows a version is clearly inferior.
+
+        Args:
+            db: Database session
+            version_id: Version to eliminate
+
+        Returns:
+            Eliminated PromptVersion
+        """
+        log = logger.bind(service="prompt_version", version_id=str(version_id))
+
+        version_result = await db.execute(
+            select(PromptVersion).where(PromptVersion.id == version_id)
+        )
+        version = version_result.scalar_one_or_none()
+        if not version:
+            raise ValueError(f"PromptVersion {version_id} not found")
+
+        version.is_active = False
+        version.arm_status = "eliminated"
+
+        await db.commit()
+        await db.refresh(version)
+
+        log.info(
+            "version_eliminated",
+            version_number=version.version_number,
+        )
+
+        return version
+
+    async def update_arm_status(
+        self,
+        db: AsyncSession,
+        version_id: uuid.UUID,
+        new_status: str,
+    ) -> PromptVersion:
+        """Update the arm status with validation.
+
+        Args:
+            db: Database session
+            version_id: Version to update
+            new_status: New status (active, paused, eliminated)
+
+        Returns:
+            Updated PromptVersion
+
+        Raises:
+            ValueError: If transition is invalid
+        """
+        if new_status not in ARM_STATUS_TRANSITIONS:
+            raise ValueError(f"Invalid arm status: {new_status}")
+
+        version_result = await db.execute(
+            select(PromptVersion).where(PromptVersion.id == version_id)
+        )
+        version = version_result.scalar_one_or_none()
+        if not version:
+            raise ValueError(f"PromptVersion {version_id} not found")
+
+        current_status = version.arm_status
+        valid_transitions = ARM_STATUS_TRANSITIONS.get(current_status, [])
+
+        if new_status != current_status and new_status not in valid_transitions:
+            raise ValueError(
+                f"Cannot transition from {current_status} to {new_status}"
+            )
+
+        if new_status == "active":
+            return await self.resume_version(db, version_id)
+        elif new_status == "paused":
+            return await self.pause_version(db, version_id)
+        elif new_status == "eliminated":
+            return await self.eliminate_version(db, version_id)
+        else:
+            return version
+
+    async def get_versions_for_experiment(
+        self,
+        db: AsyncSession,
+        experiment_id: uuid.UUID,
+    ) -> list[PromptVersion]:
+        """Get all versions in an experiment.
+
+        Args:
+            db: Database session
+            experiment_id: Experiment UUID
+
+        Returns:
+            List of PromptVersions in the experiment
+        """
+        result = await db.execute(
+            select(PromptVersion)
+            .where(PromptVersion.experiment_id == experiment_id)
+            .order_by(PromptVersion.version_number.desc())
+        )
+        return list(result.scalars().all())
+
+    async def create_experiment(
+        self,
+        db: AsyncSession,
+        agent_id: uuid.UUID,
+        version_ids: list[uuid.UUID],
+        experiment_id: uuid.UUID | None = None,
+    ) -> uuid.UUID:
+        """Group versions into an experiment.
+
+        Args:
+            db: Database session
+            agent_id: Agent ID
+            version_ids: List of version IDs to group
+            experiment_id: Optional experiment UUID (generated if not provided)
+
+        Returns:
+            Experiment UUID
+        """
+        if not experiment_id:
+            experiment_id = uuid.uuid4()
+
+        await db.execute(
+            update(PromptVersion)
+            .where(
+                PromptVersion.id.in_(version_ids),
+                PromptVersion.agent_id == agent_id,
+            )
+            .values(experiment_id=experiment_id)
+        )
+
+        await db.commit()
+
+        return experiment_id
 
 
 # Convenience functions for use without instantiating service

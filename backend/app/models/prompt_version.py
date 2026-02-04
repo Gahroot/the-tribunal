@@ -3,7 +3,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -72,6 +72,17 @@ class PromptVersion(Base):
     bandit_beta: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
     total_reward: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     reward_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # Multi-variant A/B testing fields
+    traffic_percentage: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )  # Fixed allocation (0-100), None = use bandit
+    experiment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )  # Groups related variants
+    arm_status: Mapped[str] = mapped_column(
+        String(20), default="active", nullable=False, index=True
+    )  # active, paused, eliminated
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(

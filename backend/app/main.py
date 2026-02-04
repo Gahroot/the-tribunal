@@ -26,6 +26,14 @@ from app.workers.message_test_worker import (
     start_message_test_worker,
     stop_message_test_worker,
 )
+from app.workers.prompt_improvement_worker import (
+    start_prompt_improvement_worker,
+    stop_prompt_improvement_worker,
+)
+from app.workers.prompt_stats_worker import (
+    start_prompt_stats_worker,
+    stop_prompt_stats_worker,
+)
 from app.workers.reputation_worker import reputation_worker
 from app.workers.voice_campaign_worker import (
     start_voice_campaign_worker,
@@ -139,6 +147,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info("Reputation worker started")
     await start_enrichment_worker()
     log.info("Enrichment worker started")
+    await start_prompt_stats_worker()
+    log.info("Prompt stats worker started")
+    await start_prompt_improvement_worker()
+    log.info("Prompt improvement worker started")
 
     yield
 
@@ -156,6 +168,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info("Reputation worker stopped")
     await stop_enrichment_worker()
     log.info("Enrichment worker stopped")
+    await stop_prompt_stats_worker()
+    log.info("Prompt stats worker stopped")
+    await stop_prompt_improvement_worker()
+    log.info("Prompt improvement worker stopped")
     await close_redis()
 
 

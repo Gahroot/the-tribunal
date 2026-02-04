@@ -17,6 +17,7 @@ from app.api.v1 import (
     demo,
     embed,
     find_leads_ai,
+    improvement_suggestions,
     integrations,
     invitations,
     lead_magnets,
@@ -57,6 +58,11 @@ api_router.include_router(
     prompt_versions.router,
     prefix="/workspaces/{workspace_id}/agents/{agent_id}/prompts",
     tags=["Prompt Versions"],
+)
+api_router.include_router(
+    improvement_suggestions.router,
+    prefix="/workspaces/{workspace_id}/suggestions",
+    tags=["Improvement Suggestions"],
 )
 api_router.include_router(
     campaigns.router,
