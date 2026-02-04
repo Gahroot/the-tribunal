@@ -519,6 +519,11 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:
 
             message.status = classification.message_status
 
+            # Store error info for failed calls
+            if classification.error_code:
+                message.error_code = classification.error_code
+                message.error_message = classification.error_message
+
             if classification.is_rejection:
                 log.info("rejected_call_detected", hangup_source=hangup_source)
 
