@@ -34,6 +34,8 @@ export interface CallsListResponse {
   page: number;
   page_size: number;
   pages: number;
+  completed_count: number;
+  total_duration_seconds: number;
 }
 
 export interface CallStatsResponse {

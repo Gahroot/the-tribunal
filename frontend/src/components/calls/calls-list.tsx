@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format, formatDistanceToNow } from "date-fns";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import {
   Search,
   Phone,
@@ -15,8 +15,6 @@ import {
   User,
   Bot,
   Download,
-  ChevronLeft,
-  ChevronRight,
   Loader2,
   AlertCircle,
   type LucideIcon,
@@ -88,43 +86,67 @@ export function CallsList() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [directionFilter, setDirectionFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [page, setPage] = useState(1);
-  const pageSize = 20;
+  const pageSize = 50;
 
   const workspaceId = useWorkspaceId();
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery);
-      setPage(1);
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const { data: callsData, isLoading, error } = useQuery({
-    queryKey: ["calls", workspaceId, page, directionFilter, statusFilter, debouncedSearch],
-    queryFn: () => {
+  const { data, isLoading, error, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+    queryKey: ["calls", workspaceId, directionFilter, statusFilter, debouncedSearch],
+    queryFn: ({ pageParam = 1 }) => {
       if (!workspaceId) throw new Error("Workspace not loaded");
       return callsApi.list(workspaceId, {
-        page,
+        page: pageParam,
         page_size: pageSize,
         direction: directionFilter !== "all" ? directionFilter as "inbound" | "outbound" : undefined,
         status: statusFilter !== "all" ? statusFilter : undefined,
         search: debouncedSearch || undefined,
       });
     },
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => {
+      if (lastPage.page < lastPage.pages) return lastPage.page + 1;
+      return undefined;
+    },
     enabled: !!workspaceId,
   });
 
-  const filteredCalls = callsData?.items ?? [];
-  const totalCalls = callsData?.total ?? 0;
-  const totalPages = callsData?.pages ?? 1;
-
-  // Calculate stats from current page data
-  const completedCalls = filteredCalls.filter((c) => c.status === "completed").length;
-  const totalDuration = filteredCalls.reduce((sum, c) => sum + (c.duration_seconds || 0), 0);
+  const filteredCalls = useMemo(
+    () => data?.pages.flatMap((p) => p.items) ?? [],
+    [data?.pages],
+  );
+  const firstPage = data?.pages[0];
+  const totalCalls = firstPage?.total ?? 0;
+  const completedCalls = firstPage?.completed_count ?? 0;
+  const totalDuration = firstPage?.total_duration_seconds ?? 0;
   const avgDuration = completedCalls > 0 ? Math.round(totalDuration / completedCalls) : 0;
+
+  // Infinite scroll: observe sentinel element
+  const handleObserver = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      const [entry] = entries;
+      if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) {
+        fetchNextPage();
+      }
+    },
+    [hasNextPage, isFetchingNextPage, fetchNextPage],
+  );
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(handleObserver, { threshold: 0.1 });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [handleObserver]);
 
   if (isLoading) {
     return (
@@ -169,9 +191,9 @@ export function CallsList() {
       >
         {[
           { label: "Total Calls", value: totalCalls, icon: Phone },
-          { label: "Completed (page)", value: completedCalls, icon: Phone },
-          { label: "Total Duration (page)", value: formatDuration(totalDuration), icon: Clock },
-          { label: "Avg Duration (page)", value: formatDuration(avgDuration), icon: Clock },
+          { label: "Completed", value: completedCalls, icon: Phone },
+          { label: "Total Duration", value: formatDuration(totalDuration), icon: Clock },
+          { label: "Avg Duration", value: formatDuration(avgDuration), icon: Clock },
         ].map((stat) => (
           <Card key={stat.label}>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -199,7 +221,7 @@ export function CallsList() {
               />
             </div>
             <div className="flex gap-2">
-              <Select value={directionFilter} onValueChange={(v) => { setDirectionFilter(v); setPage(1); }}>
+              <Select value={directionFilter} onValueChange={setDirectionFilter}>
                 <SelectTrigger className="w-[140px]">
                   <SelectValue placeholder="Direction" />
                 </SelectTrigger>
@@ -209,7 +231,7 @@ export function CallsList() {
                   <SelectItem value="outbound">Outbound</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-[140px]">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
@@ -441,36 +463,23 @@ export function CallsList() {
                 </AnimatePresence>
               </TableBody>
             </Table>
+            {/* Sentinel for infinite scroll */}
+            <div ref={sentinelRef} className="h-1" />
+            {isFetchingNextPage && (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                <span className="ml-2 text-sm text-muted-foreground">Loading more calls...</span>
+              </div>
+            )}
             </ScrollArea>
           )}
         </CardContent>
       </Card>
 
-      {/* Pagination */}
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-muted-foreground">
-          Page {page} of {totalPages} ({totalCalls} total calls)
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page <= 1}
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-          >
-            <ChevronLeft className="size-4" />
-            Previous
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page >= totalPages}
-            onClick={() => setPage(p => p + 1)}
-          >
-            Next
-            <ChevronRight className="size-4" />
-          </Button>
-        </div>
+      {/* Summary */}
+      <div className="text-sm text-muted-foreground text-center">
+        Showing {filteredCalls.length} of {totalCalls} calls
+        {hasNextPage && " — scroll down for more"}
       </div>
     </div>
   );

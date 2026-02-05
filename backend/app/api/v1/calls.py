@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.core.config import settings
@@ -61,6 +61,9 @@ class PaginatedCalls(BaseModel):
     page: int
     page_size: int
     pages: int
+    # Aggregate stats across all matching calls (not just current page)
+    completed_count: int = 0
+    total_duration_seconds: int = 0
 
 
 @router.post("", response_model=CallResponse, status_code=status.HTTP_201_CREATED)
@@ -246,6 +249,32 @@ async def list_calls(
     query = query.order_by(Message.created_at.desc())
     result = await paginate_unique(db, query, page=page, page_size=page_size)
 
+    # Aggregate stats query (same base filters, no pagination)
+    stats_query = (
+        select(
+            func.count(Message.id).filter(Message.status == "completed"),
+            func.coalesce(func.sum(Message.duration_seconds), 0),
+        )
+        .join(Conversation, Message.conversation_id == Conversation.id)
+        .where(
+            Message.channel == "voice",
+            Conversation.workspace_id == workspace_id,
+        )
+    )
+    if direction:
+        stats_query = stats_query.where(Message.direction == direction)
+    if status:
+        stats_query = stats_query.where(Message.status == status)
+    if search:
+        stats_query = stats_query.outerjoin(
+            Contact, Conversation.contact_id == Contact.id
+        ).where(
+            (Contact.first_name.ilike(f"%{search}%"))
+            | (Contact.last_name.ilike(f"%{search}%"))
+        )
+    stats_result = await db.execute(stats_query)
+    completed_count, total_duration = stats_result.one()
+
     return PaginatedCalls(
         items=[
             _build_call_response(
@@ -265,6 +294,8 @@ async def list_calls(
         page=result.page,
         page_size=result.page_size,
         pages=result.pages,
+        completed_count=completed_count,
+        total_duration_seconds=int(total_duration),
     )
 
 
