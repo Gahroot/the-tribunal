@@ -122,6 +122,7 @@ class CalComService:
                 "eventTypeId": event_type_id,
                 "startTime": start_str,
                 "endTime": end_str,
+                "timeZone": timezone,
             }
 
             log.info(
@@ -180,12 +181,13 @@ class CalComService:
         event_type_id: int,
         contact_email: str,
         contact_name: str,
-        start_time: datetime,
+        start_time: datetime | None = None,
         duration_minutes: int = 30,
         metadata: dict[str, Any] | None = None,
         timezone: str = "America/New_York",
         language: str = "en",
         phone_number: str | None = None,
+        start_time_iso: str | None = None,
     ) -> dict[str, Any]:
         """Create an appointment booking on Cal.com.
 
@@ -193,12 +195,14 @@ class CalComService:
             event_type_id: Cal.com event type ID
             contact_email: Attendee email address
             contact_name: Attendee name
-            start_time: Appointment start time (should be in UTC)
+            start_time: Appointment start time as datetime (should be in UTC)
             duration_minutes: Duration in minutes (default 30)
             metadata: Optional metadata to attach to booking
             timezone: Attendee timezone in IANA format (default America/New_York)
             language: Attendee language code (default en)
             phone_number: Optional phone number for SMS reminders
+            start_time_iso: Appointment start time as ISO string (used directly,
+                takes precedence over start_time)
 
         Returns:
             Booking confirmation with Cal.com IDs and details
@@ -227,8 +231,13 @@ class CalComService:
             if phone_number:
                 attendee["phoneNumber"] = phone_number
 
-            # Start time should be in UTC ISO format
-            start_utc = start_time.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            # Resolve start time: prefer ISO string, fall back to datetime
+            if start_time_iso:
+                start_utc = start_time_iso
+            elif start_time:
+                start_utc = start_time.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            else:
+                raise CalComError("Either start_time or start_time_iso is required")
 
             payload: dict[str, Any] = {
                 "eventTypeId": event_type_id,

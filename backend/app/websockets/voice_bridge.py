@@ -72,6 +72,23 @@ async def _save_call_transcript_wrapper(
     await save_call_transcript(call_id, transcript_json, log)
 
 
+async def _save_call_duration(call_id: str, duration_seconds: int, log: Any) -> None:
+    """Save call duration from streaming session to message record."""
+    from sqlalchemy import update
+
+    from app.db.session import AsyncSessionLocal
+    from app.models.conversation import Message as MessageModel
+
+    async with AsyncSessionLocal() as db:
+        await db.execute(
+            update(MessageModel)
+            .where(MessageModel.provider_message_id == call_id)
+            .values(duration_seconds=duration_seconds)
+        )
+        await db.commit()
+        log.info("streaming_duration_saved", call_id=call_id, duration_seconds=duration_seconds)
+
+
 async def _stamp_prompt_version_on_message(
     call_id: str, prompt_version_id: str, log: Any
 ) -> None:
@@ -424,14 +441,23 @@ async def voice_stream_bridge(  # noqa: PLR0912, PLR0915
             with contextlib.suppress(asyncio.CancelledError):
                 await relay_task
 
-        # Save transcript before disconnecting
-        if hasattr(voice_session, "get_transcript_json"):
+        elapsed = time.time() - connection_start
+
+        # Save transcript and duration before disconnecting
+        if call_id:
+            if hasattr(voice_session, "get_transcript_json"):
+                try:
+                    transcript_json = voice_session.get_transcript_json()
+                    if transcript_json:
+                        await _save_call_transcript_wrapper(call_id, transcript_json, log)
+                except Exception as e:
+                    log.exception("failed_to_save_transcript", error=str(e))
+
+            # Save streaming duration so hangup handler has accurate duration
             try:
-                transcript_json = voice_session.get_transcript_json()
-                if transcript_json and call_id:
-                    await _save_call_transcript_wrapper(call_id, transcript_json, log)
+                await _save_call_duration(call_id, round(elapsed), log)
             except Exception as e:
-                log.exception("failed_to_save_transcript", error=str(e))
+                log.exception("failed_to_save_duration", error=str(e))
 
         log.info("disconnecting_from_voice_provider")
         await voice_session.disconnect()
@@ -439,7 +465,6 @@ async def voice_stream_bridge(  # noqa: PLR0912, PLR0915
         with contextlib.suppress(Exception):
             await websocket.close()
 
-        elapsed = time.time() - connection_start
         log.info(
             "voice_bridge_session_ended",
             total_duration_secs=round(elapsed, 1),

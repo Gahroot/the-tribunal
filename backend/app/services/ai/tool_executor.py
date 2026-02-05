@@ -240,14 +240,8 @@ class VoiceToolExecutor:
 
         calcom_service = CalComService(settings.calcom_api_key)
         try:
-            # Parse date and time
-            tz = self._get_timezone()
-            datetime_str = f"{date_str} {time_str}"
-            start_time = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M").replace(
-                tzinfo=tz
-            )
-
             # Pre-validate: check if the requested slot is still available
+            tz = self._get_timezone()
             start_date = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=tz)
             slots = await calcom_service.get_availability(
                 event_type_id=self.agent.calcom_event_type_id,
@@ -256,8 +250,12 @@ class VoiceToolExecutor:
                 timezone=self.timezone,
             )
 
-            available_times = [s.get("time") for s in slots]
-            if time_str not in available_times:
+            # Find the matching slot to get its ISO time
+            matched_slot = next(
+                (s for s in slots if s.get("time") == time_str),
+                None,
+            )
+            if not matched_slot:
                 # Slot is no longer available — return fresh alternatives
                 display_time = _format_time_12h(time_str)
                 alternative_slots = []
@@ -288,14 +286,17 @@ class VoiceToolExecutor:
                     ),
                 }
 
-            # Slot is available — proceed with booking
-            start_utc = start_time.astimezone(ZoneInfo("UTC"))
+            # Use the ISO time directly from Cal.com — avoids timezone
+            # double-conversion issues (Cal.com returns organizer-local times
+            # with misleading Z suffix)
+            # Prefer ISO from slot; fall back to constructed string for legacy slots
+            start_iso = matched_slot.get("iso", "") or f"{date_str}T{time_str}:00.000Z"
 
             booking = await calcom_service.create_booking(
                 event_type_id=self.agent.calcom_event_type_id,
                 contact_email=email,
                 contact_name=contact_name,
-                start_time=start_utc,
+                start_time_iso=start_iso,
                 duration_minutes=duration_minutes,
                 metadata={"notes": notes} if notes else None,
                 timezone=self.timezone,

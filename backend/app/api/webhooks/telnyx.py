@@ -501,7 +501,14 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:
         message = result.scalar_one_or_none()
 
         if message:
-            message.duration_seconds = duration_secs
+            # Use stored streaming duration if hangup reports 0
+            # (Telnyx doesn't populate duration_seconds for streaming/WebSocket calls)
+            if duration_secs > 0:
+                message.duration_seconds = duration_secs
+            elif message.duration_seconds and message.duration_seconds > 0:
+                duration_secs = message.duration_seconds
+            else:
+                message.duration_seconds = duration_secs
 
             # Get recording URL if available
             recordings = payload.get("recordings", [])
