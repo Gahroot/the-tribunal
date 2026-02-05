@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format, formatDistanceToNow } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
@@ -55,6 +55,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { TranscriptViewer } from "@/components/calls/transcript-viewer";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { callsApi } from "@/lib/api/calls";
@@ -75,15 +76,16 @@ function formatDuration(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-function getInitials(phoneNumber: string | undefined | null): string {
-  if (!phoneNumber) return "??";
-  // Get last 2 digits of phone number as initials
-  const digits = phoneNumber.replace(/\D/g, "");
-  return digits.slice(-2) || "??";
+function getInitials(name: string | undefined | null): string {
+  if (!name) return "??";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
 }
 
 export function CallsList() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [directionFilter, setDirectionFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
@@ -91,8 +93,17 @@ export function CallsList() {
 
   const workspaceId = useWorkspaceId();
 
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const { data: callsData, isLoading, error } = useQuery({
-    queryKey: ["calls", workspaceId, page, directionFilter, statusFilter],
+    queryKey: ["calls", workspaceId, page, directionFilter, statusFilter, debouncedSearch],
     queryFn: () => {
       if (!workspaceId) throw new Error("Workspace not loaded");
       return callsApi.list(workspaceId, {
@@ -100,27 +111,19 @@ export function CallsList() {
         page_size: pageSize,
         direction: directionFilter !== "all" ? directionFilter as "inbound" | "outbound" : undefined,
         status: statusFilter !== "all" ? statusFilter : undefined,
+        search: debouncedSearch || undefined,
       });
     },
     enabled: !!workspaceId,
   });
 
-  const calls = callsData?.items ?? [];
+  const filteredCalls = callsData?.items ?? [];
   const totalCalls = callsData?.total ?? 0;
   const totalPages = callsData?.pages ?? 1;
 
-  // Client-side search filter (API filtering is by direction/status, search is client-side)
-  const filteredCalls = calls.filter((call) => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    const fromNumber = call.from_number?.toLowerCase() || "";
-    const toNumber = call.to_number?.toLowerCase() || "";
-    return fromNumber.includes(query) || toNumber.includes(query);
-  });
-
   // Calculate stats from current page data
-  const completedCalls = calls.filter((c) => c.status === "completed").length;
-  const totalDuration = calls.reduce((sum, c) => sum + (c.duration_seconds || 0), 0);
+  const completedCalls = filteredCalls.filter((c) => c.status === "completed").length;
+  const totalDuration = filteredCalls.reduce((sum, c) => sum + (c.duration_seconds || 0), 0);
   const avgDuration = completedCalls > 0 ? Math.round(totalDuration / completedCalls) : 0;
 
   if (isLoading) {
@@ -189,7 +192,7 @@ export function CallsList() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search by phone number..."
+                placeholder="Search by contact name..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
@@ -235,10 +238,11 @@ export function CallsList() {
               </p>
             </div>
           ) : (
+            <ScrollArea className="h-[calc(100vh-480px)] min-h-[300px]">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Phone Number</TableHead>
+                  <TableHead>Contact</TableHead>
                   <TableHead>Direction</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Duration</TableHead>
@@ -253,7 +257,8 @@ export function CallsList() {
                     const status = statusConfig[call.status] || statusConfig.completed;
                     const DirectionIcon =
                       call.direction === "inbound" ? PhoneIncoming : PhoneOutgoing;
-                    const displayNumber = (call.direction === "inbound" ? call.from_number : call.to_number) || "Unknown";
+                    const displayName = call.contact_name || (call.direction === "inbound" ? call.from_number : call.to_number) || "Unknown";
+                    const displayNumber = (call.direction === "inbound" ? call.from_number : call.to_number) || "";
 
                     return (
                       <motion.tr
@@ -268,16 +273,18 @@ export function CallsList() {
                           <div className="flex items-center gap-3">
                             <Avatar className="size-8">
                               <AvatarFallback className="text-xs">
-                                {getInitials(displayNumber)}
+                                {getInitials(call.contact_name || displayNumber)}
                               </AvatarFallback>
                             </Avatar>
                             <div>
-                              <div className="font-medium font-mono text-sm">
-                                {displayNumber}
+                              <div className="font-medium text-sm">
+                                {call.direction === "inbound" ? "From" : "To"} {displayName}
                               </div>
-                              <div className="text-xs text-muted-foreground">
-                                {call.direction === "inbound" ? "From" : "To"}
-                              </div>
+                              {call.contact_name && displayNumber && (
+                                <div className="text-xs text-muted-foreground font-mono">
+                                  {displayNumber}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </TableCell>
@@ -353,7 +360,7 @@ export function CallsList() {
                                 <DialogHeader>
                                   <DialogTitle>Call Details</DialogTitle>
                                   <DialogDescription>
-                                    {displayNumber} -{" "}
+                                    {displayName} -{" "}
                                     {format(
                                       new Date(call.created_at),
                                       "MMMM d, yyyy 'at' h:mm a"
@@ -434,6 +441,7 @@ export function CallsList() {
                 </AnimatePresence>
               </TableBody>
             </Table>
+            </ScrollArea>
           )}
         </CardContent>
       </Card>

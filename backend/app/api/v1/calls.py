@@ -11,6 +11,7 @@ from sqlalchemy import select
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.core.config import settings
 from app.db.pagination import paginate_unique
+from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
 from app.models.phone_number import PhoneNumber
 from app.models.workspace import Workspace
@@ -43,6 +44,9 @@ class CallResponse(BaseModel):
     # Phone numbers from conversation
     from_number: str | None = None
     to_number: str | None = None
+    # Contact info
+    contact_name: str | None = None
+    contact_id: int | None = None
     # Agent info
     agent_id: uuid.UUID | None = None
     agent_name: str | None = None
@@ -148,6 +152,8 @@ def _build_call_response(
     message: Message,
     conversation: Conversation,
     agent_name: str | None = None,
+    contact_name: str | None = None,
+    contact_id: int | None = None,
 ) -> CallResponse:
     """Build CallResponse with phone numbers from conversation."""
     # Determine from/to based on direction
@@ -170,6 +176,8 @@ def _build_call_response(
         created_at=message.created_at,
         from_number=from_number,
         to_number=to_number,
+        contact_name=contact_name,
+        contact_id=contact_id,
         agent_id=message.agent_id,
         agent_name=agent_name,
         is_ai=message.is_ai,
@@ -184,6 +192,9 @@ async def list_calls(
     workspace: Annotated[Workspace, Depends(get_workspace)],
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
+    direction: str | None = Query(None),
+    status: str | None = Query(None),
+    search: str | None = Query(None),
 ) -> PaginatedCalls:
     """List call history in workspace.
 
@@ -194,16 +205,22 @@ async def list_calls(
         workspace: Workspace object
         page: Page number
         page_size: Items per page
+        direction: Filter by direction (inbound/outbound)
+        status: Filter by status (completed/no_answer/busy/failed)
+        search: Search by contact name
 
     Returns:
         Paginated list of calls
     """
     from sqlalchemy.orm import joinedload
 
-    # Query voice messages with their conversations and agents
+    # Query voice messages with their conversations, agents, and contacts
     query = (
         select(Message)
-        .options(joinedload(Message.conversation), joinedload(Message.agent))
+        .options(
+            joinedload(Message.conversation).joinedload(Conversation.contact),
+            joinedload(Message.agent),
+        )
         .join(Conversation, Message.conversation_id == Conversation.id)
         .where(
             Message.channel == "voice",
@@ -211,13 +228,36 @@ async def list_calls(
         )
     )
 
+    # Apply direction filter
+    if direction:
+        query = query.where(Message.direction == direction)
+
+    # Apply status filter
+    if status:
+        query = query.where(Message.status == status)
+
+    # Apply contact name search
+    if search:
+        query = query.outerjoin(Contact, Conversation.contact_id == Contact.id).where(
+            (Contact.first_name.ilike(f"%{search}%"))
+            | (Contact.last_name.ilike(f"%{search}%"))
+        )
+
     query = query.order_by(Message.created_at.desc())
     result = await paginate_unique(db, query, page=page, page_size=page_size)
 
     return PaginatedCalls(
         items=[
             _build_call_response(
-                m, m.conversation, agent_name=m.agent.name if m.agent else None
+                m,
+                m.conversation,
+                agent_name=m.agent.name if m.agent else None,
+                contact_name=(
+                    m.conversation.contact.full_name
+                    if m.conversation.contact
+                    else None
+                ),
+                contact_id=m.conversation.contact_id,
             )
             for m in result.items
         ],
@@ -250,10 +290,13 @@ async def get_call(
     """
     from sqlalchemy.orm import joinedload
 
-    # Get the message with conversation and agent
+    # Get the message with conversation, agent, and contact
     result = await db.execute(
         select(Message)
-        .options(joinedload(Message.conversation), joinedload(Message.agent))
+        .options(
+            joinedload(Message.conversation).joinedload(Conversation.contact),
+            joinedload(Message.agent),
+        )
         .where(
             Message.id == call_id,
             Message.channel == "voice",
@@ -275,7 +318,15 @@ async def get_call(
         )
 
     return _build_call_response(
-        message, message.conversation, agent_name=message.agent.name if message.agent else None
+        message,
+        message.conversation,
+        agent_name=message.agent.name if message.agent else None,
+        contact_name=(
+            message.conversation.contact.full_name
+            if message.conversation.contact
+            else None
+        ),
+        contact_id=message.conversation.contact_id,
     )
 
 
