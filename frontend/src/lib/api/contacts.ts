@@ -9,6 +9,18 @@ export interface ContactsListParams {
   search?: string;
   status?: ContactStatus;
   sort_by?: ContactSortBy;
+  // Advanced filters
+  tags?: string;
+  tags_match?: "any" | "all" | "none";
+  lead_score_min?: number;
+  lead_score_max?: number;
+  is_qualified?: boolean;
+  source?: string;
+  company_name?: string;
+  created_after?: string;
+  created_before?: string;
+  enrichment_status?: string;
+  filters?: string; // JSON FilterDefinition
 }
 
 export interface ContactsListResponse {
@@ -77,6 +89,18 @@ export interface ContactIdsResponse {
 export interface ContactIdsParams {
   search?: string;
   status?: ContactStatus;
+  // Advanced filters
+  tags?: string;
+  tags_match?: "any" | "all" | "none";
+  lead_score_min?: number;
+  lead_score_max?: number;
+  is_qualified?: boolean;
+  source?: string;
+  company_name?: string;
+  created_after?: string;
+  created_before?: string;
+  enrichment_status?: string;
+  filters?: string;
 }
 
 export const contactsApi = {

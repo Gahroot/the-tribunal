@@ -4,6 +4,43 @@ export type ContactStatus = "new" | "contacted" | "qualified" | "converted" | "l
 export type PipelineStageType = "active" | "won" | "lost";
 export type OpportunityStatus = "open" | "won" | "lost" | "abandoned";
 
+// Tag types
+export interface Tag {
+  id: string;
+  workspace_id: string;
+  name: string;
+  color: string;
+  contact_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// Filter types
+export interface FilterRule {
+  field: string;
+  operator: string;
+  value: string | number | boolean | string[] | number[];
+}
+
+export interface FilterDefinition {
+  logic: "and" | "or";
+  rules: FilterRule[];
+}
+
+// Segment types
+export interface Segment {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description?: string;
+  definition: FilterDefinition;
+  is_dynamic: boolean;
+  contact_count: number;
+  last_computed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Contact {
   id: number;
   user_id: number;
@@ -15,6 +52,7 @@ export interface Contact {
   company_name?: string;
   status: ContactStatus;
   tags?: string[] | string;
+  tag_objects?: Tag[];
   notes?: string;
   created_at: string;
   updated_at: string;
@@ -151,6 +189,8 @@ export interface CallRecord {
   status: "initiated" | "ringing" | "in_progress" | "completed" | "failed" | "busy" | "no_answer";
   from_number?: string;
   to_number?: string;
+  contact_name?: string;
+  contact_id?: number;
   duration_seconds?: number;
   recording_url?: string;
   transcript?: string;

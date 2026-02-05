@@ -1,6 +1,6 @@
 "use client";
 
-import { User, Bell, Webhook, CreditCard, Building2 } from "lucide-react";
+import { User, Bell, Webhook, CreditCard, Building2, Tags } from "lucide-react";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ProfileSettingsTab } from "@/components/settings/profile-settings-tab";
@@ -8,9 +8,11 @@ import { NotificationsSettingsTab } from "@/components/settings/notifications-se
 import { IntegrationsSettingsTab } from "@/components/settings/integrations-settings-tab";
 import { BillingSettingsTab } from "@/components/settings/billing-settings-tab";
 import { TeamSettingsTab } from "@/components/settings/team-settings-tab";
+import { TagManagement } from "@/components/tags/tag-management";
 
 const settingsTabs = [
   { value: "profile", label: "Profile", icon: User },
+  { value: "tags", label: "Tags", icon: Tags },
   { value: "notifications", label: "Notifications", icon: Bell },
   { value: "integrations", label: "Integrations", icon: Webhook },
   { value: "billing", label: "Billing", icon: CreditCard },
@@ -29,7 +31,7 @@ export function SettingsPage() {
       </div>
 
       <Tabs defaultValue="profile" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid">
+        <TabsList className="grid w-full grid-cols-6 lg:w-auto lg:inline-grid">
           {settingsTabs.map((tab) => (
             <TabsTrigger key={tab.value} value={tab.value} className="gap-2">
               <tab.icon className="size-4" />
@@ -40,6 +42,10 @@ export function SettingsPage() {
 
         <TabsContent value="profile">
           <ProfileSettingsTab />
+        </TabsContent>
+
+        <TabsContent value="tags">
+          <TagManagement />
         </TabsContent>
 
         <TabsContent value="notifications">

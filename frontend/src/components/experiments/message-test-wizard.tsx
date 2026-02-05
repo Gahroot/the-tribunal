@@ -34,9 +34,13 @@ import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
+import { useMutation } from "@tanstack/react-query";
+
 import { ContactSelector } from "../campaigns/contact-selector";
 import { AgentSelector } from "../campaigns/agent-selector";
 import { VariantEditor, type VariantFormData } from "./variant-editor";
+import { SegmentPicker } from "@/components/segments/segment-picker";
+import { segmentsApi } from "@/lib/api/segments";
 
 import type { Contact, Agent, PhoneNumber, MessageTest } from "@/types";
 import type { CreateMessageTestRequest } from "@/lib/api/message-tests";
@@ -52,6 +56,7 @@ const STEPS = [
 type StepId = (typeof STEPS)[number]["id"];
 
 interface MessageTestWizardProps {
+  workspaceId?: string;
   contacts: Contact[];
   agents: Agent[];
   phoneNumbers: PhoneNumber[];
@@ -94,6 +99,7 @@ const initialFormData: FormData = {
 };
 
 export function MessageTestWizard({
+  workspaceId,
   contacts,
   agents,
   phoneNumbers,
@@ -104,8 +110,30 @@ export function MessageTestWizard({
   const [currentStep, setCurrentStep] = useState<StepId>("basics");
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [selectedContactIds, setSelectedContactIds] = useState<number[]>([]);
+  const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   const [variants, setVariants] = useState<VariantFormData[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Resolve segment contacts when a segment is selected
+  const segmentMutation = useMutation({
+    mutationFn: async (segmentId: string) => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return segmentsApi.getContacts(workspaceId, segmentId);
+    },
+    onSuccess: (data) => {
+      // Filter to only contacts that exist in the pre-loaded list
+      const contactIdSet = new Set(contacts.map((c) => c.id));
+      const matching = data.ids.filter((id) => contactIdSet.has(id));
+      setSelectedContactIds(matching);
+    },
+  });
+
+  const handleSegmentSelect = (segmentId: string | null) => {
+    setSelectedSegmentId(segmentId);
+    if (segmentId) {
+      segmentMutation.mutate(segmentId);
+    }
+  };
 
   const currentStepIndex = STEPS.findIndex((s) => s.id === currentStep);
 
@@ -285,6 +313,13 @@ export function MessageTestWizard({
                 <AlertCircle className="size-4" />
                 <AlertDescription>{errors.contacts}</AlertDescription>
               </Alert>
+            )}
+            {workspaceId && (
+              <SegmentPicker
+                workspaceId={workspaceId}
+                selectedSegmentId={selectedSegmentId}
+                onSegmentSelect={handleSegmentSelect}
+              />
             )}
             <ContactSelector
               contacts={contacts}

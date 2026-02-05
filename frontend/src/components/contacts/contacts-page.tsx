@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Plus, User, Phone, Mail, Users, Upload, Trash2, X, CheckSquare, MapPin, ArrowUpDown } from "lucide-react";
+import { Search, Plus, User, Phone, Mail, Users, Upload, Trash2, X, CheckSquare, MapPin, ArrowUpDown, Tags } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -33,6 +33,9 @@ import { useContactStore } from "@/lib/contact-store";
 import { CreateContactDialog } from "@/components/contacts/create-contact-dialog";
 import { ImportContactsDialog } from "@/components/contacts/import-contacts-dialog";
 import { ScrapeLeadsDialog } from "@/components/contacts/scrape-leads-dialog";
+import { BulkTagDialog } from "@/components/contacts/bulk-tag-dialog";
+import { TagBadge } from "@/components/tags/tag-badge";
+import { ContactFilterBuilder } from "@/components/filters/contact-filter-builder";
 import { useBulkDeleteContacts } from "@/hooks/useContacts";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import type { Contact, ContactStatus } from "@/types";
@@ -179,17 +182,31 @@ function ContactCard({ contact, isSelected, onSelectChange, isSelectionMode }: C
         )}
       </div>
 
-      {contact.tags && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {(() => {
-            const tagsArray = Array.isArray(contact.tags)
-              ? contact.tags
-              : typeof contact.tags === "string"
-                ? contact.tags.split(",").map((t) => t.trim()).filter(Boolean)
-                : [];
-
+      {(() => {
+        // Prefer tag_objects (colored) from new system, fall back to legacy string tags
+        if (contact.tag_objects && contact.tag_objects.length > 0) {
+          return (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {contact.tag_objects.slice(0, 3).map((tag) => (
+                <TagBadge key={tag.id} name={tag.name} color={tag.color} />
+              ))}
+              {contact.tag_objects.length > 3 && (
+                <Badge variant="outline" className="text-xs">
+                  +{contact.tag_objects.length - 3}
+                </Badge>
+              )}
+            </div>
+          );
+        }
+        if (contact.tags) {
+          const tagsArray = Array.isArray(contact.tags)
+            ? contact.tags
+            : typeof contact.tags === "string"
+              ? contact.tags.split(",").map((t) => t.trim()).filter(Boolean)
+              : [];
+          if (tagsArray.length > 0) {
             return (
-              <>
+              <div className="mt-3 flex flex-wrap gap-1.5">
                 {tagsArray.slice(0, 3).map((tag) => (
                   <Badge key={tag} variant="outline" className="text-xs">
                     {tag}
@@ -200,11 +217,12 @@ function ContactCard({ contact, isSelected, onSelectChange, isSelectionMode }: C
                     +{tagsArray.length - 3}
                   </Badge>
                 )}
-              </>
+              </div>
             );
-          })()}
-        </div>
-      )}
+          }
+        }
+        return null;
+      })()}
     </motion.div>
   );
 
@@ -255,6 +273,7 @@ export function ContactsPage() {
   const [isScrapeDialogOpen, setIsScrapeDialogOpen] = React.useState(false);
   const [selectedIds, setSelectedIds] = React.useState<number[]>([]);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
+  const [isBulkTagDialogOpen, setIsBulkTagDialogOpen] = React.useState(false);
   const workspaceId = useWorkspaceId();
   const bulkDeleteMutation = useBulkDeleteContacts(workspaceId ?? "");
   const {
@@ -267,6 +286,8 @@ export function ContactsPage() {
     setSortBy,
     isLoadingContacts,
     setContacts,
+    filters,
+    setFilters,
   } = useContactStore();
 
   const isSelectionMode = selectedIds.length > 0;
@@ -404,6 +425,15 @@ export function ContactsPage() {
               Clear
             </Button>
             <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsBulkTagDialogOpen(true)}
+              className="gap-2"
+            >
+              <Tags className="h-4 w-4" />
+              Tag
+            </Button>
+            <Button
               variant="destructive"
               size="sm"
               onClick={() => setIsDeleteDialogOpen(true)}
@@ -450,6 +480,15 @@ export function ContactsPage() {
             </Button>
           )}
         </div>
+
+        {/* Advanced Filters */}
+        {workspaceId && (
+          <ContactFilterBuilder
+            workspaceId={workspaceId}
+            filters={filters}
+            onFiltersChange={setFilters}
+          />
+        )}
 
         {/* Status Filters */}
         <StatusFilter
@@ -518,6 +557,15 @@ export function ContactsPage() {
         open={isScrapeDialogOpen}
         onOpenChange={setIsScrapeDialogOpen}
       />
+
+      {workspaceId && (
+        <BulkTagDialog
+          open={isBulkTagDialogOpen}
+          onOpenChange={setIsBulkTagDialogOpen}
+          selectedContactIds={selectedIds}
+          workspaceId={workspaceId}
+        />
+      )}
 
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>

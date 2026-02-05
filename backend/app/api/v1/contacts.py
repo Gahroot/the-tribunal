@@ -1,5 +1,6 @@
 """Contact endpoints."""
 
+import json
 import uuid
 from datetime import datetime
 from typing import Any
@@ -61,10 +62,37 @@ async def list_contacts(
     sort_by: str | None = Query(
         None, description="Sort by: created_at, last_conversation, unread_first"
     ),
+    # Advanced filters
+    tags: str | None = Query(None, description="Comma-separated tag UUIDs"),
+    tags_match: str = Query("any", description="Tag match mode: any, all, none"),
+    lead_score_min: int | None = None,
+    lead_score_max: int | None = None,
+    is_qualified: bool | None = None,
+    source_filter: str | None = Query(None, alias="source"),
+    company_name_filter: str | None = Query(None, alias="company_name"),
+    created_after: datetime | None = None,
+    created_before: datetime | None = None,
+    enrichment_status: str | None = None,
+    filters: str | None = Query(None, description="JSON FilterDefinition"),
 ) -> ContactListResponse:
     """List contacts in a workspace."""
-    # Verify workspace access
     workspace = await get_workspace(workspace_id, current_user, db)
+
+    # Parse tag UUIDs
+    tag_uuids: list[uuid.UUID] | None = None
+    if tags:
+        tag_uuids = [uuid.UUID(t.strip()) for t in tags.split(",") if t.strip()]
+
+    # Parse complex filters
+    filter_rules: list[dict[str, Any]] | None = None
+    filter_logic = "and"
+    if filters:
+        try:
+            parsed = json.loads(filters)
+            filter_rules = parsed.get("rules")
+            filter_logic = parsed.get("logic", "and")
+        except (json.JSONDecodeError, AttributeError):
+            pass
 
     service = ContactService(db)
     result = await service.list_contacts(
@@ -74,6 +102,18 @@ async def list_contacts(
         status_filter=status_filter,
         search=search,
         sort_by=sort_by,
+        tags=tag_uuids,
+        tags_match=tags_match,
+        lead_score_min=lead_score_min,
+        lead_score_max=lead_score_max,
+        is_qualified=is_qualified,
+        source=source_filter,
+        company_name=company_name_filter,
+        created_after=created_after,
+        created_before=created_before,
+        enrichment_status=enrichment_status,
+        filter_rules=filter_rules,
+        filter_logic=filter_logic,
     )
 
     return ContactListResponse(**result)
@@ -93,18 +133,55 @@ async def list_contact_ids(
     db: DB,
     status_filter: str | None = Query(None, alias="status"),
     search: str | None = None,
+    # Advanced filters
+    tags: str | None = Query(None, description="Comma-separated tag UUIDs"),
+    tags_match: str = Query("any", description="Tag match mode: any, all, none"),
+    lead_score_min: int | None = None,
+    lead_score_max: int | None = None,
+    is_qualified: bool | None = None,
+    source_filter: str | None = Query(None, alias="source"),
+    company_name_filter: str | None = Query(None, alias="company_name"),
+    created_after: datetime | None = None,
+    created_before: datetime | None = None,
+    enrichment_status: str | None = None,
+    filters: str | None = Query(None, description="JSON FilterDefinition"),
 ) -> ContactIdsResponse:
-    """List all contact IDs matching filters.
-
-    Returns only IDs (not full contact objects) for efficient Select All functionality.
-    """
+    """List all contact IDs matching filters."""
     workspace = await get_workspace(workspace_id, current_user, db)
+
+    # Parse tag UUIDs
+    tag_uuids: list[uuid.UUID] | None = None
+    if tags:
+        tag_uuids = [uuid.UUID(t.strip()) for t in tags.split(",") if t.strip()]
+
+    # Parse complex filters
+    filter_rules: list[dict[str, Any]] | None = None
+    filter_logic = "and"
+    if filters:
+        try:
+            parsed = json.loads(filters)
+            filter_rules = parsed.get("rules")
+            filter_logic = parsed.get("logic", "and")
+        except (json.JSONDecodeError, AttributeError):
+            pass
 
     service = ContactService(db)
     result = await service.list_contact_ids(
         workspace_id=workspace.id,
         status_filter=status_filter,
         search=search,
+        tags=tag_uuids,
+        tags_match=tags_match,
+        lead_score_min=lead_score_min,
+        lead_score_max=lead_score_max,
+        is_qualified=is_qualified,
+        source=source_filter,
+        company_name=company_name_filter,
+        created_after=created_after,
+        created_before=created_before,
+        enrichment_status=enrichment_status,
+        filter_rules=filter_rules,
+        filter_logic=filter_logic,
     )
 
     return ContactIdsResponse(**result)

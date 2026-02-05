@@ -46,6 +46,7 @@ import { conversationsApi } from "@/lib/api/conversations";
 import { phoneNumbersApi } from "@/lib/api/phone-numbers";
 import { EditContactDialog } from "@/components/contacts/edit-contact-dialog";
 import { ScheduleAppointmentDialog } from "@/components/contacts/schedule-appointment-dialog";
+import { TagBadge } from "@/components/tags/tag-badge";
 import type { Contact } from "@/types";
 
 interface ContactSidebarProps {
@@ -411,7 +412,19 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
           </div>
 
           {/* Tags */}
-          {tags.length > 0 && (
+          {(selectedContact.tag_objects && selectedContact.tag_objects.length > 0) ? (
+            <>
+              <Separator />
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium text-muted-foreground px-2">Tags</h3>
+                <div className="flex flex-wrap gap-1.5 px-2">
+                  {selectedContact.tag_objects.map((tag) => (
+                    <TagBadge key={tag.id} name={tag.name} color={tag.color} />
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : tags.length > 0 ? (
             <>
               <Separator />
               <div className="space-y-2">
@@ -425,7 +438,7 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
                 </div>
               </div>
             </>
-          )}
+          ) : null}
 
           {/* Activity Stats */}
           <Separator />

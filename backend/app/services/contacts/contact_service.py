@@ -13,6 +13,7 @@ from app.models.contact import Contact
 from app.models.conversation import Conversation
 from app.models.phone_number import PhoneNumber
 from app.schemas.contact import ContactWithConversationResponse
+from app.schemas.tag import TagResponse
 from app.services.contacts.contact_repository import (
     bulk_delete_contacts,
     get_contact_by_id,
@@ -56,20 +57,9 @@ class ContactService:
         status_filter: str | None = None,
         search: str | None = None,
         sort_by: str | None = None,
+        **filter_kwargs: Any,
     ) -> dict[str, Any]:
-        """High-level contact listing with filters.
-
-        Args:
-            workspace_id: The workspace UUID
-            page: Page number
-            page_size: Items per page
-            status_filter: Optional status filter
-            search: Optional search term
-            sort_by: Optional sort field
-
-        Returns:
-            Dict with items, total, page, page_size, pages
-        """
+        """High-level contact listing with filters."""
         rows, total = await list_contacts_paginated(
             workspace_id=workspace_id,
             db=self.db,
@@ -78,6 +68,7 @@ class ContactService:
             status_filter=status_filter,
             search=search,
             sort_by=sort_by,
+            **filter_kwargs,
         )
 
         # Build response with conversation data
@@ -88,6 +79,13 @@ class ContactService:
             contact_data.unread_count = row[1] or 0
             contact_data.last_message_at = row[2]
             contact_data.last_message_direction = row[3]
+            # Populate tag objects from loaded relationship
+            if hasattr(contact, "contact_tags") and contact.contact_tags:
+                contact_data.tag_objects = [
+                    TagResponse.model_validate(ct.tag)
+                    for ct in contact.contact_tags
+                    if ct.tag is not None
+                ]
             items.append(contact_data)
 
         return {
@@ -103,22 +101,15 @@ class ContactService:
         workspace_id: uuid.UUID,
         status_filter: str | None = None,
         search: str | None = None,
+        **filter_kwargs: Any,
     ) -> dict[str, Any]:
-        """Get all contact IDs matching filters (for Select All functionality).
-
-        Args:
-            workspace_id: The workspace UUID
-            status_filter: Optional status filter
-            search: Optional search term
-
-        Returns:
-            Dict with ids (list) and total (count)
-        """
+        """Get all contact IDs matching filters (for Select All functionality)."""
         ids, total = await list_contact_ids(
             workspace_id=workspace_id,
             db=self.db,
             status_filter=status_filter,
             search=search,
+            **filter_kwargs,
         )
 
         return {

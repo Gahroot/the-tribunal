@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from app.models.campaign import CampaignContact
     from app.models.conversation import Conversation
     from app.models.message_test import TestContact
+    from app.models.tag import ContactTag
     from app.models.workspace import Workspace
 
 
@@ -106,6 +107,9 @@ class Contact(Base):
     )
     test_contacts: Mapped[list["TestContact"]] = relationship(
         "TestContact", back_populates="contact", cascade="all, delete-orphan"
+    )
+    contact_tags: Mapped[list["ContactTag"]] = relationship(
+        "ContactTag", back_populates="contact", cascade="all, delete-orphan"
     )
 
     @property

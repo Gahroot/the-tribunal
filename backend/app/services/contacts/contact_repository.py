@@ -6,9 +6,12 @@ from typing import Any
 import structlog
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
+from app.models.tag import ContactTag
+from app.services.contacts.contact_filters import apply_contact_filters
 from app.services.telephony.telnyx import normalize_phone_number
 
 logger = structlog.get_logger()
@@ -22,6 +25,19 @@ async def list_contacts_paginated(
     status_filter: str | None = None,
     search: str | None = None,
     sort_by: str | None = None,
+    # Advanced filters
+    tags: list[uuid.UUID] | None = None,
+    tags_match: str = "any",
+    lead_score_min: int | None = None,
+    lead_score_max: int | None = None,
+    is_qualified: bool | None = None,
+    source: str | None = None,
+    company_name: str | None = None,
+    created_after: Any | None = None,
+    created_before: Any | None = None,
+    enrichment_status: str | None = None,
+    filter_rules: list[dict[str, Any]] | None = None,
+    filter_logic: str = "and",
 ) -> tuple[Any, int]:
     """Build and execute contact list query with filters and pagination.
 
@@ -64,6 +80,7 @@ async def list_contacts_paginated(
         )
         .outerjoin(conv_subquery, Contact.id == conv_subquery.c.contact_id)
         .where(Contact.workspace_id == workspace_id)
+        .options(selectinload(Contact.contact_tags).selectinload(ContactTag.tag))
     )
 
     # Apply filters
@@ -80,6 +97,24 @@ async def list_contacts_paginated(
             | (Contact.company_name.ilike(search_term))
         )
 
+    # Apply advanced filters
+    query = apply_contact_filters(
+        query,
+        workspace_id,
+        tags=tags,
+        tags_match=tags_match,
+        lead_score_min=lead_score_min,
+        lead_score_max=lead_score_max,
+        is_qualified=is_qualified,
+        source=source,
+        company_name=company_name,
+        created_after=created_after,
+        created_before=created_before,
+        enrichment_status=enrichment_status,
+        filter_rules=filter_rules,
+        filter_logic=filter_logic,
+    )
+
     # Get total count (from base contact query without conversation columns)
     base_count_query = select(Contact).where(Contact.workspace_id == workspace_id)
     if status_filter:
@@ -93,6 +128,22 @@ async def list_contacts_paginated(
             | (Contact.phone_number.ilike(search_term))
             | (Contact.company_name.ilike(search_term))
         )
+    base_count_query = apply_contact_filters(
+        base_count_query,
+        workspace_id,
+        tags=tags,
+        tags_match=tags_match,
+        lead_score_min=lead_score_min,
+        lead_score_max=lead_score_max,
+        is_qualified=is_qualified,
+        source=source,
+        company_name=company_name,
+        created_after=created_after,
+        created_before=created_before,
+        enrichment_status=enrichment_status,
+        filter_rules=filter_rules,
+        filter_logic=filter_logic,
+    )
     count_query = select(func.count()).select_from(base_count_query.subquery())
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
@@ -142,10 +193,12 @@ async def get_contact_by_id(
         Contact object or None if not found
     """
     result = await db.execute(
-        select(Contact).where(
+        select(Contact)
+        .where(
             Contact.id == contact_id,
             Contact.workspace_id == workspace_id,
         )
+        .options(selectinload(Contact.contact_tags).selectinload(ContactTag.tag))
     )
     return result.scalar_one_or_none()
 
@@ -390,18 +443,21 @@ async def list_contact_ids(
     db: AsyncSession,
     status_filter: str | None = None,
     search: str | None = None,
+    # Advanced filters
+    tags: list[uuid.UUID] | None = None,
+    tags_match: str = "any",
+    lead_score_min: int | None = None,
+    lead_score_max: int | None = None,
+    is_qualified: bool | None = None,
+    source: str | None = None,
+    company_name: str | None = None,
+    created_after: Any | None = None,
+    created_before: Any | None = None,
+    enrichment_status: str | None = None,
+    filter_rules: list[dict[str, Any]] | None = None,
+    filter_logic: str = "and",
 ) -> tuple[list[int], int]:
-    """Get all contact IDs matching filters (for Select All functionality).
-
-    Args:
-        workspace_id: The workspace UUID
-        db: Database session
-        status_filter: Optional status filter
-        search: Optional search term
-
-    Returns:
-        Tuple of (list of contact IDs, total count)
-    """
+    """Get all contact IDs matching filters (for Select All functionality)."""
     query = select(Contact.id).where(Contact.workspace_id == workspace_id)
 
     if status_filter:
@@ -416,6 +472,24 @@ async def list_contact_ids(
             | (Contact.phone_number.ilike(search_term))
             | (Contact.company_name.ilike(search_term))
         )
+
+    # Apply advanced filters
+    query = apply_contact_filters(
+        query,
+        workspace_id,
+        tags=tags,
+        tags_match=tags_match,
+        lead_score_min=lead_score_min,
+        lead_score_max=lead_score_max,
+        is_qualified=is_qualified,
+        source=source,
+        company_name=company_name,
+        created_after=created_after,
+        created_before=created_before,
+        enrichment_status=enrichment_status,
+        filter_rules=filter_rules,
+        filter_logic=filter_logic,
+    )
 
     query = query.order_by(Contact.created_at.desc(), Contact.id.desc())
 

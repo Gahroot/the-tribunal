@@ -6,6 +6,8 @@ from typing import Any
 
 from pydantic import BaseModel, EmailStr, Field
 
+from app.schemas.tag import TagResponse
+
 
 class ContactCreate(BaseModel):
     """Schema for creating a contact."""
@@ -83,6 +85,7 @@ class ContactResponse(BaseModel):
     business_intel: dict[str, Any] | None = None
     enrichment_status: str | None = None
     enriched_at: datetime | None = None
+    tag_objects: list[TagResponse] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 

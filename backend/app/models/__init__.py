@@ -7,6 +7,7 @@ from app.models.bandit_decision import BanditDecision, DecisionType
 from app.models.call_feedback import CallFeedback
 from app.models.call_outcome import CallOutcome
 from app.models.campaign import Campaign, CampaignContact
+from app.models.campaign_report import CampaignReport
 from app.models.campaign_number_pool import CampaignNumberPool
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
@@ -30,6 +31,8 @@ from app.models.phone_number_stats import PhoneNumberDailyStats
 from app.models.pipeline import Pipeline, PipelineStage
 from app.models.prompt_version import PromptVersion
 from app.models.prompt_version_stats import PromptVersionStats
+from app.models.segment import Segment
+from app.models.tag import ContactTag, Tag
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceIntegration, WorkspaceMembership
 
@@ -47,6 +50,7 @@ __all__ = [
     "Campaign",
     "CampaignContact",
     "CampaignNumberPool",
+    "CampaignReport",
     "Appointment",
     "PhoneNumber",
     "PhoneNumberDailyStats",
@@ -72,4 +76,7 @@ __all__ = [
     "CallFeedback",
     "BanditDecision",
     "DecisionType",
+    "Tag",
+    "ContactTag",
+    "Segment",
 ]

@@ -28,7 +28,9 @@ from app.api.v1 import (
     phone_numbers,
     prompt_versions,
     scraping,
+    segments,
     settings,
+    tags,
     voice_campaigns,
     workspaces,
 )
@@ -43,6 +45,16 @@ api_router.include_router(
     contacts.router,
     prefix="/workspaces/{workspace_id}/contacts",
     tags=["Contacts"],
+)
+api_router.include_router(
+    tags.router,
+    prefix="/workspaces/{workspace_id}/tags",
+    tags=["Tags"],
+)
+api_router.include_router(
+    segments.router,
+    prefix="/workspaces/{workspace_id}/segments",
+    tags=["Segments"],
 )
 api_router.include_router(
     conversations.router,

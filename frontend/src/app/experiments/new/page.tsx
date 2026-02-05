@@ -122,6 +122,7 @@ export default function NewExperimentPage() {
         {/* Wizard */}
         <div className="flex-1 overflow-hidden">
           <MessageTestWizard
+            workspaceId={workspaceId ?? undefined}
             contacts={Array.isArray(contacts) ? contacts : []}
             agents={Array.isArray(agents) ? agents : []}
             phoneNumbers={Array.isArray(phoneNumbers) ? phoneNumbers : []}

@@ -27,7 +27,10 @@ import {
 import { useDebounce } from "@/hooks/useDebounce";
 import { useInfiniteContacts } from "@/hooks/useInfiniteContacts";
 import { contactsApi } from "@/lib/api/contacts";
-import type { Contact, ContactStatus } from "@/types";
+import { segmentsApi } from "@/lib/api/segments";
+import { ContactFilterBuilder } from "@/components/filters/contact-filter-builder";
+import { SegmentPicker } from "@/components/segments/segment-picker";
+import type { Contact, ContactStatus, FilterDefinition } from "@/types";
 
 const ROW_HEIGHT = 72;
 const OVERSCAN = 5;
@@ -53,9 +56,15 @@ export function VirtualContactSelector({
 }: VirtualContactSelectorProps) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<ContactStatus | "all">("all");
+  const [advancedFilters, setAdvancedFilters] = useState<FilterDefinition | null>(null);
+  const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   const debouncedSearch = useDebounce(search, 300);
 
   const parentRef = useRef<HTMLDivElement>(null);
+
+  const filtersJson = advancedFilters
+    ? JSON.stringify(advancedFilters)
+    : undefined;
 
   const {
     contacts,
@@ -68,14 +77,33 @@ export function VirtualContactSelector({
     workspaceId,
     search: debouncedSearch,
     status: statusFilter,
+    filters: filtersJson,
   });
+
+  // Resolve segment contacts when a segment is selected
+  const segmentMutation = useMutation({
+    mutationFn: async (segmentId: string) => {
+      return segmentsApi.getContacts(workspaceId, segmentId);
+    },
+    onSuccess: (data) => {
+      onSelectionChange(new Set(data.ids));
+    },
+  });
+
+  const handleSegmentSelect = (segmentId: string | null) => {
+    setSelectedSegmentId(segmentId);
+    if (segmentId) {
+      segmentMutation.mutate(segmentId);
+    }
+  };
 
   // Fetch IDs for selection (with optional limit)
   const selectMutation = useMutation({
     mutationFn: async (limit?: number) => {
-      const params: { search?: string; status?: ContactStatus } = {};
+      const params: { search?: string; status?: ContactStatus; filters?: string } = {};
       if (debouncedSearch) params.search = debouncedSearch;
       if (statusFilter !== "all") params.status = statusFilter;
+      if (filtersJson) params.filters = filtersJson;
       const result = await contactsApi.listIds(workspaceId, params);
       // Apply limit if specified
       if (limit && limit < result.ids.length) {
@@ -250,6 +278,13 @@ export function VirtualContactSelector({
         </div>
       </div>
 
+      {/* Segment Picker */}
+      <SegmentPicker
+        workspaceId={workspaceId}
+        selectedSegmentId={selectedSegmentId}
+        onSegmentSelect={handleSegmentSelect}
+      />
+
       {/* Filters */}
       <div className="flex gap-3">
         <div className="relative flex-1">
@@ -289,6 +324,14 @@ export function VirtualContactSelector({
           </SelectContent>
         </Select>
       </div>
+
+      {/* Advanced Filters */}
+      <ContactFilterBuilder
+        workspaceId={workspaceId}
+        filters={advancedFilters}
+        onFiltersChange={setAdvancedFilters}
+        compact
+      />
 
       {/* Virtual Contact List */}
       <div

@@ -9,6 +9,18 @@ interface UseInfiniteContactsParams {
   workspaceId: string | null;
   search?: string;
   status?: ContactStatus | "all";
+  // Advanced filters
+  tags?: string;
+  tags_match?: "any" | "all" | "none";
+  lead_score_min?: number;
+  lead_score_max?: number;
+  is_qualified?: boolean;
+  source?: string;
+  company_name?: string;
+  created_after?: string;
+  created_before?: string;
+  enrichment_status?: string;
+  filters?: string;
 }
 
 interface UseInfiniteContactsReturn {
@@ -25,9 +37,36 @@ export function useInfiniteContacts({
   workspaceId,
   search,
   status,
+  tags,
+  tags_match,
+  lead_score_min,
+  lead_score_max,
+  is_qualified,
+  source,
+  company_name,
+  created_after,
+  created_before,
+  enrichment_status,
+  filters,
 }: UseInfiniteContactsParams): UseInfiniteContactsReturn {
   const query = useInfiniteQuery({
-    queryKey: ["contacts-infinite", workspaceId, search, status],
+    queryKey: [
+      "contacts-infinite",
+      workspaceId,
+      search,
+      status,
+      tags,
+      tags_match,
+      lead_score_min,
+      lead_score_max,
+      is_qualified,
+      source,
+      company_name,
+      created_after,
+      created_before,
+      enrichment_status,
+      filters,
+    ],
     queryFn: async ({ pageParam = 1 }) => {
       if (!workspaceId) {
         return { items: [], total: 0, page: 1, page_size: PAGE_SIZE, pages: 0 };
@@ -45,6 +84,19 @@ export function useInfiniteContacts({
       if (status && status !== "all") {
         params.status = status;
       }
+
+      // Advanced filters
+      if (tags) params.tags = tags;
+      if (tags_match) params.tags_match = tags_match;
+      if (lead_score_min !== undefined) params.lead_score_min = lead_score_min;
+      if (lead_score_max !== undefined) params.lead_score_max = lead_score_max;
+      if (is_qualified !== undefined) params.is_qualified = is_qualified;
+      if (source) params.source = source;
+      if (company_name) params.company_name = company_name;
+      if (created_after) params.created_after = created_after;
+      if (created_before) params.created_before = created_before;
+      if (enrichment_status) params.enrichment_status = enrichment_status;
+      if (filters) params.filters = filters;
 
       return contactsApi.list(workspaceId, params);
     },
