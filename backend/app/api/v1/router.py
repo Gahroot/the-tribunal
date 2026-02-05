@@ -10,6 +10,7 @@ from app.api.v1 import (
     call_feedback,
     call_outcomes,
     calls,
+    campaign_reports,
     campaigns,
     contacts,
     conversations,
@@ -85,6 +86,11 @@ api_router.include_router(
     voice_campaigns.router,
     prefix="/workspaces/{workspace_id}/voice-campaigns",
     tags=["Voice Campaigns"],
+)
+api_router.include_router(
+    campaign_reports.router,
+    prefix="/workspaces/{workspace_id}/campaign-reports",
+    tags=["Campaign Reports"],
 )
 api_router.include_router(
     message_tests.router,

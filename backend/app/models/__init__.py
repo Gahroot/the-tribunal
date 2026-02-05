@@ -7,8 +7,8 @@ from app.models.bandit_decision import BanditDecision, DecisionType
 from app.models.call_feedback import CallFeedback
 from app.models.call_outcome import CallOutcome
 from app.models.campaign import Campaign, CampaignContact
-from app.models.campaign_report import CampaignReport
 from app.models.campaign_number_pool import CampaignNumberPool
+from app.models.campaign_report import CampaignReport
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
 from app.models.demo_request import DemoRequest
