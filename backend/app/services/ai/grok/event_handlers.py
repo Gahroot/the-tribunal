@@ -314,22 +314,6 @@ class ResponseDoneHandler(EventHandler):
             output_item_types=[item.get("type") for item in output_items],
         )
 
-        # Check for function calls in the response
-        for item in output_items:
-            item_type = item.get("type")
-            self._logger.debug(
-                "response_output_item",
-                item_type=item_type,
-                item_keys=list(item.keys()),
-            )
-            if item_type == "function_call":
-                self._logger.info(
-                    "function_call_found",
-                    function_name=item.get("name"),
-                    call_id=item.get("call_id"),
-                )
-                await context.handle_function_call(item)
-
         return result
 
 

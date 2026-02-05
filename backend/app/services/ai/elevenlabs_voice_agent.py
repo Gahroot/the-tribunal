@@ -545,11 +545,6 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
                     # Handle response completion using base class
                     self._handle_response_done(response_status)
 
-                    # Handle function calls
-                    for item in output_items:
-                        if item.get("type") == "function_call":
-                            await self._handle_function_call(item)
-
                     self.logger.info(
                         "grok_response_completed",
                         response_num=responses_completed,

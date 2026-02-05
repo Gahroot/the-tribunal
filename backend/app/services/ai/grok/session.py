@@ -78,7 +78,6 @@ class GrokVoiceAgentSession(VoiceAgentBase):
 
         # Tool call handling
         self._tool_callback: Callable[[str, str, dict[str, Any]], Any] | None = None
-        self._pending_function_calls: dict[str, dict[str, Any]] = {}
 
         # Initialize DTMF handler
         self._dtmf_handler = DTMFHandler(
