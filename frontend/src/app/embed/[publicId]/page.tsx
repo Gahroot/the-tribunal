@@ -440,7 +440,6 @@ export default function EmbedPage({ params }: EmbedPageProps) {
         headers: {
           "Content-Type": "application/sdp",
           Authorization: `Bearer ${ephemeralKey}`,
-          "OpenAI-Beta": "realtime=v1",
         },
         signal: abortController.signal,
       });

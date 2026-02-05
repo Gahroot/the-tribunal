@@ -65,7 +65,6 @@ class VoiceAgentSession(VoiceAgentBase):
                 url,
                 additional_headers={
                     "Authorization": f"Bearer {self.api_key}",
-                    "OpenAI-Beta": "realtime=v1",
                 },
             )
 

@@ -209,7 +209,7 @@ async def get_ephemeral_token(
                 "Content-Type": "application/json",
             },
             json={
-                "model": "gpt-4o-realtime-preview-2024-12-17",
+                "model": "gpt-4o-realtime-preview",
                 "voice": agent.voice_id,
             },
             timeout=30.0,
@@ -260,7 +260,7 @@ async def get_ephemeral_token(
             "language": agent.language,
             "initial_greeting": agent.initial_greeting,
         },
-        model="gpt-4o-realtime-preview-2024-12-17",
+        model="gpt-4o-realtime-preview",
         tools=tools,
     )
 

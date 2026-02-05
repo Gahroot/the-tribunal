@@ -280,7 +280,6 @@ export default function VoiceTestPage() {
         headers: {
           "Content-Type": "application/sdp",
           Authorization: `Bearer ${ephemeralKey}`,
-          "OpenAI-Beta": "realtime=v1",
         },
       });
 
