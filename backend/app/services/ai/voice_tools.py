@@ -80,7 +80,12 @@ VOICE_BOOKING_TOOLS: list[dict[str, Any]] = [
                 },
                 "time": {
                     "type": "string",
-                    "description": "Appointment time in HH:MM 24-hour format",
+                    "description": (
+                        "Appointment time in HH:MM 24-hour format "
+                        "(e.g., '14:00' for 2 PM, '09:30' for 9:30 AM). "
+                        "Always pass 24-hour format here even though you "
+                        "speak 12-hour format to the customer."
+                    ),
                 },
                 "email": {
                     "type": "string",
@@ -167,7 +172,12 @@ def get_booking_tools(timezone: str = "America/New_York") -> list[dict[str, Any]
                     },
                     "time": {
                         "type": "string",
-                        "description": "Appointment time in HH:MM 24-hour format",
+                        "description": (
+                            "Appointment time in HH:MM 24-hour format "
+                            "(e.g., '14:00' for 2 PM, '09:30' for 9:30 AM). "
+                            "Always pass 24-hour format here even though you "
+                            "speak 12-hour format to the customer."
+                        ),
                     },
                     "email": {
                         "type": "string",
@@ -373,7 +383,12 @@ def get_text_booking_tools(timezone: str = "America/New_York") -> list[dict[str,
                         },
                         "time": {
                             "type": "string",
-                            "description": "Appointment time in HH:MM 24-hour format",
+                            "description": (
+                                "Appointment time in HH:MM 24-hour format "
+                                "(e.g., '14:00' for 2 PM, '09:30' for 9:30 AM). "
+                                "Always pass 24-hour format here even though you "
+                                "speak 12-hour format to the customer."
+                            ),
                         },
                         "email": {
                             "type": "string",

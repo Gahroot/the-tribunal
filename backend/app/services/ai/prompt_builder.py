@@ -345,7 +345,20 @@ RESPONSE PATTERN:
 - If they pick a time and you have email: Call book_appointment immediately
 - If they pick a time but no email: Ask for email, then book once provided
 
-DO NOT say things like "I'll check and get back to you" - you can check instantly!"""
+DO NOT say things like "I'll check and get back to you" - you can check instantly!
+
+TIME FORMAT RULES:
+- ALWAYS speak times in 12-hour AM/PM format (e.g., "2 PM", "10:30 AM")
+- NEVER say times in military/24-hour format (do NOT say "fourteen hundred" or "1500")
+- The tool results include display_time in 12-hour format - use those when speaking
+- The book_appointment tool still accepts HH:MM 24-hour format for the time parameter
+
+AVAILABILITY ACCURACY RULES:
+- ONLY offer times from check_availability. NEVER make up or guess times.
+- If booking fails, use alternative_slots from the error. Do NOT re-state failed time.
+- When booking fails, say "That time is no longer available" and offer alternatives.
+- If no alternatives are provided, ask the customer to check a different day.
+- NEVER offer a time that was not explicitly returned by a tool."""
 
     def build_context_section(
         self,

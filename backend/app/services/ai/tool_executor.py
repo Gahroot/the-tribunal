@@ -23,6 +23,18 @@ from app.services.calendar.calcom import CalComService
 logger = structlog.get_logger()
 
 
+def _format_time_12h(time_24h: str) -> str:
+    """Convert 24-hour HH:MM to 12-hour AM/PM (e.g. '14:00' -> '2:00 PM')."""
+    try:
+        dt = datetime.strptime(time_24h, "%H:%M")
+        formatted = dt.strftime("%I:%M %p")
+        if formatted.startswith("0"):
+            formatted = formatted[1:]
+        return formatted
+    except ValueError:
+        return time_24h
+
+
 class VoiceToolExecutor:
     """Executes voice agent tool calls.
 
@@ -158,17 +170,25 @@ class VoiceToolExecutor:
                         "message": f"No available slots on {start_date_str}",
                     }
 
-                # Format slots nicely for voice
+                # Add 12-hour display_time to each slot
+                for slot in slots:
+                    slot["display_time"] = _format_time_12h(slot.get("time", ""))
+
+                # Build voice-friendly message with 12-hour times
                 slot_descriptions = []
                 for slot in slots[:5]:  # Limit to 5 for voice
-                    slot_time = slot.get("time", "")
-                    slot_descriptions.append(slot_time)
+                    slot_descriptions.append(slot["display_time"])
 
+                times_list = ", ".join(slot_descriptions)
                 return {
                     "success": True,
                     "available": True,
                     "slots": slots[:10],
-                    "message": f"Available times: {', '.join(slot_descriptions)}",
+                    "message": (
+                        f"Available times: {times_list}. "
+                        "IMPORTANT: ONLY offer these exact times to the customer. "
+                        "Do NOT make up or guess other available times."
+                    ),
                 }
 
             finally:
@@ -218,6 +238,7 @@ class VoiceToolExecutor:
             contact_name = self.contact_info.get("name", "Customer")
             contact_phone = self.contact_info.get("phone")
 
+        calcom_service = CalComService(settings.calcom_api_key)
         try:
             # Parse date and time
             tz = self._get_timezone()
@@ -226,50 +247,89 @@ class VoiceToolExecutor:
                 tzinfo=tz
             )
 
-            # Convert to UTC for Cal.com
-            start_utc = start_time.astimezone(ZoneInfo("UTC"))
+            # Pre-validate: check if the requested slot is still available
+            start_date = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=tz)
+            slots = await calcom_service.get_availability(
+                event_type_id=self.agent.calcom_event_type_id,
+                start_date=start_date,
+                end_date=start_date,
+                timezone=self.timezone,
+            )
 
-            # Create booking via Cal.com
-            calcom_service = CalComService(settings.calcom_api_key)
-            try:
-                booking = await calcom_service.create_booking(
-                    event_type_id=self.agent.calcom_event_type_id,
-                    contact_email=email,
-                    contact_name=contact_name,
-                    start_time=start_utc,
-                    duration_minutes=duration_minutes,
-                    metadata={"notes": notes} if notes else None,
-                    timezone=self.timezone,
-                    phone_number=contact_phone,
+            available_times = [s.get("time") for s in slots]
+            if time_str not in available_times:
+                # Slot is no longer available — return fresh alternatives
+                display_time = _format_time_12h(time_str)
+                alternative_slots = []
+                for s in slots[:5]:
+                    alternative_slots.append({
+                        "time": s.get("time", ""),
+                        "display_time": _format_time_12h(s.get("time", "")),
+                    })
+
+                alt_times = ", ".join(s["display_time"] for s in alternative_slots)
+                self.logger.warning(
+                    "booking_slot_unavailable",
+                    requested_time=time_str,
+                    available_count=len(slots),
                 )
-
-                booking_uid = booking.get("uid")
-                booking_id = booking.get("id")
-
-                self.logger.info(
-                    "booking_created",
-                    booking_uid=booking_uid,
-                    booking_id=booking_id,
-                    email=email,
-                )
-
                 return {
-                    "success": True,
-                    "booking_id": booking_uid,
-                    "booking_uid": booking_uid,
-                    "calcom_id": booking_id,
+                    "success": False,
+                    "error": (
+                        f"The {display_time} slot is no longer available. "
+                        "Do NOT re-offer this time to the customer."
+                    ),
+                    "alternative_slots": alternative_slots,
                     "message": (
-                        f"Appointment booked for {contact_name} on {date_str} at {time_str}. "
-                        f"Confirmation email sent to {email}."
+                        f"That time is no longer available. "
+                        f"{'Available alternatives: ' + alt_times + '. ' if alt_times else ''}"
+                        "ONLY offer these exact alternative times. "
+                        "Do NOT re-offer the failed time."
                     ),
                 }
 
-            finally:
-                await calcom_service.close()
+            # Slot is available — proceed with booking
+            start_utc = start_time.astimezone(ZoneInfo("UTC"))
+
+            booking = await calcom_service.create_booking(
+                event_type_id=self.agent.calcom_event_type_id,
+                contact_email=email,
+                contact_name=contact_name,
+                start_time=start_utc,
+                duration_minutes=duration_minutes,
+                metadata={"notes": notes} if notes else None,
+                timezone=self.timezone,
+                phone_number=contact_phone,
+            )
+
+            booking_uid = booking.get("uid")
+            booking_id = booking.get("id")
+
+            self.logger.info(
+                "booking_created",
+                booking_uid=booking_uid,
+                booking_id=booking_id,
+                email=email,
+            )
+
+            display_time = _format_time_12h(time_str)
+            return {
+                "success": True,
+                "booking_id": booking_uid,
+                "booking_uid": booking_uid,
+                "calcom_id": booking_id,
+                "message": (
+                    f"Appointment booked for {contact_name} on {date_str} "
+                    f"at {display_time}. "
+                    f"Confirmation email sent to {email}."
+                ),
+            }
 
         except Exception as e:
             self.logger.exception("book_appointment_error", error=str(e))
             return {"success": False, "error": f"Failed to book appointment: {e!s}"}
+        finally:
+            await calcom_service.close()
 
     async def _execute_send_dtmf(self, digits: str) -> dict[str, Any]:
         """Execute send_dtmf tool for IVR navigation.
