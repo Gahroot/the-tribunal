@@ -1,23 +1,18 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
-  ArrowLeft,
-  ArrowRight,
-  Check,
   FileText,
   Users,
   Bot,
   Eye,
   Send,
-  Loader2,
   Phone,
   AlertCircle,
   FlaskConical,
 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,7 +26,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 import { useMutation } from "@tanstack/react-query";
@@ -41,6 +35,9 @@ import { AgentSelector } from "../campaigns/agent-selector";
 import { VariantEditor, type VariantFormData } from "./variant-editor";
 import { SegmentPicker } from "@/components/segments/segment-picker";
 import { segmentsApi } from "@/lib/api/segments";
+
+import { useWizard } from "@/hooks/useWizard";
+import { WizardContainer } from "@/components/wizard";
 
 import type { Contact, Agent, PhoneNumber, MessageTest } from "@/types";
 import type { CreateMessageTestRequest } from "@/lib/api/message-tests";
@@ -107,12 +104,9 @@ export function MessageTestWizard({
   onCancel,
   isSubmitting = false,
 }: MessageTestWizardProps) {
-  const [currentStep, setCurrentStep] = useState<StepId>("basics");
-  const [formData, setFormData] = useState<FormData>(initialFormData);
   const [selectedContactIds, setSelectedContactIds] = useState<number[]>([]);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   const [variants, setVariants] = useState<VariantFormData[]>([]);
-  const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Resolve segment contacts when a segment is selected
   const segmentMutation = useMutation({
@@ -121,7 +115,6 @@ export function MessageTestWizard({
       return segmentsApi.getContacts(workspaceId, segmentId);
     },
     onSuccess: (data) => {
-      // Filter to only contacts that exist in the pre-loaded list
       const contactIdSet = new Set(contacts.map((c) => c.id));
       const matching = data.ids.filter((id) => contactIdSet.has(id));
       setSelectedContactIds(matching);
@@ -135,30 +128,14 @@ export function MessageTestWizard({
     }
   };
 
-  const currentStepIndex = STEPS.findIndex((s) => s.id === currentStep);
-
-  const updateFormData = useCallback(
-    <K extends keyof FormData>(key: K, value: FormData[K]) => {
-      setFormData((prev) => ({ ...prev, [key]: value }));
-      if (errors[key]) {
-        setErrors((prev) => {
-          const next = { ...prev };
-          delete next[key];
-          return next;
-        });
-      }
-    },
-    [errors]
-  );
-
   const validateStep = useCallback(
-    (step: StepId): boolean => {
+    (step: StepId, data: FormData, setErrors: React.Dispatch<React.SetStateAction<Record<string, string>>>) => {
       const newErrors: Record<string, string> = {};
 
       switch (step) {
         case "basics":
-          if (!formData.name.trim()) newErrors.name = "Experiment name is required";
-          if (!formData.from_phone_number)
+          if (!data.name.trim()) newErrors.name = "Experiment name is required";
+          if (!data.from_phone_number)
             newErrors.from_phone_number = "Phone number is required";
           break;
         case "contacts":
@@ -176,39 +153,19 @@ export function MessageTestWizard({
       setErrors(newErrors);
       return Object.keys(newErrors).length === 0;
     },
-    [formData, selectedContactIds, variants]
+    [selectedContactIds, variants]
   );
 
-  const goToStep = (step: StepId) => {
-    const targetIndex = STEPS.findIndex((s) => s.id === step);
-    if (targetIndex > currentStepIndex) {
-      if (!validateStep(currentStep)) return;
-    }
-    setCurrentStep(step);
-  };
+  const wizard = useWizard<StepId, FormData>({
+    steps: STEPS,
+    initialFormData,
+    validateStep,
+  });
 
-  const goNext = () => {
-    if (!validateStep(currentStep)) return;
-    const nextIndex = currentStepIndex + 1;
-    if (nextIndex < STEPS.length) {
-      setCurrentStep(STEPS[nextIndex].id);
-    }
-  };
-
-  const goPrevious = () => {
-    const prevIndex = currentStepIndex - 1;
-    if (prevIndex >= 0) {
-      setCurrentStep(STEPS[prevIndex].id);
-    }
-  };
+  const { formData, errors, updateField } = wizard;
 
   const handleSubmit = async () => {
-    for (const step of STEPS) {
-      if (!validateStep(step.id)) {
-        setCurrentStep(step.id);
-        return;
-      }
-    }
+    if (!wizard.validateAllSteps()) return;
 
     const request: CreateMessageTestRequest = {
       name: formData.name,
@@ -240,7 +197,7 @@ export function MessageTestWizard({
   );
 
   const renderStepContent = () => {
-    switch (currentStep) {
+    switch (wizard.currentStepId) {
       case "basics":
         return (
           <div className="space-y-6">
@@ -250,7 +207,7 @@ export function MessageTestWizard({
                 id="test-name"
                 placeholder="e.g., Intro Message Test - Q1"
                 value={formData.name}
-                onChange={(e) => updateFormData("name", e.target.value)}
+                onChange={(e) => updateField("name", e.target.value)}
                 className={errors.name ? "border-destructive" : ""}
               />
               {errors.name && (
@@ -264,7 +221,7 @@ export function MessageTestWizard({
                 id="test-description"
                 placeholder="What are you testing? What hypothesis are you trying to validate?"
                 value={formData.description}
-                onChange={(e) => updateFormData("description", e.target.value)}
+                onChange={(e) => updateField("description", e.target.value)}
                 rows={3}
               />
             </div>
@@ -273,7 +230,7 @@ export function MessageTestWizard({
               <Label>From Phone Number *</Label>
               <Select
                 value={formData.from_phone_number}
-                onValueChange={(v) => updateFormData("from_phone_number", v)}
+                onValueChange={(v) => updateField("from_phone_number", v)}
               >
                 <SelectTrigger
                   className={errors.from_phone_number ? "border-destructive" : ""}
@@ -359,7 +316,7 @@ export function MessageTestWizard({
               </div>
               <Switch
                 checked={formData.ai_enabled}
-                onCheckedChange={(v) => updateFormData("ai_enabled", v)}
+                onCheckedChange={(v) => updateField("ai_enabled", v)}
               />
             </div>
 
@@ -372,7 +329,7 @@ export function MessageTestWizard({
                 <AgentSelector
                   agents={agents}
                   selectedId={formData.agent_id}
-                  onSelect={(id) => updateFormData("agent_id", id)}
+                  onSelect={(id) => updateField("agent_id", id)}
                   showTextAgentsOnly={true}
                 />
 
@@ -385,7 +342,7 @@ export function MessageTestWizard({
                     placeholder="e.g., Interested in scheduling a demo, Has budget over $1000..."
                     value={formData.qualification_criteria}
                     onChange={(e) =>
-                      updateFormData("qualification_criteria", e.target.value)
+                      updateField("qualification_criteria", e.target.value)
                     }
                     rows={3}
                   />
@@ -525,104 +482,22 @@ export function MessageTestWizard({
   };
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Step indicators */}
-      <div className="flex items-center justify-between px-6 py-4 border-b bg-muted/30">
-        {STEPS.map((step, index) => {
-          const Icon = step.icon;
-          const isCompleted = index < currentStepIndex;
-          const isCurrent = step.id === currentStep;
-
-          return (
-            <button
-              key={step.id}
-              onClick={() => goToStep(step.id)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
-                isCurrent
-                  ? "bg-primary text-primary-foreground"
-                  : isCompleted
-                  ? "text-primary hover:bg-primary/10"
-                  : "text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              <div
-                className={`size-8 rounded-full flex items-center justify-center ${
-                  isCurrent
-                    ? "bg-primary-foreground/20"
-                    : isCompleted
-                    ? "bg-primary/20"
-                    : "bg-muted"
-                }`}
-              >
-                {isCompleted ? (
-                  <Check className="size-4" />
-                ) : (
-                  <Icon className="size-4" />
-                )}
-              </div>
-              <span className="text-sm font-medium hidden lg:block">
-                {step.label}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Step content */}
-      <ScrollArea className="flex-1">
-        <div className="p-6 max-w-4xl mx-auto">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={currentStep}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.2 }}
-            >
-              {renderStepContent()}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </ScrollArea>
-
-      {/* Footer navigation */}
-      <div className="flex items-center justify-between px-6 py-4 border-t bg-background">
-        <div>
-          {onCancel && (
-            <Button variant="ghost" onClick={onCancel}>
-              Cancel
-            </Button>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {currentStepIndex > 0 && (
-            <Button variant="outline" onClick={goPrevious}>
-              <ArrowLeft className="size-4 mr-2" />
-              Previous
-            </Button>
-          )}
-          {currentStepIndex < STEPS.length - 1 ? (
-            <Button onClick={goNext}>
-              Next
-              <ArrowRight className="size-4 ml-2" />
-            </Button>
-          ) : (
-            <Button onClick={handleSubmit} disabled={isSubmitting}>
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="size-4 mr-2 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Send className="size-4 mr-2" />
-                  Create Experiment
-                </>
-              )}
-            </Button>
-          )}
-        </div>
-      </div>
-    </div>
+    <WizardContainer
+      steps={STEPS}
+      currentStepId={wizard.currentStepId}
+      currentStepIndex={wizard.currentStepIndex}
+      onStepClick={wizard.goToStep}
+      isFirstStep={wizard.isFirstStep}
+      isLastStep={wizard.isLastStep}
+      onPrevious={wizard.goPrevious}
+      onNext={wizard.goNext}
+      onSubmit={handleSubmit}
+      isSubmitting={isSubmitting}
+      onCancel={onCancel}
+      submitLabel="Create Experiment"
+      submitIcon={Send}
+    >
+      {renderStepContent()}
+    </WizardContainer>
   );
 }

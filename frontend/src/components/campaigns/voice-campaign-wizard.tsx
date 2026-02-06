@@ -1,11 +1,8 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
-  ArrowLeft,
-  ArrowRight,
-  Check,
   FileText,
   Users,
   Phone,
@@ -13,7 +10,6 @@ import {
   Clock,
   Eye,
   Send,
-  Loader2,
   Calendar,
   AlertCircle,
 } from "lucide-react";
@@ -32,13 +28,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 import { VirtualContactSelector } from "./virtual-contact-selector";
 import { AgentSelector } from "./agent-selector";
 import { SMSFallbackStep, type SMSFallbackMode } from "./sms-fallback-step";
+
+import { useWizard } from "@/hooks/useWizard";
+import { WizardContainer } from "@/components/wizard";
 
 import type { Agent, PhoneNumber, VoiceCampaign } from "@/types";
 import type { CreateVoiceCampaignRequest } from "@/lib/api/voice-campaigns";
@@ -127,35 +125,16 @@ export function VoiceCampaignWizard({
   onCancel,
   isSubmitting = false,
 }: VoiceCampaignWizardProps) {
-  const [currentStep, setCurrentStep] = useState<StepId>("basics");
-  const [formData, setFormData] = useState<CampaignFormData>(initialFormData);
   const [selectedContactIds, setSelectedContactIds] = useState<Set<number>>(new Set());
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  const currentStepIndex = STEPS.findIndex((s) => s.id === currentStep);
-
-  const updateFormData = useCallback(
-    <K extends keyof CampaignFormData>(key: K, value: CampaignFormData[K]) => {
-      setFormData((prev) => ({ ...prev, [key]: value }));
-      if (errors[key]) {
-        setErrors((prev) => {
-          const next = { ...prev };
-          delete next[key];
-          return next;
-        });
-      }
-    },
-    [errors]
-  );
 
   const validateStep = useCallback(
-    (step: StepId): boolean => {
+    (step: StepId, data: CampaignFormData, setErrors: React.Dispatch<React.SetStateAction<Record<string, string>>>) => {
       const newErrors: Record<string, string> = {};
 
       switch (step) {
         case "basics":
-          if (!formData.name.trim()) newErrors.name = "Campaign name is required";
-          if (!formData.from_phone_number)
+          if (!data.name.trim()) newErrors.name = "Campaign name is required";
+          if (!data.from_phone_number)
             newErrors.from_phone_number = "Phone number is required";
           break;
         case "contacts":
@@ -163,27 +142,27 @@ export function VoiceCampaignWizard({
             newErrors.contacts = "Select at least one contact";
           break;
         case "voice":
-          if (!formData.voice_agent_id)
+          if (!data.voice_agent_id)
             newErrors.voice_agent_id = "Voice agent is required";
           break;
         case "fallback":
-          if (formData.sms_fallback_enabled) {
+          if (data.sms_fallback_enabled) {
             if (
-              formData.sms_fallback_mode === "template" &&
-              !formData.sms_fallback_template.trim()
+              data.sms_fallback_mode === "template" &&
+              !data.sms_fallback_template.trim()
             ) {
               newErrors.template = "Fallback template is required";
             }
             if (
-              formData.sms_fallback_mode === "ai" &&
-              !formData.sms_fallback_agent_id
+              data.sms_fallback_mode === "ai" &&
+              !data.sms_fallback_agent_id
             ) {
               newErrors.agentId = "Select an agent for AI-generated messages";
             }
           }
           break;
         case "schedule":
-          if (formData.sending_days.length === 0)
+          if (data.sending_days.length === 0)
             newErrors.sending_days = "Select at least one day";
           break;
       }
@@ -191,39 +170,19 @@ export function VoiceCampaignWizard({
       setErrors(newErrors);
       return Object.keys(newErrors).length === 0;
     },
-    [formData, selectedContactIds]
+    [selectedContactIds]
   );
 
-  const goToStep = (step: StepId) => {
-    const targetIndex = STEPS.findIndex((s) => s.id === step);
-    if (targetIndex > currentStepIndex) {
-      if (!validateStep(currentStep)) return;
-    }
-    setCurrentStep(step);
-  };
+  const wizard = useWizard<StepId, CampaignFormData>({
+    steps: STEPS,
+    initialFormData,
+    validateStep,
+  });
 
-  const goNext = () => {
-    if (!validateStep(currentStep)) return;
-    const nextIndex = currentStepIndex + 1;
-    if (nextIndex < STEPS.length) {
-      setCurrentStep(STEPS[nextIndex].id);
-    }
-  };
-
-  const goPrevious = () => {
-    const prevIndex = currentStepIndex - 1;
-    if (prevIndex >= 0) {
-      setCurrentStep(STEPS[prevIndex].id);
-    }
-  };
+  const { formData, errors, updateField } = wizard;
 
   const handleSubmit = async () => {
-    for (const step of STEPS) {
-      if (!validateStep(step.id)) {
-        setCurrentStep(step.id);
-        return;
-      }
-    }
+    if (!wizard.validateAllSteps()) return;
 
     const request: CreateVoiceCampaignRequest = {
       name: formData.name,
@@ -271,7 +230,7 @@ export function VoiceCampaignWizard({
   );
 
   const renderStepContent = () => {
-    switch (currentStep) {
+    switch (wizard.currentStepId) {
       case "basics":
         return (
           <div className="space-y-6">
@@ -281,7 +240,7 @@ export function VoiceCampaignWizard({
                 id="campaign-name"
                 placeholder="e.g., Follow-up Calls - January"
                 value={formData.name}
-                onChange={(e) => updateFormData("name", e.target.value)}
+                onChange={(e) => updateField("name", e.target.value)}
                 className={errors.name ? "border-destructive" : ""}
               />
               {errors.name && (
@@ -295,7 +254,7 @@ export function VoiceCampaignWizard({
                 id="campaign-description"
                 placeholder="Brief description of this campaign..."
                 value={formData.description}
-                onChange={(e) => updateFormData("description", e.target.value)}
+                onChange={(e) => updateField("description", e.target.value)}
                 rows={3}
               />
             </div>
@@ -304,7 +263,7 @@ export function VoiceCampaignWizard({
               <Label>From Phone Number *</Label>
               <Select
                 value={formData.from_phone_number}
-                onValueChange={(v) => updateFormData("from_phone_number", v)}
+                onValueChange={(v) => updateField("from_phone_number", v)}
               >
                 <SelectTrigger
                   className={
@@ -379,7 +338,7 @@ export function VoiceCampaignWizard({
               <AgentSelector
                 agents={voiceAgents}
                 selectedId={formData.voice_agent_id}
-                onSelect={(id) => updateFormData("voice_agent_id", id)}
+                onSelect={(id) => updateField("voice_agent_id", id)}
                 showVoiceAgentsOnly={true}
                 allowNone={false}
               />
@@ -400,7 +359,7 @@ export function VoiceCampaignWizard({
                 <Switch
                   checked={formData.enable_machine_detection}
                   onCheckedChange={(v) =>
-                    updateFormData("enable_machine_detection", v)
+                    updateField("enable_machine_detection", v)
                   }
                 />
               </div>
@@ -410,7 +369,7 @@ export function VoiceCampaignWizard({
                 <Select
                   value={String(formData.max_call_duration_seconds)}
                   onValueChange={(v) =>
-                    updateFormData("max_call_duration_seconds", parseInt(v))
+                    updateField("max_call_duration_seconds", parseInt(v))
                   }
                 >
                   <SelectTrigger>
@@ -432,13 +391,13 @@ export function VoiceCampaignWizard({
         return (
           <SMSFallbackStep
             enabled={formData.sms_fallback_enabled}
-            onEnabledChange={(v) => updateFormData("sms_fallback_enabled", v)}
+            onEnabledChange={(v) => updateField("sms_fallback_enabled", v)}
             mode={formData.sms_fallback_mode}
-            onModeChange={(v) => updateFormData("sms_fallback_mode", v)}
+            onModeChange={(v) => updateField("sms_fallback_mode", v)}
             template={formData.sms_fallback_template}
-            onTemplateChange={(v) => updateFormData("sms_fallback_template", v)}
+            onTemplateChange={(v) => updateField("sms_fallback_template", v)}
             agentId={formData.sms_fallback_agent_id}
-            onAgentChange={(v) => updateFormData("sms_fallback_agent_id", v)}
+            onAgentChange={(v) => updateField("sms_fallback_agent_id", v)}
             agents={textAgents}
             errors={errors}
           />
@@ -455,7 +414,7 @@ export function VoiceCampaignWizard({
                   type="datetime-local"
                   value={formData.scheduled_start || ""}
                   onChange={(e) =>
-                    updateFormData(
+                    updateField(
                       "scheduled_start",
                       e.target.value || undefined
                     )
@@ -469,7 +428,7 @@ export function VoiceCampaignWizard({
                   type="datetime-local"
                   value={formData.scheduled_end || ""}
                   onChange={(e) =>
-                    updateFormData("scheduled_end", e.target.value || undefined)
+                    updateField("scheduled_end", e.target.value || undefined)
                   }
                 />
               </div>
@@ -491,7 +450,7 @@ export function VoiceCampaignWizard({
                 <Switch
                   checked={formData.sending_hours_enabled}
                   onCheckedChange={(v) =>
-                    updateFormData("sending_hours_enabled", v)
+                    updateField("sending_hours_enabled", v)
                   }
                 />
               </div>
@@ -508,7 +467,7 @@ export function VoiceCampaignWizard({
                       type="time"
                       value={formData.sending_hours_start}
                       onChange={(e) =>
-                        updateFormData("sending_hours_start", e.target.value)
+                        updateField("sending_hours_start", e.target.value)
                       }
                     />
                   </div>
@@ -518,7 +477,7 @@ export function VoiceCampaignWizard({
                       type="time"
                       value={formData.sending_hours_end}
                       onChange={(e) =>
-                        updateFormData("sending_hours_end", e.target.value)
+                        updateField("sending_hours_end", e.target.value)
                       }
                     />
                   </div>
@@ -526,7 +485,7 @@ export function VoiceCampaignWizard({
                     <Label>Timezone</Label>
                     <Select
                       value={formData.timezone}
-                      onValueChange={(v) => updateFormData("timezone", v)}
+                      onValueChange={(v) => updateField("timezone", v)}
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -560,12 +519,12 @@ export function VoiceCampaignWizard({
                       className="w-12"
                       onClick={() => {
                         if (isSelected) {
-                          updateFormData(
+                          updateField(
                             "sending_days",
                             formData.sending_days.filter((d) => d !== day.value)
                           );
                         } else {
-                          updateFormData(
+                          updateField(
                             "sending_days",
                             [...formData.sending_days, day.value].sort()
                           );
@@ -591,7 +550,7 @@ export function VoiceCampaignWizard({
                 <Select
                   value={String(formData.calls_per_minute)}
                   onValueChange={(v) =>
-                    updateFormData("calls_per_minute", parseInt(v))
+                    updateField("calls_per_minute", parseInt(v))
                   }
                 >
                   <SelectTrigger>
@@ -762,100 +721,22 @@ export function VoiceCampaignWizard({
   };
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Step indicators */}
-      <div className="flex items-center justify-between px-6 py-4 border-b bg-muted/30">
-        {STEPS.map((step, index) => {
-          const Icon = step.icon;
-          const isCompleted = index < currentStepIndex;
-          const isCurrent = step.id === currentStep;
-
-          return (
-            <button
-              key={step.id}
-              onClick={() => goToStep(step.id)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
-                isCurrent
-                  ? "bg-primary text-primary-foreground"
-                  : isCompleted
-                  ? "text-primary hover:bg-primary/10"
-                  : "text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              <div
-                className={`size-8 rounded-full flex items-center justify-center ${
-                  isCurrent
-                    ? "bg-primary-foreground/20"
-                    : isCompleted
-                    ? "bg-primary/20"
-                    : "bg-muted"
-                }`}
-              >
-                {isCompleted ? <Check className="size-4" /> : <Icon className="size-4" />}
-              </div>
-              <span className="text-sm font-medium hidden lg:block">
-                {step.label}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Step content */}
-      <ScrollArea className="flex-1">
-        <div className="p-6 max-w-4xl mx-auto">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={currentStep}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.2 }}
-            >
-              {renderStepContent()}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </ScrollArea>
-
-      {/* Footer navigation */}
-      <div className="flex items-center justify-between px-6 py-4 border-t bg-background">
-        <div>
-          {onCancel && (
-            <Button variant="ghost" onClick={onCancel}>
-              Cancel
-            </Button>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {currentStepIndex > 0 && (
-            <Button variant="outline" onClick={goPrevious}>
-              <ArrowLeft className="size-4 mr-2" />
-              Previous
-            </Button>
-          )}
-          {currentStepIndex < STEPS.length - 1 ? (
-            <Button onClick={goNext}>
-              Next
-              <ArrowRight className="size-4 ml-2" />
-            </Button>
-          ) : (
-            <Button onClick={handleSubmit} disabled={isSubmitting}>
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="size-4 mr-2 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Send className="size-4 mr-2" />
-                  Create Campaign
-                </>
-              )}
-            </Button>
-          )}
-        </div>
-      </div>
-    </div>
+    <WizardContainer
+      steps={STEPS}
+      currentStepId={wizard.currentStepId}
+      currentStepIndex={wizard.currentStepIndex}
+      onStepClick={wizard.goToStep}
+      isFirstStep={wizard.isFirstStep}
+      isLastStep={wizard.isLastStep}
+      onPrevious={wizard.goPrevious}
+      onNext={wizard.goNext}
+      onSubmit={handleSubmit}
+      isSubmitting={isSubmitting}
+      onCancel={onCancel}
+      submitLabel="Create Campaign"
+      submitIcon={Send}
+    >
+      {renderStepContent()}
+    </WizardContainer>
   );
 }

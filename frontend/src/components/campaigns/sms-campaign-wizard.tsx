@@ -1,11 +1,8 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
-  ArrowLeft,
-  ArrowRight,
-  Check,
   FileText,
   Users,
   MessageSquare,
@@ -13,7 +10,6 @@ import {
   Clock,
   Eye,
   Send,
-  Loader2,
   Phone,
   Tag,
   Calendar,
@@ -34,13 +30,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 import { VirtualContactSelector } from "./virtual-contact-selector";
 import { AgentSelector } from "./agent-selector";
 import { OfferSelector } from "./offer-selector";
+
+import { useWizard } from "@/hooks/useWizard";
+import { WizardContainer } from "@/components/wizard";
 
 import type { Agent, Offer, PhoneNumber, SMSCampaign } from "@/types";
 import type { CreateSMSCampaignRequest } from "@/lib/api/sms-campaigns";
@@ -131,36 +129,16 @@ export function SMSCampaignWizard({
   onCancel,
   isSubmitting = false,
 }: SMSCampaignWizardProps) {
-  const [currentStep, setCurrentStep] = useState<StepId>("basics");
-  const [formData, setFormData] = useState<CampaignFormData>(initialFormData);
   const [selectedContactIds, setSelectedContactIds] = useState<Set<number>>(new Set());
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  const currentStepIndex = STEPS.findIndex((s) => s.id === currentStep);
-
-  const updateFormData = useCallback(
-    <K extends keyof CampaignFormData>(key: K, value: CampaignFormData[K]) => {
-      setFormData((prev) => ({ ...prev, [key]: value }));
-      // Clear error when field is updated
-      if (errors[key]) {
-        setErrors((prev) => {
-          const next = { ...prev };
-          delete next[key];
-          return next;
-        });
-      }
-    },
-    [errors]
-  );
 
   const validateStep = useCallback(
-    (step: StepId): boolean => {
+    (step: StepId, data: CampaignFormData, setErrors: React.Dispatch<React.SetStateAction<Record<string, string>>>) => {
       const newErrors: Record<string, string> = {};
 
       switch (step) {
         case "basics":
-          if (!formData.name.trim()) newErrors.name = "Campaign name is required";
-          if (!formData.from_phone_number)
+          if (!data.name.trim()) newErrors.name = "Campaign name is required";
+          if (!data.from_phone_number)
             newErrors.from_phone_number = "Phone number is required";
           break;
         case "contacts":
@@ -168,11 +146,11 @@ export function SMSCampaignWizard({
             newErrors.contacts = "Select at least one contact";
           break;
         case "message":
-          if (!formData.initial_message.trim())
+          if (!data.initial_message.trim())
             newErrors.initial_message = "Message is required";
           break;
         case "schedule":
-          if (formData.sending_days.length === 0)
+          if (data.sending_days.length === 0)
             newErrors.sending_days = "Select at least one day";
           break;
       }
@@ -180,41 +158,19 @@ export function SMSCampaignWizard({
       setErrors(newErrors);
       return Object.keys(newErrors).length === 0;
     },
-    [formData, selectedContactIds]
+    [selectedContactIds]
   );
 
-  const goToStep = (step: StepId) => {
-    // Validate current step before moving forward
-    const targetIndex = STEPS.findIndex((s) => s.id === step);
-    if (targetIndex > currentStepIndex) {
-      if (!validateStep(currentStep)) return;
-    }
-    setCurrentStep(step);
-  };
+  const wizard = useWizard<StepId, CampaignFormData>({
+    steps: STEPS,
+    initialFormData,
+    validateStep,
+  });
 
-  const goNext = () => {
-    if (!validateStep(currentStep)) return;
-    const nextIndex = currentStepIndex + 1;
-    if (nextIndex < STEPS.length) {
-      setCurrentStep(STEPS[nextIndex].id);
-    }
-  };
-
-  const goPrevious = () => {
-    const prevIndex = currentStepIndex - 1;
-    if (prevIndex >= 0) {
-      setCurrentStep(STEPS[prevIndex].id);
-    }
-  };
+  const { formData, errors, updateField } = wizard;
 
   const handleSubmit = async () => {
-    // Final validation
-    for (const step of STEPS) {
-      if (!validateStep(step.id)) {
-        setCurrentStep(step.id);
-        return;
-      }
-    }
+    if (!wizard.validateAllSteps()) return;
 
     const request: CreateSMSCampaignRequest = {
       name: formData.name,
@@ -227,7 +183,6 @@ export function SMSCampaignWizard({
       qualification_criteria: formData.qualification_criteria || undefined,
       scheduled_start: formData.scheduled_start || undefined,
       scheduled_end: formData.scheduled_end || undefined,
-      // When sending hours are disabled, use 24-hour window (no restrictions)
       sending_hours_start: formData.sending_hours_enabled ? formData.sending_hours_start : "00:00",
       sending_hours_end: formData.sending_hours_enabled ? formData.sending_hours_end : "23:59",
       sending_days: formData.sending_days,
@@ -254,8 +209,7 @@ export function SMSCampaignWizard({
         formData.initial_message.slice(0, start) +
         placeholder +
         formData.initial_message.slice(end);
-      updateFormData("initial_message", newMessage);
-      // Restore cursor position
+      updateField("initial_message", newMessage);
       setTimeout(() => {
         textarea.focus();
         textarea.setSelectionRange(
@@ -264,7 +218,7 @@ export function SMSCampaignWizard({
         );
       }, 0);
     } else {
-      updateFormData(
+      updateField(
         "initial_message",
         formData.initial_message + placeholder
       );
@@ -278,7 +232,7 @@ export function SMSCampaignWizard({
   );
 
   const renderStepContent = () => {
-    switch (currentStep) {
+    switch (wizard.currentStepId) {
       case "basics":
         return (
           <div className="space-y-6">
@@ -288,7 +242,7 @@ export function SMSCampaignWizard({
                 id="campaign-name"
                 placeholder="e.g., Summer Sale Outreach"
                 value={formData.name}
-                onChange={(e) => updateFormData("name", e.target.value)}
+                onChange={(e) => updateField("name", e.target.value)}
                 className={errors.name ? "border-destructive" : ""}
               />
               {errors.name && (
@@ -302,7 +256,7 @@ export function SMSCampaignWizard({
                 id="campaign-description"
                 placeholder="Brief description of this campaign..."
                 value={formData.description}
-                onChange={(e) => updateFormData("description", e.target.value)}
+                onChange={(e) => updateField("description", e.target.value)}
                 rows={3}
               />
             </div>
@@ -311,7 +265,7 @@ export function SMSCampaignWizard({
               <Label>From Phone Number *</Label>
               <Select
                 value={formData.from_phone_number}
-                onValueChange={(v) => updateFormData("from_phone_number", v)}
+                onValueChange={(v) => updateField("from_phone_number", v)}
               >
                 <SelectTrigger
                   className={errors.from_phone_number ? "border-destructive" : ""}
@@ -397,7 +351,7 @@ export function SMSCampaignWizard({
                 placeholder="Hi {first_name}, we have an amazing offer for you..."
                 value={formData.initial_message}
                 onChange={(e) =>
-                  updateFormData("initial_message", e.target.value)
+                  updateField("initial_message", e.target.value)
                 }
                 rows={4}
                 className={errors.initial_message ? "border-destructive" : ""}
@@ -422,7 +376,7 @@ export function SMSCampaignWizard({
               <OfferSelector
                 offers={offers}
                 selectedId={formData.offer_id}
-                onSelect={(id) => updateFormData("offer_id", id)}
+                onSelect={(id) => updateField("offer_id", id)}
                 onCreateOffer={onCreateOffer}
               />
             </div>
@@ -439,7 +393,7 @@ export function SMSCampaignWizard({
                 </div>
                 <Switch
                   checked={formData.follow_up_enabled}
-                  onCheckedChange={(v) => updateFormData("follow_up_enabled", v)}
+                  onCheckedChange={(v) => updateField("follow_up_enabled", v)}
                 />
               </div>
 
@@ -456,7 +410,7 @@ export function SMSCampaignWizard({
                       <Select
                         value={String(formData.follow_up_delay_hours)}
                         onValueChange={(v) =>
-                          updateFormData("follow_up_delay_hours", parseInt(v))
+                          updateField("follow_up_delay_hours", parseInt(v))
                         }
                       >
                         <SelectTrigger>
@@ -475,7 +429,7 @@ export function SMSCampaignWizard({
                       <Select
                         value={String(formData.max_follow_ups)}
                         onValueChange={(v) =>
-                          updateFormData("max_follow_ups", parseInt(v))
+                          updateField("max_follow_ups", parseInt(v))
                         }
                       >
                         <SelectTrigger>
@@ -497,7 +451,7 @@ export function SMSCampaignWizard({
                       placeholder="Just following up on my previous message..."
                       value={formData.follow_up_message}
                       onChange={(e) =>
-                        updateFormData("follow_up_message", e.target.value)
+                        updateField("follow_up_message", e.target.value)
                       }
                       rows={3}
                     />
@@ -520,7 +474,7 @@ export function SMSCampaignWizard({
               </div>
               <Switch
                 checked={formData.ai_enabled}
-                onCheckedChange={(v) => updateFormData("ai_enabled", v)}
+                onCheckedChange={(v) => updateField("ai_enabled", v)}
               />
             </div>
 
@@ -533,7 +487,7 @@ export function SMSCampaignWizard({
                 <AgentSelector
                   agents={agents}
                   selectedId={formData.agent_id}
-                  onSelect={(id) => updateFormData("agent_id", id)}
+                  onSelect={(id) => updateField("agent_id", id)}
                   showTextAgentsOnly={true}
                 />
 
@@ -546,7 +500,7 @@ export function SMSCampaignWizard({
                     placeholder="e.g., Interested in scheduling a demo, Has budget over $1000..."
                     value={formData.qualification_criteria}
                     onChange={(e) =>
-                      updateFormData("qualification_criteria", e.target.value)
+                      updateField("qualification_criteria", e.target.value)
                     }
                     rows={3}
                   />
@@ -571,7 +525,7 @@ export function SMSCampaignWizard({
                   type="datetime-local"
                   value={formData.scheduled_start || ""}
                   onChange={(e) =>
-                    updateFormData("scheduled_start", e.target.value || undefined)
+                    updateField("scheduled_start", e.target.value || undefined)
                   }
                 />
               </div>
@@ -582,7 +536,7 @@ export function SMSCampaignWizard({
                   type="datetime-local"
                   value={formData.scheduled_end || ""}
                   onChange={(e) =>
-                    updateFormData("scheduled_end", e.target.value || undefined)
+                    updateField("scheduled_end", e.target.value || undefined)
                   }
                 />
               </div>
@@ -603,7 +557,7 @@ export function SMSCampaignWizard({
                 </div>
                 <Switch
                   checked={formData.sending_hours_enabled}
-                  onCheckedChange={(v) => updateFormData("sending_hours_enabled", v)}
+                  onCheckedChange={(v) => updateField("sending_hours_enabled", v)}
                 />
               </div>
 
@@ -620,7 +574,7 @@ export function SMSCampaignWizard({
                       type="time"
                       value={formData.sending_hours_start}
                       onChange={(e) =>
-                        updateFormData("sending_hours_start", e.target.value)
+                        updateField("sending_hours_start", e.target.value)
                       }
                     />
                   </div>
@@ -630,7 +584,7 @@ export function SMSCampaignWizard({
                       type="time"
                       value={formData.sending_hours_end}
                       onChange={(e) =>
-                        updateFormData("sending_hours_end", e.target.value)
+                        updateField("sending_hours_end", e.target.value)
                       }
                     />
                   </div>
@@ -638,7 +592,7 @@ export function SMSCampaignWizard({
                     <Label>Timezone</Label>
                     <Select
                       value={formData.timezone}
-                      onValueChange={(v) => updateFormData("timezone", v)}
+                      onValueChange={(v) => updateField("timezone", v)}
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -672,12 +626,12 @@ export function SMSCampaignWizard({
                       className="w-12"
                       onClick={() => {
                         if (isSelected) {
-                          updateFormData(
+                          updateField(
                             "sending_days",
                             formData.sending_days.filter((d) => d !== day.value)
                           );
                         } else {
-                          updateFormData("sending_days", [
+                          updateField("sending_days", [
                             ...formData.sending_days,
                             day.value,
                           ].sort());
@@ -704,7 +658,7 @@ export function SMSCampaignWizard({
                   <Select
                     value={String(formData.messages_per_minute)}
                     onValueChange={(v) =>
-                      updateFormData("messages_per_minute", parseInt(v))
+                      updateField("messages_per_minute", parseInt(v))
                     }
                   >
                     <SelectTrigger>
@@ -723,7 +677,7 @@ export function SMSCampaignWizard({
                   <Select
                     value={String(formData.max_messages_per_contact)}
                     onValueChange={(v) =>
-                      updateFormData("max_messages_per_contact", parseInt(v))
+                      updateField("max_messages_per_contact", parseInt(v))
                     }
                   >
                     <SelectTrigger>
@@ -902,104 +856,22 @@ export function SMSCampaignWizard({
   };
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Step indicators */}
-      <div className="flex items-center justify-between px-6 py-4 border-b bg-muted/30">
-        {STEPS.map((step, index) => {
-          const Icon = step.icon;
-          const isCompleted = index < currentStepIndex;
-          const isCurrent = step.id === currentStep;
-
-          return (
-            <button
-              key={step.id}
-              onClick={() => goToStep(step.id)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
-                isCurrent
-                  ? "bg-primary text-primary-foreground"
-                  : isCompleted
-                  ? "text-primary hover:bg-primary/10"
-                  : "text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              <div
-                className={`size-8 rounded-full flex items-center justify-center ${
-                  isCurrent
-                    ? "bg-primary-foreground/20"
-                    : isCompleted
-                    ? "bg-primary/20"
-                    : "bg-muted"
-                }`}
-              >
-                {isCompleted ? (
-                  <Check className="size-4" />
-                ) : (
-                  <Icon className="size-4" />
-                )}
-              </div>
-              <span className="text-sm font-medium hidden lg:block">
-                {step.label}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Step content */}
-      <ScrollArea className="flex-1">
-        <div className="p-6 max-w-4xl mx-auto">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={currentStep}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.2 }}
-            >
-              {renderStepContent()}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </ScrollArea>
-
-      {/* Footer navigation */}
-      <div className="flex items-center justify-between px-6 py-4 border-t bg-background">
-        <div>
-          {onCancel && (
-            <Button variant="ghost" onClick={onCancel}>
-              Cancel
-            </Button>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {currentStepIndex > 0 && (
-            <Button variant="outline" onClick={goPrevious}>
-              <ArrowLeft className="size-4 mr-2" />
-              Previous
-            </Button>
-          )}
-          {currentStepIndex < STEPS.length - 1 ? (
-            <Button onClick={goNext}>
-              Next
-              <ArrowRight className="size-4 ml-2" />
-            </Button>
-          ) : (
-            <Button onClick={handleSubmit} disabled={isSubmitting}>
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="size-4 mr-2 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Send className="size-4 mr-2" />
-                  Create Campaign
-                </>
-              )}
-            </Button>
-          )}
-        </div>
-      </div>
-    </div>
+    <WizardContainer
+      steps={STEPS}
+      currentStepId={wizard.currentStepId}
+      currentStepIndex={wizard.currentStepIndex}
+      onStepClick={wizard.goToStep}
+      isFirstStep={wizard.isFirstStep}
+      isLastStep={wizard.isLastStep}
+      onPrevious={wizard.goPrevious}
+      onNext={wizard.goNext}
+      onSubmit={handleSubmit}
+      isSubmitting={isSubmitting}
+      onCancel={onCancel}
+      submitLabel="Create Campaign"
+      submitIcon={Send}
+    >
+      {renderStepContent()}
+    </WizardContainer>
   );
 }
