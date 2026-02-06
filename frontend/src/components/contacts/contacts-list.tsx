@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Plus, User, Phone, Mail, Building2 } from "lucide-react";
+import { Search, Plus, User, Phone, Mail, Building2, Sparkles } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -10,6 +10,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { contactStatusColors } from "@/lib/status-colors";
 import { useContactStore } from "@/lib/contact-store";
 import { CreateContactDialog } from "./create-contact-dialog";
 import type { Contact } from "@/types";
@@ -17,14 +18,6 @@ import type { Contact } from "@/types";
 interface ContactsListProps {
   className?: string;
 }
-
-const statusColors: Record<string, string> = {
-  new: "bg-blue-500/10 text-blue-500",
-  contacted: "bg-yellow-500/10 text-yellow-500",
-  qualified: "bg-green-500/10 text-green-500",
-  converted: "bg-purple-500/10 text-purple-500",
-  lost: "bg-red-500/10 text-red-500",
-};
 
 function getInitials(contact: Contact): string {
   const first = contact.first_name?.[0] ?? "";
@@ -91,9 +84,31 @@ function ContactItem({ contact, isSelected, onClick }: ContactItemProps) {
         <div className="flex-1 min-w-0 space-y-1">
           <div className="flex items-center justify-between gap-2">
             <span className="font-medium truncate">{displayName}</span>
-            <Badge variant="secondary" className={cn("text-xs shrink-0", statusColors[contact.status])}>
-              {contact.status}
-            </Badge>
+            <div className="flex items-center gap-1 shrink-0">
+              {contact.lead_score != null && contact.lead_score > 0 && (
+                <span
+                  className={cn(
+                    "text-[10px] font-bold px-1 py-0.5 rounded",
+                    contact.lead_score >= 80
+                      ? "text-green-700 bg-green-100"
+                      : contact.lead_score >= 40
+                        ? "text-yellow-700 bg-yellow-100"
+                        : "text-gray-500 bg-gray-100"
+                  )}
+                  title={`Lead Score: ${contact.lead_score}`}
+                >
+                  {contact.lead_score}
+                </span>
+              )}
+              {(contact.business_intel?.ad_pixels?.meta_pixel || contact.business_intel?.ad_pixels?.google_ads) && (
+                <span title="Running paid ads">
+                  <Sparkles className="h-3 w-3 text-purple-500" />
+                </span>
+              )}
+              <Badge variant="secondary" className={cn("text-xs", contactStatusColors[contact.status])}>
+                {contact.status}
+              </Badge>
+            </div>
           </div>
 
           <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">

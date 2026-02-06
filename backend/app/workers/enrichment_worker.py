@@ -17,6 +17,7 @@ from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.models.contact import Contact
 from app.services.scraping.ai_content_analyzer import AIContentAnalyzerService
+from app.services.scraping.lead_scorer import compute_lead_score
 from app.services.scraping.website_scraper import WebsiteScraperError, WebsiteScraperService
 from app.workers.base import BaseWorker, WorkerRegistry
 
@@ -122,6 +123,10 @@ class EnrichmentWorker(BaseWorker):
             business_intel["social_links"] = social_links
             business_intel["website_meta"] = website_meta
 
+            # Extract ad pixels from scrape result
+            ad_pixels = result.get("ad_pixels", {})
+            business_intel["ad_pixels"] = ad_pixels
+
             # Generate AI website summary if enabled
             html_content = result.get("html_content")
             if self._ai_analyzer and html_content:
@@ -133,6 +138,9 @@ class EnrichmentWorker(BaseWorker):
                 if website_summary:
                     business_intel["website_summary"] = website_summary.model_dump()
 
+            # Compute lead score
+            contact.lead_score = compute_lead_score(business_intel)
+
             contact.business_intel = business_intel
 
             # Update status
@@ -143,6 +151,8 @@ class EnrichmentWorker(BaseWorker):
                 "Contact enriched successfully",
                 linkedin_found=bool(social_links.get("linkedin")),
                 social_count=sum(1 for v in social_links.values() if v),
+                lead_score=contact.lead_score,
+                has_ad_pixels=any(ad_pixels.values()),
             )
 
         except WebsiteScraperError as e:

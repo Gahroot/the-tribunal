@@ -18,6 +18,7 @@ import {
   Linkedin,
   Clock,
   XCircle,
+  Megaphone,
 } from "lucide-react";
 
 import {
@@ -72,9 +73,9 @@ export function FindLeadsAIPage() {
   const [hasSearched, setHasSearched] = useState(false);
 
   const searchMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (searchQuery?: string) => {
       if (!workspaceId) throw new Error("No workspace");
-      return findLeadsAIApi.search(workspaceId, query, 40);
+      return findLeadsAIApi.search(workspaceId, searchQuery || query, 40);
     },
     onSuccess: (data) => {
       setResults(data.results);
@@ -121,12 +122,14 @@ export function FindLeadsAIPage() {
     },
   });
 
-  const handleSearch = () => {
-    if (!query.trim()) {
+  const handleSearch = (searchQuery?: string) => {
+    const q = searchQuery || query;
+    if (!q.trim()) {
       toast.error("Please enter a search query");
       return;
     }
-    searchMutation.mutate();
+    if (searchQuery) setQuery(searchQuery);
+    searchMutation.mutate(searchQuery);
   };
 
   const handleImport = () => {
@@ -199,7 +202,7 @@ export function FindLeadsAIPage() {
             className="flex-1"
           />
           <Button
-            onClick={handleSearch}
+            onClick={() => handleSearch()}
             disabled={searchMutation.isPending || !query.trim()}
             className="gap-2"
           >
@@ -233,6 +236,24 @@ export function FindLeadsAIPage() {
               <Badge variant="outline" className="gap-1">
                 <Sparkles className="h-3 w-3" /> AI Personalization
               </Badge>
+            </div>
+            <div className="flex flex-wrap gap-2 justify-center mt-4">
+              {[
+                "Roofing companies in Dallas TX",
+                "Roofing companies in Houston TX",
+                "HVAC companies in Phoenix AZ",
+                "Plumbers in Miami FL",
+              ].map((suggestion) => (
+                <Button
+                  key={suggestion}
+                  variant="outline"
+                  size="sm"
+                  className="text-xs"
+                  onClick={() => handleSearch(suggestion)}
+                >
+                  {suggestion}
+                </Button>
+              ))}
             </div>
           </div>
         ) : (
@@ -500,5 +521,48 @@ export function EnrichmentStatusBadge({ status }: { status: string | null | unde
       {Icon && <Icon className="h-3 w-3" />}
       {config.label}
     </Badge>
+  );
+}
+
+export function LeadScoreBadge({ score }: { score: number | null | undefined }) {
+  if (score == null) return null;
+
+  const color =
+    score >= 80
+      ? "text-green-700 bg-green-100 border-green-300"
+      : score >= 40
+        ? "text-yellow-700 bg-yellow-100 border-yellow-300"
+        : "text-gray-600 bg-gray-100 border-gray-300";
+
+  return (
+    <Badge variant="outline" className={cn("gap-1 text-xs font-semibold", color)}>
+      <Sparkles className="h-3 w-3" />
+      {score}
+    </Badge>
+  );
+}
+
+export function AdPixelBadges({ adPixels }: { adPixels?: { meta_pixel?: boolean; google_ads?: boolean } }) {
+  if (!adPixels) return null;
+  const badges: { label: string; active: boolean }[] = [
+    { label: "Meta Ads", active: !!adPixels.meta_pixel },
+    { label: "Google Ads", active: !!adPixels.google_ads },
+  ];
+  const activeBadges = badges.filter((b) => b.active);
+  if (activeBadges.length === 0) return null;
+
+  return (
+    <>
+      {activeBadges.map((badge) => (
+        <Badge
+          key={badge.label}
+          variant="outline"
+          className="text-xs text-purple-700 bg-purple-50 border-purple-300 gap-1"
+        >
+          <Megaphone className="h-3 w-3" />
+          {badge.label}
+        </Badge>
+      ))}
+    </>
   );
 }

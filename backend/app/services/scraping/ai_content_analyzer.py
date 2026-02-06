@@ -19,10 +19,19 @@ Return ONLY valid JSON with this structure:
     "services": ["Service 1", "Service 2", ...],  // Up to 5 main services
     "target_market": "Who they serve",
     "unique_selling_points": ["USP 1", "USP 2"],  // Up to 3
-    "industry": "Industry category"
+    "industry": "Industry category",
+    "team_size_estimate": "solo | small (2-5) | medium (6-20) | large (20+) | unknown",
+    "years_in_business": null,  // number or null
+    "service_areas": ["City 1", "City 2"],  // Up to 10
+    "revenue_signals": ["fleet of 10 trucks", "5000+ projects completed"],  // Scale indicators
+    "has_financing": false,  // Whether they offer financing options
+    "certifications": ["GAF Master Elite", "BBB A+"]  // Industry certifications or accreditations
 }
 
-If information is not available, use null for strings or empty arrays for lists."""
+If information is not available, use null for strings/numbers or empty arrays for lists.
+For team_size_estimate, look for "our team", staff photos, about pages, employee counts.
+For revenue_signals, look for fleet sizes, project counts, years in business, service area breadth.
+For has_financing, look for "financing available", "payment plans", "0% APR", etc."""
 
 
 class AIContentAnalyzerService:
@@ -83,7 +92,7 @@ class AIContentAnalyzerService:
                 ],
                 response_format={"type": "json_object"},
                 temperature=0.3,
-                max_tokens=500,
+                max_tokens=800,
             )
 
             result = json.loads(response.choices[0].message.content or "{}")
@@ -98,6 +107,12 @@ class AIContentAnalyzerService:
                 target_market=result.get("target_market"),
                 unique_selling_points=result.get("unique_selling_points", [])[:3],
                 industry=result.get("industry"),
+                team_size_estimate=result.get("team_size_estimate", "unknown"),
+                years_in_business=result.get("years_in_business"),
+                service_areas=result.get("service_areas", [])[:10],
+                revenue_signals=result.get("revenue_signals", [])[:5],
+                has_financing=result.get("has_financing", False),
+                certifications=result.get("certifications", [])[:10],
             )
 
         except Exception as e:

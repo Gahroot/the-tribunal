@@ -215,6 +215,34 @@ class WebsiteScraperService:
 
         return meta_info
 
+    def _detect_ad_pixels(self, html: str) -> dict[str, bool]:
+        """Detect advertising and analytics pixels in HTML content.
+
+        Args:
+            html: Raw HTML content
+
+        Returns:
+            Dictionary of pixel type -> detected boolean
+        """
+        html_lower = html.lower()
+        return {
+            "meta_pixel": (
+                "fbq(" in html or "connect.facebook.net/en_us/fbevents.js" in html_lower
+            ),
+            "google_ads": (
+                "googleadservices.com" in html_lower
+                or "google.com/pagead/conversion" in html_lower
+                or "gtag('event', 'conversion" in html_lower
+            ),
+            "google_analytics": (
+                "google-analytics.com/analytics.js" in html_lower
+                or "googletagmanager.com/gtag/js" in html_lower
+            ),
+            "gtm": "googletagmanager.com/gtm.js" in html_lower,
+            "linkedin_pixel": "snap.licdn.com/li.lms-analytics" in html_lower,
+            "tiktok_pixel": "analytics.tiktok.com" in html_lower,
+        }
+
     async def scrape_website(self, url: str) -> dict[str, Any]:
         """Scrape a website for social links and metadata.
 
@@ -245,6 +273,7 @@ class WebsiteScraperService:
                 html = response.text
                 social_links = self._extract_social_links(html, str(response.url))
                 meta_info = self._extract_meta_info(html)
+                ad_pixels = self._detect_ad_pixels(html)
 
                 log.info(
                     "website_scraped",
@@ -256,6 +285,7 @@ class WebsiteScraperService:
                 return {
                     "social_links": social_links,
                     "website_meta": meta_info,
+                    "ad_pixels": ad_pixels,
                     "html_content": html,  # For AI analysis
                 }
 

@@ -66,6 +66,7 @@ export interface Contact {
   business_intel?: BusinessIntel;
   enrichment_status?: EnrichmentStatus;
   enriched_at?: string;
+  lead_score?: number;
 }
 
 export type EnrichmentStatus = "pending" | "enriched" | "failed" | "skipped";
@@ -90,6 +91,12 @@ export interface WebsiteSummary {
   target_market?: string | null;
   unique_selling_points?: string[];
   industry?: string | null;
+  team_size_estimate?: string;
+  years_in_business?: number | null;
+  service_areas?: string[];
+  revenue_signals?: string[];
+  has_financing?: boolean;
+  certifications?: string[];
 }
 
 export interface GooglePlacesData {
@@ -100,11 +107,21 @@ export interface GooglePlacesData {
   business_status?: string;
 }
 
+export interface AdPixels {
+  meta_pixel?: boolean;
+  google_ads?: boolean;
+  google_analytics?: boolean;
+  gtm?: boolean;
+  linkedin_pixel?: boolean;
+  tiktok_pixel?: boolean;
+}
+
 export interface BusinessIntel {
   social_links?: SocialLinks;
   google_places?: GooglePlacesData;
   website_meta?: WebsiteMeta;
   website_summary?: WebsiteSummary;
+  ad_pixels?: AdPixels;
   enrichment_error?: string;
   enrichment_failed_at?: string;
 }

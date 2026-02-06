@@ -53,6 +53,12 @@ class WebsiteSummary(BaseModel):
     target_market: str | None = None
     unique_selling_points: list[str] = Field(default_factory=list)
     industry: str | None = None
+    team_size_estimate: str = "unknown"
+    years_in_business: int | None = None
+    service_areas: list[str] = Field(default_factory=list)
+    revenue_signals: list[str] = Field(default_factory=list)
+    has_financing: bool = False
+    certifications: list[str] = Field(default_factory=list)
 
 
 class GooglePlacesData(BaseModel):
@@ -65,6 +71,17 @@ class GooglePlacesData(BaseModel):
     business_status: str = "OPERATIONAL"
 
 
+class AdPixels(BaseModel):
+    """Schema for detected advertising pixels."""
+
+    meta_pixel: bool = False
+    google_ads: bool = False
+    google_analytics: bool = False
+    gtm: bool = False
+    linkedin_pixel: bool = False
+    tiktok_pixel: bool = False
+
+
 class BusinessIntel(BaseModel):
     """Schema for business intelligence data."""
 
@@ -72,6 +89,7 @@ class BusinessIntel(BaseModel):
     google_places: GooglePlacesData | None = None
     website_meta: WebsiteMeta | None = None
     website_summary: WebsiteSummary | None = None
+    ad_pixels: AdPixels | None = None
     enrichment_error: str | None = None
     enrichment_failed_at: str | None = None
 
@@ -92,5 +110,6 @@ class EnrichedContactResponse(BaseModel):
     enrichment_status: str | None
     enriched_at: str | None
     business_intel: dict[str, Any] | None
+    lead_score: int | None = None
 
     model_config = {"from_attributes": True}
