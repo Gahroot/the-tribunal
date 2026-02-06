@@ -91,8 +91,11 @@ async def list_contacts(
             parsed = json.loads(filters)
             filter_rules = parsed.get("rules")
             filter_logic = parsed.get("logic", "and")
-        except (json.JSONDecodeError, AttributeError):
-            pass
+        except (json.JSONDecodeError, AttributeError) as e:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid filters JSON",
+            ) from e
 
     service = ContactService(db)
     result = await service.list_contacts(
@@ -162,8 +165,11 @@ async def list_contact_ids(
             parsed = json.loads(filters)
             filter_rules = parsed.get("rules")
             filter_logic = parsed.get("logic", "and")
-        except (json.JSONDecodeError, AttributeError):
-            pass
+        except (json.JSONDecodeError, AttributeError) as e:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid filters JSON",
+            ) from e
 
     service = ContactService(db)
     result = await service.list_contact_ids(

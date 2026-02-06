@@ -11,22 +11,20 @@ This background worker:
 """
 
 import re
-from datetime import UTC, datetime, time, timedelta
+import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-import pytz
 import structlog
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import QueryableAttribute, selectinload
 
 from app.core.config import settings
-from app.db.session import AsyncSessionLocal
 from app.models.campaign import (
     Campaign,
     CampaignContact,
     CampaignContactStatus,
-    CampaignStatus,
     CampaignType,
 )
 from app.models.contact import Contact
@@ -37,7 +35,8 @@ from app.services.rate_limiting.rate_limiter import RateLimiter
 from app.services.rate_limiting.reputation_tracker import ReputationTracker
 from app.services.rate_limiting.warming_scheduler import WarmingScheduler
 from app.services.telephony.telnyx import TelnyxSMSService
-from app.workers.base import BaseWorker, WorkerRegistry
+from app.workers.base import WorkerRegistry
+from app.workers.base_campaign_worker import BaseCampaignWorker
 
 logger = structlog.get_logger()
 
@@ -45,7 +44,7 @@ logger = structlog.get_logger()
 MAX_MESSAGES_PER_TICK = 20
 
 
-class CampaignWorker(BaseWorker):
+class CampaignWorker(BaseCampaignWorker):
     """Background worker for processing SMS campaigns."""
 
     POLL_INTERVAL_SECONDS = settings.campaign_poll_interval
@@ -60,74 +59,40 @@ class CampaignWorker(BaseWorker):
         self.warming_scheduler = WarmingScheduler()
         self.reputation_tracker = ReputationTracker()
 
-    async def _process_items(self) -> None:
-        """Process all running SMS campaigns (not voice campaigns)."""
-        async with AsyncSessionLocal() as db:
-            result = await db.execute(
-                select(Campaign)
-                .options(
-                    selectinload(Campaign.agent),
-                    selectinload(Campaign.offer),
-                )
-                .where(
-                    and_(
-                        Campaign.status == CampaignStatus.RUNNING.value,
-                        Campaign.campaign_type == CampaignType.SMS.value,
-                    )
-                )
-            )
-            campaigns = result.scalars().all()
+    @property
+    def campaign_type(self) -> CampaignType:
+        return CampaignType.SMS
 
-            if not campaigns:
-                return
+    @property
+    def eager_loads(self) -> list[QueryableAttribute[Any]]:
+        return [Campaign.agent, Campaign.offer]
 
-            self.logger.debug("Processing campaigns", count=len(campaigns))
-
-            for campaign in campaigns:
-                try:
-                    await self._process_campaign(campaign, db)
-                except Exception:
-                    self.logger.exception(
-                        "Error processing campaign",
-                        campaign_id=str(campaign.id),
-                        campaign_name=campaign.name,
-                    )
-
-    async def _process_campaign(self, campaign: Campaign, db: AsyncSession) -> None:
-        """Process a single campaign."""
-        log = self.logger.bind(
-            campaign_id=str(campaign.id),
-            campaign_name=campaign.name,
+    def _get_remaining_filter(self, campaign: Campaign) -> Any:
+        return and_(
+            CampaignContact.campaign_id == campaign.id,
+            or_(
+                CampaignContact.status == CampaignContactStatus.PENDING.value,
+                and_(
+                    CampaignContact.next_follow_up_at.is_not(None),
+                    CampaignContact.follow_ups_sent < campaign.max_follow_ups,
+                ),
+            ),
         )
 
-        # Check if within sending hours
-        if not self._is_within_sending_hours(campaign):
-            log.debug("Outside sending hours")
-            return
-
-        # Check if campaign has ended
-        if campaign.scheduled_end and datetime.now(UTC) > campaign.scheduled_end:
-            log.info("Campaign scheduled end reached, completing")
-            campaign.status = CampaignStatus.COMPLETED.value
-            campaign.completed_at = datetime.now(UTC)
-            await db.commit()
-            return
-
-        # Get SMS service
-        if not settings.telnyx_api_key:
-            log.warning("No Telnyx API key configured")
-            return
-
+    async def _process_campaign_contacts(
+        self,
+        campaign: Campaign,
+        db: AsyncSession,
+        log: Any,
+    ) -> None:
+        """Process SMS campaign contacts: send initial messages and follow-ups."""
         sms_service = TelnyxSMSService(settings.telnyx_api_key)
         try:
-            # Process initial messages
             await self._process_initial_messages(campaign, sms_service, db, log)
 
-            # Process follow-up messages if enabled
             if campaign.follow_up_enabled:
                 await self._process_follow_ups(campaign, sms_service, db, log)
 
-            # Check if campaign is complete
             await self._check_completion(campaign, db, log)
 
             await db.commit()
@@ -181,6 +146,7 @@ class CampaignWorker(BaseWorker):
         )
 
         sent_count = 0
+        conversations_to_assign: list[uuid.UUID] = []
         for campaign_contact in pending_contacts:
             contact = campaign_contact.contact
             if not contact or not contact.phone_number:
@@ -251,21 +217,9 @@ class CampaignWorker(BaseWorker):
                 campaign_contact.first_sent_at = campaign_contact.first_sent_at or datetime.now(UTC)
                 campaign_contact.last_sent_at = datetime.now(UTC)
 
-                # Assign campaign's AI agent to the conversation for response handling
+                # Collect conversation for batch agent assignment after loop
                 if campaign.agent_id and message.conversation_id:
-                    from app.models.conversation import Conversation
-                    conv_result = await db.execute(
-                        select(Conversation).where(Conversation.id == message.conversation_id)
-                    )
-                    conv = conv_result.scalar_one_or_none()
-                    if conv:
-                        conv.assigned_agent_id = campaign.agent_id
-                        conv.ai_enabled = campaign.ai_enabled
-                        log.info(
-                            "assigned_campaign_agent_to_conversation",
-                            conversation_id=str(conv.id),
-                            agent_id=str(campaign.agent_id),
-                        )
+                    conversations_to_assign.append(message.conversation_id)
 
                 # Schedule follow-up if enabled
                 if campaign.follow_up_enabled and campaign.follow_up_message:
@@ -300,6 +254,25 @@ class CampaignWorker(BaseWorker):
                 campaign.error_count += 1
                 campaign.last_error = str(e)
                 campaign.last_error_at = datetime.now(UTC)
+
+        # Batch-assign campaign agent to all conversations at once
+        if conversations_to_assign and campaign.agent_id:
+            from sqlalchemy import update
+
+            from app.models.conversation import Conversation
+            await db.execute(
+                update(Conversation)
+                .where(Conversation.id.in_(conversations_to_assign))
+                .values(
+                    assigned_agent_id=campaign.agent_id,
+                    ai_enabled=campaign.ai_enabled,
+                )
+            )
+            log.info(
+                "batch_assigned_campaign_agent",
+                conversation_count=len(conversations_to_assign),
+                agent_id=str(campaign.agent_id),
+            )
 
         if sent_count > 0:
             log.info("Initial messages batch complete", sent=sent_count)
@@ -443,74 +416,6 @@ class CampaignWorker(BaseWorker):
 
         if sent_count > 0:
             log.info("Follow-up messages batch complete", sent=sent_count)
-
-    async def _check_completion(
-        self,
-        campaign: Campaign,
-        db: AsyncSession,
-        log: Any,
-    ) -> None:
-        """Check if campaign is complete."""
-        remaining_result = await db.execute(
-            select(func.count(CampaignContact.id)).where(
-                and_(
-                    CampaignContact.campaign_id == campaign.id,
-                    or_(
-                        CampaignContact.status == CampaignContactStatus.PENDING.value,
-                        and_(
-                            CampaignContact.next_follow_up_at.is_not(None),
-                            CampaignContact.follow_ups_sent < campaign.max_follow_ups,
-                        ),
-                    ),
-                )
-            )
-        )
-        remaining = remaining_result.scalar() or 0
-
-        if remaining == 0:
-            log.info("All contacts processed, completing campaign")
-            campaign.status = CampaignStatus.COMPLETED.value
-            campaign.completed_at = datetime.now(UTC)
-
-    def _is_within_sending_hours(self, campaign: Campaign) -> bool:
-        """Check if current time is within campaign sending hours."""
-        # Use 'is None' instead of falsy check since time(0, 0) is falsy in Python
-        if campaign.sending_hours_start is None or campaign.sending_hours_end is None:
-            self.logger.debug(
-                "Sending hours not set, allowing",
-                start=campaign.sending_hours_start,
-                end=campaign.sending_hours_end,
-            )
-            return True
-
-        tz = pytz.timezone(campaign.timezone or "UTC")
-        now = datetime.now(tz)
-
-        # Only check sending_days if it's a non-empty list
-        if campaign.sending_days and now.weekday() not in campaign.sending_days:
-            self.logger.debug(
-                "Not a sending day",
-                sending_days=campaign.sending_days,
-                weekday=now.weekday(),
-            )
-            return False
-
-        # Handle both time objects and datetime objects from SQLAlchemy Time column
-        start_val = campaign.sending_hours_start
-        end_val = campaign.sending_hours_end
-        start_time: time = start_val.time() if isinstance(start_val, datetime) else start_val
-        end_time: time = end_val.time() if isinstance(end_val, datetime) else end_val
-        current_time = now.time()
-
-        result = start_time <= current_time <= end_time
-        self.logger.debug(
-            "Sending hours check",
-            start_time=str(start_time),
-            end_time=str(end_time),
-            current_time=str(current_time),
-            result=result,
-        )
-        return result
 
     def _render_template(
         self,

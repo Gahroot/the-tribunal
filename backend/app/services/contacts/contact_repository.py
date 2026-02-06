@@ -4,7 +4,7 @@ import uuid
 from typing import Any
 
 import structlog
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -115,36 +115,8 @@ async def list_contacts_paginated(
         filter_logic=filter_logic,
     )
 
-    # Get total count (from base contact query without conversation columns)
-    base_count_query = select(Contact).where(Contact.workspace_id == workspace_id)
-    if status_filter:
-        base_count_query = base_count_query.where(Contact.status == status_filter)
-    if search:
-        search_term = f"%{search}%"
-        base_count_query = base_count_query.where(
-            (Contact.first_name.ilike(search_term))
-            | (Contact.last_name.ilike(search_term))
-            | (Contact.email.ilike(search_term))
-            | (Contact.phone_number.ilike(search_term))
-            | (Contact.company_name.ilike(search_term))
-        )
-    base_count_query = apply_contact_filters(
-        base_count_query,
-        workspace_id,
-        tags=tags,
-        tags_match=tags_match,
-        lead_score_min=lead_score_min,
-        lead_score_max=lead_score_max,
-        is_qualified=is_qualified,
-        source=source,
-        company_name=company_name,
-        created_after=created_after,
-        created_before=created_before,
-        enrichment_status=enrichment_status,
-        filter_rules=filter_rules,
-        filter_logic=filter_logic,
-    )
-    count_query = select(func.count()).select_from(base_count_query.subquery())
+    # Get total count by wrapping the filtered query in a subquery
+    count_query = select(func.count()).select_from(query.subquery())
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
 
@@ -323,10 +295,15 @@ async def bulk_delete_contacts(
         if contact_id not in found_ids:
             errors.append(f"Contact {contact_id} not found")
 
-    # Delete all found contacts in one operation
+    # Bulk delete all found contacts in one statement
     # Database CASCADE will handle related deletions
-    for contact in contacts:
-        await db.delete(contact)
+    if found_ids:
+        await db.execute(
+            delete(Contact).where(
+                Contact.id.in_(found_ids),
+                Contact.workspace_id == workspace_id,
+            )
+        )
 
     await db.commit()
 

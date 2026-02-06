@@ -7,10 +7,7 @@ error handling across the application.
 Exception Hierarchy:
     VoiceAgentError (base)
     ├── VoiceAgentConnectionError - Connection failures
-    ├── VoiceAgentConfigurationError - Invalid configuration
-    ├── VoiceAgentTimeoutError - Operation timeouts
-    ├── VoiceAgentAuthError - Authentication failures
-    └── VoiceAgentProviderError - Provider-specific errors
+    └── VoiceAgentTimeoutError - Operation timeouts
 """
 
 
@@ -64,33 +61,6 @@ class VoiceAgentConnectionError(VoiceAgentError):
         self.status_code = status_code
 
 
-class VoiceAgentConfigurationError(VoiceAgentError):
-    """Error in voice agent configuration.
-
-    Raised when:
-    - API key is missing or invalid
-    - Invalid voice ID specified
-    - Required settings are missing
-    - Incompatible configuration options
-    """
-
-    def __init__(
-        self,
-        message: str,
-        provider: str | None = None,
-        config_key: str | None = None,
-    ) -> None:
-        """Initialize configuration error.
-
-        Args:
-            message: Error message
-            provider: Voice provider name
-            config_key: The specific configuration key that's invalid
-        """
-        super().__init__(message, provider)
-        self.config_key = config_key
-
-
 class VoiceAgentTimeoutError(VoiceAgentError):
     """Timeout waiting for voice provider response.
 
@@ -118,74 +88,6 @@ class VoiceAgentTimeoutError(VoiceAgentError):
         super().__init__(message, provider)
         self.timeout_seconds = timeout_seconds
         self.operation = operation
-
-
-class VoiceAgentAuthError(VoiceAgentError):
-    """Authentication error with voice provider API.
-
-    Raised when:
-    - API key is invalid or expired
-    - API key lacks required permissions
-    - Authentication token refresh fails
-    """
-
-    pass
-
-
-class VoiceAgentProviderError(VoiceAgentError):
-    """Provider-specific error from voice API.
-
-    Raised when the provider returns an error that doesn't fit
-    other categories. Captures the original error details.
-    """
-
-    def __init__(
-        self,
-        message: str,
-        provider: str | None = None,
-        error_type: str | None = None,
-        error_code: str | None = None,
-    ) -> None:
-        """Initialize provider error.
-
-        Args:
-            message: Error message
-            provider: Voice provider name
-            error_type: Provider's error type classification
-            error_code: Provider's error code
-        """
-        super().__init__(message, provider)
-        self.error_type = error_type
-        self.error_code = error_code
-
-
-class VoiceAgentToolError(VoiceAgentError):
-    """Error during tool execution in voice agent.
-
-    Raised when:
-    - Tool callback is not set but tool call received
-    - Tool execution fails
-    - Tool result submission fails
-    """
-
-    def __init__(
-        self,
-        message: str,
-        provider: str | None = None,
-        tool_name: str | None = None,
-        call_id: str | None = None,
-    ) -> None:
-        """Initialize tool error.
-
-        Args:
-            message: Error message
-            provider: Voice provider name
-            tool_name: Name of the tool that failed
-            call_id: The function call ID from the provider
-        """
-        super().__init__(message, provider)
-        self.tool_name = tool_name
-        self.call_id = call_id
 
 
 class AudioConversionError(Exception):
