@@ -1,4 +1,5 @@
 import api from "@/lib/api";
+import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
 
 // Backend response types
 export interface AgentResponse {
@@ -25,6 +26,8 @@ export interface AgentResponse {
   ivr_silence_duration_ms: number;
   ivr_post_dtmf_cooldown_ms: number;
   ivr_menu_buffer_silence_ms: number;
+  reminder_enabled: boolean;
+  reminder_minutes_before: number;
   created_at: string;
   updated_at: string;
 }
@@ -64,6 +67,8 @@ export interface CreateAgentRequest {
   ivr_silence_duration_ms?: number;
   ivr_post_dtmf_cooldown_ms?: number;
   ivr_menu_buffer_silence_ms?: number;
+  reminder_enabled?: boolean;
+  reminder_minutes_before?: number;
 }
 
 export interface UpdateAgentRequest {
@@ -88,6 +93,8 @@ export interface UpdateAgentRequest {
   ivr_silence_duration_ms?: number;
   ivr_post_dtmf_cooldown_ms?: number;
   ivr_menu_buffer_silence_ms?: number;
+  reminder_enabled?: boolean;
+  reminder_minutes_before?: number;
 }
 
 // Embed settings types
@@ -114,45 +121,12 @@ export interface EmbedSettingsUpdate {
 }
 
 // Agents API
+const baseApi = createApiClient<AgentResponse, CreateAgentRequest, UpdateAgentRequest>({
+  resourcePath: "agents",
+}) as FullApiClient<AgentResponse, CreateAgentRequest, UpdateAgentRequest>;
+
 export const agentsApi = {
-  list: async (workspaceId: string, params: AgentsListParams = {}): Promise<AgentsListResponse> => {
-    const response = await api.get<AgentsListResponse>(
-      `/api/v1/workspaces/${workspaceId}/agents`,
-      { params }
-    );
-    return response.data;
-  },
-
-  get: async (workspaceId: string, agentId: string): Promise<AgentResponse> => {
-    const response = await api.get<AgentResponse>(
-      `/api/v1/workspaces/${workspaceId}/agents/${agentId}`
-    );
-    return response.data;
-  },
-
-  create: async (workspaceId: string, data: CreateAgentRequest): Promise<AgentResponse> => {
-    const response = await api.post<AgentResponse>(
-      `/api/v1/workspaces/${workspaceId}/agents`,
-      data
-    );
-    return response.data;
-  },
-
-  update: async (
-    workspaceId: string,
-    agentId: string,
-    data: UpdateAgentRequest
-  ): Promise<AgentResponse> => {
-    const response = await api.put<AgentResponse>(
-      `/api/v1/workspaces/${workspaceId}/agents/${agentId}`,
-      data
-    );
-    return response.data;
-  },
-
-  delete: async (workspaceId: string, agentId: string): Promise<void> => {
-    await api.delete(`/api/v1/workspaces/${workspaceId}/agents/${agentId}`);
-  },
+  ...baseApi,
 
   getEmbedSettings: async (
     workspaceId: string,

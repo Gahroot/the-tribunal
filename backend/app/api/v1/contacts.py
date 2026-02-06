@@ -373,6 +373,7 @@ class TimelineItem(BaseModel):
     recording_url: str | None = None
     transcript: str | None = None
     status: str | None = None
+    booking_outcome: str | None = None
     original_id: uuid.UUID
     original_type: str  # "sms_message", "call_record", "appointment", "note"
 

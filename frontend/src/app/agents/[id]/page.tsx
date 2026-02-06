@@ -4,63 +4,27 @@ import { use, useState, useEffect, useRef, useMemo } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useWatch } from "react-hook-form";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import * as z from "zod";
 import Link from "next/link";
 
 import { agentsApi, type UpdateAgentRequest } from "@/lib/api/agents";
+import { useAgent, agentQueryKeys } from "@/hooks/useAgents";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Form } from "@/components/ui/form";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Slider } from "@/components/ui/slider";
 import {
   AlertCircle,
   ArrowLeft,
-  ChevronDown,
   Code2,
-  Globe,
   Loader2,
-  Search,
-  Shield,
-  ShieldAlert,
-  AlertTriangle,
   Trash2,
-  Wand2,
-  Phone,
-  MessageSquare,
-  MessagesSquare,
   Headphones,
 } from "lucide-react";
-import { AVAILABLE_INTEGRATIONS, type ToolRiskLevel } from "@/lib/integrations";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -72,15 +36,12 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { cn } from "@/lib/utils";
 import { getLanguagesForTier } from "@/lib/languages";
 import {
   REALTIME_VOICES,
   HUME_VOICES,
   GROK_VOICES,
   ELEVENLABS_VOICES,
-  GROK_BUILTIN_TOOLS,
-  BEST_PRACTICES_PROMPT,
 } from "@/lib/voice-constants";
 import { VoiceTestDialog } from "@/components/agents/voice-test-dialog";
 import { EmbedAgentDialog } from "@/components/agents/embed-agent-dialog";
@@ -88,58 +49,18 @@ import { PromptVersionHistory } from "@/components/agents/prompt-version-history
 import { ABTestDashboard } from "@/components/agents/ab-test-dashboard";
 import { PromptPerformanceChart } from "@/components/agents/prompt-performance-chart";
 import { PromptImprovementDialog } from "@/components/agents/prompt-improvement-dialog";
-
-// Get integrations that have tools defined
-const INTEGRATIONS_WITH_TOOLS = AVAILABLE_INTEGRATIONS.filter(
-  (i) => i.tools && i.tools.length > 0
-);
-
-// Helper to get risk level badge variant and icon
-function getRiskLevelBadge(level: ToolRiskLevel) {
-  switch (level) {
-    case "safe":
-      return { variant: "outline" as const, icon: Shield, color: "text-green-600" };
-    case "moderate":
-      return { variant: "outline" as const, icon: AlertTriangle, color: "text-yellow-600" };
-    case "high":
-      return { variant: "outline" as const, icon: ShieldAlert, color: "text-red-600" };
-  }
-}
-
-const agentFormSchema = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters"),
-  description: z.string().optional(),
-  language: z.string().min(1, "Please select a language"),
-  channelMode: z.enum(["voice", "text", "both"]),
-  voiceProvider: z.string(),
-  voiceId: z.string(),
-  systemPrompt: z.string().min(10, "System prompt is required"),
-  temperature: z.number().min(0).max(2),
-  textResponseDelayMs: z.number().min(0).max(5000),
-  textMaxContextMessages: z.number().min(1).max(50),
-  calcomEventTypeId: z.number().optional().nullable(),
-  isActive: z.boolean(),
-  enabledTools: z.array(z.string()),
-  enabledToolIds: z.record(z.string(), z.array(z.string())),
-  // IVR navigation settings (Grok only)
-  enableIvrNavigation: z.boolean(),
-  ivrNavigationGoal: z.string().optional(),
-  ivrLoopThreshold: z.number().min(1).max(10),
-  ivrSilenceDurationMs: z.number().min(1000).max(10000),
-  ivrPostDtmfCooldownMs: z.number().min(0).max(10000),
-  ivrMenuBufferSilenceMs: z.number().min(0).max(10000),
-});
-
-type AgentFormValues = z.infer<typeof agentFormSchema>;
-
-// Map fields to their respective tabs for error tracking
-const TAB_FIELDS: Record<string, (keyof AgentFormValues)[]> = {
-  basic: ["name", "description", "language", "channelMode", "isActive"],
-  voice: ["voiceProvider", "voiceId"],
-  prompt: ["systemPrompt", "temperature"],
-  tools: ["enabledTools", "enabledToolIds"],
-  advanced: ["textResponseDelayMs", "textMaxContextMessages", "calcomEventTypeId"],
-};
+import {
+  editAgentFormSchema,
+  type EditAgentFormValues,
+} from "@/components/agents/agent-edit-schema";
+import {
+  TabTriggerWithErrors,
+  BasicTab,
+  VoiceTab,
+  PromptTab,
+  ToolsTab,
+  AdvancedTab,
+} from "@/components/agents/tabs";
 
 interface EditAgentPageProps {
   params: Promise<{ id: string }>;
@@ -154,33 +75,14 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isVoiceTestOpen, setIsVoiceTestOpen] = useState(false);
   const [isEmbedDialogOpen, setIsEmbedDialogOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const isDeletingRef = useRef(false);
 
   const {
     data: agent,
     isLoading,
     error,
-  } = useQuery({
-    queryKey: ["agent", workspaceId, agentId],
-    queryFn: () => {
-      if (!workspaceId) throw new Error("Workspace not loaded");
-      if (isDeletingRef.current) {
-        return Promise.reject(new Error("Agent is being deleted"));
-      }
-      return agentsApi.get(workspaceId, agentId);
-    },
-    enabled: !!workspaceId && !isDeleting,
-    retry: (failureCount, err) => {
-      if (isDeletingRef.current) return false;
-      if (err && typeof err === "object" && "response" in err) {
-        const axiosError = err as { response?: { status?: number } };
-        if (axiosError.response?.status === 404) {
-          return false;
-        }
-      }
-      return failureCount < 3;
-    },
-  });
+  } = useAgent(workspaceId ?? "", agentId);
 
   // Redirect to agents list when agent is not found (404)
   useEffect(() => {
@@ -193,8 +95,8 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
     }
   }, [error, router]);
 
-  const form = useForm<AgentFormValues>({
-    resolver: zodResolver(agentFormSchema),
+  const form = useForm<EditAgentFormValues>({
+    resolver: zodResolver(editAgentFormSchema),
     defaultValues: {
       name: "",
       description: "",
@@ -210,13 +112,14 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
       isActive: true,
       enabledTools: [],
       enabledToolIds: {},
-      // IVR navigation defaults
       enableIvrNavigation: false,
       ivrNavigationGoal: "",
       ivrLoopThreshold: 2,
       ivrSilenceDurationMs: 3000,
       ivrPostDtmfCooldownMs: 3000,
       ivrMenuBufferSilenceMs: 2000,
+      reminderEnabled: true,
+      reminderMinutesBefore: 30,
     },
   });
 
@@ -242,13 +145,14 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
         isActive: agent.is_active,
         enabledTools: agent.enabled_tools ?? [],
         enabledToolIds: agent.tool_settings ?? {},
-        // IVR navigation settings
         enableIvrNavigation: agent.enable_ivr_navigation ?? false,
         ivrNavigationGoal: agent.ivr_navigation_goal ?? "",
         ivrLoopThreshold: agent.ivr_loop_threshold ?? 2,
         ivrSilenceDurationMs: agent.ivr_silence_duration_ms ?? 3000,
         ivrPostDtmfCooldownMs: agent.ivr_post_dtmf_cooldown_ms ?? 3000,
         ivrMenuBufferSilenceMs: agent.ivr_menu_buffer_silence_ms ?? 2000,
+        reminderEnabled: agent.reminder_enabled ?? true,
+        reminderMinutesBefore: agent.reminder_minutes_before ?? 30,
       });
     }
   }, [agent, form]);
@@ -274,7 +178,6 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
     const currentVoice = form.getValues("voiceId");
     const validVoiceIds = voices.map((v) => v.id);
     if (!validVoiceIds.includes(currentVoice)) {
-      // Set default voice for provider
       const defaultVoice =
         voiceProvider === "grok"
           ? "ara"
@@ -290,14 +193,7 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
   // Watch tools for UI updates
   const enabledToolIds = useWatch({ control: form.control, name: "enabledToolIds" });
 
-  const updateAgentMutation = useMutation({
-    mutationFn: (data: UpdateAgentRequest) => {
-      if (!workspaceId) throw new Error("Workspace not loaded");
-      return agentsApi.update(workspaceId, agentId, data);
-    },
-  });
-
-  // Handle delete
+  // Handle delete — custom logic with query cancellation before navigation
   const handleDeleteAgent = async () => {
     if (!workspaceId) {
       toast.error("Workspace not loaded");
@@ -307,8 +203,8 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
     isDeletingRef.current = true;
     setIsDeleting(true);
 
-    void queryClient.cancelQueries({ queryKey: ["agent", workspaceId, agentId] });
-    queryClient.removeQueries({ queryKey: ["agent", workspaceId, agentId] });
+    void queryClient.cancelQueries({ queryKey: agentQueryKeys.get(workspaceId, agentId) });
+    queryClient.removeQueries({ queryKey: agentQueryKeys.get(workspaceId, agentId) });
 
     try {
       await agentsApi.delete(workspaceId, agentId);
@@ -320,33 +216,12 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
     }
   };
 
-  // Get error count for a specific tab
-  const getTabErrorCount = (tabName: string): number => {
-    const fields = TAB_FIELDS[tabName] ?? [];
-    const errors = form.formState.errors;
-    return fields.filter((field) => field in errors).length;
-  };
+  async function onSubmit(data: EditAgentFormValues) {
+    if (!workspaceId) {
+      toast.error("Workspace not loaded");
+      return;
+    }
 
-  // Render tab trigger with optional error badge
-  const TabTriggerWithErrors = ({ value, label }: { value: string; label: string }) => {
-    const errorCount = getTabErrorCount(value);
-    return (
-      <TabsTrigger
-        value={value}
-        onClick={() => setActiveTab(value)}
-        className={cn(errorCount > 0 && "text-destructive")}
-      >
-        {label}
-        {errorCount > 0 && (
-          <span className="ml-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground">
-            {errorCount}
-          </span>
-        )}
-      </TabsTrigger>
-    );
-  };
-
-  async function onSubmit(data: AgentFormValues) {
     const request: UpdateAgentRequest = {
       name: data.name,
       description: data.description || undefined,
@@ -362,24 +237,28 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
       is_active: data.isActive,
       enabled_tools: data.enabledTools,
       tool_settings: data.enabledToolIds,
-      // IVR navigation settings
       enable_ivr_navigation: data.enableIvrNavigation,
       ivr_navigation_goal: data.ivrNavigationGoal || undefined,
       ivr_loop_threshold: data.ivrLoopThreshold,
       ivr_silence_duration_ms: data.ivrSilenceDurationMs,
       ivr_post_dtmf_cooldown_ms: data.ivrPostDtmfCooldownMs,
       ivr_menu_buffer_silence_ms: data.ivrMenuBufferSilenceMs,
+      reminder_enabled: data.reminderEnabled,
+      reminder_minutes_before: data.reminderMinutesBefore,
     };
 
+    setIsSaving(true);
     try {
-      await updateAgentMutation.mutateAsync(request);
+      await agentsApi.update(workspaceId, agentId, request);
       toast.success("Agent updated successfully");
-      await queryClient.invalidateQueries({ queryKey: ["agents", workspaceId] });
-      await queryClient.invalidateQueries({ queryKey: ["agent", workspaceId, agentId] });
+      await queryClient.invalidateQueries({ queryKey: agentQueryKeys.all(workspaceId) });
+      await queryClient.invalidateQueries({ queryKey: agentQueryKeys.get(workspaceId, agentId) });
       router.push("/agents");
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to update agent";
       toast.error(errorMessage);
+    } finally {
+      setIsSaving(false);
     }
   }
 
@@ -525,879 +404,33 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
         >
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList>
-              <TabTriggerWithErrors value="basic" label="Basic" />
-              <TabTriggerWithErrors value="voice" label="Voice" />
-              <TabTriggerWithErrors value="prompt" label="AI Prompt" />
-              <TabTriggerWithErrors value="tools" label="Tools" />
-              <TabTriggerWithErrors value="advanced" label="Advanced" />
+              <TabTriggerWithErrors value="basic" label="Basic" form={form} />
+              <TabTriggerWithErrors value="voice" label="Voice" form={form} />
+              <TabTriggerWithErrors value="prompt" label="AI Prompt" form={form} />
+              <TabTriggerWithErrors value="tools" label="Tools" form={form} />
+              <TabTriggerWithErrors value="advanced" label="Advanced" form={form} />
               <TabsTrigger value="versions">Versions</TabsTrigger>
               <TabsTrigger value="ab-testing">A/B Testing</TabsTrigger>
             </TabsList>
 
             <TabsContent value="basic" className="mt-4 space-y-3">
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium">Basic Information</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <FormField
-                      control={form.control}
-                      name="name"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Agent Name</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Customer Support Agent" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="language"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Language</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select a language" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent className="max-h-[300px]">
-                              {availableLanguages.map((lang) => (
-                                <SelectItem key={lang.code} value={lang.code}>
-                                  {lang.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                  <FormField
-                    control={form.control}
-                    name="description"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Description</FormLabel>
-                        <FormControl>
-                          <Textarea
-                            placeholder="Handles customer inquiries and support"
-                            className="min-h-[80px]"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="channelMode"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Channel Mode</FormLabel>
-                        <FormDescription>
-                          Select which communication channels this agent supports
-                        </FormDescription>
-                        <div className="grid grid-cols-3 gap-3 pt-2">
-                          {[
-                            {
-                              value: "voice",
-                              label: "Voice Only",
-                              description: "Phone calls only",
-                              icon: Phone,
-                            },
-                            {
-                              value: "text",
-                              label: "Text Only",
-                              description: "SMS/text messages only",
-                              icon: MessageSquare,
-                            },
-                            {
-                              value: "both",
-                              label: "Voice & Text",
-                              description: "Both channels",
-                              icon: MessagesSquare,
-                            },
-                          ].map((option) => {
-                            const Icon = option.icon;
-                            const isSelected = field.value === option.value;
-                            return (
-                              <button
-                                key={option.value}
-                                type="button"
-                                onClick={() => field.onChange(option.value)}
-                                className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 text-center transition-colors ${
-                                  isSelected
-                                    ? "border-primary bg-primary/5"
-                                    : "border-border hover:border-primary/50"
-                                }`}
-                              >
-                                <Icon
-                                  className={`h-6 w-6 ${isSelected ? "text-primary" : "text-muted-foreground"}`}
-                                />
-                                <div>
-                                  <p
-                                    className={`text-sm font-medium ${isSelected ? "text-primary" : ""}`}
-                                  >
-                                    {option.label}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {option.description}
-                                  </p>
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="isActive"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                        <div className="space-y-0.5">
-                          <FormLabel className="text-base">Active Status</FormLabel>
-                          <FormDescription>Enable or disable this agent</FormDescription>
-                        </div>
-                        <FormControl>
-                          <Switch checked={field.value} onCheckedChange={field.onChange} />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                </CardContent>
-              </Card>
+              <BasicTab form={form} availableLanguages={availableLanguages} />
             </TabsContent>
 
             <TabsContent value="voice" className="mt-4 space-y-3">
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium">Voice Settings</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <FormField
-                    control={form.control}
-                    name="voiceProvider"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Voice Provider</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="openai">
-                              <div className="flex flex-col">
-                                <span>OpenAI Realtime</span>
-                                <span className="text-xs text-muted-foreground">
-                                  Best voice quality, fastest response
-                                </span>
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="grok">
-                              <div className="flex flex-col">
-                                <span>Grok (xAI)</span>
-                                <span className="text-xs text-muted-foreground">
-                                  Built-in web & X search, realism cues
-                                </span>
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="hume">
-                              <div className="flex flex-col">
-                                <span>Hume AI</span>
-                                <span className="text-xs text-muted-foreground">
-                                  Emotion-aware voice synthesis
-                                </span>
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="elevenlabs">
-                              <div className="flex flex-col">
-                                <span>ElevenLabs</span>
-                                <span className="text-xs text-muted-foreground">
-                                  Most expressive, 100+ premium voices
-                                </span>
-                              </div>
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormDescription>
-                          {field.value === "grok"
-                            ? "Grok includes built-in search tools and supports realism cues like [whisper], [sigh], [laugh]"
-                            : field.value === "hume"
-                              ? "Hume AI provides emotional intelligence in voice synthesis"
-                              : field.value === "elevenlabs"
-                                ? "ElevenLabs provides the most expressive TTS with 100+ premium voices"
-                                : "OpenAI Realtime offers the best voice quality and lowest latency"}
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="voiceId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Voice</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select a voice" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent className="max-h-[300px]">
-                            {voices.map((voice) => (
-                              <SelectItem key={voice.id} value={voice.id}>
-                                {voice.name} - {voice.description}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormDescription>
-                          The voice your agent will use for speech synthesis
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </CardContent>
-              </Card>
+              <VoiceTab form={form} voices={voices} />
             </TabsContent>
 
             <TabsContent value="prompt" className="mt-4 space-y-3">
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium">AI Configuration</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex items-center justify-between rounded-lg border border-dashed bg-muted/50 p-3">
-                    <div>
-                      <p className="text-sm font-medium">Need help writing a prompt?</p>
-                      <p className="text-xs text-muted-foreground">
-                        Start with our best practices template
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => form.setValue("systemPrompt", BEST_PRACTICES_PROMPT)}
-                      className="shrink-0"
-                    >
-                      <Wand2 className="mr-1.5 h-3.5 w-3.5" />
-                      Use Best Practices
-                    </Button>
-                  </div>
-
-                  <FormField
-                    control={form.control}
-                    name="systemPrompt"
-                    render={({ field }) => {
-                      const charCount = field.value?.length ?? 0;
-                      const isOptimal = charCount >= 100 && charCount <= 2000;
-                      const isTooShort = charCount > 0 && charCount < 100;
-                      const isTooLong = charCount > 2000;
-                      return (
-                        <FormItem>
-                          <div className="flex items-center justify-between">
-                            <FormLabel>System Prompt</FormLabel>
-                            <span
-                              className={cn(
-                                "text-xs",
-                                isOptimal && "text-green-600",
-                                isTooShort && "text-yellow-600",
-                                isTooLong && "text-destructive"
-                              )}
-                            >
-                              {charCount.toLocaleString()} characters
-                              {isTooShort && " (recommended: 100+)"}
-                              {isTooLong && " (recommended: under 2,000)"}
-                            </span>
-                          </div>
-                          <FormControl>
-                            <Textarea
-                              placeholder="You are a helpful customer support agent..."
-                              className="min-h-[200px] font-mono text-sm"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormDescription>
-                            Instructions that define your agent&apos;s personality and behavior
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      );
-                    }}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="temperature"
-                    render={({ field }) => {
-                      const getTemperatureLabel = (value: number) => {
-                        if (value <= 0.3) return "Focused";
-                        if (value <= 0.7) return "Balanced";
-                        if (value <= 1.2) return "Creative";
-                        return "Very Creative";
-                      };
-                      return (
-                        <FormItem>
-                          <div className="flex items-center justify-between">
-                            <FormLabel>Temperature</FormLabel>
-                            <span className="text-sm font-medium">
-                              {field.value?.toFixed(1) ?? "0.7"} (
-                              {getTemperatureLabel(field.value ?? 0.7)})
-                            </span>
-                          </div>
-                          <FormControl>
-                            <div className="space-y-2">
-                              <Slider
-                                min={0}
-                                max={2}
-                                step={0.1}
-                                value={[field.value ?? 0.7]}
-                                onValueChange={(value) => field.onChange(value[0])}
-                                className="w-full"
-                              />
-                              <div className="flex justify-between text-xs text-muted-foreground">
-                                <span>Focused</span>
-                                <span>Creative</span>
-                              </div>
-                            </div>
-                          </FormControl>
-                          <FormDescription>
-                            Lower values produce more focused and deterministic responses
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      );
-                    }}
-                  />
-                </CardContent>
-              </Card>
+              <PromptTab form={form} />
             </TabsContent>
 
             <TabsContent value="tools" className="mt-4 space-y-3">
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium">Tools & Integrations</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <p className="text-sm text-muted-foreground">
-                    Enable integrations and select which tools your agent can access. High-risk
-                    tools are disabled by default for security.
-                  </p>
-
-                  <div className="space-y-3">
-                    {INTEGRATIONS_WITH_TOOLS.map((integration) => (
-                      <FormField
-                        key={integration.id}
-                        control={form.control}
-                        name="enabledTools"
-                        render={({ field }) => {
-                          const isEnabled = field.value?.includes(integration.id);
-                          return (
-                            <Collapsible>
-                              <div className="rounded-lg border">
-                                <div className="flex items-center justify-between p-4">
-                                  <div className="flex items-center space-x-3">
-                                    <Checkbox
-                                      checked={isEnabled}
-                                      onCheckedChange={(checked) => {
-                                        const current = field.value ?? [];
-                                        if (checked) {
-                                          field.onChange([...current, integration.id]);
-                                          // Auto-enable default tools
-                                          const defaultTools =
-                                            integration.tools
-                                              ?.filter((t) => t.defaultEnabled)
-                                              .map((t) => t.id) ?? [];
-                                          if (defaultTools.length > 0) {
-                                            const currentToolIds = form.getValues("enabledToolIds") ?? {};
-                                            form.setValue("enabledToolIds", {
-                                              ...currentToolIds,
-                                              [integration.id]: defaultTools,
-                                            });
-                                          }
-                                        } else {
-                                          field.onChange(current.filter((v) => v !== integration.id));
-                                          // Clear tool selection
-                                          const currentToolIds = form.getValues("enabledToolIds") ?? {};
-                                          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                                          const { [integration.id]: _removed, ...rest } = currentToolIds;
-                                          form.setValue("enabledToolIds", rest);
-                                        }
-                                      }}
-                                    />
-                                    <div>
-                                      <div className="flex items-center gap-2">
-                                        <span className="font-medium">{integration.name}</span>
-                                        {integration.isBuiltIn && (
-                                          <Badge variant="secondary" className="text-xs">
-                                            Built-in
-                                          </Badge>
-                                        )}
-                                      </div>
-                                      <p className="text-sm text-muted-foreground">
-                                        {integration.description}
-                                      </p>
-                                    </div>
-                                  </div>
-                                  {isEnabled && integration.tools && integration.tools.length > 0 && (
-                                    <CollapsibleTrigger asChild>
-                                      <Button type="button" variant="ghost" size="sm">
-                                        <ChevronDown className="h-4 w-4" />
-                                        <span className="ml-1">
-                                          {enabledToolIds?.[integration.id]?.length ?? 0} /{" "}
-                                          {integration.tools.length} tools
-                                        </span>
-                                      </Button>
-                                    </CollapsibleTrigger>
-                                  )}
-                                </div>
-
-                                {isEnabled && integration.tools && integration.tools.length > 0 && (
-                                  <CollapsibleContent>
-                                    <div className="border-t bg-muted/30 p-4">
-                                      <div className="mb-3 flex items-center justify-between">
-                                        <span className="text-sm font-medium">Available Tools</span>
-                                        <div className="flex gap-2">
-                                          <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => {
-                                              const allToolIds = integration.tools?.map((t) => t.id) ?? [];
-                                              const currentToolIds = form.getValues("enabledToolIds") ?? {};
-                                              form.setValue("enabledToolIds", {
-                                                ...currentToolIds,
-                                                [integration.id]: allToolIds,
-                                              });
-                                            }}
-                                          >
-                                            Select All
-                                          </Button>
-                                          <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => {
-                                              const currentToolIds = form.getValues("enabledToolIds") ?? {};
-                                              form.setValue("enabledToolIds", {
-                                                ...currentToolIds,
-                                                [integration.id]: [],
-                                              });
-                                            }}
-                                          >
-                                            Clear All
-                                          </Button>
-                                        </div>
-                                      </div>
-                                      <div className="space-y-2">
-                                        {integration.tools.map((tool) => {
-                                          const riskBadge = getRiskLevelBadge(tool.riskLevel);
-                                          const RiskIcon = riskBadge.icon;
-                                          const currentTools = enabledToolIds?.[integration.id] ?? [];
-                                          const isToolEnabled = currentTools.includes(tool.id);
-                                          return (
-                                            <div
-                                              key={tool.id}
-                                              className="flex items-center justify-between rounded-md border bg-background p-3"
-                                            >
-                                              <div className="flex items-center space-x-3">
-                                                <Checkbox
-                                                  checked={isToolEnabled}
-                                                  onCheckedChange={(checked) => {
-                                                    const allToolIds = form.getValues("enabledToolIds") ?? {};
-                                                    const toolsForIntegration = allToolIds[integration.id] ?? [];
-                                                    const newTools = checked
-                                                      ? [...toolsForIntegration, tool.id]
-                                                      : toolsForIntegration.filter((t) => t !== tool.id);
-                                                    form.setValue("enabledToolIds", {
-                                                      ...allToolIds,
-                                                      [integration.id]: newTools,
-                                                    });
-                                                  }}
-                                                />
-                                                <div>
-                                                  <span className="text-sm font-medium">{tool.name}</span>
-                                                  <p className="text-xs text-muted-foreground">
-                                                    {tool.description}
-                                                  </p>
-                                                </div>
-                                              </div>
-                                              <Badge variant={riskBadge.variant} className={riskBadge.color}>
-                                                <RiskIcon className="mr-1 h-3 w-3" />
-                                                {tool.riskLevel}
-                                              </Badge>
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    </div>
-                                  </CollapsibleContent>
-                                )}
-                              </div>
-                            </Collapsible>
-                          );
-                        }}
-                      />
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Grok-specific built-in tools */}
-              {voiceProvider === "grok" && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-medium">
-                      Grok Built-in Search Tools
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <p className="text-sm text-muted-foreground">
-                      Grok has built-in search capabilities that execute automatically during
-                      conversations. Enable the ones you want your agent to use.
-                    </p>
-                    <FormField
-                      control={form.control}
-                      name="enabledTools"
-                      render={({ field }) => (
-                        <div className="space-y-3">
-                          {GROK_BUILTIN_TOOLS.map((tool) => {
-                            const isEnabled = field.value?.includes(tool.id);
-                            const Icon = tool.id === "web_search" ? Globe : Search;
-                            return (
-                              <div
-                                key={tool.id}
-                                className={cn(
-                                  "flex items-start gap-3 rounded-lg border p-4 transition-colors",
-                                  isEnabled && "border-primary bg-primary/5"
-                                )}
-                              >
-                                <Checkbox
-                                  checked={isEnabled}
-                                  onCheckedChange={(checked) => {
-                                    const current = field.value ?? [];
-                                    if (checked) {
-                                      field.onChange([...current, tool.id]);
-                                    } else {
-                                      field.onChange(current.filter((v) => v !== tool.id));
-                                    }
-                                  }}
-                                />
-                                <div className="flex-1 space-y-1">
-                                  <div className="flex items-center gap-2">
-                                    <Icon className="h-4 w-4 text-muted-foreground" />
-                                    <span className="font-medium">{tool.name}</span>
-                                    <Badge variant="secondary" className="text-xs">
-                                      Auto
-                                    </Badge>
-                                  </div>
-                                  <p className="text-sm text-muted-foreground">
-                                    {tool.description}
-                                  </p>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    />
-                  </CardContent>
-                </Card>
-              )}
+              <ToolsTab form={form} voiceProvider={voiceProvider} enabledToolIds={enabledToolIds} />
             </TabsContent>
 
             <TabsContent value="advanced" className="mt-4 space-y-3">
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium">Text Agent Settings</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <FormField
-                    control={form.control}
-                    name="textResponseDelayMs"
-                    render={({ field }) => (
-                      <FormItem>
-                        <div className="flex items-center justify-between">
-                          <FormLabel>Response Delay</FormLabel>
-                          <span className="text-sm font-medium">{field.value}ms</span>
-                        </div>
-                        <FormControl>
-                          <Slider
-                            min={0}
-                            max={5000}
-                            step={100}
-                            value={[field.value]}
-                            onValueChange={(value) => field.onChange(value[0])}
-                            className="w-full"
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          Delay before sending text responses (makes it feel more natural)
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="textMaxContextMessages"
-                    render={({ field }) => (
-                      <FormItem>
-                        <div className="flex items-center justify-between">
-                          <FormLabel>Max Context Messages</FormLabel>
-                          <span className="text-sm font-medium">{field.value}</span>
-                        </div>
-                        <FormControl>
-                          <Slider
-                            min={1}
-                            max={50}
-                            step={1}
-                            value={[field.value]}
-                            onValueChange={(value) => field.onChange(value[0])}
-                            className="w-full"
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          Number of previous messages to include for context
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium">Calendar Integration</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <FormField
-                    control={form.control}
-                    name="calcomEventTypeId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Cal.com Event Type ID</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            placeholder="Enter Event Type ID"
-                            value={field.value ?? ""}
-                            onChange={(e) => {
-                              const value = e.target.value
-                                ? parseInt(e.target.value)
-                                : null;
-                              field.onChange(value);
-                            }}
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          Optional: Connect to Cal.com for appointment booking
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </CardContent>
-              </Card>
-
-              {/* IVR Navigation Settings - Grok only */}
-              {voiceProvider === "grok" && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-medium">IVR Navigation Settings</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <p className="text-sm text-muted-foreground">
-                      Configure how your agent navigates automated phone menus (IVR systems)
-                    </p>
-
-                    <FormField
-                      control={form.control}
-                      name="enableIvrNavigation"
-                      render={({ field }) => (
-                        <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                          <div className="space-y-0.5">
-                            <FormLabel className="text-base">Enable IVR Navigation</FormLabel>
-                            <FormDescription>
-                              Allow agent to detect and navigate through phone menus using DTMF tones
-                            </FormDescription>
-                          </div>
-                          <FormControl>
-                            <Switch checked={field.value} onCheckedChange={field.onChange} />
-                          </FormControl>
-                        </FormItem>
-                      )}
-                    />
-
-                    {form.watch("enableIvrNavigation") && (
-                      <>
-                        <FormField
-                          control={form.control}
-                          name="ivrNavigationGoal"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Navigation Goal</FormLabel>
-                              <FormControl>
-                                <Input
-                                  placeholder="e.g., Reach sales department, Speak to a human representative"
-                                  {...field}
-                                />
-                              </FormControl>
-                              <FormDescription>
-                                What should the agent try to achieve when navigating IVR menus?
-                              </FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
-                        <Collapsible>
-                          <CollapsibleTrigger asChild>
-                            <Button type="button" variant="outline" size="sm" className="w-full justify-between">
-                              <span className="flex items-center gap-2">
-                                <Phone className="h-4 w-4" />
-                                Advanced IVR Timing
-                              </span>
-                              <ChevronDown className="h-4 w-4" />
-                            </Button>
-                          </CollapsibleTrigger>
-                          <CollapsibleContent className="space-y-4 pt-4">
-                            <FormField
-                              control={form.control}
-                              name="ivrSilenceDurationMs"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <div className="flex items-center justify-between">
-                                    <FormLabel>Silence Duration</FormLabel>
-                                    <span className="text-sm font-medium">{field.value}ms</span>
-                                  </div>
-                                  <FormControl>
-                                    <Slider
-                                      min={1000}
-                                      max={10000}
-                                      step={500}
-                                      value={[field.value]}
-                                      onValueChange={(value) => field.onChange(value[0])}
-                                      className="w-full"
-                                    />
-                                  </FormControl>
-                                  <FormDescription>
-                                    How long to wait for menu to complete before responding
-                                  </FormDescription>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-
-                            <FormField
-                              control={form.control}
-                              name="ivrPostDtmfCooldownMs"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <div className="flex items-center justify-between">
-                                    <FormLabel>Post-DTMF Cooldown</FormLabel>
-                                    <span className="text-sm font-medium">{field.value}ms</span>
-                                  </div>
-                                  <FormControl>
-                                    <Slider
-                                      min={0}
-                                      max={10000}
-                                      step={500}
-                                      value={[field.value]}
-                                      onValueChange={(value) => field.onChange(value[0])}
-                                      className="w-full"
-                                    />
-                                  </FormControl>
-                                  <FormDescription>
-                                    Minimum wait time after pressing a button before pressing another
-                                  </FormDescription>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-
-                            <FormField
-                              control={form.control}
-                              name="ivrLoopThreshold"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <div className="flex items-center justify-between">
-                                    <FormLabel>Loop Detection Threshold</FormLabel>
-                                    <span className="text-sm font-medium">{field.value} repeats</span>
-                                  </div>
-                                  <FormControl>
-                                    <Slider
-                                      min={1}
-                                      max={10}
-                                      step={1}
-                                      value={[field.value]}
-                                      onValueChange={(value) => field.onChange(value[0])}
-                                      className="w-full"
-                                    />
-                                  </FormControl>
-                                  <FormDescription>
-                                    Number of menu repeats before trying alternative options
-                                  </FormDescription>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                          </CollapsibleContent>
-                        </Collapsible>
-                      </>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium">Agent Statistics</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-                    <div className="rounded-md border p-3">
-                      <p className="text-xs text-muted-foreground">Provider</p>
-                      <p className="text-sm font-medium capitalize">{agent.voice_provider}</p>
-                    </div>
-                    <div className="rounded-md border p-3">
-                      <p className="text-xs text-muted-foreground">Created</p>
-                      <p className="text-sm font-medium">
-                        {new Date(agent.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <div className="rounded-md border p-3">
-                      <p className="text-xs text-muted-foreground">Last Updated</p>
-                      <p className="text-sm font-medium">
-                        {new Date(agent.updated_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <AdvancedTab form={form} voiceProvider={voiceProvider} agent={agent} />
             </TabsContent>
 
             <TabsContent value="versions" className="mt-4 space-y-3">
@@ -1434,12 +467,12 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
               variant="outline"
               size="sm"
               asChild
-              disabled={updateAgentMutation.isPending}
+              disabled={isSaving}
             >
               <Link href="/agents">Cancel</Link>
             </Button>
-            <Button type="submit" size="sm" disabled={updateAgentMutation.isPending}>
-              {updateAgentMutation.isPending ? "Saving..." : "Save Changes"}
+            <Button type="submit" size="sm" disabled={isSaving}>
+              {isSaving ? "Saving..." : "Save Changes"}
             </Button>
           </div>
         </form>

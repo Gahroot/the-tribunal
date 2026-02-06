@@ -47,20 +47,13 @@ import { phoneNumbersApi } from "@/lib/api/phone-numbers";
 import { EditContactDialog } from "@/components/contacts/edit-contact-dialog";
 import { ScheduleAppointmentDialog } from "@/components/contacts/schedule-appointment-dialog";
 import { TagBadge } from "@/components/tags/tag-badge";
+import { contactStatusDotColors } from "@/lib/status-colors";
 import type { Contact } from "@/types";
 
 interface ContactSidebarProps {
   className?: string;
   onClose?: () => void;
 }
-
-const statusColors: Record<string, string> = {
-  new: "bg-blue-500",
-  contacted: "bg-yellow-500",
-  qualified: "bg-green-500",
-  converted: "bg-purple-500",
-  lost: "bg-red-500",
-};
 
 function getInitials(contact: Contact): string {
   const first = contact.first_name?.[0] ?? "";
@@ -301,6 +294,7 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
   // Calculate some stats from timeline
   const callCount = timeline.filter(t => t.type === "call").length;
   const messageCount = timeline.filter(t => t.type === "sms").length;
+  const bookingCount = timeline.filter(t => t.booking_outcome === "success").length;
   const lastActivity = timeline[timeline.length - 1];
 
   return (
@@ -336,7 +330,7 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
               )}
             </div>
             <div className="flex items-center gap-2">
-              <div className={cn("h-2 w-2 rounded-full", statusColors[selectedContact.status])} />
+              <div className={cn("h-2 w-2 rounded-full", contactStatusDotColors[selectedContact.status])} />
               <Badge variant="secondary" className="capitalize">
                 {selectedContact.status}
               </Badge>
@@ -444,7 +438,7 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
           <Separator />
           <div className="space-y-2">
             <h3 className="text-sm font-medium text-muted-foreground px-2">Activity</h3>
-            <div className="grid grid-cols-2 gap-3 px-2">
+            <div className="grid grid-cols-3 gap-3 px-2">
               <div className="bg-muted/50 rounded-lg p-3 text-center">
                 <p className="text-2xl font-semibold">{callCount}</p>
                 <p className="text-xs text-muted-foreground">Calls</p>
@@ -452,6 +446,10 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
               <div className="bg-muted/50 rounded-lg p-3 text-center">
                 <p className="text-2xl font-semibold">{messageCount}</p>
                 <p className="text-xs text-muted-foreground">Messages</p>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-3 text-center">
+                <p className="text-2xl font-semibold text-green-600">{bookingCount}</p>
+                <p className="text-xs text-muted-foreground">Booked</p>
               </div>
             </div>
             {lastActivity && (

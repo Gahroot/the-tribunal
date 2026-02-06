@@ -38,14 +38,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAppointments, useDeleteAppointment } from "@/hooks/useAppointments";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { toast } from "sonner";
+import { appointmentStatusColors } from "@/lib/status-colors";
 import type { Contact } from "@/types";
-
-const statusColors: Record<string, string> = {
-  scheduled: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-  completed: "bg-green-500/10 text-green-500 border-green-500/20",
-  cancelled: "bg-red-500/10 text-red-500 border-red-500/20",
-  no_show: "bg-gray-500/10 text-gray-500 border-gray-500/20",
-};
 
 // Helper to get contact initials
 function getInitials(firstName: string, lastName?: string): string {
@@ -258,10 +252,15 @@ export function CalendarPage() {
                                         </p>
                                         <Badge
                                           variant="outline"
-                                          className={statusColors[apt.status]}
+                                          className={appointmentStatusColors[apt.status]}
                                         >
                                           {apt.status}
                                         </Badge>
+                                        {apt.reminder_sent_at && (
+                                          <Badge variant="outline" className="text-green-600 border-green-300">
+                                            Reminder sent
+                                          </Badge>
+                                        )}
                                       </div>
                                     </div>
                                     {apt.status === "scheduled" && (
@@ -340,9 +339,14 @@ export function CalendarPage() {
                           {format(new Date(apt.scheduled_at), "h:mm a")} • {apt.duration_minutes}min
                         </p>
                       </div>
+                      {apt.reminder_sent_at && (
+                        <Badge variant="outline" className="text-green-600 border-green-300 text-[10px] py-0">
+                          Reminded
+                        </Badge>
+                      )}
                       <Badge
                         variant="outline"
-                        className={statusColors[apt.status]}
+                        className={appointmentStatusColors[apt.status]}
                       >
                         {apt.status}
                       </Badge>
@@ -385,7 +389,7 @@ export function CalendarPage() {
                     </div>
                     <Badge
                       variant="outline"
-                      className={statusColors[apt.status]}
+                      className={appointmentStatusColors[apt.status]}
                     >
                       {apt.status}
                     </Badge>

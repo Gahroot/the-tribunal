@@ -225,6 +225,7 @@ export interface Appointment {
   sync_error?: string;
   created_at: string;
   updated_at: string;
+  reminder_sent_at?: string;
 }
 
 // Unified timeline item for the conversation feed
@@ -243,6 +244,7 @@ export interface TimelineItem {
   recording_url?: string;
   transcript?: string;
   status?: string;
+  booking_outcome?: string;
   // Reference to original record
   original_id: string;
   original_type: "sms_message" | "call_record" | "appointment" | "note";

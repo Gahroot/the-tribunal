@@ -402,6 +402,7 @@ async def get_contact_timeline(
                     "recording_url": msg.recording_url,
                     "transcript": msg.transcript,
                     "status": msg.status,
+                    "booking_outcome": msg.booking_outcome,
                     "original_id": msg.id,
                     "original_type": f"{msg.channel}_message",
                 })
