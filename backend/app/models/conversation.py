@@ -22,6 +22,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.agent import Agent
+    from app.models.appointment import Appointment
     from app.models.call_feedback import CallFeedback
     from app.models.call_outcome import CallOutcome
     from app.models.campaign import CampaignContact
@@ -272,6 +273,9 @@ class Message(Base):
     )
     feedback: Mapped[list["CallFeedback"]] = relationship(
         "CallFeedback", back_populates="message"
+    )
+    appointment: Mapped["Appointment | None"] = relationship(
+        "Appointment", back_populates="message", uselist=False
     )
 
     def __repr__(self) -> str:

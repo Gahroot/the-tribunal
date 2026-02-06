@@ -197,6 +197,7 @@ export interface CallRecord {
   agent_id?: string;
   agent_name?: string;
   is_ai?: boolean;
+  booking_outcome?: string;
   created_at: string;
   // Optional fields for active calls
   started_at?: string;
@@ -210,6 +211,7 @@ export interface Appointment {
   contact?: Contact;
   workspace_id?: string;
   agent_id?: string;
+  message_id?: string;
   scheduled_at: string;
   duration_minutes: number;
   status: "scheduled" | "completed" | "cancelled" | "no_show";

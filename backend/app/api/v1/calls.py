@@ -51,6 +51,7 @@ class CallResponse(BaseModel):
     agent_id: uuid.UUID | None = None
     agent_name: str | None = None
     is_ai: bool = False
+    booking_outcome: str | None = None
 
 
 class PaginatedCalls(BaseModel):
@@ -184,6 +185,7 @@ def _build_call_response(
         agent_id=message.agent_id,
         agent_name=agent_name,
         is_ai=message.is_ai,
+        booking_outcome=message.booking_outcome,
     )
 
 

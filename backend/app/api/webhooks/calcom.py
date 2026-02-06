@@ -1,6 +1,6 @@
 """Cal.com webhook endpoints for appointment events."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
@@ -12,6 +12,7 @@ from app.db.session import AsyncSessionLocal
 from app.models.agent import Agent
 from app.models.appointment import Appointment, AppointmentStatus
 from app.models.contact import Contact
+from app.models.conversation import Conversation, Message
 
 router = APIRouter()
 logger = structlog.get_logger()
@@ -60,6 +61,40 @@ async def calcom_booking_webhook(request: Request) -> dict[str, str]:
         log.debug("unhandled_event_type")
 
     return {"status": "ok"}
+
+
+async def _find_recent_voice_message(
+    db: Any,
+    contact_id: int,
+    agent_id: Any,
+    log: Any,
+) -> Any:
+    """Find a recent voice message for a contact+agent (within 10 minutes)."""
+    import uuid as _uuid
+
+    try:
+        cutoff = datetime.now(UTC) - timedelta(minutes=10)
+        msg_query = (
+            select(Message)
+            .join(Conversation, Message.conversation_id == Conversation.id)
+            .where(
+                Conversation.contact_id == contact_id,
+                Message.channel == "voice",
+                Message.created_at >= cutoff,
+            )
+        )
+        if agent_id:
+            msg_query = msg_query.where(Message.agent_id == agent_id)
+        msg_query = msg_query.order_by(Message.created_at.desc()).limit(1)
+        msg_result = await db.execute(msg_query)
+        recent_msg = msg_result.scalar_one_or_none()
+        if recent_msg:
+            msg_id: _uuid.UUID = recent_msg.id
+            log.info("linked_appointment_to_message", message_id=str(msg_id))
+            return msg_id
+    except Exception as e:
+        log.warning("message_linking_failed", error=str(e))
+    return None
 
 
 async def handle_booking_created(data: dict[str, Any], log: Any) -> None:
@@ -146,11 +181,16 @@ async def handle_booking_created(data: dict[str, Any], log: Any) -> None:
             appointment.last_synced_at = datetime.now(UTC)
             appointment.sync_error = None  # Clear any previous sync errors
         else:
+            message_id = await _find_recent_voice_message(
+                db, contact.id, agent.id if agent else None, log,
+            )
+
             # Create new appointment
             appointment = Appointment(
                 workspace_id=workspace_id,
                 contact_id=contact.id,
                 agent_id=agent.id if agent else None,
+                message_id=message_id,
                 scheduled_at=scheduled_at,
                 duration_minutes=duration_minutes,
                 status="scheduled",

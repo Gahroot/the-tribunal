@@ -53,6 +53,7 @@ class AppointmentResponse(AppointmentBase):
     contact_id: int
     contact: ContactSummary | None = None
     agent_id: uuid.UUID | None
+    message_id: uuid.UUID | None = None
     scheduled_at: datetime
     status: str
     calcom_booking_uid: str | None
@@ -61,6 +62,7 @@ class AppointmentResponse(AppointmentBase):
     sync_status: str
     last_synced_at: datetime | None
     sync_error: str | None = None  # Stored error message from Cal.com sync failures
+    reminder_sent_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 

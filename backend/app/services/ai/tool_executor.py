@@ -11,7 +11,7 @@ Usage:
     result = await executor.execute("check_availability", {"start_date": "2024-01-15"})
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -206,6 +206,78 @@ class VoiceToolExecutor(BaseToolExecutor):
             }
 
         return {"success": False, "error": result.error or "Booking failed"}
+
+    async def post_booking_success(
+        self,
+        result: Any,
+        date_str: str,
+        time_str: str,
+        email: str,
+        duration_minutes: int,
+        notes: str | None,
+    ) -> None:
+        """Create Appointment record linked to the call's message."""
+        if not self.call_control_id:
+            return
+
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+
+        from app.db.session import AsyncSessionLocal
+        from app.models.appointment import Appointment
+        from app.models.conversation import Message as MessageModel
+
+        async with AsyncSessionLocal() as db:
+            try:
+                msg_result = await db.execute(
+                    select(MessageModel)
+                    .options(selectinload(MessageModel.conversation))
+                    .where(MessageModel.provider_message_id == self.call_control_id)
+                )
+                message = msg_result.scalar_one_or_none()
+                if not message or not message.conversation:
+                    self.log.warning(
+                        "post_booking_no_message",
+                        call_control_id=self.call_control_id,
+                    )
+                    return
+
+                # Parse scheduled time
+                try:
+                    scheduled_at = datetime.strptime(
+                        f"{date_str} {time_str}", "%Y-%m-%d %H:%M"
+                    ).replace(tzinfo=UTC)
+                except ValueError:
+                    scheduled_at = datetime.now(UTC)
+
+                appointment = Appointment(
+                    workspace_id=message.conversation.workspace_id,
+                    contact_id=message.conversation.contact_id,
+                    agent_id=message.agent_id,
+                    message_id=message.id,
+                    scheduled_at=scheduled_at,
+                    duration_minutes=duration_minutes,
+                    status="scheduled",
+                    calcom_booking_uid=result.booking_uid,
+                    calcom_booking_id=result.booking_id,
+                    sync_status="synced",
+                    last_synced_at=datetime.now(UTC),
+                    notes=notes,
+                )
+                db.add(appointment)
+                await db.commit()
+                self.log.info(
+                    "appointment_created_from_voice",
+                    appointment_message_id=str(message.id),
+                    booking_uid=result.booking_uid,
+                )
+            except Exception as e:
+                await db.rollback()
+                self.log.error(
+                    "post_booking_appointment_creation_failed",
+                    error=str(e),
+                    call_control_id=self.call_control_id,
+                )
 
     # ── Voice-only tools ────────────────────────────────────────────
 

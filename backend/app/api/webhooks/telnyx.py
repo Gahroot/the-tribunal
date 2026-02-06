@@ -477,6 +477,57 @@ async def handle_call_answered(payload: dict[Any, Any], log: Any) -> None:
                 await voice_service.close()
 
 
+async def _reconcile_booking_outcome(
+    db: Any, message: Any, log: Any,
+) -> str | None:
+    """Check for booking evidence when message.booking_outcome is NULL.
+
+    Strategies:
+    1. Query Appointment by message_id (direct link from VoiceToolExecutor).
+    2. Query Appointment by contact_id + agent_id created within last 5 minutes.
+
+    Returns the reconciled booking_outcome or None.
+    """
+    if message.booking_outcome:
+        outcome: str = message.booking_outcome
+        return outcome
+
+    from datetime import timedelta
+
+    from app.models.appointment import Appointment
+
+    # Strategy 1: Direct message_id link
+    appt_result = await db.execute(
+        select(Appointment).where(Appointment.message_id == message.id)
+    )
+    appt = appt_result.scalar_one_or_none()
+    if appt:
+        log.info("reconciled_booking_via_message_id", appointment_id=appt.id)
+        return "success"
+
+    # Strategy 2: Fuzzy match by contact + agent + recent creation
+    if message.conversation and message.conversation.contact_id and message.agent_id:
+        cutoff = datetime.now(UTC) - timedelta(minutes=5)
+        fuzzy_result = await db.execute(
+            select(Appointment).where(
+                Appointment.contact_id == message.conversation.contact_id,
+                Appointment.agent_id == message.agent_id,
+                Appointment.created_at >= cutoff,
+            )
+        )
+        fuzzy_appt = fuzzy_result.scalar_one_or_none()
+        if fuzzy_appt:
+            # Backfill the message_id link
+            fuzzy_appt.message_id = message.id
+            log.info(
+                "reconciled_booking_via_fuzzy_match",
+                appointment_id=fuzzy_appt.id,
+            )
+            return "success"
+
+    return None
+
+
 async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:
     """Handle call hangup event."""
     call_control_id = payload.get("call_control_id", "")
@@ -496,11 +547,17 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:
         from app.models.conversation import Message
 
         result = await db.execute(
-            select(Message).where(Message.provider_message_id == call_control_id)
+            select(Message)
+            .options(selectinload(Message.conversation))
+            .where(Message.provider_message_id == call_control_id)
         )
         message = result.scalar_one_or_none()
 
         if message:
+            # Reconcile booking outcome before classification
+            reconciled = await _reconcile_booking_outcome(db, message, log)
+            if reconciled and not message.booking_outcome:
+                message.booking_outcome = reconciled
             # Use stored streaming duration if hangup reports 0
             # (Telnyx doesn't populate duration_seconds for streaming/WebSocket calls)
             if duration_secs > 0:

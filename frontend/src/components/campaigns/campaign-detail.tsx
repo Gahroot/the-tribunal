@@ -8,6 +8,7 @@ import {
   Play,
   Pause,
   AlertCircle,
+  CalendarCheck,
   MessageSquare,
   Phone,
 } from "lucide-react";
@@ -21,21 +22,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { campaignStatusColors } from "@/lib/status-colors";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { campaignsApi } from "@/lib/api/campaigns";
 
 interface CampaignDetailProps {
   campaignId: string;
 }
-
-const statusColors: Record<string, string> = {
-  draft: "bg-gray-500/10 text-gray-500 border-gray-500/20",
-  scheduled: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-  running: "bg-green-500/10 text-green-500 border-green-500/20",
-  paused: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
-  completed: "bg-purple-500/10 text-purple-500 border-purple-500/20",
-  cancelled: "bg-red-500/10 text-red-500 border-red-500/20",
-};
 
 export function CampaignDetail({ campaignId }: CampaignDetailProps) {
   const queryClient = useQueryClient();
@@ -133,7 +126,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-2">
               <h1 className="text-2xl font-bold">{campaign.name}</h1>
-              <Badge className={statusColors[campaign.status]}>
+              <Badge className={campaignStatusColors[campaign.status]}>
                 {campaign.status}
               </Badge>
             </div>
@@ -236,6 +229,15 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
                 </p>
                 <p className="text-xs text-muted-foreground">Qualified</p>
               </div>
+              {campaign.campaign_type === "voice_sms_fallback" && (
+                <div>
+                  <p className="text-2xl font-bold flex items-center gap-1.5">
+                    <CalendarCheck className="size-5 text-green-600" />
+                    {(campaign as unknown as { appointments_booked?: number }).appointments_booked ?? 0}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Booked</p>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

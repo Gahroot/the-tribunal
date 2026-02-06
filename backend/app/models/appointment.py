@@ -14,6 +14,7 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.models.agent import Agent
     from app.models.contact import Contact
+    from app.models.conversation import Message
     from app.models.workspace import Workspace
 
 
@@ -50,6 +51,12 @@ class Appointment(Base):
         nullable=True,
         index=True,
     )
+    message_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("messages.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     # Booking details
     scheduled_at: Mapped[datetime] = mapped_column(
@@ -72,6 +79,11 @@ class Appointment(Base):
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sync_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Reminder tracking
+    reminder_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
@@ -87,6 +99,7 @@ class Appointment(Base):
     workspace: Mapped["Workspace"] = relationship("Workspace", back_populates="appointments")
     contact: Mapped["Contact"] = relationship("Contact", back_populates="appointments")
     agent: Mapped["Agent | None"] = relationship("Agent", back_populates="appointments")
+    message: Mapped["Message | None"] = relationship("Message", back_populates="appointment")
 
     def __repr__(self) -> str:
         return (

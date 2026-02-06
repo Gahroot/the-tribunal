@@ -17,6 +17,7 @@ import {
   Download,
   Loader2,
   AlertCircle,
+  CalendarCheck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -56,16 +57,17 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { TranscriptViewer } from "@/components/calls/transcript-viewer";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { callStatusColors } from "@/lib/status-colors";
 import { callsApi } from "@/lib/api/calls";
 
 const statusConfig: Record<string, { label: string; color: string; icon: LucideIcon }> = {
-  completed: { label: "Completed", color: "bg-green-500/10 text-green-500 border-green-500/20", icon: Phone },
-  in_progress: { label: "In Progress", color: "bg-blue-500/10 text-blue-500 border-blue-500/20", icon: Phone },
-  initiated: { label: "Initiated", color: "bg-blue-500/10 text-blue-500 border-blue-500/20", icon: Phone },
-  ringing: { label: "Ringing", color: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20", icon: Phone },
-  no_answer: { label: "No Answer", color: "bg-gray-500/10 text-gray-500 border-gray-500/20", icon: PhoneMissed },
-  busy: { label: "Busy", color: "bg-orange-500/10 text-orange-500 border-orange-500/20", icon: PhoneMissed },
-  failed: { label: "Failed", color: "bg-red-500/10 text-red-500 border-red-500/20", icon: PhoneMissed },
+  completed: { label: "Completed", color: callStatusColors.completed, icon: Phone },
+  in_progress: { label: "In Progress", color: callStatusColors.in_progress, icon: Phone },
+  initiated: { label: "Initiated", color: callStatusColors.initiated, icon: Phone },
+  ringing: { label: "Ringing", color: callStatusColors.ringing, icon: Phone },
+  no_answer: { label: "No Answer", color: callStatusColors.no_answer, icon: PhoneMissed },
+  busy: { label: "Busy", color: callStatusColors.busy, icon: PhoneMissed },
+  failed: { label: "Failed", color: callStatusColors.failed, icon: PhoneMissed },
 };
 
 function formatDuration(seconds: number): string {
@@ -323,9 +325,17 @@ export function CallsList() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={status.color}>
-                            {status.label}
-                          </Badge>
+                          <div className="flex items-center gap-1.5">
+                            <Badge variant="outline" className={status.color}>
+                              {status.label}
+                            </Badge>
+                            {call.booking_outcome === "success" && (
+                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                <CalendarCheck className="size-3 mr-1" />
+                                Booked
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           {call.duration_seconds
@@ -419,6 +429,16 @@ export function CallsList() {
                                       </span>{" "}
                                       {call.is_ai || call.agent_id ? (call.agent_name || "AI Agent") : "Manual"}
                                     </div>
+                                    {call.booking_outcome && (
+                                      <div>
+                                        <span className="text-muted-foreground">
+                                          Booking:
+                                        </span>{" "}
+                                        <Badge variant="outline" className={call.booking_outcome === "success" ? "bg-green-50 text-green-700 border-green-200" : ""}>
+                                          {call.booking_outcome === "success" ? "Booked" : call.booking_outcome}
+                                        </Badge>
+                                      </div>
+                                    )}
                                     <div>
                                       <span className="text-muted-foreground">
                                         From:
