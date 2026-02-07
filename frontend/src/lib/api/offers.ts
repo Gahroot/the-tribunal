@@ -6,6 +6,7 @@ import type {
   UrgencyType,
   ValueStackItem,
 } from "@/types";
+import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
 
 // Request/Response Types
 export interface OffersListParams {
@@ -149,8 +150,14 @@ export interface GeneratedOfferContent {
   bonus_ideas: GeneratedBonusIdea[];
 }
 
+const baseApi = createApiClient<Offer, CreateOfferRequest, UpdateOfferRequest>({
+  resourcePath: "offers",
+}) as FullApiClient<Offer, CreateOfferRequest, UpdateOfferRequest>;
+
 // Offers API
 export const offersApi = {
+  ...baseApi,
+
   // AI Generation
   generate: async (
     workspaceId: string,
@@ -161,45 +168,6 @@ export const offersApi = {
       data
     );
     return response.data;
-  },
-
-  list: async (workspaceId: string, params: OffersListParams = {}): Promise<OffersListResponse> => {
-    const response = await api.get<OffersListResponse>(
-      `/api/v1/workspaces/${workspaceId}/offers`,
-      { params }
-    );
-    return response.data;
-  },
-
-  get: async (workspaceId: string, offerId: string): Promise<Offer> => {
-    const response = await api.get<Offer>(
-      `/api/v1/workspaces/${workspaceId}/offers/${offerId}`
-    );
-    return response.data;
-  },
-
-  create: async (workspaceId: string, data: CreateOfferRequest): Promise<Offer> => {
-    const response = await api.post<Offer>(
-      `/api/v1/workspaces/${workspaceId}/offers`,
-      data
-    );
-    return response.data;
-  },
-
-  update: async (
-    workspaceId: string,
-    offerId: string,
-    data: UpdateOfferRequest
-  ): Promise<Offer> => {
-    const response = await api.put<Offer>(
-      `/api/v1/workspaces/${workspaceId}/offers/${offerId}`,
-      data
-    );
-    return response.data;
-  },
-
-  delete: async (workspaceId: string, offerId: string): Promise<void> => {
-    await api.delete(`/api/v1/workspaces/${workspaceId}/offers/${offerId}`);
   },
 
   // Get offer with attached lead magnets

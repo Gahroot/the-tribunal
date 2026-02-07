@@ -7,31 +7,29 @@ This background worker:
 4. Tracks call outcomes via webhook handlers
 """
 
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-import pytz
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import QueryableAttribute, selectinload
 
 from app.core.config import settings
-from app.db.session import AsyncSessionLocal
 from app.models.campaign import (
     Campaign,
     CampaignContact,
     CampaignContactStatus,
-    CampaignStatus,
     CampaignType,
 )
 from app.services.telephony.telnyx_voice import TelnyxVoiceService
-from app.workers.base import BaseWorker, WorkerRegistry
+from app.workers.base import WorkerRegistry
+from app.workers.base_campaign_worker import BaseCampaignWorker
 
 # Worker configuration - more conservative for voice
 MAX_CALLS_PER_TICK = 5
 
 
-class VoiceCampaignWorker(BaseWorker):
+class VoiceCampaignWorker(BaseCampaignWorker):
     """Background worker for processing voice campaigns."""
 
     POLL_INTERVAL_SECONDS = 10
@@ -41,75 +39,35 @@ class VoiceCampaignWorker(BaseWorker):
         super().__init__()
         self._rate_trackers: dict[str, list[datetime]] = {}
 
-    async def _process_items(self) -> None:
-        """Process all running voice campaigns."""
-        async with AsyncSessionLocal() as db:
-            result = await db.execute(
-                select(Campaign)
-                .options(
-                    selectinload(Campaign.voice_agent),
-                    selectinload(Campaign.sms_fallback_agent),
-                )
-                .where(
-                    and_(
-                        Campaign.status == CampaignStatus.RUNNING.value,
-                        Campaign.campaign_type == CampaignType.VOICE_SMS_FALLBACK.value,
-                    )
-                )
-            )
-            campaigns = result.scalars().all()
+    @property
+    def campaign_type(self) -> CampaignType:
+        return CampaignType.VOICE_SMS_FALLBACK
 
-            if not campaigns:
-                return
+    @property
+    def eager_loads(self) -> list[QueryableAttribute[Any]]:
+        return [Campaign.voice_agent, Campaign.sms_fallback_agent]
 
-            self.logger.debug("Processing voice campaigns", count=len(campaigns))
-
-            for campaign in campaigns:
-                try:
-                    await self._process_campaign(campaign, db)
-                except Exception:
-                    self.logger.exception(
-                        "Error processing voice campaign",
-                        campaign_id=str(campaign.id),
-                        campaign_name=campaign.name,
-                    )
-
-    async def _process_campaign(self, campaign: Campaign, db: AsyncSession) -> None:
-        """Process a single voice campaign."""
-        log = self.logger.bind(
-            campaign_id=str(campaign.id),
-            campaign_name=campaign.name,
+    def _get_remaining_filter(self, campaign: Campaign) -> Any:
+        return and_(
+            CampaignContact.campaign_id == campaign.id,
+            CampaignContact.status.in_([
+                CampaignContactStatus.PENDING.value,
+                CampaignContactStatus.CALLING.value,
+            ]),
         )
 
-        # Check if within sending hours
-        if not self._is_within_sending_hours(campaign):
-            log.debug("Outside sending hours")
-            return
-
-        # Check if campaign has ended
-        if campaign.scheduled_end and datetime.now(UTC) > campaign.scheduled_end:
-            log.info("Campaign scheduled end reached, completing")
-            campaign.status = CampaignStatus.COMPLETED.value
-            campaign.completed_at = datetime.now(UTC)
-            await db.commit()
-            return
-
-        # Get voice service
-        if not settings.telnyx_api_key:
-            log.warning("No Telnyx API key configured")
-            return
-
+    async def _process_campaign_contacts(
+        self,
+        campaign: Campaign,
+        db: AsyncSession,
+        log: Any,
+    ) -> None:
+        """Process voice campaign contacts: clean up stuck calls and initiate new ones."""
         voice_service = TelnyxVoiceService(settings.telnyx_api_key)
         try:
-            # Clean up stuck calls first (webhooks that never arrived)
             await self._cleanup_stuck_calls(campaign, db, log)
-
-            # Process pending calls
             await self._process_pending_calls(campaign, voice_service, db, log)
-
-            # Check if campaign is complete
             await self._check_completion(campaign, db, log)
-
             await db.commit()
         finally:
             await voice_service.close()
@@ -267,72 +225,6 @@ class VoiceCampaignWorker(BaseWorker):
             campaign.calls_no_answer += 1
 
         log.info("stuck_calls_cleaned_up", count=len(stuck_contacts))
-
-    async def _check_completion(
-        self,
-        campaign: Campaign,
-        db: AsyncSession,
-        log: Any,
-    ) -> None:
-        """Check if campaign is complete."""
-        # Count contacts still pending or being called
-        remaining_result = await db.execute(
-            select(func.count(CampaignContact.id)).where(
-                and_(
-                    CampaignContact.campaign_id == campaign.id,
-                    CampaignContact.status.in_([
-                        CampaignContactStatus.PENDING.value,
-                        CampaignContactStatus.CALLING.value,
-                    ]),
-                )
-            )
-        )
-        remaining = remaining_result.scalar() or 0
-
-        if remaining == 0:
-            log.info("All contacts processed, completing campaign")
-            campaign.status = CampaignStatus.COMPLETED.value
-            campaign.completed_at = datetime.now(UTC)
-
-    def _is_within_sending_hours(self, campaign: Campaign) -> bool:
-        """Check if current time is within campaign sending hours."""
-        # Use 'is None' instead of falsy check since time(0, 0) is falsy in Python
-        if campaign.sending_hours_start is None or campaign.sending_hours_end is None:
-            self.logger.debug(
-                "Sending hours not set, allowing",
-                start=campaign.sending_hours_start,
-                end=campaign.sending_hours_end,
-            )
-            return True
-
-        tz = pytz.timezone(campaign.timezone or "UTC")
-        now = datetime.now(tz)
-
-        # Only check sending_days if it's a non-empty list
-        if campaign.sending_days and now.weekday() not in campaign.sending_days:
-            self.logger.debug(
-                "Not a sending day",
-                sending_days=campaign.sending_days,
-                weekday=now.weekday(),
-            )
-            return False
-
-        # Handle both time objects and datetime objects from SQLAlchemy Time column
-        start_val = campaign.sending_hours_start
-        end_val = campaign.sending_hours_end
-        start_time: time = start_val.time() if isinstance(start_val, datetime) else start_val
-        end_time: time = end_val.time() if isinstance(end_val, datetime) else end_val
-        current_time = now.time()
-
-        result = start_time <= current_time <= end_time
-        self.logger.debug(
-            "Sending hours check",
-            start_time=str(start_time),
-            end_time=str(end_time),
-            current_time=str(current_time),
-            result=result,
-        )
-        return result
 
     def _get_available_call_slots(self, campaign: Campaign) -> int:
         """Calculate how many calls can be made based on rate limit."""

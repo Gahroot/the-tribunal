@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { AgentSelector } from "./agent-selector";
+import { insertPlaceholderAtCursor } from "@/lib/utils/placeholder";
 
 import type { Agent } from "@/types";
 
@@ -39,25 +40,7 @@ export function SMSFallbackStep({
   errors,
 }: SMSFallbackStepProps) {
   const insertPlaceholder = (placeholder: string) => {
-    const textarea = document.getElementById(
-      "fallback-template"
-    ) as HTMLTextAreaElement;
-    if (textarea) {
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const newTemplate =
-        template.slice(0, start) + placeholder + template.slice(end);
-      onTemplateChange(newTemplate);
-      setTimeout(() => {
-        textarea.focus();
-        textarea.setSelectionRange(
-          start + placeholder.length,
-          start + placeholder.length
-        );
-      }, 0);
-    } else {
-      onTemplateChange(template + placeholder);
-    }
+    insertPlaceholderAtCursor("fallback-template", placeholder, template, onTemplateChange);
   };
 
   return (

@@ -38,24 +38,9 @@ import { TagBadge } from "@/components/tags/tag-badge";
 import { ContactFilterBuilder } from "@/components/filters/contact-filter-builder";
 import { useBulkDeleteContacts } from "@/hooks/useContacts";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { contactStatusColors, contactStatusLabels } from "@/lib/status-colors";
 import type { Contact, ContactStatus } from "@/types";
 import type { ContactSortBy } from "@/lib/api/contacts";
-
-const statusColors: Record<string, string> = {
-  new: "bg-blue-500/10 text-blue-500 hover:bg-blue-500/20",
-  contacted: "bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20",
-  qualified: "bg-green-500/10 text-green-500 hover:bg-green-500/20",
-  converted: "bg-purple-500/10 text-purple-500 hover:bg-purple-500/20",
-  lost: "bg-red-500/10 text-red-500 hover:bg-red-500/20",
-};
-
-const statusLabels: Record<ContactStatus, string> = {
-  new: "New",
-  contacted: "Contacted",
-  qualified: "Qualified",
-  converted: "Converted",
-  lost: "Lost",
-};
 
 function getInitials(contact: Contact): string {
   const first = contact.first_name?.[0] ?? "";
@@ -155,8 +140,8 @@ function ContactCard({ contact, isSelected, onSelectChange, isSelectionMode }: C
             )}>
               {displayName}
             </span>
-            <Badge variant="secondary" className={cn("text-xs shrink-0", statusColors[contact.status])}>
-              {statusLabels[contact.status]}
+            <Badge variant="secondary" className={cn("text-xs shrink-0", contactStatusColors[contact.status])}>
+              {contactStatusLabels[contact.status]}
             </Badge>
           </div>
           {contact.company_name && (
@@ -256,10 +241,10 @@ function StatusFilter({ selectedStatus, onStatusChange, counts }: StatusFilterPr
           onClick={() => onStatusChange(status === "all" ? null : status)}
           className={cn(
             "gap-1.5",
-            status !== "all" && selectedStatus !== status && statusColors[status]
+            status !== "all" && selectedStatus !== status && contactStatusColors[status]
           )}
         >
-          {status === "all" ? "All" : statusLabels[status]}
+          {status === "all" ? "All" : contactStatusLabels[status]}
           <span className="text-xs opacity-70">({counts[status]})</span>
         </Button>
       ))}

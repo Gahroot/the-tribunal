@@ -20,6 +20,7 @@ logger = structlog.get_logger()
 # ElevenLabs available voices (subset of popular voices)
 ELEVENLABS_VOICES = {
     "ava": {"id": "gJx1vCzNCD1EQHT212Ls", "name": "Ava", "description": "Natural female"},
+    "lisa": {"id": "lRS76KmLyt8TypvcyLlV", "name": "Lisa", "description": "Friendly female"},
     "sarah_eve": {
         "id": "nf4MCGNSdM0hxM95ZBQR", "name": "Sarah Eve", "description": "Expressive female"
     },

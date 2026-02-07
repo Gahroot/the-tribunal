@@ -65,7 +65,7 @@ export function TagManagement() {
     if (!editTag || !name.trim()) return;
     try {
       await updateTag.mutateAsync({
-        tagId: editTag.id,
+        id: editTag.id,
         data: { name: name.trim(), color },
       });
       toast.success("Tag updated");

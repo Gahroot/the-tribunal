@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { contactStatusColors } from "@/lib/status-colors";
 import type { Contact, ContactStatus } from "@/types";
 
 interface ContactSelectorProps {
@@ -30,14 +31,6 @@ interface ContactSelectorProps {
   onSelectionChange: (ids: number[]) => void;
   isLoading?: boolean;
 }
-
-const statusColors: Record<ContactStatus, string> = {
-  new: "bg-blue-500/10 text-blue-500",
-  contacted: "bg-yellow-500/10 text-yellow-500",
-  qualified: "bg-green-500/10 text-green-500",
-  converted: "bg-purple-500/10 text-purple-500",
-  lost: "bg-red-500/10 text-red-500",
-};
 
 export function ContactSelector({
   contacts,
@@ -204,7 +197,7 @@ export function ContactSelector({
                       </span>
                       <Badge
                         variant="secondary"
-                        className={`text-xs ${statusColors[contact.status]}`}
+                        className={`text-xs ${contactStatusColors[contact.status]}`}
                       >
                         {contact.status}
                       </Badge>

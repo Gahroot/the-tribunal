@@ -25,6 +25,8 @@ export const editAgentFormSchema = z.object({
   // Appointment reminder settings
   reminderEnabled: z.boolean(),
   reminderMinutesBefore: z.number().min(5).max(1440),
+  // Experiment auto-evaluation
+  autoEvaluate: z.boolean(),
 });
 
 export type EditAgentFormValues = z.infer<typeof editAgentFormSchema>;
@@ -35,5 +37,5 @@ export const TAB_FIELDS: Record<string, (keyof EditAgentFormValues)[]> = {
   voice: ["voiceProvider", "voiceId"],
   prompt: ["systemPrompt", "temperature"],
   tools: ["enabledTools", "enabledToolIds"],
-  advanced: ["textResponseDelayMs", "textMaxContextMessages", "calcomEventTypeId", "reminderEnabled", "reminderMinutesBefore"],
+  advanced: ["textResponseDelayMs", "textMaxContextMessages", "calcomEventTypeId", "reminderEnabled", "reminderMinutesBefore", "autoEvaluate"],
 };

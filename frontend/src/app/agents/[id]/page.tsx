@@ -120,6 +120,7 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
       ivrMenuBufferSilenceMs: 2000,
       reminderEnabled: true,
       reminderMinutesBefore: 30,
+      autoEvaluate: false,
     },
   });
 
@@ -153,6 +154,7 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
         ivrMenuBufferSilenceMs: agent.ivr_menu_buffer_silence_ms ?? 2000,
         reminderEnabled: agent.reminder_enabled ?? true,
         reminderMinutesBefore: agent.reminder_minutes_before ?? 30,
+        autoEvaluate: agent.auto_evaluate ?? false,
       });
     }
   }, [agent, form]);
@@ -245,6 +247,7 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
       ivr_menu_buffer_silence_ms: data.ivrMenuBufferSilenceMs,
       reminder_enabled: data.reminderEnabled,
       reminder_minutes_before: data.reminderMinutesBefore,
+      auto_evaluate: data.autoEvaluate,
     };
 
     setIsSaving(true);

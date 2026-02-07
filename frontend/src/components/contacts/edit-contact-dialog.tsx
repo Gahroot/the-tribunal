@@ -9,6 +9,7 @@ import * as z from "zod";
 import { Loader2 } from "lucide-react";
 
 import { contactsApi, type UpdateContactRequest } from "@/lib/api/contacts";
+import { contactQueryKeys } from "@/hooks/useContacts";
 import { useContactStore } from "@/lib/contact-store";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { Button } from "@/components/ui/button";
@@ -112,8 +113,8 @@ export function EditContactDialog({ contact, open, onOpenChange }: EditContactDi
     },
     onSuccess: (updatedContact) => {
       // Invalidate queries to trigger refetch
-      queryClient.invalidateQueries({ queryKey: ["contacts", workspaceId] });
-      queryClient.invalidateQueries({ queryKey: ["contact", workspaceId, contact.id] });
+      queryClient.invalidateQueries({ queryKey: contactQueryKeys.all(workspaceId ?? "") });
+      queryClient.invalidateQueries({ queryKey: contactQueryKeys.get(workspaceId ?? "", contact.id) });
       setSelectedContact(updatedContact);
       toast.success("Contact updated successfully!");
       onOpenChange(false);

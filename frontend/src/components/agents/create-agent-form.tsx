@@ -75,6 +75,8 @@ const agentFormSchema = z.object({
   // Appointment reminder settings
   reminderEnabled: z.boolean(),
   reminderMinutesBefore: z.number().min(5).max(1440),
+  // Experiment auto-evaluation
+  autoEvaluate: z.boolean(),
 });
 
 export type AgentFormValues = z.infer<typeof agentFormSchema>;
@@ -132,6 +134,8 @@ export function CreateAgentForm() {
       // Appointment reminder defaults
       reminderEnabled: true,
       reminderMinutesBefore: 30,
+      // Experiment auto-evaluation
+      autoEvaluate: false,
     },
   });
 
@@ -267,6 +271,7 @@ export function CreateAgentForm() {
       ivr_menu_buffer_silence_ms: data.ivrMenuBufferSilenceMs,
       reminder_enabled: data.reminderEnabled,
       reminder_minutes_before: data.reminderMinutesBefore,
+      auto_evaluate: data.autoEvaluate,
     };
 
     createAgentMutation.mutate(apiRequest);

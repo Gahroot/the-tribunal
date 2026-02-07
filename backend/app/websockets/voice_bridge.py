@@ -26,7 +26,7 @@ from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
 from app.core.config import settings
 from app.services.ai.call_context import lookup_call_context, save_call_transcript
 from app.services.ai.elevenlabs_voice_agent import ElevenLabsVoiceAgentSession
-from app.services.ai.grok_voice_agent import GrokVoiceAgentSession
+from app.services.ai.grok import GrokVoiceAgentSession
 from app.services.ai.tool_executor import create_tool_callback
 from app.services.ai.voice_agent import VoiceAgentSession
 from app.services.ai.voice_session_factory import create_voice_session

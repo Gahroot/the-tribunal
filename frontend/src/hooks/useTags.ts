@@ -1,53 +1,21 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  tagsApi,
-  type CreateTagRequest,
-  type UpdateTagRequest,
-  type BulkTagRequest,
-} from "@/lib/api/tags";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { createResourceHooks } from "@/lib/api/create-resource-hooks";
+import { tagsApi, type BulkTagRequest } from "@/lib/api/tags";
 
-export function useTags(workspaceId: string) {
-  return useQuery({
-    queryKey: ["tags", workspaceId],
-    queryFn: () => tagsApi.list(workspaceId),
-    enabled: !!workspaceId,
-  });
-}
+const {
+  queryKeys: tagQueryKeys,
+  useList: useTags,
+  useCreate: useCreateTag,
+  useUpdate: useUpdateTag,
+  useDelete: useDeleteTag,
+} = createResourceHooks({
+  resourceKey: "tags",
+  apiClient: tagsApi,
+  invalidateKeys: ["contacts"],
+  includeGet: false,
+});
 
-export function useCreateTag(workspaceId: string) {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (data: CreateTagRequest) => tagsApi.create(workspaceId, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tags", workspaceId] });
-    },
-  });
-}
-
-export function useUpdateTag(workspaceId: string) {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (variables: { tagId: string; data: UpdateTagRequest }) =>
-      tagsApi.update(workspaceId, variables.tagId, variables.data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tags", workspaceId] });
-    },
-  });
-}
-
-export function useDeleteTag(workspaceId: string) {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (tagId: string) => tagsApi.delete(workspaceId, tagId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tags", workspaceId] });
-      queryClient.invalidateQueries({ queryKey: ["contacts", workspaceId] });
-    },
-  });
-}
+export { tagQueryKeys, useTags, useCreateTag, useUpdateTag, useDeleteTag };
 
 export function useBulkTagContacts(workspaceId: string) {
   const queryClient = useQueryClient();

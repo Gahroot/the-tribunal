@@ -5,7 +5,9 @@ import { useQuery } from "@tanstack/react-query";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { opportunityStatusColors } from "@/lib/status-colors";
 import { opportunitiesApi } from "@/lib/api/opportunities";
+import type { OpportunityStatus } from "@/types";
 
 interface OpportunitiesListProps {
   workspaceId: string;
@@ -26,18 +28,6 @@ function getStageColor(probability: number): string {
   return "bg-green-100 text-green-800";
 }
 
-function getStatusColor(status: string): string {
-  switch (status) {
-    case "won":
-      return "bg-green-100 text-green-800";
-    case "lost":
-      return "bg-red-100 text-red-800";
-    case "abandoned":
-      return "bg-gray-100 text-gray-800";
-    default:
-      return "bg-blue-100 text-blue-800";
-  }
-}
 
 export function OpportunitiesList({ workspaceId }: OpportunitiesListProps) {
   const [page] = React.useState(1);
@@ -109,7 +99,7 @@ export function OpportunitiesList({ workspaceId }: OpportunitiesListProps) {
               <TableRow key={opportunity.id} className="hover:bg-muted/50">
                 <TableCell className="font-medium">{opportunity.name}</TableCell>
                 <TableCell>
-                  <Badge className={getStatusColor(opportunity.status)}>
+                  <Badge className={opportunityStatusColors[opportunity.status as OpportunityStatus] ?? "bg-blue-500/10 text-blue-600 border-blue-500/20"}>
                     {opportunity.status}
                   </Badge>
                 </TableCell>

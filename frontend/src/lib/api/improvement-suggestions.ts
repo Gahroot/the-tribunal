@@ -1,4 +1,5 @@
 import api from "@/lib/api";
+import { createApiClient } from "@/lib/api/create-api-client";
 
 // Backend response types
 export interface ImprovementSuggestionResponse {
@@ -42,32 +43,27 @@ export interface GenerateSuggestionsRequest {
   num_suggestions?: number;
 }
 
+// Create base API client with standard CRUD methods (list, get only)
+const baseApi = createApiClient<ImprovementSuggestionResponse, never, never>({
+  resourcePath: "suggestions",
+  includeCreate: false,
+  includeUpdate: false,
+  includeDelete: false,
+});
+
+// Type assertion to ensure get is non-optional since we enabled it
+const baseApiWithGet = baseApi as {
+  list: typeof baseApi.list;
+  get: NonNullable<typeof baseApi.get>;
+};
+
 // Improvement Suggestions API
 export const improvementSuggestionsApi = {
-  list: async (
-    workspaceId: string,
-    params: SuggestionListParams = {}
-  ): Promise<ImprovementSuggestionListResponse> => {
-    const response = await api.get<ImprovementSuggestionListResponse>(
-      `/api/v1/workspaces/${workspaceId}/suggestions`,
-      { params }
-    );
-    return response.data;
-  },
+  ...baseApiWithGet,
 
   getPendingCount: async (workspaceId: string): Promise<{ pending_count: number }> => {
     const response = await api.get<{ pending_count: number }>(
       `/api/v1/workspaces/${workspaceId}/suggestions/pending-count`
-    );
-    return response.data;
-  },
-
-  get: async (
-    workspaceId: string,
-    suggestionId: string
-  ): Promise<ImprovementSuggestionResponse> => {
-    const response = await api.get<ImprovementSuggestionResponse>(
-      `/api/v1/workspaces/${workspaceId}/suggestions/${suggestionId}`
     );
     return response.data;
   },

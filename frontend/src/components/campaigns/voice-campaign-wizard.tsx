@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { motion } from "framer-motion";
 import {
   FileText,
   Users,
@@ -10,14 +9,10 @@ import {
   Clock,
   Eye,
   Send,
-  Calendar,
   AlertCircle,
 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -31,16 +26,21 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-import { VirtualContactSelector } from "./virtual-contact-selector";
 import { AgentSelector } from "./agent-selector";
 import { SMSFallbackStep, type SMSFallbackMode } from "./sms-fallback-step";
+import {
+  BasicsStep,
+  ContactsStep,
+  ScheduleStep,
+  ReviewSummaryCard,
+  ReviewScheduleCard,
+} from "./steps";
 
 import { useWizard } from "@/hooks/useWizard";
 import { WizardContainer } from "@/components/wizard";
 
 import type { Agent, PhoneNumber, VoiceCampaign } from "@/types";
 import type { CreateVoiceCampaignRequest } from "@/lib/api/voice-campaigns";
-import { DAYS_OF_WEEK, TIMEZONES } from "@/lib/constants";
 
 // Step definitions
 const STEPS = [
@@ -229,94 +229,60 @@ export function VoiceCampaignWizard({
     (p) => p.phone_number === formData.from_phone_number
   );
 
+  const voiceRateLimitingSlot = (
+    <div className="space-y-4">
+      <h4 className="font-medium">Rate Limiting</h4>
+      <div className="space-y-2">
+        <Label>Calls per Minute</Label>
+        <Select
+          value={String(formData.calls_per_minute)}
+          onValueChange={(v) =>
+            updateField("calls_per_minute", parseInt(v))
+          }
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="1">1 / minute</SelectItem>
+            <SelectItem value="3">3 / minute</SelectItem>
+            <SelectItem value="5">5 / minute</SelectItem>
+            <SelectItem value="10">10 / minute</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Lower rates are recommended to avoid overwhelming your agents
+        </p>
+      </div>
+    </div>
+  );
+
   const renderStepContent = () => {
     switch (wizard.currentStepId) {
       case "basics":
         return (
-          <div className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="campaign-name">Campaign Name *</Label>
-              <Input
-                id="campaign-name"
-                placeholder="e.g., Follow-up Calls - January"
-                value={formData.name}
-                onChange={(e) => updateField("name", e.target.value)}
-                className={errors.name ? "border-destructive" : ""}
-              />
-              {errors.name && (
-                <p className="text-sm text-destructive">{errors.name}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="campaign-description">Description</Label>
-              <Textarea
-                id="campaign-description"
-                placeholder="Brief description of this campaign..."
-                value={formData.description}
-                onChange={(e) => updateField("description", e.target.value)}
-                rows={3}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>From Phone Number *</Label>
-              <Select
-                value={formData.from_phone_number}
-                onValueChange={(v) => updateField("from_phone_number", v)}
-              >
-                <SelectTrigger
-                  className={
-                    errors.from_phone_number ? "border-destructive" : ""
-                  }
-                >
-                  <SelectValue placeholder="Select a phone number" />
-                </SelectTrigger>
-                <SelectContent>
-                  {phoneNumbers.map((phone) => (
-                    <SelectItem key={phone.id} value={phone.phone_number}>
-                      <div className="flex items-center gap-2">
-                        <Phone className="size-4" />
-                        <span>{phone.phone_number}</span>
-                        {phone.friendly_name && (
-                          <span className="text-muted-foreground">
-                            ({phone.friendly_name})
-                          </span>
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.from_phone_number && (
-                <p className="text-sm text-destructive">
-                  {errors.from_phone_number}
-                </p>
-              )}
-              {phoneNumbers.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  No voice-enabled phone numbers available
-                </p>
-              )}
-            </div>
-          </div>
+          <BasicsStep
+            name={formData.name}
+            description={formData.description}
+            fromPhoneNumber={formData.from_phone_number}
+            phoneNumbers={phoneNumbers}
+            errors={errors}
+            onNameChange={(v) => updateField("name", v)}
+            onDescriptionChange={(v) => updateField("description", v)}
+            onPhoneChange={(v) => updateField("from_phone_number", v)}
+            namePlaceholder="e.g., Follow-up Calls - January"
+            emptyPhoneLabel="No voice-enabled phone numbers available"
+          />
         );
 
       case "contacts":
         return (
-          <div className="space-y-4">
-            {errors.contacts && (
-              <Alert variant="destructive">
-                <AlertCircle className="size-4" />
-                <AlertDescription>{errors.contacts}</AlertDescription>
-              </Alert>
-            )}
-            <VirtualContactSelector
-              workspaceId={workspaceId}
-              selectedIds={selectedContactIds}
-              onSelectionChange={setSelectedContactIds}
-            />
-          </div>
+          <ContactsStep
+            workspaceId={workspaceId}
+            selectedIds={selectedContactIds}
+            onSelectionChange={setSelectedContactIds}
+            error={errors.contacts}
+          />
         );
 
       case "voice":
@@ -405,201 +371,37 @@ export function VoiceCampaignWizard({
 
       case "schedule":
         return (
-          <div className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="scheduled-start">Start Date (Optional)</Label>
-                <Input
-                  id="scheduled-start"
-                  type="datetime-local"
-                  value={formData.scheduled_start || ""}
-                  onChange={(e) =>
-                    updateField(
-                      "scheduled_start",
-                      e.target.value || undefined
-                    )
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="scheduled-end">End Date (Optional)</Label>
-                <Input
-                  id="scheduled-end"
-                  type="datetime-local"
-                  value={formData.scheduled_end || ""}
-                  onChange={(e) =>
-                    updateField("scheduled_end", e.target.value || undefined)
-                  }
-                />
-              </div>
-            </div>
-
-            <Separator />
-
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <Clock className="size-4" />
-                  <div>
-                    <h4 className="font-medium">Restrict Calling Hours</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Only make calls during specific hours
-                    </p>
-                  </div>
-                </div>
-                <Switch
-                  checked={formData.sending_hours_enabled}
-                  onCheckedChange={(v) =>
-                    updateField("sending_hours_enabled", v)
-                  }
-                />
-              </div>
-
-              {formData.sending_hours_enabled && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  className="grid grid-cols-3 gap-4 pl-4 border-l-2 border-muted"
-                >
-                  <div className="space-y-2">
-                    <Label>Start Time</Label>
-                    <Input
-                      type="time"
-                      value={formData.sending_hours_start}
-                      onChange={(e) =>
-                        updateField("sending_hours_start", e.target.value)
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>End Time</Label>
-                    <Input
-                      type="time"
-                      value={formData.sending_hours_end}
-                      onChange={(e) =>
-                        updateField("sending_hours_end", e.target.value)
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Timezone</Label>
-                    <Select
-                      value={formData.timezone}
-                      onValueChange={(v) => updateField("timezone", v)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {TIMEZONES.map((tz) => (
-                          <SelectItem key={tz} value={tz}>
-                            {tz.replace("_", " ").replace("America/", "")}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </motion.div>
-              )}
-            </div>
-
-            <div className="space-y-4">
-              <h4 className="font-medium flex items-center gap-2">
-                <Calendar className="size-4" />
-                Calling Days
-              </h4>
-              <div className="flex gap-2">
-                {DAYS_OF_WEEK.map((day) => {
-                  const isSelected = formData.sending_days.includes(day.value);
-                  return (
-                    <Button
-                      key={day.value}
-                      variant={isSelected ? "default" : "outline"}
-                      size="sm"
-                      className="w-12"
-                      onClick={() => {
-                        if (isSelected) {
-                          updateField(
-                            "sending_days",
-                            formData.sending_days.filter((d) => d !== day.value)
-                          );
-                        } else {
-                          updateField(
-                            "sending_days",
-                            [...formData.sending_days, day.value].sort()
-                          );
-                        }
-                      }}
-                    >
-                      {day.label}
-                    </Button>
-                  );
-                })}
-              </div>
-              {errors.sending_days && (
-                <p className="text-sm text-destructive">{errors.sending_days}</p>
-              )}
-            </div>
-
-            <Separator />
-
-            <div className="space-y-4">
-              <h4 className="font-medium">Rate Limiting</h4>
-              <div className="space-y-2">
-                <Label>Calls per Minute</Label>
-                <Select
-                  value={String(formData.calls_per_minute)}
-                  onValueChange={(v) =>
-                    updateField("calls_per_minute", parseInt(v))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">1 / minute</SelectItem>
-                    <SelectItem value="3">3 / minute</SelectItem>
-                    <SelectItem value="5">5 / minute</SelectItem>
-                    <SelectItem value="10">10 / minute</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Lower rates are recommended to avoid overwhelming your agents
-                </p>
-              </div>
-            </div>
-          </div>
+          <ScheduleStep
+            scheduledStart={formData.scheduled_start}
+            scheduledEnd={formData.scheduled_end}
+            sendingHoursEnabled={formData.sending_hours_enabled}
+            sendingHoursStart={formData.sending_hours_start}
+            sendingHoursEnd={formData.sending_hours_end}
+            sendingDays={formData.sending_days}
+            timezone={formData.timezone}
+            errors={errors}
+            onScheduledStartChange={(v) => updateField("scheduled_start", v)}
+            onScheduledEndChange={(v) => updateField("scheduled_end", v)}
+            onSendingHoursEnabledChange={(v) => updateField("sending_hours_enabled", v)}
+            onSendingHoursStartChange={(v) => updateField("sending_hours_start", v)}
+            onSendingHoursEndChange={(v) => updateField("sending_hours_end", v)}
+            onSendingDaysChange={(v) => updateField("sending_days", v)}
+            onTimezoneChange={(v) => updateField("timezone", v)}
+            sendingHoursLabel="Restrict Calling Hours"
+            sendingHoursDescription="Only make calls during specific hours"
+            daysLabel="Calling Days"
+            rateLimitingSlot={voiceRateLimitingSlot}
+          />
         );
 
       case "review":
         return (
           <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Campaign Summary</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Name</p>
-                    <p className="font-medium">{formData.name}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">From</p>
-                    <p className="font-medium">
-                      {selectedPhone?.friendly_name ||
-                        formData.from_phone_number}
-                    </p>
-                  </div>
-                </div>
-                {formData.description && (
-                  <div>
-                    <p className="text-sm text-muted-foreground">Description</p>
-                    <p className="font-medium">{formData.description}</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <ReviewSummaryCard
+              name={formData.name}
+              description={formData.description || undefined}
+              fromPhoneDisplay={selectedPhone?.friendly_name || formData.from_phone_number}
+            />
 
             <Card>
               <CardHeader>
@@ -680,38 +482,15 @@ export function VoiceCampaignWizard({
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Clock className="size-5" />
-                  Schedule
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="text-muted-foreground">Calling hours:</span>
-                  <span>
-                    {formData.sending_hours_enabled
-                      ? `${formData.sending_hours_start} - ${formData.sending_hours_end} (${formData.timezone.replace("America/", "")})`
-                      : "Anytime (no restrictions)"}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="text-muted-foreground">Days:</span>
-                  <span>
-                    {formData.sending_days
-                      .map(
-                        (d) => DAYS_OF_WEEK.find((day) => day.value === d)?.label
-                      )
-                      .join(", ")}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="text-muted-foreground">Rate:</span>
-                  <span>{formData.calls_per_minute} calls/min</span>
-                </div>
-              </CardContent>
-            </Card>
+            <ReviewScheduleCard
+              sendingHoursEnabled={formData.sending_hours_enabled}
+              sendingHoursStart={formData.sending_hours_start}
+              sendingHoursEnd={formData.sending_hours_end}
+              sendingDays={formData.sending_days}
+              timezone={formData.timezone}
+              hoursLabel="Calling hours"
+              rateDescription={<>{formData.calls_per_minute} calls/min</>}
+            />
           </div>
         );
 

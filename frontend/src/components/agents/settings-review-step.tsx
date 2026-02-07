@@ -381,6 +381,36 @@ export function SettingsReviewStep({
         </CardContent>
       </Card>
 
+      {/* Experiment Auto-Evaluation */}
+      <Card>
+        <CardContent className="space-y-4 p-6">
+          <div className="mb-2">
+            <h2 className="text-lg font-medium">Experiment Auto-Evaluation</h2>
+            <p className="text-sm text-muted-foreground">
+              Automatically manage A/B test outcomes
+            </p>
+          </div>
+
+          <FormField
+            control={form.control}
+            name="autoEvaluate"
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+                <div className="space-y-0.5">
+                  <FormLabel className="text-sm font-medium">Auto-Evaluate Experiments</FormLabel>
+                  <FormDescription className="text-xs">
+                    Automatically declare winners and eliminate underperformers when statistical confidence is reached (95% threshold)
+                  </FormDescription>
+                </div>
+                <FormControl>
+                  <Switch checked={field.value} onCheckedChange={field.onChange} />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+        </CardContent>
+      </Card>
+
       {/* Summary Card */}
       <Card className="border-primary/30 bg-primary/5">
         <CardContent className="p-6">

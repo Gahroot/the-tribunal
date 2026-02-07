@@ -30,6 +30,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { opportunitiesApi } from "@/lib/api/opportunities";
+import { opportunityStatusColors } from "@/lib/status-colors";
 import type { Opportunity, OpportunityStatus, OpportunityActivity } from "@/types";
 import { cn } from "@/lib/utils";
 import {
@@ -68,25 +69,25 @@ function getStatusConfig(status: OpportunityStatus) {
     case "won":
       return {
         label: "Won",
-        color: "bg-green-500/10 text-green-600 border-green-500/20",
+        color: opportunityStatusColors.won,
         icon: Trophy,
       };
     case "lost":
       return {
         label: "Lost",
-        color: "bg-red-500/10 text-red-600 border-red-500/20",
+        color: opportunityStatusColors.lost,
         icon: XCircle,
       };
     case "abandoned":
       return {
         label: "Abandoned",
-        color: "bg-gray-500/10 text-gray-600 border-gray-500/20",
+        color: opportunityStatusColors.abandoned,
         icon: Archive,
       };
     default:
       return {
         label: "Open",
-        color: "bg-blue-500/10 text-blue-600 border-blue-500/20",
+        color: opportunityStatusColors.open,
         icon: CircleDot,
       };
   }

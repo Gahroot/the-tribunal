@@ -357,7 +357,7 @@ async def test_grok_session_config() -> None:
     """Test the Grok session configuration and date context injection."""
     log_section("TEST 5: Grok Session Configuration")
 
-    from app.services.ai.grok_voice_agent import GrokVoiceAgentSession
+    from app.services.ai.grok import GrokVoiceAgentSession
 
     # Check if API key is available
     if not settings.xai_api_key:

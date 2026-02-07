@@ -14,10 +14,15 @@ from app.models import (  # noqa: F401 - Import all models to register them
     Agent,
     Appointment,
     Automation,
+    BanditDecision,
+    CallFeedback,
+    CallOutcome,
     Campaign,
     CampaignContact,
     CampaignNumberPool,
+    CampaignReport,
     Contact,
+    ContactTag,
     Conversation,
     DemoRequest,
     GlobalOptOut,
@@ -34,6 +39,10 @@ from app.models import (  # noqa: F401 - Import all models to register them
     PhoneNumberDailyStats,
     Pipeline,
     PipelineStage,
+    PromptVersion,
+    PromptVersionStats,
+    Segment,
+    Tag,
     TestContact,
     TestVariant,
     User,
@@ -42,6 +51,7 @@ from app.models import (  # noqa: F401 - Import all models to register them
     WorkspaceInvitation,
     WorkspaceMembership,
 )
+from app.models.improvement_suggestion import ImprovementSuggestion  # noqa: F401
 
 config = context.config
 

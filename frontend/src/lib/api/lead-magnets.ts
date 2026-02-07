@@ -7,6 +7,7 @@ import type {
   CalculatorContent,
   RichTextContent,
 } from "@/types";
+import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
 
 // Request/Response Types
 export interface LeadMagnetsListParams {
@@ -74,8 +75,14 @@ export interface GeneratedCalculatorContent extends CalculatorContent {
   error?: string;
 }
 
+const baseApi = createApiClient<LeadMagnet, CreateLeadMagnetRequest, UpdateLeadMagnetRequest>({
+  resourcePath: "lead-magnets",
+}) as FullApiClient<LeadMagnet, CreateLeadMagnetRequest, UpdateLeadMagnetRequest>;
+
 // Lead Magnets API
 export const leadMagnetsApi = {
+  ...baseApi,
+
   // AI Generation
   generateQuiz: async (
     workspaceId: string,
@@ -97,53 +104,6 @@ export const leadMagnetsApi = {
       data
     );
     return response.data;
-  },
-
-  list: async (
-    workspaceId: string,
-    params: LeadMagnetsListParams = {}
-  ): Promise<LeadMagnetsListResponse> => {
-    const response = await api.get<LeadMagnetsListResponse>(
-      `/api/v1/workspaces/${workspaceId}/lead-magnets`,
-      { params }
-    );
-    return response.data;
-  },
-
-  get: async (workspaceId: string, leadMagnetId: string): Promise<LeadMagnet> => {
-    const response = await api.get<LeadMagnet>(
-      `/api/v1/workspaces/${workspaceId}/lead-magnets/${leadMagnetId}`
-    );
-    return response.data;
-  },
-
-  create: async (
-    workspaceId: string,
-    data: CreateLeadMagnetRequest
-  ): Promise<LeadMagnet> => {
-    const response = await api.post<LeadMagnet>(
-      `/api/v1/workspaces/${workspaceId}/lead-magnets`,
-      data
-    );
-    return response.data;
-  },
-
-  update: async (
-    workspaceId: string,
-    leadMagnetId: string,
-    data: UpdateLeadMagnetRequest
-  ): Promise<LeadMagnet> => {
-    const response = await api.put<LeadMagnet>(
-      `/api/v1/workspaces/${workspaceId}/lead-magnets/${leadMagnetId}`,
-      data
-    );
-    return response.data;
-  },
-
-  delete: async (workspaceId: string, leadMagnetId: string): Promise<void> => {
-    await api.delete(
-      `/api/v1/workspaces/${workspaceId}/lead-magnets/${leadMagnetId}`
-    );
   },
 
   incrementDownload: async (

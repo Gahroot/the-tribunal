@@ -99,6 +99,10 @@ class Agent(Base):
     ivr_post_dtmf_cooldown_ms: Mapped[int] = mapped_column(Integer, default=3000, nullable=False)
     ivr_menu_buffer_silence_ms: Mapped[int] = mapped_column(Integer, default=2000, nullable=False)
 
+    # Appointment reminder settings
+    reminder_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    reminder_minutes_before: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
+
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
@@ -126,6 +130,9 @@ class Agent(Base):
     auto_improve_min_calls: Mapped[int] = mapped_column(
         Integer, default=100, nullable=False
     )  # Min calls before suggesting
+    auto_evaluate: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )  # Auto-declare winners and eliminate losers
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(

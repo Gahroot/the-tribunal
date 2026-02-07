@@ -6,7 +6,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  Search,
   MoreHorizontal,
   Play,
   Pause,
@@ -16,23 +15,13 @@ import {
   MessageSquare,
   Phone,
   Layers,
-  ChevronLeft,
-  ChevronRight,
   ChevronDown,
-  Loader2,
-  AlertCircle,
   type LucideIcon,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,18 +45,19 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
+import {
+  ResourceListHeader,
+  ResourceListStats,
+  ResourceListSearch,
+  ResourceListLoading,
+  ResourceListError,
+  ResourceListPagination,
+  ResourceListLayout,
+} from "@/components/resource-list";
+import { campaignStatusColors } from "@/lib/status-colors";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import type { Campaign, CampaignStatus, CampaignType } from "@/types";
+import type { Campaign, CampaignType } from "@/types";
 import { campaignsApi } from "@/lib/api/campaigns";
-
-const statusColors: Record<CampaignStatus, string> = {
-  draft: "bg-gray-500/10 text-gray-500 border-gray-500/20",
-  scheduled: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-  running: "bg-green-500/10 text-green-500 border-green-500/20",
-  paused: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
-  completed: "bg-purple-500/10 text-purple-500 border-purple-500/20",
-  cancelled: "bg-red-500/10 text-red-500 border-red-500/20",
-};
 
 const typeIcons: Record<CampaignType, LucideIcon> = {
   sms: MessageSquare,
@@ -77,25 +67,11 @@ const typeIcons: Record<CampaignType, LucideIcon> = {
   multi_channel: Layers,
 };
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.05 },
-  },
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0 },
-};
-
 export function CampaignsList() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const workspaceId = useWorkspaceId();
-
   const queryClient = useQueryClient();
 
   const { data: campaignsData, isLoading, error } = useQuery({
@@ -181,122 +157,77 @@ export function CampaignsList() {
     );
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="size-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  if (isLoading) return <ResourceListLoading />;
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 gap-2">
-        <AlertCircle className="size-8 text-destructive" />
-        <p className="text-muted-foreground">Failed to load campaigns</p>
-        <Button variant="outline" onClick={() => queryClient.invalidateQueries({ queryKey: ["campaigns", workspaceId] })}>
-          Retry
-        </Button>
-      </div>
+      <ResourceListError
+        resourceName="campaigns"
+        onRetry={() => queryClient.invalidateQueries({ queryKey: ["campaigns", workspaceId] })}
+      />
     );
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Campaigns</h1>
-          <p className="text-muted-foreground">
-            Create and manage your outreach campaigns
-          </p>
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button>
-              New Campaign
-              <ChevronDown className="ml-2 size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-64">
-            <DropdownMenuItem asChild>
-              <Link href="/campaigns/sms/new" className="flex items-center cursor-pointer">
-                <MessageSquare className="mr-2 size-4" />
-                SMS Campaign
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/campaigns/voice/new" className="flex items-center cursor-pointer">
-                <Phone className="mr-2 size-4" />
-                <div>
-                  <div>Voice Campaign with SMS Fallback</div>
-                  <div className="text-xs text-muted-foreground">AI calls with auto-text on failures</div>
-                </div>
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem disabled className="flex items-center justify-between opacity-60">
-              <span className="flex items-center">
-                <Mail className="mr-2 size-4" />
-                Email Campaign
-              </span>
-              <span className="text-xs bg-muted px-1.5 py-0.5 rounded">Coming Soon</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
-      {/* Stats Cards */}
-      <motion.div
-        className="grid gap-4 md:grid-cols-4"
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
-      >
-        {[
-          { label: "Total Campaigns", value: campaigns.length },
-          {
-            label: "Active",
-            value: campaigns.filter((c) => c.status === "running").length,
-          },
-          {
-            label: "Total Contacts",
-            value: campaigns.reduce((sum, c) => sum + c.total_contacts, 0),
-          },
-          {
-            label: "Total Responses",
-            value: campaigns.reduce((sum, c) => sum + c.replies_received, 0),
-          },
-        ].map((stat) => (
-          <motion.div key={stat.label} variants={itemVariants}>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>{stat.label}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {stat.value.toLocaleString()}
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
-      </motion.div>
-
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search campaigns..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <div className="flex gap-2">
+    <ResourceListLayout
+      header={
+        <ResourceListHeader
+          title="Campaigns"
+          subtitle="Create and manage your outreach campaigns"
+          action={
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button>
+                  New Campaign
+                  <ChevronDown className="ml-2 size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuItem asChild>
+                  <Link href="/campaigns/sms/new" className="flex items-center cursor-pointer">
+                    <MessageSquare className="mr-2 size-4" />
+                    SMS Campaign
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/campaigns/voice/new" className="flex items-center cursor-pointer">
+                    <Phone className="mr-2 size-4" />
+                    <div>
+                      <div>Voice Campaign with SMS Fallback</div>
+                      <div className="text-xs text-muted-foreground">AI calls with auto-text on failures</div>
+                    </div>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem disabled className="flex items-center justify-between opacity-60">
+                  <span className="flex items-center">
+                    <Mail className="mr-2 size-4" />
+                    Email Campaign
+                  </span>
+                  <span className="text-xs bg-muted px-1.5 py-0.5 rounded">Coming Soon</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          }
+        />
+      }
+      stats={
+        <ResourceListStats
+          stats={[
+            { label: "Total Campaigns", value: campaigns.length },
+            { label: "Active", value: campaigns.filter((c) => c.status === "running").length },
+            { label: "Total Contacts", value: campaigns.reduce((sum, c) => sum + c.total_contacts, 0) },
+            { label: "Total Responses", value: campaigns.reduce((sum, c) => sum + c.replies_received, 0) },
+          ]}
+        />
+      }
+      filterBar={
+        <ResourceListSearch
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          placeholder="Search campaigns..."
+          filters={
+            <>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-[140px]">
                   <SelectValue placeholder="Status" />
@@ -322,12 +253,28 @@ export function CampaignsList() {
                   <SelectItem value="multi_channel">Multi-Channel</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Campaigns Table */}
+            </>
+          }
+        />
+      }
+      isEmpty={filteredCampaigns.length === 0}
+      emptyState={
+        <div className="text-center py-12">
+          <MessageSquare className="mx-auto size-12 text-muted-foreground mb-4" />
+          <h3 className="text-lg font-medium mb-2">No campaigns yet</h3>
+          <p className="text-muted-foreground mb-4">
+            Create your first campaign to start reaching your contacts
+          </p>
+        </div>
+      }
+      pagination={
+        <ResourceListPagination
+          filteredCount={filteredCampaigns.length}
+          totalCount={campaigns.length}
+          resourceName="campaigns"
+        />
+      }
+    >
       <Card>
         <CardContent className="p-0">
           <Table>
@@ -382,7 +329,7 @@ export function CampaignsList() {
                       <TableCell>
                         <Badge
                           variant="outline"
-                          className={statusColors[campaign.status]}
+                          className={campaignStatusColors[campaign.status]}
                         >
                           {campaign.status}
                         </Badge>
@@ -452,23 +399,6 @@ export function CampaignsList() {
           </Table>
         </CardContent>
       </Card>
-
-      {/* Pagination */}
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-muted-foreground">
-          Showing {filteredCampaigns.length} of {campaigns.length} campaigns
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" disabled>
-            <ChevronLeft className="size-4" />
-            Previous
-          </Button>
-          <Button variant="outline" size="sm" disabled>
-            Next
-            <ChevronRight className="size-4" />
-          </Button>
-        </div>
-      </div>
-    </div>
+    </ResourceListLayout>
   );
 }

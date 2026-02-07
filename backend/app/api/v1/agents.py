@@ -42,6 +42,11 @@ class AgentCreate(BaseModel):
     ivr_silence_duration_ms: int = 3000
     ivr_post_dtmf_cooldown_ms: int = 3000
     ivr_menu_buffer_silence_ms: int = 2000
+    # Appointment reminder settings
+    reminder_enabled: bool = True
+    reminder_minutes_before: int = 30
+    # Experiment auto-evaluation
+    auto_evaluate: bool = False
 
 
 class AgentUpdate(BaseModel):
@@ -69,6 +74,11 @@ class AgentUpdate(BaseModel):
     ivr_silence_duration_ms: int | None = None
     ivr_post_dtmf_cooldown_ms: int | None = None
     ivr_menu_buffer_silence_ms: int | None = None
+    # Appointment reminder settings
+    reminder_enabled: bool | None = None
+    reminder_minutes_before: int | None = None
+    # Experiment auto-evaluation
+    auto_evaluate: bool | None = None
 
 
 class AgentResponse(BaseModel):
@@ -98,6 +108,11 @@ class AgentResponse(BaseModel):
     ivr_silence_duration_ms: int
     ivr_post_dtmf_cooldown_ms: int
     ivr_menu_buffer_silence_ms: int
+    # Appointment reminder settings
+    reminder_enabled: bool
+    reminder_minutes_before: int
+    # Experiment auto-evaluation
+    auto_evaluate: bool
     created_at: datetime
     updated_at: datetime
 
@@ -173,6 +188,9 @@ async def create_agent(
         ivr_silence_duration_ms=agent_in.ivr_silence_duration_ms,
         ivr_post_dtmf_cooldown_ms=agent_in.ivr_post_dtmf_cooldown_ms,
         ivr_menu_buffer_silence_ms=agent_in.ivr_menu_buffer_silence_ms,
+        reminder_enabled=agent_in.reminder_enabled,
+        reminder_minutes_before=agent_in.reminder_minutes_before,
+        auto_evaluate=agent_in.auto_evaluate,
     )
     db.add(agent)
     await db.commit()

@@ -20,7 +20,7 @@ import structlog
 from app.core.config import Settings
 from app.models.agent import Agent
 from app.services.ai.elevenlabs_voice_agent import ElevenLabsVoiceAgentSession
-from app.services.ai.grok_voice_agent import GrokVoiceAgentSession
+from app.services.ai.grok import GrokVoiceAgentSession
 from app.services.ai.protocols import VoiceAgentProtocol
 from app.services.ai.voice_agent import VoiceAgentSession
 

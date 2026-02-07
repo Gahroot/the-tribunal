@@ -13,14 +13,64 @@ Usage:
 """
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
 
 from app.db.session import AsyncSessionLocal
 from app.models.agent import Agent
+from app.services.ai.bandit_arm_selector import BanditArmSelector
+from app.services.ai.bandit_context import build_decision_context
 
 logger = structlog.get_logger()
+
+
+async def _select_prompt_version_for_call(
+    db: Any,
+    agent_id: Any,
+    message_id: Any,
+    contact_id: int | None,
+    log: Any,
+) -> str | None:
+    """Select prompt version for a call using multi-armed bandit.
+
+    Args:
+        db: Database session
+        agent_id: Agent UUID
+        message_id: Message UUID for attribution
+        contact_id: Contact ID (may be None for inbound)
+        log: Logger instance
+
+    Returns:
+        Prompt version ID string if selected, None otherwise
+    """
+    decision_context = await build_decision_context(
+        db=db,
+        contact_id=contact_id,
+        agent_id=agent_id,
+        call_time=datetime.now(UTC),
+    )
+
+    selector = BanditArmSelector()
+    try:
+        selected_version, decision = await selector.select_arm(
+            db=db,
+            agent_id=agent_id,
+            message_id=message_id,
+            context=decision_context,
+        )
+        log.info(
+            "bandit_arm_selected",
+            prompt_version_id=str(selected_version.id),
+            version_number=selected_version.version_number,
+            decision_type=decision.decision_type,
+        )
+        return str(selected_version.id)
+    except ValueError:
+        # No active prompt versions - call proceeds without prompt version tracking
+        log.warning("no_active_prompt_versions", agent_id=str(agent_id))
+        return None
 
 
 @dataclass
@@ -124,17 +174,14 @@ async def lookup_call_context(
                     source="conversation" if conversation.assigned_agent_id else "message",
                 )
 
-                # Look up active prompt version for attribution
-                from app.services.ai.prompt_version_service import get_active_prompt_version
-
-                active_version = await get_active_prompt_version(db, context.agent.id)
-                if active_version:
-                    context.prompt_version_id = str(active_version.id)
-                    log.info(
-                        "found_prompt_version_for_call",
-                        prompt_version_id=str(active_version.id),
-                        version_number=active_version.version_number,
-                    )
+                # Select prompt version using multi-armed bandit
+                context.prompt_version_id = await _select_prompt_version_for_call(
+                    db=db,
+                    agent_id=context.agent.id,
+                    message_id=message.id,
+                    contact_id=conversation.contact_id,
+                    log=log,
+                )
 
         # Look up contact info
         if conversation.contact_id:

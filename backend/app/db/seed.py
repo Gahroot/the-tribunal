@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import sys
 import uuid
 
 from sqlalchemy import select
@@ -17,7 +18,15 @@ DEFAULT_WORKSPACE_ID = uuid.UUID("ba0e0e99-c7c9-45ec-9625-567d54d6e9c2")
 
 # Default admin credentials from environment (required for seeding)
 DEFAULT_ADMIN_EMAIL = os.environ.get("SEED_ADMIN_EMAIL", "admin@example.com")
-DEFAULT_ADMIN_PASSWORD = os.environ.get("SEED_ADMIN_PASSWORD", "changeme123")
+DEFAULT_ADMIN_PASSWORD = os.environ.get("SEED_ADMIN_PASSWORD", "")
+
+if not DEFAULT_ADMIN_PASSWORD:
+    print(
+        "WARNING: SEED_ADMIN_PASSWORD not set. "
+        "Set the SEED_ADMIN_PASSWORD environment variable before seeding.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 
 async def create_admin_user(

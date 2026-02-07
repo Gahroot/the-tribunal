@@ -1,5 +1,6 @@
 import api from "@/lib/api";
 import type { Tag } from "@/types";
+import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
 
 export interface TagListResponse {
   items: Tag[];
@@ -27,40 +28,12 @@ export interface BulkTagResponse {
   errors: string[];
 }
 
+const baseApi = createApiClient<Tag, CreateTagRequest, UpdateTagRequest>({
+  resourcePath: "tags",
+}) as FullApiClient<Tag, CreateTagRequest, UpdateTagRequest>;
+
 export const tagsApi = {
-  list: async (workspaceId: string): Promise<TagListResponse> => {
-    const response = await api.get<TagListResponse>(
-      `/api/v1/workspaces/${workspaceId}/tags`
-    );
-    return response.data;
-  },
-
-  create: async (workspaceId: string, data: CreateTagRequest): Promise<Tag> => {
-    const response = await api.post<Tag>(
-      `/api/v1/workspaces/${workspaceId}/tags`,
-      data
-    );
-    return response.data;
-  },
-
-  get: async (workspaceId: string, tagId: string): Promise<Tag> => {
-    const response = await api.get<Tag>(
-      `/api/v1/workspaces/${workspaceId}/tags/${tagId}`
-    );
-    return response.data;
-  },
-
-  update: async (workspaceId: string, tagId: string, data: UpdateTagRequest): Promise<Tag> => {
-    const response = await api.put<Tag>(
-      `/api/v1/workspaces/${workspaceId}/tags/${tagId}`,
-      data
-    );
-    return response.data;
-  },
-
-  delete: async (workspaceId: string, tagId: string): Promise<void> => {
-    await api.delete(`/api/v1/workspaces/${workspaceId}/tags/${tagId}`);
-  },
+  ...baseApi,
 
   bulkTag: async (workspaceId: string, data: BulkTagRequest): Promise<BulkTagResponse> => {
     const response = await api.post<BulkTagResponse>(

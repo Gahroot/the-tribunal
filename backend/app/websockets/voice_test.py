@@ -12,7 +12,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.services.ai.elevenlabs_voice_agent import ElevenLabsVoiceAgentSession
-from app.services.ai.grok_voice_agent import GrokVoiceAgentSession
+from app.services.ai.grok import GrokVoiceAgentSession
 from app.services.ai.voice_agent import VoiceAgentSession
 
 router = APIRouter()

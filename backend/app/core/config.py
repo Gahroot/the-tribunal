@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     skip_webhook_verification: bool = False
     # Telnyx Voice
     telnyx_connection_id: str = ""  # Required for outbound calls
-    telnyx_app_id: str = ""  # TeXML application ID (optional)
+
 
     # Cal.com
     calcom_api_key: str = ""
@@ -74,8 +74,8 @@ class Settings(BaseSettings):
     demo_workspace_id: str = ""  # Workspace ID for demo requests
     demo_agent_id: str = ""  # Agent ID for demo requests
     demo_from_phone_number: str = ""  # Phone number to send demo calls/texts from
-    demo_ip_rate_limit: int = 100  # Max requests per IP per hour
-    demo_phone_rate_limit: int = 100  # Max requests per phone per day
+    demo_ip_rate_limit: int = 5  # Max requests per IP per hour
+    demo_phone_rate_limit: int = 3  # Max requests per phone per day
 
     # Security - Trusted Proxies
     trusted_proxies: list[str] = ["127.0.0.1", "::1"]  # IPs allowed to set X-Forwarded-For

@@ -30,6 +30,7 @@ import { contactsApi } from "@/lib/api/contacts";
 import { segmentsApi } from "@/lib/api/segments";
 import { ContactFilterBuilder } from "@/components/filters/contact-filter-builder";
 import { SegmentPicker } from "@/components/segments/segment-picker";
+import { contactStatusColors } from "@/lib/status-colors";
 import type { Contact, ContactStatus, FilterDefinition } from "@/types";
 
 const ROW_HEIGHT = 72;
@@ -40,14 +41,6 @@ interface VirtualContactSelectorProps {
   selectedIds: Set<number>;
   onSelectionChange: (ids: Set<number>) => void;
 }
-
-const statusColors: Record<ContactStatus, string> = {
-  new: "bg-blue-500/10 text-blue-500",
-  contacted: "bg-yellow-500/10 text-yellow-500",
-  qualified: "bg-green-500/10 text-green-500",
-  converted: "bg-purple-500/10 text-purple-500",
-  lost: "bg-red-500/10 text-red-500",
-};
 
 export function VirtualContactSelector({
   workspaceId,
@@ -210,7 +203,7 @@ export function VirtualContactSelector({
             </span>
             <Badge
               variant="secondary"
-              className={`text-xs ${statusColors[contact.status]}`}
+              className={`text-xs ${contactStatusColors[contact.status]}`}
             >
               {contact.status}
             </Badge>

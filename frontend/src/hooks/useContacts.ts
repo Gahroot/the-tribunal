@@ -6,18 +6,23 @@ import {
   type UpdateContactRequest,
   type ContactsListResponse,
 } from "@/lib/api/contacts";
+import { createResourceHooks } from "@/lib/api/create-resource-hooks";
 import type { Contact } from "@/types";
+import type { ApiClient } from "@/lib/api/create-api-client";
 
-/**
- * Fetch and manage a list of contacts for a workspace
- */
-export function useContacts(workspaceId: string, params: ContactsListParams = {}) {
-  return useQuery({
-    queryKey: ["contacts", workspaceId, params],
-    queryFn: () => contactsApi.list(workspaceId, params),
-    enabled: !!workspaceId,
-  });
-}
+const {
+  queryKeys: contactQueryKeys,
+  useList: useContacts,
+  useGet: useContact,
+  useCreate: useCreateContact,
+  useUpdate: useUpdateContact,
+  useDelete: useDeleteContact,
+} = createResourceHooks({
+  resourceKey: "contacts",
+  apiClient: contactsApi as unknown as ApiClient<Contact, CreateContactRequest, UpdateContactRequest>,
+});
+
+export { contactQueryKeys, useContacts, useContact, useCreateContact, useUpdateContact, useDeleteContact };
 
 /**
  * Fetch ALL contacts across all pages for a workspace
@@ -53,61 +58,6 @@ export function useAllContacts(workspaceId: string, params: Omit<ContactsListPar
       };
     },
     enabled: !!workspaceId,
-  });
-}
-
-/**
- * Fetch a single contact by ID
- */
-export function useContact(workspaceId: string, contactId: number) {
-  return useQuery({
-    queryKey: ["contact", workspaceId, contactId],
-    queryFn: () => contactsApi.get(workspaceId, contactId),
-    enabled: !!workspaceId && !!contactId,
-  });
-}
-
-/**
- * Create a new contact
- */
-export function useCreateContact(workspaceId: string) {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (data: CreateContactRequest) => contactsApi.create(workspaceId, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["contacts", workspaceId] });
-    },
-  });
-}
-
-/**
- * Update a contact
- */
-export function useUpdateContact(workspaceId: string) {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (variables: { contactId: number; data: UpdateContactRequest }) =>
-      contactsApi.update(workspaceId, variables.contactId, variables.data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["contacts", workspaceId] });
-      queryClient.invalidateQueries({ queryKey: ["contact"] });
-    },
-  });
-}
-
-/**
- * Delete a contact
- */
-export function useDeleteContact(workspaceId: string) {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (contactId: number) => contactsApi.delete(workspaceId, contactId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["contacts", workspaceId] });
-    },
   });
 }
 

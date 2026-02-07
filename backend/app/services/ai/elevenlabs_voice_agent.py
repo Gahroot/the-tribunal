@@ -22,8 +22,8 @@ from websockets.exceptions import ConnectionClosedError
 
 from app.models.agent import Agent
 from app.services.ai.elevenlabs_tts import ElevenLabsTTSSession, get_voice_id
-from app.services.ai.grok_voice_agent import GROK_BUILTIN_TOOLS, VOICE_BOOKING_TOOLS
 from app.services.ai.voice_agent_base import VoiceAgentBase
+from app.services.ai.voice_tools import GROK_BUILTIN_TOOLS, VOICE_BOOKING_TOOLS
 
 logger = structlog.get_logger()
 
@@ -95,7 +95,8 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
         self._text_buffer_lock = asyncio.Lock()
         self._flush_task: asyncio.Task[None] | None = None
         # Delay before flushing accumulated text (allows text to accumulate)
-        self._flush_delay_ms = 150  # 150ms delay to accumulate text
+        # 400ms gives Grok time to complete natural sentence fragments
+        self._flush_delay_ms = 400
 
     def set_tool_callback(
         self,
@@ -132,9 +133,36 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
                 buffer_length=len(self._text_buffer),
             )
 
-            # Check for sentence-ending punctuation - flush immediately
-            # This ensures natural speech breaks
-            should_flush_now = buffered_text.rstrip().endswith((".", "!", "?", ":", ";"))
+            # Smarter sentence boundary detection
+            # Only flush immediately on clear sentence endings to avoid mid-word breaks
+            # Grok's streaming doesn't align with sentence boundaries, so we need to be
+            # more conservative. Only flush on ? or ! at end (usually sentence-final),
+            # or period followed by significant content (not abbreviations like "Dr.")
+            buffer_stripped = buffered_text.rstrip()
+
+            # Check for clear sentence-ending punctuation
+            # Avoid flushing on mid-sentence exclamations like "Hey! It's me..."
+            # by requiring minimum buffer length and checking for continuation patterns
+            ends_with_question_or_exclaim = buffer_stripped.endswith(("?", "!"))
+            ends_with_period = buffer_stripped.endswith(".")
+
+            # Only flush immediately if:
+            # 1. Ends with ? or ! AND buffer is substantial (>50 chars = likely complete thought)
+            # 2. Ends with period AND buffer is substantial AND doesn't look like abbreviation
+            is_substantial = len(buffer_stripped) > 50
+            should_flush_now = False
+
+            if ends_with_question_or_exclaim and is_substantial:
+                should_flush_now = True
+            elif ends_with_period and is_substantial:
+                # Check it's not an abbreviation (Mr. Mrs. Dr. etc.)
+                # Abbreviations are typically short words followed by period
+                words = buffer_stripped.split()
+                if words:
+                    last_word = words[-1]
+                    # If last "word" is just 1-3 chars + period, likely abbreviation
+                    is_likely_abbreviation = len(last_word) <= 4 and last_word[0].isupper()
+                    should_flush_now = not is_likely_abbreviation
 
             if should_flush_now:
                 # Cancel any pending flush task
@@ -143,10 +171,11 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
                     with contextlib.suppress(asyncio.CancelledError):
                         await self._flush_task
 
-                # Flush immediately on sentence end
+                # Flush immediately on clear sentence end
                 await self._flush_text_buffer()
             else:
                 # Schedule delayed flush (cancel any existing timer)
+                # The 400ms delay gives Grok time to complete natural phrases
                 if self._flush_task and not self._flush_task.done():
                     self._flush_task.cancel()
                     with contextlib.suppress(asyncio.CancelledError):
@@ -536,7 +565,6 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
                 elif event_type == "response.done":
                     responses_completed += 1
                     response_data = event.get("response", {})
-                    output_items = response_data.get("output", [])
                     response_status = response_data.get("status", "")
 
                     # Flush any remaining buffered text to ElevenLabs

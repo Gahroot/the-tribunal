@@ -9,13 +9,15 @@ frontend/                           # Next.js 16 React frontend
   src/
     app/                            # App Router pages
       agents/, campaigns/, contacts/, calls/, dashboard/, settings/
+      offers/, experiments/, suggestions/, lead-magnets/, opportunities/
     components/                     # React components by feature
       ui/                           # Base UI (Radix/shadcn)
       agents/, campaigns/, contacts/, calls/, conversation/, settings/
+      filters/, segments/, tags/, offers/, suggestions/, wizard/
     lib/
       api/                          # API client functions (one per resource)
       services/                     # Service implementations
-    hooks/                          # Custom React hooks
+    hooks/                          # Custom React hooks (useWizard, etc.)
     types/                          # TypeScript types
 
 backend/                            # FastAPI Python backend
@@ -26,10 +28,17 @@ backend/                            # FastAPI Python backend
     services/                       # Business logic
       ai/                           # Voice agents, IVR, qualification
         grok/                       # Grok session, DTMF, audio
+        ivr/                        # IVR detection, classification, DTMF
         testing/                    # IVR test harness
       telephony/                    # Telnyx VoIP/SMS
-      calendar/                     # Cal.com integration
+      calendar/                     # Cal.com integration & booking
       campaigns/                    # Campaign services
+      contacts/                     # Contact management & filters
+      conversations/                # Conversation management
+      message_tests/                # Message/call testing
+      segments/                     # Dynamic segment resolution
+      tags/                         # Tag management
+      tools/                        # Tool executors (Cal.com, etc.)
     core/                           # Config, security, logging
     db/                             # Database utilities
     workers/                        # Background jobs (campaign, enrichment, followup)

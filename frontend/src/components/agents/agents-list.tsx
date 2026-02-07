@@ -6,7 +6,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   Plus,
-  Search,
   MoreHorizontal,
   Play,
   Pause,
@@ -19,19 +18,16 @@ import {
   Mic,
   Sparkles,
   Loader2,
-  AlertCircle,
   Copy,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
@@ -60,6 +56,14 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/landing/phone-input";
+import {
+  ResourceListHeader,
+  ResourceListStats,
+  ResourceListSearch,
+  ResourceListLoading,
+  ResourceListError,
+  ResourceListLayout,
+} from "@/components/resource-list";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { agentsApi } from "@/lib/api/agents";
 import { callsApi } from "@/lib/api/calls";
@@ -72,19 +76,6 @@ const channelModeIcons: Record<string, LucideIcon> = {
   both: Sparkles,
 };
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.1 },
-  },
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0 },
-};
-
 export function AgentsList() {
   const [searchQuery, setSearchQuery] = useState("");
   const [testCallDialogOpen, setTestCallDialogOpen] = useState(false);
@@ -94,7 +85,6 @@ export function AgentsList() {
   const workspaceId = useWorkspaceId();
   const queryClient = useQueryClient();
 
-  // Fetch agents from API
   const {
     data: agentsData,
     isLoading,
@@ -108,7 +98,6 @@ export function AgentsList() {
     enabled: !!workspaceId,
   });
 
-  // Toggle agent active status
   const toggleAgentMutation = useMutation({
     mutationFn: ({ agentId, isActive }: { agentId: string; isActive: boolean }) => {
       if (!workspaceId) throw new Error("Workspace not loaded");
@@ -125,7 +114,6 @@ export function AgentsList() {
     },
   });
 
-  // Delete agent
   const deleteAgentMutation = useMutation({
     mutationFn: (agentId: string) => {
       if (!workspaceId) throw new Error("Workspace not loaded");
@@ -142,7 +130,6 @@ export function AgentsList() {
     },
   });
 
-  // Duplicate agent
   const duplicateAgentMutation = useMutation({
     mutationFn: (agent: (typeof agents)[0]) => {
       if (!workspaceId) throw new Error("Workspace not loaded");
@@ -173,7 +160,6 @@ export function AgentsList() {
     },
   });
 
-  // Fetch phone numbers for test call
   const { data: phoneNumbersData } = useQuery({
     queryKey: ["phoneNumbers", workspaceId],
     queryFn: () => {
@@ -183,7 +169,6 @@ export function AgentsList() {
     enabled: !!workspaceId && testCallDialogOpen,
   });
 
-  // Initiate test call
   const initiateCallMutation = useMutation({
     mutationFn: ({ toNumber, fromNumber, agentId }: { toNumber: string; fromNumber: string; agentId: string }) => {
       if (!workspaceId) throw new Error("Workspace not loaded");
@@ -233,99 +218,147 @@ export function AgentsList() {
 
   const activeAgents = agents.filter((a) => a.is_active).length;
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="size-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  if (isLoading) return <ResourceListLoading />;
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 gap-2">
-        <AlertCircle className="size-8 text-destructive" />
-        <p className="text-muted-foreground">Failed to load agents</p>
-        <Button variant="outline" onClick={() => {
+      <ResourceListError
+        resourceName="agents"
+        onRetry={() => {
           if (workspaceId) {
             queryClient.invalidateQueries({ queryKey: ["agents", workspaceId] });
           }
-        }}>
-          Retry
-        </Button>
-      </div>
+        }}
+      />
     );
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">AI Agents</h1>
-          <p className="text-muted-foreground">
-            Configure and manage your AI voice and text agents
-          </p>
-        </div>
-        <Button asChild>
-          <Link href="/agents/create">
-            <Plus className="mr-2 size-4" />
-            Create Agent
-          </Link>
-        </Button>
-      </div>
-
-      {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Total Agents</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{agents.length}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Active Agents</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{activeAgents}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Voice Enabled</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {
-                agents.filter(
-                  (a) => a.channel_mode === "voice" || a.channel_mode === "both"
-                ).length
-              }
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Search */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Search agents..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10"
+    <ResourceListLayout
+      header={
+        <ResourceListHeader
+          title="AI Agents"
+          subtitle="Configure and manage your AI voice and text agents"
+          action={
+            <Button asChild>
+              <Link href="/agents/create">
+                <Plus className="mr-2 size-4" />
+                Create Agent
+              </Link>
+            </Button>
+          }
         />
-      </div>
-
-      {/* Agents Grid */}
+      }
+      stats={
+        <ResourceListStats
+          animated={false}
+          columns={3}
+          stats={[
+            { label: "Total Agents", value: agents.length },
+            { label: "Active Agents", value: activeAgents },
+            {
+              label: "Voice Enabled",
+              value: agents.filter(
+                (a) => a.channel_mode === "voice" || a.channel_mode === "both"
+              ).length,
+            },
+          ]}
+        />
+      }
+      filterBar={
+        <ResourceListSearch
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          placeholder="Search agents..."
+          wrapInCard={false}
+        />
+      }
+      isEmpty={filteredAgents.length === 0}
+      emptyState={
+        <div className="text-center py-12">
+          <Bot className="mx-auto size-12 text-muted-foreground mb-4" />
+          <h3 className="text-lg font-medium mb-2">No agents yet</h3>
+          <p className="text-muted-foreground mb-4">
+            Create your first AI agent to start handling calls and messages
+          </p>
+          <Button asChild>
+            <Link href="/agents/create">Create Agent</Link>
+          </Button>
+        </div>
+      }
+      extras={
+        <Dialog open={testCallDialogOpen} onOpenChange={setTestCallDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Test Call with {selectedAgent?.name}</DialogTitle>
+              <DialogDescription>
+                Initiate a test call to verify the AI agent is working correctly.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="to-number">Phone Number to Call</Label>
+                <PhoneInput
+                  id="to-number"
+                  value={toNumber}
+                  onChange={setToNumber}
+                  placeholder="(555) 123-4567"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="from-number">Call From</Label>
+                <Select value={fromNumberId} onValueChange={setFromNumberId}>
+                  <SelectTrigger id="from-number" className="w-full">
+                    <SelectValue placeholder="Select a phone number" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[300px]">
+                    {phoneNumbers.map((phone) => (
+                      <SelectItem key={phone.id} value={phone.id}>
+                        {phone.phone_number}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {phoneNumbers.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    No voice-enabled phone numbers available.
+                  </p>
+                )}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setTestCallDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleTestCall}
+                disabled={!toNumber || !fromNumberId || initiateCallMutation.isPending}
+              >
+                {initiateCallMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                    Calling...
+                  </>
+                ) : (
+                  <>
+                    <PhoneCall className="mr-2 size-4" />
+                    Start Call
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      }
+    >
       <motion.div
         className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
-        variants={containerVariants}
         initial="hidden"
         animate="visible"
+        variants={{
+          hidden: { opacity: 0 },
+          visible: { opacity: 1, transition: { staggerChildren: 0.1 } },
+        }}
       >
         <AnimatePresence mode="popLayout">
           {filteredAgents.map((agent) => {
@@ -335,7 +368,10 @@ export function AgentsList() {
               <motion.div
                 key={agent.id}
                 layout
-                variants={itemVariants}
+                variants={{
+                  hidden: { opacity: 0, y: 20 },
+                  visible: { opacity: 1, y: 0 },
+                }}
                 initial="hidden"
                 animate="visible"
                 exit={{ opacity: 0, scale: 0.9 }}
@@ -465,70 +501,6 @@ export function AgentsList() {
           })}
         </AnimatePresence>
       </motion.div>
-
-      {/* Test Call Dialog */}
-      <Dialog open={testCallDialogOpen} onOpenChange={setTestCallDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Test Call with {selectedAgent?.name}</DialogTitle>
-            <DialogDescription>
-              Initiate a test call to verify the AI agent is working correctly.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="to-number">Phone Number to Call</Label>
-              <PhoneInput
-                id="to-number"
-                value={toNumber}
-                onChange={setToNumber}
-                placeholder="(555) 123-4567"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="from-number">Call From</Label>
-              <Select value={fromNumberId} onValueChange={setFromNumberId}>
-                <SelectTrigger id="from-number" className="w-full">
-                  <SelectValue placeholder="Select a phone number" />
-                </SelectTrigger>
-                <SelectContent className="max-h-[300px]">
-                  {phoneNumbers.map((phone) => (
-                    <SelectItem key={phone.id} value={phone.id}>
-                      {phone.phone_number}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {phoneNumbers.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  No voice-enabled phone numbers available.
-                </p>
-              )}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setTestCallDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleTestCall}
-              disabled={!toNumber || !fromNumberId || initiateCallMutation.isPending}
-            >
-              {initiateCallMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 size-4 animate-spin" />
-                  Calling...
-                </>
-              ) : (
-                <>
-                  <PhoneCall className="mr-2 size-4" />
-                  Start Call
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+    </ResourceListLayout>
   );
 }

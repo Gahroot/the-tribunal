@@ -25,7 +25,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { opportunitiesApi } from "@/lib/api/opportunities";
-import type { Opportunity, PipelineStage } from "@/types";
+import { opportunityStatusColors } from "@/lib/status-colors";
+import type { Opportunity, OpportunityStatus, PipelineStage } from "@/types";
 import { OpportunityDetailSheet } from "./opportunity-detail-sheet";
 import { cn } from "@/lib/utils";
 import { GripVertical, DollarSign, Calendar, CircleDot } from "lucide-react";
@@ -43,18 +44,6 @@ function formatCurrency(amount: number | undefined, currency: string) {
   }).format(amount);
 }
 
-function getStatusColor(status: string) {
-  switch (status) {
-    case "won":
-      return "bg-green-500/10 text-green-600 border-green-500/20";
-    case "lost":
-      return "bg-red-500/10 text-red-600 border-red-500/20";
-    case "abandoned":
-      return "bg-gray-500/10 text-gray-600 border-gray-500/20";
-    default:
-      return "bg-blue-500/10 text-blue-600 border-blue-500/20";
-  }
-}
 
 interface SortableOpportunityCardProps {
   opportunity: Opportunity;
@@ -112,7 +101,7 @@ function SortableOpportunityCard({
               <p className="text-sm font-medium line-clamp-2">{opportunity.name}</p>
               <Badge
                 variant="outline"
-                className={cn("text-xs flex-shrink-0", getStatusColor(opportunity.status))}
+                className={cn("text-xs flex-shrink-0", opportunityStatusColors[opportunity.status as OpportunityStatus] ?? "bg-blue-500/10 text-blue-600 border-blue-500/20")}
               >
                 {opportunity.status}
               </Badge>

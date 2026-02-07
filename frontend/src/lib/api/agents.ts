@@ -28,6 +28,7 @@ export interface AgentResponse {
   ivr_menu_buffer_silence_ms: number;
   reminder_enabled: boolean;
   reminder_minutes_before: number;
+  auto_evaluate: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -69,6 +70,7 @@ export interface CreateAgentRequest {
   ivr_menu_buffer_silence_ms?: number;
   reminder_enabled?: boolean;
   reminder_minutes_before?: number;
+  auto_evaluate?: boolean;
 }
 
 export interface UpdateAgentRequest {
@@ -95,6 +97,7 @@ export interface UpdateAgentRequest {
   ivr_menu_buffer_silence_ms?: number;
   reminder_enabled?: boolean;
   reminder_minutes_before?: number;
+  auto_evaluate?: boolean;
 }
 
 // Embed settings types

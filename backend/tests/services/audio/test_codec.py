@@ -3,6 +3,7 @@
 Tests audio format conversion functions for voice communications.
 """
 
+import numpy as np
 import pytest
 
 from app.services.ai.exceptions import AudioConversionError
@@ -106,12 +107,12 @@ class TestResampling:
         assert result == b"\x00"
 
     def test_upsample_produces_more_samples(self) -> None:
-        """Test 8kHz to 24kHz upsampling produces ~3x samples."""
+        """Test 8kHz to 24kHz upsampling produces exactly 3x samples."""
         # 100 samples * 2 bytes = 200 bytes at 8kHz
         pcm_8k = bytes([0x00, 0x00] * 100)
         pcm_24k = upsample_8k_to_24k(pcm_8k)
-        # Should produce ~300 samples * 2 bytes = ~600 bytes
-        assert len(pcm_24k) >= 500  # Allow some tolerance
+        # soxr produces exactly 300 samples * 2 bytes = 600 bytes
+        assert len(pcm_24k) == 600
 
     def test_downsample_empty(self) -> None:
         """Test downsampling with empty input."""
@@ -124,12 +125,41 @@ class TestResampling:
         assert result == b"\x00"
 
     def test_downsample_produces_fewer_samples(self) -> None:
-        """Test 24kHz to 8kHz downsampling produces ~1/3 samples."""
+        """Test 24kHz to 8kHz downsampling produces exactly 1/3 samples."""
         # 300 samples * 2 bytes = 600 bytes at 24kHz
         pcm_24k = bytes([0x00, 0x00] * 300)
         pcm_8k = downsample_24k_to_8k(pcm_24k)
-        # Should produce ~100 samples * 2 bytes = ~200 bytes
-        assert len(pcm_8k) <= 250  # Allow some tolerance
+        # soxr produces exactly 100 samples * 2 bytes = 200 bytes
+        assert len(pcm_8k) == 200
+
+    def test_roundtrip_preserves_signal_quality(self) -> None:
+        """Test upsample->downsample roundtrip preserves signal via anti-aliasing.
+
+        A 400Hz sine wave at 8kHz is well within the Nyquist limit (4kHz).
+        After upsample to 24kHz and back to 8kHz, soxr's anti-aliasing filter
+        should preserve the signal with high fidelity (correlation > 0.99).
+        """
+        # Generate 400Hz sine wave at 8kHz, 100ms duration
+        n_samples = 800  # 100ms at 8kHz
+        t = np.arange(n_samples, dtype=np.float64) / TELNYX_SAMPLE_RATE
+        sine = (np.sin(2 * np.pi * 400 * t) * 16000).astype(np.int16)
+        original_bytes = sine.tobytes()
+
+        # Roundtrip: 8kHz -> 24kHz -> 8kHz
+        upsampled = upsample_8k_to_24k(original_bytes)
+        roundtripped_bytes = downsample_24k_to_8k(upsampled)
+
+        roundtripped = np.frombuffer(roundtripped_bytes, dtype=np.int16).astype(np.float64)
+        original = sine.astype(np.float64)
+
+        # Trim to matching length (soxr filter delay may cause ±1 sample)
+        n = min(len(original), len(roundtripped))
+        original = original[:n]
+        roundtripped = roundtripped[:n]
+
+        # Pearson correlation should be very high
+        correlation = np.corrcoef(original, roundtripped)[0, 1]
+        assert correlation > 0.99, f"Roundtrip correlation {correlation:.4f} < 0.99"
 
 
 class TestFullConversion:

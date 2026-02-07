@@ -176,6 +176,32 @@ export function AdvancedTab({ form, voiceProvider, agent }: AdvancedTabProps) {
         </CardContent>
       </Card>
 
+      {/* Experiment Auto-Evaluation */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium">Experiment Auto-Evaluation</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <FormField
+            control={form.control}
+            name="autoEvaluate"
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                <div className="space-y-0.5">
+                  <FormLabel className="text-base">Auto-Evaluate Experiments</FormLabel>
+                  <FormDescription>
+                    Automatically declare winners and eliminate underperformers when statistical confidence is reached (95% threshold)
+                  </FormDescription>
+                </div>
+                <FormControl>
+                  <Switch checked={field.value} onCheckedChange={field.onChange} />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+        </CardContent>
+      </Card>
+
       {/* IVR Navigation Settings - Grok only */}
       {voiceProvider === "grok" && (
         <Card>

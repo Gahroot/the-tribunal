@@ -26,7 +26,8 @@ from sqlalchemy import select, text
 from app.db.session import AsyncSessionLocal
 from app.models.agent import Agent
 from app.models.conversation import Conversation, Message
-from app.services.ai.text_agent import generate_text_response, build_text_instructions
+from app.services.ai.text_prompt_builder import build_text_instructions
+from app.services.ai.text_response_generator import generate_text_response
 from app.core.config import settings
 
 

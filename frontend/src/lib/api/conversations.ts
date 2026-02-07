@@ -1,4 +1,5 @@
 import api from "@/lib/api";
+import { createApiClient } from "@/lib/api/create-api-client";
 import type {
   Conversation,
   FollowupGenerateResponse,
@@ -14,6 +15,7 @@ export interface ConversationsListParams {
   status?: "active" | "archived" | "blocked";
   channel?: string;
   unread_only?: boolean;
+  [key: string]: unknown;
 }
 
 export interface ConversationsListResponse {
@@ -32,24 +34,22 @@ export interface SendMessageRequest {
   to_number?: string;
 }
 
-export const conversationsApi = {
-  list: async (
-    workspaceId: string,
-    params: ConversationsListParams = {}
-  ): Promise<ConversationsListResponse> => {
-    const response = await api.get<ConversationsListResponse>(
-      `/api/v1/workspaces/${workspaceId}/conversations`,
-      { params }
-    );
-    return response.data;
-  },
+// Create base API client with standard CRUD methods (list, get only - no create/update/delete)
+const baseConversationsApi = createApiClient<Conversation, never, never>({
+  resourcePath: "conversations",
+  includeCreate: false,
+  includeUpdate: false,
+  includeDelete: false,
+});
 
-  get: async (workspaceId: string, id: string): Promise<Conversation> => {
-    const response = await api.get<Conversation>(
-      `/api/v1/workspaces/${workspaceId}/conversations/${id}`
-    );
-    return response.data;
-  },
+// Type assertion to ensure get is non-optional since we enabled it
+const baseConversationsApiWithGet = baseConversationsApi as {
+  list: typeof baseConversationsApi.list;
+  get: NonNullable<typeof baseConversationsApi.get>;
+};
+
+export const conversationsApi = {
+  ...baseConversationsApiWithGet,
 
   getMessages: async (workspaceId: string, conversationId: string): Promise<Message[]> => {
     const response = await api.get<Message[]>(

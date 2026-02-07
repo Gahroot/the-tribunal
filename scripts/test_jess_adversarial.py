@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.db.session import AsyncSessionLocal
 from app.models.agent import Agent
 from app.models.conversation import Conversation, Message
-from app.services.ai.text_agent import generate_text_response
+from app.services.ai.text_response_generator import generate_text_response
 from app.core.config import settings
 from datetime import UTC, datetime
 import uuid

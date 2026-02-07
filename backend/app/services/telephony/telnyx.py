@@ -383,18 +383,24 @@ class TelnyxSMSService:
                 contact_phone_in_db=contact.phone_number,
             )
         else:
-            # Log all contacts in workspace to help debug phone format mismatch
-            all_contacts_result = await db.execute(
-                select(Contact).where(Contact.workspace_id == workspace_id)
+            # Log sample contacts in workspace to help debug phone format mismatch
+            from sqlalchemy import func as sa_func
+
+            count_result = await db.execute(
+                select(sa_func.count()).where(Contact.workspace_id == workspace_id)
             )
-            contacts_in_workspace = all_contacts_result.scalars().all()
+            total_contacts = count_result.scalar() or 0
+            sample_result = await db.execute(
+                select(Contact).where(Contact.workspace_id == workspace_id).limit(5)
+            )
+            sample_contacts = sample_result.scalars().all()
             sample_phones = [
-                f"{c.phone_number} ({c.full_name})" for c in contacts_in_workspace[:5]
+                f"{c.phone_number} ({c.full_name})" for c in sample_contacts
             ]
             log.warning(
                 "contact_not_found_by_phone",
                 looking_for_phone=contact_phone,
-                total_contacts_in_workspace=len(contacts_in_workspace),
+                total_contacts_in_workspace=total_contacts,
                 sample_contact_phones=sample_phones,
             )
 
@@ -448,9 +454,9 @@ class TelnyxSMSService:
         if contact:
             return contact
 
-        # If no exact match, get all contacts and try normalizing their phone numbers
+        # If no exact match, try normalizing phone numbers (limit to prevent memory exhaustion)
         all_contacts_result = await db.execute(
-            select(Contact).where(Contact.workspace_id == workspace_id)
+            select(Contact).where(Contact.workspace_id == workspace_id).limit(1000)
         )
         all_contacts = all_contacts_result.scalars().all()
 

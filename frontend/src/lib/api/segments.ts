@@ -1,5 +1,6 @@
 import api from "@/lib/api";
 import type { Segment, FilterDefinition } from "@/types";
+import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
 
 export interface SegmentListResponse {
   items: Segment[];
@@ -25,40 +26,12 @@ export interface SegmentContactsResponse {
   total: number;
 }
 
+const baseApi = createApiClient<Segment, CreateSegmentRequest, UpdateSegmentRequest>({
+  resourcePath: "segments",
+}) as FullApiClient<Segment, CreateSegmentRequest, UpdateSegmentRequest>;
+
 export const segmentsApi = {
-  list: async (workspaceId: string): Promise<SegmentListResponse> => {
-    const response = await api.get<SegmentListResponse>(
-      `/api/v1/workspaces/${workspaceId}/segments`
-    );
-    return response.data;
-  },
-
-  create: async (workspaceId: string, data: CreateSegmentRequest): Promise<Segment> => {
-    const response = await api.post<Segment>(
-      `/api/v1/workspaces/${workspaceId}/segments`,
-      data
-    );
-    return response.data;
-  },
-
-  get: async (workspaceId: string, segmentId: string): Promise<Segment> => {
-    const response = await api.get<Segment>(
-      `/api/v1/workspaces/${workspaceId}/segments/${segmentId}`
-    );
-    return response.data;
-  },
-
-  update: async (workspaceId: string, segmentId: string, data: UpdateSegmentRequest): Promise<Segment> => {
-    const response = await api.put<Segment>(
-      `/api/v1/workspaces/${workspaceId}/segments/${segmentId}`,
-      data
-    );
-    return response.data;
-  },
-
-  delete: async (workspaceId: string, segmentId: string): Promise<void> => {
-    await api.delete(`/api/v1/workspaces/${workspaceId}/segments/${segmentId}`);
-  },
+  ...baseApi,
 
   getContacts: async (workspaceId: string, segmentId: string): Promise<SegmentContactsResponse> => {
     const response = await api.get<SegmentContactsResponse>(

@@ -1,5 +1,6 @@
 import api from "@/lib/api";
 import type { Contact, ContactStatus, TimelineItem } from "@/types";
+import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
 
 export type ContactSortBy = "created_at" | "last_conversation" | "unread_first";
 
@@ -21,6 +22,7 @@ export interface ContactsListParams {
   created_before?: string;
   enrichment_status?: string;
   filters?: string; // JSON FilterDefinition
+  [key: string]: unknown;
 }
 
 export interface ContactsListResponse {
@@ -103,14 +105,12 @@ export interface ContactIdsParams {
   filters?: string;
 }
 
+const baseApi = createApiClient<Contact, CreateContactRequest, UpdateContactRequest>({
+  resourcePath: "contacts",
+}) as FullApiClient<Contact, CreateContactRequest, UpdateContactRequest>;
+
 export const contactsApi = {
-  list: async (workspaceId: string, params: ContactsListParams = {}): Promise<ContactsListResponse> => {
-    const response = await api.get<ContactsListResponse>(
-      `/api/v1/workspaces/${workspaceId}/contacts`,
-      { params }
-    );
-    return response.data;
-  },
+  ...baseApi,
 
   listIds: async (workspaceId: string, params: ContactIdsParams = {}): Promise<ContactIdsResponse> => {
     const response = await api.get<ContactIdsResponse>(
@@ -118,33 +118,6 @@ export const contactsApi = {
       { params }
     );
     return response.data;
-  },
-
-  get: async (workspaceId: string, id: number): Promise<Contact> => {
-    const response = await api.get<Contact>(
-      `/api/v1/workspaces/${workspaceId}/contacts/${id}`
-    );
-    return response.data;
-  },
-
-  create: async (workspaceId: string, data: CreateContactRequest): Promise<Contact> => {
-    const response = await api.post<Contact>(
-      `/api/v1/workspaces/${workspaceId}/contacts`,
-      data
-    );
-    return response.data;
-  },
-
-  update: async (workspaceId: string, id: number, data: UpdateContactRequest): Promise<Contact> => {
-    const response = await api.put<Contact>(
-      `/api/v1/workspaces/${workspaceId}/contacts/${id}`,
-      data
-    );
-    return response.data;
-  },
-
-  delete: async (workspaceId: string, id: number): Promise<void> => {
-    await api.delete(`/api/v1/workspaces/${workspaceId}/contacts/${id}`);
   },
 
   bulkDelete: async (workspaceId: string, ids: number[]): Promise<BulkDeleteResponse> => {

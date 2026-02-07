@@ -8,9 +8,7 @@ session configurations, encapsulating the logic for:
 - Audio format configuration
 """
 
-from datetime import datetime
 from typing import Any
-from zoneinfo import ZoneInfo
 
 import structlog
 
@@ -19,11 +17,14 @@ from app.services.ai.grok.constants import (
     AUDIO_CONFIG,
     DEFAULT_TURN_DETECTION,
     DEFAULT_VOICE,
-    DTMF_TOOL,
-    GROK_BUILTIN_TOOLS,
     GROK_VOICES,
 )
 from app.services.ai.prompt_builder import VoicePromptBuilder
+from app.services.ai.voice_tools import (
+    DTMF_TOOL,
+    GROK_BUILTIN_TOOLS,
+    get_booking_tools,
+)
 
 logger = structlog.get_logger()
 
@@ -175,7 +176,7 @@ class GrokSessionConfigBuilder:
 
         # Add Cal.com booking tools if enabled
         if enable_booking:
-            booking_tools = self._get_booking_tools_with_date_context()
+            booking_tools = get_booking_tools(self._timezone)
             self._tools.extend(booking_tools)
             self._logger.info(
                 "grok_booking_tools_enabled",
@@ -220,100 +221,6 @@ class GrokSessionConfigBuilder:
 
         # Auto-enable if IVR detection active
         return bool(ivr_detector_active)
-
-    def _get_booking_tools_with_date_context(self) -> list[dict[str, Any]]:
-        """Generate booking tools with current date context embedded.
-
-        Based on chatgpt-telegram-bot pattern of including current date
-        in tool descriptions to help the model interpret relative dates.
-
-        Returns:
-            List of tool definitions with date context embedded
-        """
-        try:
-            tz = ZoneInfo(self._timezone)
-        except Exception:
-            tz = ZoneInfo("America/New_York")
-
-        now = datetime.now(tz)
-        today_str = now.strftime("%A, %B %d, %Y")
-        today_iso = now.strftime("%Y-%m-%d")
-
-        return [
-            {
-                "type": "function",
-                "name": "book_appointment",
-                "description": (
-                    f"Book an appointment on Cal.com. TODAY IS {today_str} ({today_iso}). "
-                    f"When converting relative dates to YYYY-MM-DD: 'today' = {today_iso}, "
-                    "'tomorrow' = the day after today, 'Friday' = the NEXT Friday from today. "
-                    "You MUST collect the customer's email address first."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "date": {
-                            "type": "string",
-                            "description": (
-                                f"Appointment date in YYYY-MM-DD format. "
-                                f"TODAY IS {today_iso}. Convert relative dates from this date."
-                            ),
-                        },
-                        "time": {
-                            "type": "string",
-                            "description": (
-                                "Appointment time in HH:MM 24-hour format "
-                                "(e.g., '14:00' for 2 PM, '09:30' for 9:30 AM). "
-                                "Always pass 24-hour format here even though you "
-                                "speak 12-hour format to the customer."
-                            ),
-                        },
-                        "email": {
-                            "type": "string",
-                            "description": "Customer's email address for booking confirmation",
-                        },
-                        "duration_minutes": {
-                            "type": "integer",
-                            "description": "Duration in minutes. Default is 30.",
-                        },
-                        "notes": {
-                            "type": "string",
-                            "description": "Optional notes about the appointment",
-                        },
-                    },
-                    "required": ["date", "time", "email"],
-                },
-            },
-            {
-                "type": "function",
-                "name": "check_availability",
-                "description": (
-                    f"Check available time slots on Cal.com. "
-                    f"TODAY IS {today_str} ({today_iso}). "
-                    f"When the user says 'Friday', 'tomorrow', or 'next week', "
-                    f"convert to YYYY-MM-DD relative to today ({today_iso}). "
-                    f"Example: if today is {today_iso} and user says 'Friday', "
-                    "calculate the next Friday from this date."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "start_date": {
-                            "type": "string",
-                            "description": (
-                                f"Start date in YYYY-MM-DD format. TODAY IS {today_iso}. "
-                                "Convert relative dates like 'Friday' from this date."
-                            ),
-                        },
-                        "end_date": {
-                            "type": "string",
-                            "description": "End date in YYYY-MM-DD (defaults to start_date)",
-                        },
-                    },
-                    "required": ["start_date"],
-                },
-            },
-        ]
 
     def with_turn_detection(
         self,

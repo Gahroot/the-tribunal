@@ -19,6 +19,8 @@ from collections.abc import Callable
 from enum import Enum
 from typing import Any
 
+import numpy as np
+import soxr
 import structlog
 
 from app.services.ai.exceptions import AudioConversionError
@@ -120,7 +122,7 @@ def pcm_to_mulaw(data: bytes) -> bytes:
 def upsample_8k_to_24k(data: bytes) -> bytes:
     """Upsample PCM16 audio from 8kHz to 24kHz.
 
-    Uses audioop.ratecv for sample rate conversion (3x upsampling).
+    Uses soxr (libsoxr) for high-quality polyphase anti-aliased resampling.
 
     Args:
         data: PCM16 audio bytes at 8kHz
@@ -135,13 +137,13 @@ def upsample_8k_to_24k(data: bytes) -> bytes:
         return data
 
     try:
-        # audioop.ratecv(fragment, width, nchannels, inrate, outrate, state)
-        # width=2 for 16-bit, nchannels=1 for mono
-        result, _ = audioop.ratecv(
-            data, 2, 1, TELNYX_SAMPLE_RATE, OPENAI_SAMPLE_RATE, None
+        samples = np.frombuffer(data, dtype=np.int16)
+        resampled: np.ndarray[Any, np.dtype[np.int16]] = soxr.resample(
+            samples, TELNYX_SAMPLE_RATE, OPENAI_SAMPLE_RATE, quality="HQ"
         )
+        result: bytes = resampled.astype(np.int16).tobytes()
         return result
-    except audioop.error as e:
+    except (ValueError, TypeError) as e:
         raise AudioConversionError(
             f"Failed to upsample 8kHz to 24kHz: {e}",
             source_format="pcm16_8k",
@@ -152,7 +154,7 @@ def upsample_8k_to_24k(data: bytes) -> bytes:
 def downsample_24k_to_8k(data: bytes) -> bytes:
     """Downsample PCM16 audio from 24kHz to 8kHz.
 
-    Uses audioop.ratecv for sample rate conversion (3x downsampling).
+    Uses soxr (libsoxr) for high-quality polyphase anti-aliased resampling.
 
     Args:
         data: PCM16 audio bytes at 24kHz
@@ -167,12 +169,13 @@ def downsample_24k_to_8k(data: bytes) -> bytes:
         return data
 
     try:
-        # audioop.ratecv(fragment, width, nchannels, inrate, outrate, state)
-        result, _ = audioop.ratecv(
-            data, 2, 1, OPENAI_SAMPLE_RATE, TELNYX_SAMPLE_RATE, None
+        samples = np.frombuffer(data, dtype=np.int16)
+        resampled: np.ndarray[Any, np.dtype[np.int16]] = soxr.resample(
+            samples, OPENAI_SAMPLE_RATE, TELNYX_SAMPLE_RATE, quality="HQ"
         )
+        result: bytes = resampled.astype(np.int16).tobytes()
         return result
-    except audioop.error as e:
+    except (ValueError, TypeError) as e:
         raise AudioConversionError(
             f"Failed to downsample 24kHz to 8kHz: {e}",
             source_format="pcm16_24k",
