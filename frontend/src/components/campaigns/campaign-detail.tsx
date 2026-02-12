@@ -7,6 +7,8 @@ import {
   Loader2,
   Play,
   Pause,
+  RotateCcw,
+  XCircle,
   AlertCircle,
   CalendarCheck,
   MessageSquare,
@@ -75,6 +77,40 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
     },
     onError: () => {
       toast.error("Failed to pause campaign");
+    },
+  });
+
+  // Resume campaign mutation
+  const resumeMutation = useMutation({
+    mutationFn: async () => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return campaignsApi.resume(workspaceId, campaignId);
+    },
+    onSuccess: () => {
+      toast.success("Campaign resumed!");
+      queryClient.invalidateQueries({
+        queryKey: ["campaigns", workspaceId, campaignId],
+      });
+    },
+    onError: () => {
+      toast.error("Failed to resume campaign");
+    },
+  });
+
+  // Cancel campaign mutation
+  const cancelMutation = useMutation({
+    mutationFn: async () => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return campaignsApi.cancel(workspaceId, campaignId);
+    },
+    onSuccess: () => {
+      toast.success("Campaign cancelled!");
+      queryClient.invalidateQueries({
+        queryKey: ["campaigns", workspaceId, campaignId],
+      });
+    },
+    onError: () => {
+      toast.error("Failed to cancel campaign");
     },
   });
 
@@ -157,6 +193,27 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
             >
               <Pause className="size-4 mr-2" />
               Pause
+            </Button>
+          )}
+          {campaign.status === "paused" && (
+            <Button
+              onClick={() => resumeMutation.mutate()}
+              disabled={resumeMutation.isPending}
+              size="sm"
+            >
+              <RotateCcw className="size-4 mr-2" />
+              Resume
+            </Button>
+          )}
+          {(campaign.status === "paused" || campaign.status === "draft") && (
+            <Button
+              variant="destructive"
+              onClick={() => cancelMutation.mutate()}
+              disabled={cancelMutation.isPending}
+              size="sm"
+            >
+              <XCircle className="size-4 mr-2" />
+              Cancel
             </Button>
           )}
         </div>

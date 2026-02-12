@@ -1,11 +1,14 @@
-"""Find Leads AI endpoints with website enrichment."""
+"""Find Leads AI endpoints with synchronous website enrichment."""
 
 import uuid
+from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser, get_workspace
+from app.core.config import settings
 from app.models.contact import Contact
 from app.schemas.find_leads_ai import (
     AIImportLeadsRequest,
@@ -16,10 +19,14 @@ from app.schemas.scraping import (
     BusinessSearchRequest,
     BusinessSearchResponse,
 )
+from app.services.scraping.enrichment_service import enrich_contact_data
 from app.services.scraping.google_places import GooglePlacesError, GooglePlacesService
 from app.services.telephony.telnyx import normalize_phone_number
 
 router = APIRouter()
+
+# Lead score threshold for import (only save contacts with score >= 80)
+LEAD_SCORE_THRESHOLD = 80
 
 
 @router.post("/search", response_model=BusinessSearchResponse)
@@ -94,11 +101,16 @@ async def import_leads_ai(
     current_user: CurrentUser,
     db: DB,
 ) -> AIImportLeadsResponse:
-    """Import selected leads as contacts with AI enrichment.
+    """Import selected leads as contacts with synchronous AI enrichment.
 
-    Creates contacts from the selected business results.
-    Skips duplicates based on phone number.
-    Queues contacts with websites for background enrichment.
+    Enrichment happens synchronously during import:
+    - Leads are enriched before being saved to the database
+    - Only leads with a lead score >= 80 are imported
+    - Leads below the threshold are rejected immediately
+    - No background processing for new imports
+
+    For backward compatibility, the worker still processes any contacts
+    with enrichment_status = "pending" that may exist from earlier imports.
     """
     # Verify workspace access
     workspace = await get_workspace(workspace_id, current_user, db)
@@ -113,9 +125,11 @@ async def import_leads_ai(
             existing_phones.add(normalize_phone_number(row[0]))
 
     imported = 0
+    rejected_low_score = 0
+    enrichment_failed = 0
     skipped_duplicates = 0
     skipped_no_phone = 0
-    queued_for_enrichment = 0
+    queued_for_enrichment = 0  # Always 0 now (synchronous)
     errors: list[str] = []
 
     for lead in request.leads:
@@ -138,14 +152,8 @@ async def import_leads_ai(
                 type_tags = [t.replace("_", " ").title() for t in lead.types[:3]]
                 tags.extend(type_tags)
 
-            # Determine enrichment status
-            has_website = bool(lead.website)
-            enrichment_status = None
-            if request.enable_enrichment:
-                enrichment_status = "pending" if has_website else "skipped"
-
-            # Build initial business_intel with Google Places data
-            business_intel = {
+            # Build initial Google Places data for enrichment
+            google_places_data: dict[str, Any] = {
                 "google_places": {
                     "place_id": lead.place_id,
                     "rating": lead.rating,
@@ -155,7 +163,38 @@ async def import_leads_ai(
                 },
             }
 
-            # Create contact
+            # Enrich synchronously if enabled and website exists
+            enrichment_result: dict[str, Any] = {
+                "business_intel": google_places_data,
+                "linkedin_url": None,
+                "lead_score": 0,
+                "enrichment_status": "skipped",
+                "error": None,
+            }
+
+            if request.enable_enrichment and lead.website:
+                enrichment_result = await enrich_contact_data(
+                    website_url=lead.website,
+                    company_name=lead.name,
+                    google_places_data=google_places_data,
+                    enable_ai=settings.enable_ai_enrichment,
+                )
+
+                if enrichment_result["enrichment_status"] == "failed":
+                    enrichment_failed += 1
+                    continue  # Skip importing if enrichment failed
+            elif not lead.website:
+                # No website = score of 0, will be rejected by threshold
+                enrichment_result["lead_score"] = 0
+                enrichment_result["enrichment_status"] = "skipped"
+
+            # Check lead score threshold
+            lead_score = enrichment_result["lead_score"]
+            if lead_score < LEAD_SCORE_THRESHOLD:
+                rejected_low_score += 1
+                continue
+
+            # Create contact (only if score >= 80)
             contact = Contact(
                 workspace_id=workspace.id,
                 first_name="Owner",
@@ -166,15 +205,20 @@ async def import_leads_ai(
                 tags=tags if tags else None,
                 notes=_format_business_notes(lead),
                 website_url=lead.website,
-                enrichment_status=enrichment_status,
-                business_intel=business_intel,
+                linkedin_url=enrichment_result["linkedin_url"],
+                enrichment_status=enrichment_result["enrichment_status"],
+                business_intel=enrichment_result["business_intel"],
+                lead_score=lead_score,
+                # Already enriched, so set enriched_at now
+                enriched_at=(
+                    None
+                    if enrichment_result["enrichment_status"] == "skipped"
+                    else datetime.now(UTC)
+                ),
             )
             db.add(contact)
             existing_phones.add(normalized_phone)
             imported += 1
-
-            if enrichment_status == "pending":
-                queued_for_enrichment += 1
 
         except Exception as e:
             errors.append(f"Failed to import {lead.name}: {e!s}")
@@ -185,6 +229,8 @@ async def import_leads_ai(
     return AIImportLeadsResponse(
         total=len(request.leads),
         imported=imported,
+        rejected_low_score=rejected_low_score,
+        enrichment_failed=enrichment_failed,
         skipped_duplicates=skipped_duplicates,
         skipped_no_phone=skipped_no_phone,
         queued_for_enrichment=queued_for_enrichment,

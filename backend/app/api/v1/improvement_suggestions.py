@@ -1,11 +1,12 @@
 """Improvement suggestions management endpoints."""
 
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import func, select
+from sqlalchemy import extract, func, select
 
 from app.api.crud import get_or_404
 from app.api.deps import DB, CurrentUser, get_workspace
@@ -156,6 +157,59 @@ async def get_pending_count(
     count = result.scalar() or 0
 
     return {"pending_count": count}
+
+
+@router.get("/stats")
+async def get_suggestion_stats(
+    workspace_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> dict[str, int]:
+    """Get suggestion stats for the workspace.
+
+    Returns approved_count, rejected_count, and auto_generated_count (current month).
+    """
+    # Approved count
+    approved_result = await db.execute(
+        select(func.count(ImprovementSuggestion.id))
+        .join(Agent, ImprovementSuggestion.agent_id == Agent.id)
+        .where(
+            Agent.workspace_id == workspace_id,
+            ImprovementSuggestion.status == "approved",
+        )
+    )
+    approved_count = approved_result.scalar() or 0
+
+    # Rejected count
+    rejected_result = await db.execute(
+        select(func.count(ImprovementSuggestion.id))
+        .join(Agent, ImprovementSuggestion.agent_id == Agent.id)
+        .where(
+            Agent.workspace_id == workspace_id,
+            ImprovementSuggestion.status == "rejected",
+        )
+    )
+    rejected_count = rejected_result.scalar() or 0
+
+    # Auto-generated count (current month)
+    now = datetime.now(UTC)
+    auto_generated_result = await db.execute(
+        select(func.count(ImprovementSuggestion.id))
+        .join(Agent, ImprovementSuggestion.agent_id == Agent.id)
+        .where(
+            Agent.workspace_id == workspace_id,
+            extract("year", ImprovementSuggestion.created_at) == now.year,
+            extract("month", ImprovementSuggestion.created_at) == now.month,
+        )
+    )
+    auto_generated_count = auto_generated_result.scalar() or 0
+
+    return {
+        "approved_count": approved_count,
+        "rejected_count": rejected_count,
+        "auto_generated_count": auto_generated_count,
+    }
 
 
 @router.get("/{suggestion_id}", response_model=ImprovementSuggestionResponse)

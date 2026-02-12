@@ -93,6 +93,15 @@ export const improvementSuggestionsApi = {
     return response.data;
   },
 
+  getStats: async (
+    workspaceId: string
+  ): Promise<{ approved_count: number; rejected_count: number; auto_generated_count: number }> => {
+    const response = await api.get<{ approved_count: number; rejected_count: number; auto_generated_count: number }>(
+      `/api/v1/workspaces/${workspaceId}/suggestions/stats`
+    );
+    return response.data;
+  },
+
   generateForAgent: async (
     workspaceId: string,
     agentId: string,

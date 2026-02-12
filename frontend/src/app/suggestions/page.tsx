@@ -37,6 +37,15 @@ export default function SuggestionsPage() {
     enabled: !!workspaceId,
   });
 
+  const { data: suggestionStats, isLoading: statsLoading } = useQuery({
+    queryKey: ["suggestionsStats", workspaceId],
+    queryFn: () => {
+      if (!workspaceId) throw new Error("No workspace");
+      return improvementSuggestionsApi.getStats(workspaceId);
+    },
+    enabled: !!workspaceId,
+  });
+
   return (
     <AppSidebar>
     <div className="space-y-6 p-6">
@@ -104,7 +113,9 @@ export default function SuggestionsPage() {
                 <Check className="h-4 w-4 text-green-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">-</div>
+                <div className="text-2xl font-bold">
+                  {statsLoading ? "-" : (suggestionStats?.approved_count ?? 0)}
+                </div>
                 <p className="text-xs text-muted-foreground">All time</p>
               </CardContent>
             </Card>
@@ -114,7 +125,9 @@ export default function SuggestionsPage() {
                 <X className="h-4 w-4 text-destructive" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">-</div>
+                <div className="text-2xl font-bold">
+                  {statsLoading ? "-" : (suggestionStats?.rejected_count ?? 0)}
+                </div>
                 <p className="text-xs text-muted-foreground">All time</p>
               </CardContent>
             </Card>
@@ -124,7 +137,9 @@ export default function SuggestionsPage() {
                 <Wand2 className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">-</div>
+                <div className="text-2xl font-bold">
+                  {statsLoading ? "-" : (suggestionStats?.auto_generated_count ?? 0)}
+                </div>
                 <p className="text-xs text-muted-foreground">This month</p>
               </CardContent>
             </Card>

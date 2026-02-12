@@ -187,11 +187,11 @@ class OfferUpdate(BaseModel):
     cta_text: str | None = Field(default=None, max_length=100)
     cta_subtext: str | None = Field(default=None, max_length=255)
     # Public landing page fields
-    is_public: bool = False
+    is_public: bool | None = None
     public_slug: str | None = Field(default=None, max_length=100)
-    require_email: bool = True
-    require_phone: bool = False
-    require_name: bool = False
+    require_email: bool | None = None
+    require_phone: bool | None = None
+    require_name: bool | None = None
 
 
 class OfferResponse(OfferBase):

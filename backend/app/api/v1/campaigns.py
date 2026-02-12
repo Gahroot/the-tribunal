@@ -215,6 +215,52 @@ async def pause_campaign(
     return {"status": "paused"}
 
 
+@router.post("/{campaign_id}/resume")
+async def resume_campaign(
+    workspace_id: uuid.UUID,
+    campaign_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> dict[str, str]:
+    """Resume a paused campaign."""
+    campaign = await get_or_404(db, Campaign, campaign_id, workspace_id=workspace_id)
+
+    if campaign.status != "paused":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Can only resume paused campaigns",
+        )
+
+    campaign.status = CampaignStatus.RUNNING.value
+    await db.commit()
+
+    return {"status": "running", "message": "Campaign resumed"}
+
+
+@router.post("/{campaign_id}/cancel")
+async def cancel_campaign(
+    workspace_id: uuid.UUID,
+    campaign_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> dict[str, str]:
+    """Cancel a campaign."""
+    campaign = await get_or_404(db, Campaign, campaign_id, workspace_id=workspace_id)
+
+    if campaign.status not in ("draft", "paused"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Can only cancel draft or paused campaigns",
+        )
+
+    campaign.status = CampaignStatus.CANCELED.value
+    await db.commit()
+
+    return {"status": "canceled"}
+
+
 @router.post("/{campaign_id}/contacts", response_model=dict[str, int])
 async def add_contacts(
     workspace_id: uuid.UUID,
