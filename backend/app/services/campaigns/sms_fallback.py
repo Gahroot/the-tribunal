@@ -242,19 +242,8 @@ async def trigger_sms_fallback_for_call(
             )
             return False
 
-        # Update call status on campaign contact
-        campaign_contact.last_call_status = call_outcome
-        campaign_contact.status = "call_failed"
-
-        # Update campaign stats based on outcome
-        if call_outcome == "no_answer":
-            campaign.calls_no_answer += 1
-        elif call_outcome == "busy":
-            campaign.calls_busy += 1
-        elif call_outcome == "voicemail":
-            campaign.calls_voicemail += 1
-
-        await db.commit()
+        # Stats are already updated by campaign_call_stats.update_campaign_call_stats()
+        # before this function is called — no need to duplicate here.
 
         # Send SMS fallback
         if not settings.telnyx_api_key:

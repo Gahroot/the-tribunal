@@ -36,15 +36,12 @@ class CallOutcomeClassifier:
         "ORIGINATOR_CANCEL": "Call was canceled before answer",
         "USER_BUSY": "Recipient line was busy",
         "CALL_REJECTED": "Call was rejected by recipient",
-        "NORMAL_CLEARING": "Call ended quickly (likely rejected)",
-        "NORMAL_RELEASE": "Call ended quickly (likely rejected)",
     }
 
-    # Threshold for detecting rejected calls (quick hangup by callee)
-    REJECTED_CALL_THRESHOLD_SECS = 15
-
-    # Very short calls with normal clearing = likely no real conversation
-    MINIMAL_CALL_THRESHOLD_SECS = 5
+    # Calls under this threshold with NORMAL_CLEARING are treated as failed
+    # (0s = no connection, 1-4s = quick reject/no conversation)
+    # 5+ seconds = real interaction happened, no SMS fallback needed
+    SHORT_CALL_THRESHOLD_SECS = 5
 
     # Hangup causes that indicate no answer
     NO_ANSWER_CAUSES = frozenset({"NO_ANSWER", "TIMEOUT", "ORIGINATOR_CANCEL"})
@@ -58,7 +55,7 @@ class CallOutcomeClassifier:
     # Normal clearing causes (need additional context to classify)
     NORMAL_CLEARING_CAUSES = frozenset({"NORMAL_CLEARING", "NORMAL_RELEASE"})
 
-    def classify(
+    def classify(  # noqa: PLR0912
         self,
         hangup_cause: str,
         duration_secs: int,
@@ -79,16 +76,10 @@ class CallOutcomeClassifier:
         # Normalize hangup cause to uppercase
         hangup_cause = hangup_cause.upper() if hangup_cause else ""
 
-        # Detect rejected call: callee hung up quickly without meaningful conversation
-        is_rejected_call = (
-            duration_secs < self.REJECTED_CALL_THRESHOLD_SECS
-            and hangup_cause in self.NORMAL_CLEARING_CAUSES
-            and hangup_source == "callee"
-        )
-
         # Determine call outcome based on hangup cause
         call_outcome: str | None = None
         message_status = "completed"  # Default to completed
+        is_rejected_call = False
 
         if hangup_cause in self.NO_ANSWER_CAUSES:
             call_outcome = "no_answer"
@@ -96,16 +87,25 @@ class CallOutcomeClassifier:
         elif hangup_cause in self.BUSY_CAUSES:
             call_outcome = "busy"
             message_status = "failed"
-        elif hangup_cause in self.REJECTION_CAUSES or is_rejected_call:
+        elif hangup_cause in self.REJECTION_CAUSES:
             call_outcome = "rejected"
             message_status = "failed"
-        elif (
-            duration_secs < self.MINIMAL_CALL_THRESHOLD_SECS
-            and hangup_cause in self.NORMAL_CLEARING_CAUSES
-        ):
-            # Very short call with normal clearing = likely no real conversation
-            call_outcome = "no_answer"
-            message_status = "failed"
+            is_rejected_call = True
+        elif hangup_cause in self.NORMAL_CLEARING_CAUSES:
+            if duration_secs == 0:
+                # No connection made
+                call_outcome = "no_answer"
+                message_status = "failed"
+            elif duration_secs < self.SHORT_CALL_THRESHOLD_SECS and hangup_source == "callee":
+                # Callee hung up almost immediately — quick auto-reject
+                call_outcome = "rejected"
+                message_status = "failed"
+                is_rejected_call = True
+            elif duration_secs < self.SHORT_CALL_THRESHOLD_SECS:
+                # Caller or other hung up very quickly — no real conversation
+                call_outcome = "no_answer"
+                message_status = "failed"
+            # 5+ seconds with NORMAL_CLEARING = real interaction, leave as completed
 
         # If booking was successful, override failed status
         if booking_outcome == "success" and message_status == "failed":
@@ -116,9 +116,16 @@ class CallOutcomeClassifier:
         error_message: str | None = None
         if message_status == "failed" and hangup_cause:
             error_code = hangup_cause
-            error_message = self.HANGUP_CAUSE_MESSAGES.get(
-                hangup_cause, f"Call failed: {hangup_cause}"
-            )
+            if call_outcome == "rejected":
+                error_message = "Call rejected (hung up quickly)"
+            elif call_outcome == "no_answer" and duration_secs == 0:
+                error_message = "Call not connected"
+            elif call_outcome == "no_answer":
+                error_message = "Call ended too quickly for conversation"
+            else:
+                error_message = self.HANGUP_CAUSE_MESSAGES.get(
+                    hangup_cause, f"Call failed: {hangup_cause}"
+                )
 
         return CallClassificationResult(
             outcome=call_outcome,

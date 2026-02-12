@@ -536,7 +536,7 @@ async def _reconcile_booking_outcome(
     return None
 
 
-async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:
+async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:  # noqa: PLR0912, PLR0915
     """Handle call hangup event."""
     call_control_id = payload.get("call_control_id", "")
     duration_secs = payload.get("duration_seconds", 0)
@@ -622,7 +622,24 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:
             except Exception as e:
                 log.exception("call_outcome_creation_failed", error=str(e))
 
-            # Trigger SMS fallback for failed calls
+            # Update campaign stats for ALL calls (successful and failed)
+            try:
+                from app.services.campaigns.campaign_call_stats import (
+                    update_campaign_call_stats,
+                )
+
+                await update_campaign_call_stats(
+                    db=db,
+                    message_id=message.id,
+                    call_outcome=classification.outcome,
+                    message_status=classification.message_status,
+                    duration_secs=duration_secs,
+                    log=log,
+                )
+            except Exception as e:
+                log.exception("campaign_call_stats_update_failed", error=str(e))
+
+            # Trigger SMS fallback for failed calls only
             if classification.outcome:
                 log.info("triggering_sms_fallback", call_outcome=classification.outcome)
                 try:
