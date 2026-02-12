@@ -149,6 +149,17 @@ async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:
                             delay_ms=delay_ms,
                         )
 
+            # Update campaign reply stats
+            if message.conversation_id:
+                try:
+                    from app.services.campaigns.campaign_sms_stats import update_campaign_sms_reply
+
+                    await update_campaign_sms_reply(
+                        db=db, conversation_id=message.conversation_id, log=log,
+                    )
+                except Exception as e:
+                    log.exception("campaign_reply_stats_failed", error=str(e))
+
             log.info("inbound_sms_processed", message_id=str(message.id))
         finally:
             await sms_service.close()
@@ -223,6 +234,22 @@ async def handle_delivery_status(payload: dict[str, Any], log: Any) -> None:
                         bounce_type=bounce_type,
                         bounce_category=bounce_category,
                     )
+
+            # Update campaign delivery stats (only for final statuses)
+            if message and message.conversation_id and message.status in ("delivered", "failed"):
+                try:
+                    from app.services.campaigns.campaign_sms_stats import (
+                        update_campaign_sms_delivery,
+                    )
+
+                    await update_campaign_sms_delivery(
+                        db=db,
+                        conversation_id=message.conversation_id,
+                        delivered=(message.status == "delivered"),
+                        log=log,
+                    )
+                except Exception as e:
+                    log.exception("campaign_delivery_stats_failed", error=str(e))
 
         finally:
             await sms_service.close()
@@ -635,6 +662,7 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:  # noqa
                     message_status=classification.message_status,
                     duration_secs=duration_secs,
                     log=log,
+                    booking_outcome=message.booking_outcome,
                 )
             except Exception as e:
                 log.exception("campaign_call_stats_update_failed", error=str(e))

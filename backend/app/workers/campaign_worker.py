@@ -168,6 +168,7 @@ class CampaignWorker(BaseCampaignWorker):
                 campaign_contact.status = CampaignContactStatus.OPTED_OUT.value
                 campaign_contact.opted_out = True
                 campaign_contact.opted_out_at = datetime.now(UTC)
+                campaign.contacts_opted_out += 1
                 log.info("Contact on global opt-out list", contact_id=contact.id)
                 continue
 
@@ -347,6 +348,7 @@ class CampaignWorker(BaseCampaignWorker):
                 campaign_contact.status = CampaignContactStatus.OPTED_OUT.value
                 campaign_contact.opted_out = True
                 campaign_contact.opted_out_at = datetime.now(UTC)
+                campaign.contacts_opted_out += 1
                 continue
 
             # Get next available number from pool

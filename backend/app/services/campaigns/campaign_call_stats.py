@@ -21,6 +21,7 @@ async def update_campaign_call_stats(
     message_status: str,
     duration_secs: int,
     log: structlog.BoundLogger,
+    booking_outcome: str | None = None,
 ) -> None:
     """Update campaign stats for a completed or failed call.
 
@@ -31,6 +32,7 @@ async def update_campaign_call_stats(
         message_status: Message status (completed or failed)
         duration_secs: Call duration in seconds
         log: Logger instance
+        booking_outcome: Booking outcome (e.g. "success" if appointment booked)
     """
     # Find campaign contact linked to this call
     cc_result = await db.execute(
@@ -77,5 +79,8 @@ async def update_campaign_call_stats(
             campaign_contact_id=str(campaign_contact.id),
             outcome=call_outcome,
         )
+
+    if booking_outcome == "success":
+        campaign.appointments_booked += 1
 
     await db.commit()

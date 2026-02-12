@@ -395,6 +395,29 @@ async def analyze_and_qualify_contact(
             contact.status = "qualified"
 
     await db.commit()
+
+    # Propagate qualification to campaign contacts
+    if is_qualified and not was_qualified:
+        try:
+            from app.models.campaign import CampaignContact
+
+            cc_result = await db.execute(
+                select(CampaignContact)
+                .options(selectinload(CampaignContact.campaign))
+                .where(
+                    CampaignContact.contact_id == contact_id,
+                    CampaignContact.is_qualified.is_(False),
+                )
+            )
+            for cc in cc_result.scalars().all():
+                if cc.campaign and cc.campaign.status in ("running", "completed"):
+                    cc.is_qualified = True
+                    cc.qualified_at = datetime.now(UTC)
+                    cc.campaign.contacts_qualified += 1
+            await db.commit()
+        except Exception as e:
+            log.exception("campaign_qualification_propagation_failed", error=str(e))
+
     await db.refresh(contact)
 
     log.info(
