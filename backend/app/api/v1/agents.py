@@ -42,6 +42,8 @@ class AgentCreate(BaseModel):
     ivr_silence_duration_ms: int = 3000
     ivr_post_dtmf_cooldown_ms: int = 3000
     ivr_menu_buffer_silence_ms: int = 2000
+    # Call recording
+    enable_recording: bool = True
     # Appointment reminder settings
     reminder_enabled: bool = True
     reminder_minutes_before: int = 30
@@ -74,6 +76,8 @@ class AgentUpdate(BaseModel):
     ivr_silence_duration_ms: int | None = None
     ivr_post_dtmf_cooldown_ms: int | None = None
     ivr_menu_buffer_silence_ms: int | None = None
+    # Call recording
+    enable_recording: bool | None = None
     # Appointment reminder settings
     reminder_enabled: bool | None = None
     reminder_minutes_before: int | None = None
@@ -108,6 +112,8 @@ class AgentResponse(BaseModel):
     ivr_silence_duration_ms: int
     ivr_post_dtmf_cooldown_ms: int
     ivr_menu_buffer_silence_ms: int
+    # Call recording
+    enable_recording: bool
     # Appointment reminder settings
     reminder_enabled: bool
     reminder_minutes_before: int
@@ -188,6 +194,7 @@ async def create_agent(
         ivr_silence_duration_ms=agent_in.ivr_silence_duration_ms,
         ivr_post_dtmf_cooldown_ms=agent_in.ivr_post_dtmf_cooldown_ms,
         ivr_menu_buffer_silence_ms=agent_in.ivr_menu_buffer_silence_ms,
+        enable_recording=agent_in.enable_recording,
         reminder_enabled=agent_in.reminder_enabled,
         reminder_minutes_before=agent_in.reminder_minutes_before,
         auto_evaluate=agent_in.auto_evaluate,

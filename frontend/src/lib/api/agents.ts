@@ -26,6 +26,7 @@ export interface AgentResponse {
   ivr_silence_duration_ms: number;
   ivr_post_dtmf_cooldown_ms: number;
   ivr_menu_buffer_silence_ms: number;
+  enable_recording: boolean;
   reminder_enabled: boolean;
   reminder_minutes_before: number;
   auto_evaluate: boolean;
@@ -68,6 +69,7 @@ export interface CreateAgentRequest {
   ivr_silence_duration_ms?: number;
   ivr_post_dtmf_cooldown_ms?: number;
   ivr_menu_buffer_silence_ms?: number;
+  enable_recording?: boolean;
   reminder_enabled?: boolean;
   reminder_minutes_before?: number;
   auto_evaluate?: boolean;
@@ -95,6 +97,7 @@ export interface UpdateAgentRequest {
   ivr_silence_duration_ms?: number;
   ivr_post_dtmf_cooldown_ms?: number;
   ivr_menu_buffer_silence_ms?: number;
+  enable_recording?: boolean;
   reminder_enabled?: boolean;
   reminder_minutes_before?: number;
   auto_evaluate?: boolean;

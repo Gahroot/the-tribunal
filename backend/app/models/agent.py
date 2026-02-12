@@ -99,6 +99,9 @@ class Agent(Base):
     ivr_post_dtmf_cooldown_ms: Mapped[int] = mapped_column(Integer, default=3000, nullable=False)
     ivr_menu_buffer_silence_ms: Mapped[int] = mapped_column(Integer, default=2000, nullable=False)
 
+    # Call recording
+    enable_recording: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
     # Appointment reminder settings
     reminder_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     reminder_minutes_before: Mapped[int] = mapped_column(Integer, default=30, nullable=False)

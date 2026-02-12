@@ -396,7 +396,7 @@ async def handle_call_initiated(payload: dict[Any, Any], log: Any) -> None:
         )
 
 
-async def handle_call_answered(payload: dict[Any, Any], log: Any) -> None:
+async def handle_call_answered(payload: dict[Any, Any], log: Any) -> None:  # noqa: PLR0912, PLR0915
     """Handle call answered event."""
     from app.models.agent import Agent
     from app.models.conversation import Conversation, Message
@@ -473,6 +473,14 @@ async def handle_call_answered(payload: dict[Any, Any], log: Any) -> None:
                     log.info("audio_streaming_started", call_control_id=call_control_id)
                 else:
                     log.error("failed_to_start_audio_streaming", call_control_id=call_control_id)
+
+                # Start recording if agent has it enabled
+                if agent.enable_recording:
+                    recorded = await voice_service.start_recording(call_control_id)
+                    if recorded:
+                        log.info("call_recording_started", call_control_id=call_control_id)
+                    else:
+                        log.warning("call_recording_failed", call_control_id=call_control_id)
             finally:
                 await voice_service.close()
 
@@ -746,6 +754,14 @@ async def auto_answer_call_if_agent_assigned(
                 log.info("audio_streaming_started", call_control_id=call_control_id)
             else:
                 log.error("failed_to_start_audio_streaming", call_control_id=call_control_id)
+
+            # Start recording if agent has it enabled
+            if resolved.agent.enable_recording:
+                recorded = await voice_service.start_recording(call_control_id)
+                if recorded:
+                    log.info("call_recording_started", call_control_id=call_control_id)
+                else:
+                    log.warning("call_recording_failed", call_control_id=call_control_id)
 
         finally:
             await voice_service.close()

@@ -501,6 +501,64 @@ class TelnyxVoiceService:
             )
             return False
 
+    async def start_recording(
+        self,
+        call_control_id: str,
+        channels: str = "dual",
+        format: str = "mp3",
+    ) -> bool:
+        """Start recording an active call.
+
+        Args:
+            call_control_id: Telnyx call control ID
+            channels: Recording channels - "single" or "dual" (separate tracks)
+            format: Recording format - "mp3" or "wav"
+
+        Returns:
+            True if successful, False otherwise
+        """
+        self.logger.info(
+            "starting_call_recording",
+            call_control_id=call_control_id,
+            channels=channels,
+            format=format,
+        )
+
+        try:
+            payload: dict[str, Any] = {
+                "format": format,
+                "channels": channels,
+            }
+
+            response = await self.client.post(
+                f"/calls/{call_control_id}/actions/record_start",
+                json=payload,
+            )
+            response.raise_for_status()
+
+            self.logger.info(
+                "call_recording_started",
+                call_control_id=call_control_id,
+            )
+            return True
+
+        except httpx.HTTPStatusError as e:
+            self.logger.error(
+                "start_recording_http_error",
+                call_control_id=call_control_id,
+                status_code=e.response.status_code,
+                response_text=e.response.text[:500] if e.response.text else "empty",
+                error=str(e),
+            )
+            return False
+        except Exception as e:
+            self.logger.exception(
+                "start_recording_failed",
+                call_control_id=call_control_id,
+                error=str(e),
+            )
+            return False
+
     async def send_dtmf(
         self,
         call_control_id: str,
