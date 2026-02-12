@@ -15,7 +15,7 @@ class BusinessSearchRequest(BaseModel):
     max_results: int = Field(
         default=20,
         ge=1,
-        le=60,
+        le=100,
         description="Maximum number of results to return",
     )
 

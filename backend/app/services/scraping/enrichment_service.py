@@ -10,7 +10,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.services.scraping.ai_content_analyzer import AIContentAnalyzerService
-from app.services.scraping.lead_scorer import compute_lead_score
+from app.services.scraping.lead_scorer import compute_lead_score_breakdown
 from app.services.scraping.website_scraper import WebsiteScraperError, WebsiteScraperService
 
 
@@ -41,6 +41,9 @@ async def enrich_contact_data(
             "business_intel": google_places_data,
             "linkedin_url": None,
             "lead_score": 0,
+            "revenue_tier": None,
+            "decision_maker_name": None,
+            "decision_maker_title": None,
             "enrichment_status": "failed",
             "error": "No website URL provided",
         }
@@ -77,13 +80,21 @@ async def enrich_contact_data(
             if website_summary:
                 business_intel["website_summary"] = website_summary.model_dump()
 
-        # Compute lead score
-        lead_score = compute_lead_score(business_intel)
+        # Compute lead score with breakdown
+        score_data = compute_lead_score_breakdown(business_intel)
+        lead_score = score_data["score"]
+
+        # Store revenue tier in business_intel for later use
+        business_intel["revenue_tier"] = score_data["revenue_tier"]
+        business_intel["score_breakdown"] = score_data["breakdown"]
 
         return {
             "business_intel": business_intel,
             "linkedin_url": social_links.get("linkedin"),
             "lead_score": lead_score,
+            "revenue_tier": score_data["revenue_tier"],
+            "decision_maker_name": score_data.get("decision_maker_name"),
+            "decision_maker_title": score_data.get("decision_maker_title"),
             "enrichment_status": "enriched",
             "error": None,
         }
@@ -98,6 +109,9 @@ async def enrich_contact_data(
             "business_intel": business_intel,
             "linkedin_url": None,
             "lead_score": 0,
+            "revenue_tier": None,
+            "decision_maker_name": None,
+            "decision_maker_title": None,
             "enrichment_status": "failed",
             "error": str(e),
         }
@@ -112,6 +126,9 @@ async def enrich_contact_data(
             "business_intel": business_intel,
             "linkedin_url": None,
             "lead_score": 0,
+            "revenue_tier": None,
+            "decision_maker_name": None,
+            "decision_maker_title": None,
             "enrichment_status": "failed",
             "error": f"Unexpected error: {e}",
         }

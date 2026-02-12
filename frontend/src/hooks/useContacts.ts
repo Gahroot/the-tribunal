@@ -2,12 +2,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   contactsApi,
   type ContactsListParams,
+  type ContactIdsParams,
   type CreateContactRequest,
   type UpdateContactRequest,
   type ContactsListResponse,
 } from "@/lib/api/contacts";
 import { createResourceHooks } from "@/lib/api/create-resource-hooks";
-import type { Contact } from "@/types";
+import type { Contact, ContactStatus } from "@/types";
 import type { ApiClient } from "@/lib/api/create-api-client";
 
 const {
@@ -88,6 +89,33 @@ export function useContactTimeline(workspaceId: string, contactId: number, limit
     refetchInterval: 3000,
     // Don't poll when the tab is not active
     refetchIntervalInBackground: false,
+  });
+}
+
+/**
+ * Bulk update contact status
+ */
+export function useBulkUpdateStatus(workspaceId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (variables: { ids: number[]; status: ContactStatus }) =>
+      contactsApi.bulkUpdateStatus(workspaceId, variables.ids, variables.status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["contacts", workspaceId] });
+      queryClient.invalidateQueries({ queryKey: ["all-contacts", workspaceId] });
+    },
+  });
+}
+
+/**
+ * Fetch all contact IDs matching current filters (for select-all)
+ */
+export function useContactIds(workspaceId: string, params: ContactIdsParams, enabled: boolean) {
+  return useQuery({
+    queryKey: ["contact-ids", workspaceId, params],
+    queryFn: () => contactsApi.listIds(workspaceId, params),
+    enabled: !!workspaceId && enabled,
   });
 }
 

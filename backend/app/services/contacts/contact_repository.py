@@ -4,7 +4,7 @@ import uuid
 from typing import Any
 
 import structlog
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -310,6 +310,55 @@ async def bulk_delete_contacts(
     deleted = len(contacts)
 
     return deleted, errors
+
+
+async def bulk_update_status(
+    contact_ids: list[int],
+    workspace_id: uuid.UUID,
+    new_status: str,
+    db: AsyncSession,
+) -> tuple[int, list[str]]:
+    """Update the status of multiple contacts at once.
+
+    Args:
+        contact_ids: List of contact IDs to update
+        workspace_id: The workspace UUID
+        new_status: The new status to set
+        db: Database session
+
+    Returns:
+        Tuple of (updated_count, list_of_errors)
+    """
+    errors: list[str] = []
+
+    # Find all contacts that exist in this workspace
+    result = await db.execute(
+        select(Contact.id).where(
+            Contact.id.in_(contact_ids),
+            Contact.workspace_id == workspace_id,
+        )
+    )
+    found_ids = {row[0] for row in result.all()}
+
+    # Track missing contact IDs
+    for contact_id in contact_ids:
+        if contact_id not in found_ids:
+            errors.append(f"Contact {contact_id} not found")
+
+    # Bulk update all found contacts in one statement
+    if found_ids:
+        await db.execute(
+            update(Contact)
+            .where(
+                Contact.id.in_(found_ids),
+                Contact.workspace_id == workspace_id,
+            )
+            .values(status=new_status)
+        )
+
+    await db.commit()
+
+    return len(found_ids), errors
 
 
 async def get_contact_timeline(

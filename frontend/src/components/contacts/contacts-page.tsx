@@ -3,7 +3,11 @@
 import * as React from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Plus, User, Phone, Mail, Users, Upload, Trash2, X, CheckSquare, MapPin, ArrowUpDown, Tags } from "lucide-react";
+import { toast } from "sonner";
+import {
+  Search, Plus, User, Phone, Mail, Users, Upload, Trash2, X,
+  CheckSquare, Square, MapPin, ArrowUpDown, Tags, RefreshCw,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -18,6 +22,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,11 +46,11 @@ import { ScrapeLeadsDialog } from "@/components/contacts/scrape-leads-dialog";
 import { BulkTagDialog } from "@/components/contacts/bulk-tag-dialog";
 import { TagBadge } from "@/components/tags/tag-badge";
 import { ContactFilterBuilder } from "@/components/filters/contact-filter-builder";
-import { useBulkDeleteContacts } from "@/hooks/useContacts";
+import { useBulkDeleteContacts, useBulkUpdateStatus, useContactIds } from "@/hooks/useContacts";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { contactStatusColors, contactStatusLabels } from "@/lib/status-colors";
+import { contactStatusColors, contactStatusLabels, contactStatusDotColors } from "@/lib/status-colors";
 import type { Contact, ContactStatus } from "@/types";
-import type { ContactSortBy } from "@/lib/api/contacts";
+import type { ContactSortBy, ContactIdsParams } from "@/lib/api/contacts";
 
 function getInitials(contact: Contact): string {
   const first = contact.first_name?.[0] ?? "";
@@ -81,7 +91,7 @@ function ContactCardSkeleton() {
 interface ContactCardProps {
   contact: Contact;
   isSelected: boolean;
-  onSelectChange: (checked: boolean) => void;
+  onSelectChange: (checked: boolean, shiftKey: boolean) => void;
   isSelectionMode: boolean;
 }
 
@@ -92,7 +102,7 @@ function ContactCard({ contact, isSelected, onSelectChange, isSelectionMode }: C
   const handleCheckboxClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    onSelectChange(!isSelected);
+    onSelectChange(!isSelected, e.shiftKey);
   };
 
   const cardContent = (
@@ -106,8 +116,8 @@ function ContactCard({ contact, isSelected, onSelectChange, isSelectionMode }: C
         "flex flex-col p-4 rounded-xl border bg-card",
         "hover:bg-accent/50 hover:border-accent transition-all cursor-pointer",
         "group",
-        isSelected && "ring-2 ring-primary border-primary",
-        hasUnread && "border-l-4 border-l-blue-500"
+        isSelected && "ring-2 ring-primary border-primary bg-primary/5",
+        hasUnread && !isSelected && "border-l-4 border-l-blue-500"
       )}
     >
       <div className="flex items-start gap-3">
@@ -115,7 +125,7 @@ function ContactCard({ contact, isSelected, onSelectChange, isSelectionMode }: C
           <div className="shrink-0 pt-1" onClick={handleCheckboxClick}>
             <Checkbox
               checked={isSelected}
-              onCheckedChange={(checked) => onSelectChange(checked === true)}
+              onCheckedChange={(checked) => onSelectChange(checked === true, false)}
             />
           </div>
         )}
@@ -213,7 +223,7 @@ function ContactCard({ contact, isSelected, onSelectChange, isSelectionMode }: C
 
   if (isSelectionMode) {
     return (
-      <div onClick={() => onSelectChange(!isSelected)}>
+      <div onClick={(e) => onSelectChange(!isSelected, e.shiftKey)}>
         {cardContent}
       </div>
     );
@@ -252,15 +262,21 @@ function StatusFilter({ selectedStatus, onStatusChange, counts }: StatusFilterPr
   );
 }
 
+const ALL_STATUSES: ContactStatus[] = ["new", "contacted", "qualified", "converted", "lost"];
+
 export function ContactsPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = React.useState(false);
   const [isScrapeDialogOpen, setIsScrapeDialogOpen] = React.useState(false);
-  const [selectedIds, setSelectedIds] = React.useState<number[]>([]);
+  const [isSelectionMode, setIsSelectionMode] = React.useState(false);
+  const [selectedIds, setSelectedIds] = React.useState<Set<number>>(new Set());
+  const [selectAllMatchingIds, setSelectAllMatchingIds] = React.useState<Set<number> | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [isBulkTagDialogOpen, setIsBulkTagDialogOpen] = React.useState(false);
+  const [lastClickedIndex, setLastClickedIndex] = React.useState<number | null>(null);
   const workspaceId = useWorkspaceId();
   const bulkDeleteMutation = useBulkDeleteContacts(workspaceId ?? "");
+  const bulkUpdateStatusMutation = useBulkUpdateStatus(workspaceId ?? "");
   const {
     contacts,
     searchQuery,
@@ -275,36 +291,147 @@ export function ContactsPage() {
     setFilters,
   } = useContactStore();
 
-  const isSelectionMode = selectedIds.length > 0;
+  // Build params for the /ids endpoint (for "select all matching")
+  const idsParams = React.useMemo<ContactIdsParams>(() => {
+    const params: ContactIdsParams = {};
+    if (searchQuery.trim()) params.search = searchQuery.trim();
+    if (statusFilter) params.status = statusFilter as ContactStatus;
+    if (filters) params.filters = JSON.stringify(filters);
+    return params;
+  }, [searchQuery, statusFilter, filters]);
 
-  const handleSelectContact = (contactId: number, checked: boolean) => {
-    setSelectedIds((prev) =>
-      checked ? [...prev, contactId] : prev.filter((id) => id !== contactId)
-    );
+  // Effective selected IDs: either the explicit set or the "select all matching" set
+  const effectiveSelectedIds = selectAllMatchingIds ?? selectedIds;
+  const selectedCount = effectiveSelectedIds.size;
+  const selectedArray = React.useMemo(() => Array.from(effectiveSelectedIds), [effectiveSelectedIds]);
+
+  const handleToggleSelectionMode = () => {
+    if (isSelectionMode) {
+      // Exiting selection mode — clear everything
+      setSelectedIds(new Set());
+      setSelectAllMatchingIds(null);
+      setLastClickedIndex(null);
+    }
+    setIsSelectionMode(!isSelectionMode);
   };
 
-  const handleSelectAll = () => {
-    if (selectedIds.length === filteredContacts.length) {
-      setSelectedIds([]);
+  const handleSelectContact = (contactId: number, checked: boolean, shiftKey: boolean) => {
+    // If we were in "select all matching" mode, drop back to manual selection
+    if (selectAllMatchingIds) {
+      setSelectAllMatchingIds(null);
+      // Copy the "all matching" set as the starting point for manual editing
+      const next = new Set(selectAllMatchingIds);
+      if (checked) next.add(contactId);
+      else next.delete(contactId);
+      setSelectedIds(next);
+
+      const idx = filteredContacts.findIndex((c) => c.id === contactId);
+      if (idx !== -1) setLastClickedIndex(idx);
+      return;
+    }
+
+    // Shift+click range selection
+    if (shiftKey && lastClickedIndex !== null) {
+      const currentIndex = filteredContacts.findIndex((c) => c.id === contactId);
+      if (currentIndex !== -1) {
+        const start = Math.min(lastClickedIndex, currentIndex);
+        const end = Math.max(lastClickedIndex, currentIndex);
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          for (let i = start; i <= end; i++) {
+            next.add(filteredContacts[i].id);
+          }
+          return next;
+        });
+        setLastClickedIndex(currentIndex);
+        return;
+      }
+    }
+
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(contactId);
+      else next.delete(contactId);
+      return next;
+    });
+
+    const idx = filteredContacts.findIndex((c) => c.id === contactId);
+    if (idx !== -1) setLastClickedIndex(idx);
+  };
+
+  const handleSelectAllVisible = () => {
+    setSelectAllMatchingIds(null);
+    const allVisibleIds = new Set(filteredContacts.map((c) => c.id));
+    if (filteredContacts.every((c) => selectedIds.has(c.id))) {
+      // Deselect all visible
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        allVisibleIds.forEach((id) => next.delete(id));
+        return next;
+      });
     } else {
-      setSelectedIds(filteredContacts.map((c) => c.id));
+      // Select all visible
+      setSelectedIds((prev) => new Set([...prev, ...allVisibleIds]));
     }
   };
 
+  // Fetch all matching IDs on demand
+  const [fetchAllIds, setFetchAllIds] = React.useState(false);
+  const { data: allIdsData, isFetching: isFetchingAllIds } = useContactIds(
+    workspaceId ?? "",
+    idsParams,
+    fetchAllIds,
+  );
+
+  const handleSelectAllMatching = () => {
+    if (allIdsData) {
+      setSelectAllMatchingIds(new Set(allIdsData.ids));
+      setSelectedIds(new Set());
+      setFetchAllIds(false);
+    } else {
+      setFetchAllIds(true);
+    }
+  };
+
+  // When the IDs arrive after fetchAllIds, set them
+  React.useEffect(() => {
+    if (fetchAllIds && allIdsData) {
+      setSelectAllMatchingIds(new Set(allIdsData.ids));
+      setSelectedIds(new Set());
+      setFetchAllIds(false);
+    }
+  }, [fetchAllIds, allIdsData]);
+
   const handleClearSelection = () => {
-    setSelectedIds([]);
+    setSelectedIds(new Set());
+    setSelectAllMatchingIds(null);
+    setLastClickedIndex(null);
   };
 
   const handleBulkDelete = async () => {
-    if (!workspaceId || selectedIds.length === 0) return;
-
+    if (!workspaceId || selectedCount === 0) return;
     try {
-      await bulkDeleteMutation.mutateAsync(selectedIds);
-      setContacts(contacts.filter((c) => !selectedIds.includes(c.id)));
-      setSelectedIds([]);
+      const result = await bulkDeleteMutation.mutateAsync(selectedArray);
+      setContacts(contacts.filter((c) => !effectiveSelectedIds.has(c.id)));
+      handleClearSelection();
       setIsDeleteDialogOpen(false);
-    } catch (error) {
-      console.error("Failed to delete contacts:", error);
+      toast.success(`Deleted ${result.deleted} contact${result.deleted !== 1 ? "s" : ""}`);
+    } catch {
+      toast.error("Failed to delete contacts");
+    }
+  };
+
+  const handleBulkStatusChange = async (status: ContactStatus) => {
+    if (!workspaceId || selectedCount === 0) return;
+    try {
+      const result = await bulkUpdateStatusMutation.mutateAsync({ ids: selectedArray, status });
+      // Update local state
+      setContacts(contacts.map((c) =>
+        effectiveSelectedIds.has(c.id) ? { ...c, status } : c
+      ));
+      toast.success(`Updated ${result.updated} contact${result.updated !== 1 ? "s" : ""} to ${contactStatusLabels[status]}`);
+    } catch {
+      toast.error("Failed to update status");
     }
   };
 
@@ -361,6 +488,12 @@ export function ContactsPage() {
     return filtered;
   }, [contacts, searchQuery, statusFilter]);
 
+  const allVisibleSelected = filteredContacts.length > 0 && filteredContacts.every((c) => effectiveSelectedIds.has(c.id));
+  const someVisibleSelected = filteredContacts.some((c) => effectiveSelectedIds.has(c.id));
+  const hasActiveFilters = !!(searchQuery.trim() || statusFilter || filters);
+  // Show "select all matching" when all visible are selected and there might be more matching the filters
+  const showSelectAllMatching = allVisibleSelected && !selectAllMatchingIds && contacts.length > 0;
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
@@ -374,60 +507,150 @@ export function ContactsPage() {
             </Badge>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" className="gap-2" onClick={() => setIsScrapeDialogOpen(true)}>
-              <MapPin className="h-4 w-4" />
-              Find Leads
-            </Button>
-            <Button variant="outline" className="gap-2" onClick={() => setIsImportDialogOpen(true)}>
-              <Upload className="h-4 w-4" />
-              Import CSV
-            </Button>
-            <Button className="gap-2" onClick={() => setIsCreateDialogOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Add Contact
-            </Button>
+            {!isSelectionMode && (
+              <>
+                <Button variant="outline" className="gap-2" onClick={() => setIsScrapeDialogOpen(true)}>
+                  <MapPin className="h-4 w-4" />
+                  Find Leads
+                </Button>
+                <Button variant="outline" className="gap-2" onClick={() => setIsImportDialogOpen(true)}>
+                  <Upload className="h-4 w-4" />
+                  Import CSV
+                </Button>
+                <Button className="gap-2" onClick={() => setIsCreateDialogOpen(true)}>
+                  <Plus className="h-4 w-4" />
+                  Add Contact
+                </Button>
+              </>
+            )}
+            {filteredContacts.length > 0 && (
+              <Button
+                variant={isSelectionMode ? "default" : "outline"}
+                className="gap-2"
+                onClick={handleToggleSelectionMode}
+              >
+                {isSelectionMode ? <X className="h-4 w-4" /> : <CheckSquare className="h-4 w-4" />}
+                {isSelectionMode ? "Done" : "Select"}
+              </Button>
+            )}
           </div>
         </div>
 
         {/* Bulk Actions Bar */}
         {isSelectionMode && (
-          <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg border">
-            <Checkbox
-              checked={selectedIds.length === filteredContacts.length && filteredContacts.length > 0}
-              onCheckedChange={handleSelectAll}
-            />
-            <span className="text-sm font-medium">
-              {selectedIds.length} selected
-            </span>
-            <div className="flex-1" />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleClearSelection}
-              className="gap-2"
-            >
-              <X className="h-4 w-4" />
-              Clear
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsBulkTagDialogOpen(true)}
-              className="gap-2"
-            >
-              <Tags className="h-4 w-4" />
-              Tag
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => setIsDeleteDialogOpen(true)}
-              className="gap-2"
-              disabled={bulkDeleteMutation.isPending}
-            >
-              <Trash2 className="h-4 w-4" />
-              Delete ({selectedIds.length})
-            </Button>
+          <div className="space-y-2">
+            <div className="flex items-center gap-3 p-3 bg-primary/5 rounded-lg border border-primary/20">
+              <Checkbox
+                checked={allVisibleSelected ? true : someVisibleSelected ? "indeterminate" : false}
+                onCheckedChange={handleSelectAllVisible}
+              />
+              <span className="text-sm font-medium">
+                {selectedCount === 0
+                  ? "Select contacts"
+                  : selectAllMatchingIds
+                    ? `All ${selectedCount} matching contacts selected`
+                    : `${selectedCount} selected`}
+              </span>
+              <div className="flex-1" />
+              {selectedCount > 0 && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleClearSelection}
+                    className="gap-1.5 text-muted-foreground"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Clear
+                  </Button>
+                  <div className="h-4 w-px bg-border" />
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        disabled={bulkUpdateStatusMutation.isPending}
+                      >
+                        {bulkUpdateStatusMutation.isPending
+                          ? <RefreshCw className="h-4 w-4 animate-spin" />
+                          : <Square className="h-4 w-4" />}
+                        Status
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {ALL_STATUSES.map((status) => (
+                        <DropdownMenuItem
+                          key={status}
+                          onClick={() => handleBulkStatusChange(status)}
+                        >
+                          <span className={cn("h-2 w-2 rounded-full mr-2", contactStatusDotColors[status])} />
+                          {contactStatusLabels[status]}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsBulkTagDialogOpen(true)}
+                    className="gap-2"
+                  >
+                    <Tags className="h-4 w-4" />
+                    Tag
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setIsDeleteDialogOpen(true)}
+                    className="gap-2"
+                    disabled={bulkDeleteMutation.isPending}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete
+                  </Button>
+                </>
+              )}
+            </div>
+
+            {/* "Select all matching" banner */}
+            {showSelectAllMatching && (
+              <div className="flex items-center justify-center gap-2 py-2 px-3 bg-muted/50 rounded-lg border text-sm">
+                <span className="text-muted-foreground">
+                  All {filteredContacts.length} contacts on this page are selected.
+                </span>
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-primary font-medium"
+                  onClick={handleSelectAllMatching}
+                  disabled={isFetchingAllIds}
+                >
+                  {isFetchingAllIds
+                    ? "Loading..."
+                    : hasActiveFilters
+                      ? "Select all contacts matching current filters"
+                      : `Select all ${contacts.length} contacts`}
+                </Button>
+              </div>
+            )}
+
+            {/* "All matching selected" banner */}
+            {selectAllMatchingIds && (
+              <div className="flex items-center justify-center gap-2 py-2 px-3 bg-primary/5 rounded-lg border border-primary/20 text-sm">
+                <span className="font-medium text-primary">
+                  All {selectAllMatchingIds.size} matching contacts are selected.
+                </span>
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0"
+                  onClick={handleClearSelection}
+                >
+                  Clear selection
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
@@ -453,17 +676,6 @@ export function ContactsPage() {
               <SelectItem value="last_conversation">Recent Activity</SelectItem>
             </SelectContent>
           </Select>
-          {!isSelectionMode && filteredContacts.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setSelectedIds([filteredContacts[0].id])}
-              className="gap-2"
-            >
-              <CheckSquare className="h-4 w-4" />
-              Select
-            </Button>
-          )}
         </div>
 
         {/* Advanced Filters */}
@@ -517,8 +729,8 @@ export function ContactsPage() {
                   <ContactCard
                     key={contact.id}
                     contact={contact}
-                    isSelected={selectedIds.includes(contact.id)}
-                    onSelectChange={(checked) => handleSelectContact(contact.id, checked)}
+                    isSelected={effectiveSelectedIds.has(contact.id)}
+                    onSelectChange={(checked, shiftKey) => handleSelectContact(contact.id, checked, shiftKey)}
                     isSelectionMode={isSelectionMode}
                   />
                 ))}
@@ -547,7 +759,7 @@ export function ContactsPage() {
         <BulkTagDialog
           open={isBulkTagDialogOpen}
           onOpenChange={setIsBulkTagDialogOpen}
-          selectedContactIds={selectedIds}
+          selectedContactIds={selectedArray}
           workspaceId={workspaceId}
         />
       )}
@@ -555,9 +767,9 @@ export function ContactsPage() {
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {selectedIds.length} contact{selectedIds.length > 1 ? "s" : ""}?</AlertDialogTitle>
+            <AlertDialogTitle>Delete {selectedCount} contact{selectedCount !== 1 ? "s" : ""}?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the selected contact{selectedIds.length > 1 ? "s" : ""} and all associated data.
+              This action cannot be undone. This will permanently delete the selected contact{selectedCount !== 1 ? "s" : ""} and all associated data.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

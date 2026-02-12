@@ -107,8 +107,9 @@ class GooglePlacesService:
                 "maxResultCount": min(max_results, 20),  # API limit per request
             }
 
-            # Field mask to request specific fields
+            # Field mask to request specific fields (nextPageToken required for pagination)
             field_mask = ",".join([
+                "nextPageToken",
                 "places.id",
                 "places.displayName",
                 "places.formattedAddress",

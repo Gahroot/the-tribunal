@@ -13,6 +13,8 @@ from app.api.deps import DB, CurrentUser, get_workspace
 from app.core.config import settings
 from app.models.contact import Contact
 from app.schemas.contact import (
+    BulkStatusUpdateRequest,
+    BulkStatusUpdateResponse,
     ContactCreate,
     ContactListResponse,
     ContactResponse,
@@ -295,6 +297,25 @@ async def bulk_delete_contacts(
     result = await service.bulk_delete_contacts(request.ids, workspace.id)
 
     return BulkDeleteResponse(**result)
+
+
+@router.post("/bulk-update-status", response_model=BulkStatusUpdateResponse)
+async def bulk_update_status(
+    workspace_id: uuid.UUID,
+    request: BulkStatusUpdateRequest,
+    current_user: CurrentUser,
+    db: DB,
+) -> BulkStatusUpdateResponse:
+    """Update the status of multiple contacts at once."""
+    # Verify workspace access
+    workspace = await get_workspace(workspace_id, current_user, db)
+
+    service = ContactService(db)
+    result = await service.bulk_update_status(
+        request.ids, workspace.id, request.status
+    )
+
+    return BulkStatusUpdateResponse(**result)
 
 
 @router.post("/{contact_id}/messages", response_model=MessageResponse)

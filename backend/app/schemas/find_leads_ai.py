@@ -14,6 +14,23 @@ class AIImportLeadsRequest(BaseModel):
     default_status: str = Field(default="new", description="Default contact status")
     add_tags: list[str] | None = Field(default=None, description="Tags to add to imported contacts")
     enable_enrichment: bool = Field(default=True, description="Enable website enrichment")
+    min_lead_score: int = Field(
+        default=80, ge=0, le=200, description="Minimum lead score threshold for import"
+    )
+
+
+class LeadImportDetail(BaseModel):
+    """Per-lead detail in import response."""
+
+    name: str
+    status: str = Field(
+        description="imported | rejected_low_score | enrichment_failed"
+        " | skipped_duplicate | skipped_no_phone"
+    )
+    lead_score: int | None = None
+    revenue_tier: str | None = None
+    decision_maker_name: str | None = None
+    decision_maker_title: str | None = None
 
 
 class AIImportLeadsResponse(BaseModel):
@@ -31,6 +48,9 @@ class AIImportLeadsResponse(BaseModel):
         default=0, description="Always 0 (enrichment is now synchronous)"
     )
     errors: list[str] = Field(default_factory=list, description="Error messages")
+    lead_details: list[LeadImportDetail] = Field(
+        default_factory=list, description="Per-lead enrichment details"
+    )
 
 
 class SocialLinks(BaseModel):
@@ -65,6 +85,8 @@ class WebsiteSummary(BaseModel):
     revenue_signals: list[str] = Field(default_factory=list)
     has_financing: bool = False
     certifications: list[str] = Field(default_factory=list)
+    decision_maker_name: str | None = None
+    decision_maker_title: str | None = None
 
 
 class GooglePlacesData(BaseModel):

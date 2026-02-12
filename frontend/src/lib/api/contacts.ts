@@ -83,6 +83,17 @@ export interface BulkDeleteResponse {
   errors: string[];
 }
 
+export interface BulkUpdateStatusRequest {
+  ids: number[];
+  status: ContactStatus;
+}
+
+export interface BulkUpdateStatusResponse {
+  updated: number;
+  failed: number;
+  errors: string[];
+}
+
 export interface ContactIdsResponse {
   ids: number[];
   total: number;
@@ -124,6 +135,14 @@ export const contactsApi = {
     const response = await api.post<BulkDeleteResponse>(
       `/api/v1/workspaces/${workspaceId}/contacts/bulk-delete`,
       { ids }
+    );
+    return response.data;
+  },
+
+  bulkUpdateStatus: async (workspaceId: string, ids: number[], status: ContactStatus): Promise<BulkUpdateStatusResponse> => {
+    const response = await api.post<BulkUpdateStatusResponse>(
+      `/api/v1/workspaces/${workspaceId}/contacts/bulk-update-status`,
+      { ids, status }
     );
     return response.data;
   },

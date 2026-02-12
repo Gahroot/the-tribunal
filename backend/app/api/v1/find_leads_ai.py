@@ -1,5 +1,6 @@
 """Find Leads AI endpoints with synchronous website enrichment."""
 
+import asyncio
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -13,6 +14,7 @@ from app.models.contact import Contact
 from app.schemas.find_leads_ai import (
     AIImportLeadsRequest,
     AIImportLeadsResponse,
+    LeadImportDetail,
 )
 from app.schemas.scraping import (
     BusinessResult,
@@ -24,9 +26,6 @@ from app.services.scraping.google_places import GooglePlacesError, GooglePlacesS
 from app.services.telephony.telnyx import normalize_phone_number
 
 router = APIRouter()
-
-# Lead score threshold for import (only save contacts with score >= 80)
-LEAD_SCORE_THRESHOLD = 80
 
 
 @router.post("/search", response_model=BusinessSearchResponse)
@@ -95,24 +94,20 @@ def _format_business_notes(lead: BusinessResult) -> str:
 
 
 @router.post("/import", response_model=AIImportLeadsResponse)
-async def import_leads_ai(
+async def import_leads_ai(  # noqa: PLR0912, PLR0915
     workspace_id: uuid.UUID,
     request: AIImportLeadsRequest,
     current_user: CurrentUser,
     db: DB,
 ) -> AIImportLeadsResponse:
-    """Import selected leads as contacts with synchronous AI enrichment.
+    """Import selected leads as contacts with parallel AI enrichment.
 
     Enrichment happens synchronously during import:
-    - Leads are enriched before being saved to the database
-    - Only leads with a lead score >= 80 are imported
+    - Leads are enriched in parallel (up to 10 concurrent) before saving
+    - Only leads with a lead score >= min_lead_score are imported
     - Leads below the threshold are rejected immediately
     - No background processing for new imports
-
-    For backward compatibility, the worker still processes any contacts
-    with enrichment_status = "pending" that may exist from earlier imports.
     """
-    # Verify workspace access
     workspace = await get_workspace(workspace_id, current_user, db)
 
     # Get existing phone numbers for duplicate detection
@@ -129,30 +124,34 @@ async def import_leads_ai(
     enrichment_failed = 0
     skipped_duplicates = 0
     skipped_no_phone = 0
-    queued_for_enrichment = 0  # Always 0 now (synchronous)
     errors: list[str] = []
+    lead_details: list[LeadImportDetail] = []
+
+    # Separate leads needing enrichment from those that can be skipped early
+    leads_to_enrich: list[tuple[BusinessResult, str]] = []
 
     for lead in request.leads:
-        # Skip if no phone number
         if not lead.phone_number:
             skipped_no_phone += 1
+            lead_details.append(LeadImportDetail(name=lead.name, status="skipped_no_phone"))
             continue
 
-        # Normalize and check for duplicates
         normalized_phone = normalize_phone_number(lead.phone_number)
         if normalized_phone in existing_phones:
             skipped_duplicates += 1
+            lead_details.append(LeadImportDetail(name=lead.name, status="skipped_duplicate"))
             continue
 
-        try:
-            # Build tags from business types
-            tags = list(request.add_tags) if request.add_tags else []
-            if lead.types:
-                # Add first 3 business types as tags
-                type_tags = [t.replace("_", " ").title() for t in lead.types[:3]]
-                tags.extend(type_tags)
+        # Mark phone as seen to prevent duplicates within this batch
+        existing_phones.add(normalized_phone)
+        leads_to_enrich.append((lead, normalized_phone))
 
-            # Build initial Google Places data for enrichment
+    # Parallel enrichment with semaphore
+    semaphore = asyncio.Semaphore(10)
+
+    async def enrich_single(lead: BusinessResult, normalized_phone: str) -> dict[str, Any]:
+        """Enrich a single lead with semaphore rate limiting."""
+        async with semaphore:
             google_places_data: dict[str, Any] = {
                 "google_places": {
                     "place_id": lead.place_id,
@@ -163,11 +162,13 @@ async def import_leads_ai(
                 },
             }
 
-            # Enrich synchronously if enabled and website exists
             enrichment_result: dict[str, Any] = {
                 "business_intel": google_places_data,
                 "linkedin_url": None,
                 "lead_score": 0,
+                "revenue_tier": None,
+                "decision_maker_name": None,
+                "decision_maker_title": None,
                 "enrichment_status": "skipped",
                 "error": None,
             }
@@ -180,24 +181,67 @@ async def import_leads_ai(
                     enable_ai=settings.enable_ai_enrichment,
                 )
 
-                if enrichment_result["enrichment_status"] == "failed":
-                    enrichment_failed += 1
-                    continue  # Skip importing if enrichment failed
-            elif not lead.website:
-                # No website = score of 0, will be rejected by threshold
-                enrichment_result["lead_score"] = 0
-                enrichment_result["enrichment_status"] = "skipped"
+            return {
+                "lead": lead,
+                "normalized_phone": normalized_phone,
+                "enrichment": enrichment_result,
+            }
 
-            # Check lead score threshold
-            lead_score = enrichment_result["lead_score"]
-            if lead_score < LEAD_SCORE_THRESHOLD:
-                rejected_low_score += 1
-                continue
+    # Run all enrichments in parallel
+    enrichment_results: list[dict[str, Any] | BaseException] = []
+    if leads_to_enrich:
+        enrichment_tasks = [
+            enrich_single(lead, phone) for lead, phone in leads_to_enrich
+        ]
+        enrichment_results = await asyncio.gather(*enrichment_tasks, return_exceptions=True)
 
-            # Create contact (only if score >= 80)
+    # Process results and create contacts
+    for result in enrichment_results:
+        if isinstance(result, BaseException):
+            errors.append(f"Enrichment error: {result!s}")
+            continue
+
+        lead = result["lead"]
+        enrichment_result = result["enrichment"]
+
+        if enrichment_result["enrichment_status"] == "failed":
+            enrichment_failed += 1
+            lead_details.append(LeadImportDetail(
+                name=lead.name,
+                status="enrichment_failed",
+            ))
+            continue
+
+        lead_score: int = enrichment_result["lead_score"]
+        revenue_tier: str | None = enrichment_result.get("revenue_tier")
+        dm_name: str | None = enrichment_result.get("decision_maker_name")
+        dm_title: str | None = enrichment_result.get("decision_maker_title")
+
+        if lead_score < request.min_lead_score:
+            rejected_low_score += 1
+            lead_details.append(LeadImportDetail(
+                name=lead.name,
+                status="rejected_low_score",
+                lead_score=lead_score,
+                revenue_tier=revenue_tier,
+                decision_maker_name=dm_name,
+                decision_maker_title=dm_title,
+            ))
+            continue
+
+        try:
+            tags = list(request.add_tags) if request.add_tags else []
+            if lead.types:
+                type_tags = [t.replace("_", " ").title() for t in lead.types[:3]]
+                tags.extend(type_tags)
+
+            # Use decision maker name if found, otherwise "Owner"
+            first_name = dm_name if dm_name else "Owner"
+
+            normalized_phone = result["normalized_phone"]
             contact = Contact(
                 workspace_id=workspace.id,
-                first_name="Owner",
+                first_name=first_name,
                 company_name=lead.name,
                 phone_number=normalized_phone,
                 status=request.default_status,
@@ -209,7 +253,6 @@ async def import_leads_ai(
                 enrichment_status=enrichment_result["enrichment_status"],
                 business_intel=enrichment_result["business_intel"],
                 lead_score=lead_score,
-                # Already enriched, so set enriched_at now
                 enriched_at=(
                     None
                     if enrichment_result["enrichment_status"] == "skipped"
@@ -217,9 +260,15 @@ async def import_leads_ai(
                 ),
             )
             db.add(contact)
-            existing_phones.add(normalized_phone)
             imported += 1
-
+            lead_details.append(LeadImportDetail(
+                name=lead.name,
+                status="imported",
+                lead_score=lead_score,
+                revenue_tier=revenue_tier,
+                decision_maker_name=dm_name,
+                decision_maker_title=dm_title,
+            ))
         except Exception as e:
             errors.append(f"Failed to import {lead.name}: {e!s}")
 
@@ -233,6 +282,7 @@ async def import_leads_ai(
         enrichment_failed=enrichment_failed,
         skipped_duplicates=skipped_duplicates,
         skipped_no_phone=skipped_no_phone,
-        queued_for_enrichment=queued_for_enrichment,
-        errors=errors[:10],  # Limit errors in response
+        queued_for_enrichment=0,
+        errors=errors[:10],
+        lead_details=lead_details,
     )

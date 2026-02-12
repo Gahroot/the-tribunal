@@ -49,9 +49,19 @@ import {
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
+const TOLL_FREE_PREFIXES = ["800", "888", "877", "866", "855", "844", "833"];
+
+function isTollFreeNumber(phone: string | null): boolean {
+  if (!phone) return false;
+  const digits = phone.replace(/\D/g, "");
+  const normalized = digits.startsWith("1") && digits.length === 11 ? digits.slice(1) : digits;
+  return TOLL_FREE_PREFIXES.some((prefix) => normalized.startsWith(prefix));
+}
+
 interface Filters {
   hasPhone: boolean;
   hasWebsite: boolean;
+  hideTollFree: boolean;
   minRating: number | null;
 }
 
@@ -65,17 +75,21 @@ export function FindLeadsAIPage() {
   const [filters, setFilters] = useState<Filters>({
     hasPhone: true,
     hasWebsite: true,
+    hideTollFree: true,
     minRating: null,
   });
+  const [maxResults, setMaxResults] = useState(60);
   const [defaultStatus, setDefaultStatus] = useState("new");
   const [enableEnrichment, setEnableEnrichment] = useState(true);
+  const [minLeadScore, setMinLeadScore] = useState(80);
   const [importResult, setImportResult] = useState<AIImportLeadsResponse | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
 
   const searchMutation = useMutation({
     mutationFn: async (searchQuery?: string) => {
       if (!workspaceId) throw new Error("No workspace");
-      return findLeadsAIApi.search(workspaceId, searchQuery || query, 40);
+      return findLeadsAIApi.search(workspaceId, searchQuery || query, maxResults);
     },
     onSuccess: (data) => {
       setResults(data.results);
@@ -104,6 +118,7 @@ export function FindLeadsAIPage() {
         leads: selectedLeads,
         default_status: defaultStatus,
         enable_enrichment: enableEnrichment,
+        min_lead_score: minLeadScore,
       });
     },
     onSuccess: (data) => {
@@ -172,6 +187,7 @@ export function FindLeadsAIPage() {
   const filteredResults = results.filter((r) => {
     if (filters.hasPhone && !r.has_phone) return false;
     if (filters.hasWebsite && !r.has_website) return false;
+    if (filters.hideTollFree && isTollFreeNumber(r.phone_number)) return false;
     if (filters.minRating && (!r.rating || r.rating < filters.minRating)) return false;
     return true;
   });
@@ -208,6 +224,18 @@ export function FindLeadsAIPage() {
             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
             className="flex-1"
           />
+          <Select value={maxResults.toString()} onValueChange={(v) => setMaxResults(parseInt(v))}>
+            <SelectTrigger className="w-24">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="20">20</SelectItem>
+              <SelectItem value="40">40</SelectItem>
+              <SelectItem value="60">60</SelectItem>
+              <SelectItem value="80">80</SelectItem>
+              <SelectItem value="100">100</SelectItem>
+            </SelectContent>
+          </Select>
           <Button
             onClick={() => handleSearch()}
             disabled={searchMutation.isPending || !query.trim()}
@@ -306,6 +334,69 @@ export function FindLeadsAIPage() {
                     )}
                   </div>
                 </CardContent>
+                {importResult.lead_details && importResult.lead_details.length > 0 && (
+                  <div className="border-t px-4 pb-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full mt-2 text-xs"
+                      onClick={() => setShowDetails(!showDetails)}
+                    >
+                      {showDetails ? "Hide" : "Show"} details ({importResult.lead_details.length} leads)
+                    </Button>
+                    {showDetails && (
+                      <div className="mt-2 max-h-64 overflow-y-auto space-y-1">
+                        {importResult.lead_details.map((detail, i) => (
+                          <div
+                            key={i}
+                            className={cn(
+                              "flex items-center justify-between text-xs px-2 py-1.5 rounded",
+                              detail.status === "imported" && "bg-green-50 text-green-800",
+                              detail.status === "rejected_low_score" && "bg-yellow-50 text-yellow-800",
+                              detail.status === "enrichment_failed" && "bg-red-50 text-red-800",
+                              detail.status === "skipped_duplicate" && "bg-gray-50 text-gray-600",
+                              detail.status === "skipped_no_phone" && "bg-gray-50 text-gray-600",
+                            )}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              {detail.status === "imported" && <CheckCircle2 className="h-3 w-3 shrink-0" />}
+                              {detail.status === "rejected_low_score" && <XCircle className="h-3 w-3 shrink-0" />}
+                              {detail.status === "enrichment_failed" && <AlertCircle className="h-3 w-3 shrink-0" />}
+                              <span className="truncate font-medium">{detail.name}</span>
+                              {detail.decision_maker_name && (
+                                <span className="text-muted-foreground truncate">
+                                  ({detail.decision_maker_title || "Owner"}: {detail.decision_maker_name})
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {detail.revenue_tier && (
+                                <Badge variant="outline" className="text-[10px] px-1 py-0">
+                                  {detail.revenue_tier}
+                                </Badge>
+                              )}
+                              {detail.lead_score != null && (
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "text-[10px] px-1 py-0 font-semibold",
+                                    detail.lead_score >= 100
+                                      ? "text-green-700 bg-green-100 border-green-300"
+                                      : detail.lead_score >= 80
+                                        ? "text-blue-700 bg-blue-100 border-blue-300"
+                                        : "text-yellow-700 bg-yellow-100 border-yellow-300"
+                                  )}
+                                >
+                                  Score: {detail.lead_score}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </Card>
             )}
 
@@ -336,6 +427,18 @@ export function FindLeadsAIPage() {
                   <Badge variant="secondary" className="text-[10px] px-1 py-0">
                     AI
                   </Badge>
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="filter-toll-free"
+                  checked={filters.hideTollFree}
+                  onCheckedChange={(checked) =>
+                    setFilters({ ...filters, hideTollFree: checked === true })
+                  }
+                />
+                <Label htmlFor="filter-toll-free" className="text-sm cursor-pointer">
+                  Hide 800 numbers
                 </Label>
               </div>
               <div className="flex items-center gap-2">
@@ -386,6 +489,21 @@ export function FindLeadsAIPage() {
                 <Label htmlFor="enable-enrichment" className="text-sm cursor-pointer">
                   AI Enrichment
                 </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-sm">Min quality:</Label>
+                <Select value={minLeadScore.toString()} onValueChange={(v) => setMinLeadScore(parseInt(v))}>
+                  <SelectTrigger className="w-28 h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">Any (0+)</SelectItem>
+                    <SelectItem value="40">Low (40+)</SelectItem>
+                    <SelectItem value="80">Medium (80+)</SelectItem>
+                    <SelectItem value="100">High (100+)</SelectItem>
+                    <SelectItem value="120">Elite (120+)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex items-center gap-2">
                 <Label className="text-sm">Import as:</Label>

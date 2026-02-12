@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -98,6 +98,21 @@ class ContactWithConversationResponse(ContactResponse):
     unread_count: int = 0
     last_message_at: datetime | None = None
     last_message_direction: str | None = None
+
+
+class BulkStatusUpdateRequest(BaseModel):
+    """Request schema for bulk updating contact statuses."""
+
+    ids: list[int]
+    status: Literal["new", "contacted", "qualified", "converted", "lost"]
+
+
+class BulkStatusUpdateResponse(BaseModel):
+    """Response schema for bulk status update operation."""
+
+    updated: int
+    failed: int
+    errors: list[str]
 
 
 class ContactListResponse(BaseModel):

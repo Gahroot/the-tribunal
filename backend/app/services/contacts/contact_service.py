@@ -16,6 +16,7 @@ from app.schemas.contact import ContactWithConversationResponse
 from app.schemas.tag import TagResponse
 from app.services.contacts.contact_repository import (
     bulk_delete_contacts,
+    bulk_update_status,
     get_contact_by_id,
     list_contact_ids,
     list_contacts_paginated,
@@ -258,6 +259,44 @@ class ContactService:
 
         return {
             "deleted": deleted,
+            "failed": len(errors),
+            "errors": errors,
+        }
+
+    async def bulk_update_status(
+        self,
+        contact_ids: list[int],
+        workspace_id: uuid.UUID,
+        new_status: str,
+    ) -> dict[str, Any]:
+        """Update the status of multiple contacts at once.
+
+        Args:
+            contact_ids: List of contact IDs
+            workspace_id: The workspace UUID
+            new_status: The new status to set
+
+        Returns:
+            Dict with updated, failed, errors counts
+
+        Raises:
+            HTTPException: If no contact IDs provided
+        """
+        if not contact_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No contact IDs provided",
+            )
+
+        updated, errors = await bulk_update_status(
+            contact_ids=contact_ids,
+            workspace_id=workspace_id,
+            new_status=new_status,
+            db=self.db,
+        )
+
+        return {
+            "updated": updated,
             "failed": len(errors),
             "errors": errors,
         }

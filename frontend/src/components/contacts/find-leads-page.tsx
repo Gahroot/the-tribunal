@@ -44,9 +44,20 @@ import {
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
+const TOLL_FREE_PREFIXES = ["800", "888", "877", "866", "855", "844", "833"];
+
+function isTollFreeNumber(phone: string | null): boolean {
+  if (!phone) return false;
+  const digits = phone.replace(/\D/g, "");
+  // Strip leading country code "1" for US numbers
+  const normalized = digits.startsWith("1") && digits.length === 11 ? digits.slice(1) : digits;
+  return TOLL_FREE_PREFIXES.some((prefix) => normalized.startsWith(prefix));
+}
+
 interface Filters {
   hasPhone: boolean;
   noWebsite: boolean;
+  hideTollFree: boolean;
   minRating: number | null;
 }
 
@@ -60,8 +71,10 @@ export function FindLeadsPage() {
   const [filters, setFilters] = useState<Filters>({
     hasPhone: true,
     noWebsite: false,
+    hideTollFree: true,
     minRating: null,
   });
+  const [maxResults, setMaxResults] = useState(60);
   const [defaultStatus, setDefaultStatus] = useState("new");
   const [importResult, setImportResult] = useState<ImportLeadsResponse | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
@@ -69,7 +82,7 @@ export function FindLeadsPage() {
   const searchMutation = useMutation({
     mutationFn: async () => {
       if (!workspaceId) throw new Error("No workspace");
-      return scrapingApi.search(workspaceId, query, 40);
+      return scrapingApi.search(workspaceId, query, maxResults);
     },
     onSuccess: (data) => {
       setResults(data.results);
@@ -150,6 +163,7 @@ export function FindLeadsPage() {
   const filteredResults = results.filter((r) => {
     if (filters.hasPhone && !r.has_phone) return false;
     if (filters.noWebsite && r.has_website) return false;
+    if (filters.hideTollFree && isTollFreeNumber(r.phone_number)) return false;
     if (filters.minRating && (!r.rating || r.rating < filters.minRating)) return false;
     return true;
   });
@@ -179,6 +193,18 @@ export function FindLeadsPage() {
             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
             className="flex-1"
           />
+          <Select value={maxResults.toString()} onValueChange={(v) => setMaxResults(parseInt(v))}>
+            <SelectTrigger className="w-24">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="20">20</SelectItem>
+              <SelectItem value="40">40</SelectItem>
+              <SelectItem value="60">60</SelectItem>
+              <SelectItem value="80">80</SelectItem>
+              <SelectItem value="100">100</SelectItem>
+            </SelectContent>
+          </Select>
           <Button
             onClick={handleSearch}
             disabled={searchMutation.isPending || !query.trim()}
@@ -258,6 +284,18 @@ export function FindLeadsPage() {
                 />
                 <Label htmlFor="filter-website" className="text-sm cursor-pointer">
                   No website
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="filter-toll-free"
+                  checked={filters.hideTollFree}
+                  onCheckedChange={(checked) =>
+                    setFilters({ ...filters, hideTollFree: checked === true })
+                  }
+                />
+                <Label htmlFor="filter-toll-free" className="text-sm cursor-pointer">
+                  Hide 800 numbers
                 </Label>
               </div>
               <div className="flex items-center gap-2">

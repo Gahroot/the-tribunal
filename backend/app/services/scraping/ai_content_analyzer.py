@@ -25,13 +25,21 @@ Return ONLY valid JSON with this structure:
     "service_areas": ["City 1", "City 2"],  // Up to 10
     "revenue_signals": ["fleet of 10 trucks", "5000+ projects completed"],  // Scale indicators
     "has_financing": false,  // Whether they offer financing options
-    "certifications": ["GAF Master Elite", "BBB A+"]  // Industry certifications or accreditations
+    "certifications": ["GAF Master Elite", "BBB A+"],  // Industry certifications or accreditations
+    "decision_maker_name": null,  // Owner/Founder/CEO name if found on About/Team page
+    "decision_maker_title": null  // Their title (Owner, Founder, CEO, President, etc.)
 }
 
 If information is not available, use null for strings/numbers or empty arrays for lists.
 For team_size_estimate, look for "our team", staff photos, about pages, employee counts.
 For revenue_signals, look for fleet sizes, project counts, years in business, service area breadth.
-For has_financing, look for "financing available", "payment plans", "0% APR", etc."""
+For has_financing, look for "financing available", "payment plans", "0% APR", etc.
+For decision_maker_name, look for owner names, founder names, CEO/President
+on "About Us", "Our Team", "Meet the Team" pages.
+Look for patterns like "Founded by [Name]", "[Name], Owner", "Meet [Name]".
+Only include if clearly identified.
+For decision_maker_title, extract their title/role
+(Owner, Founder, CEO, President, Managing Partner, etc.)"""
 
 
 class AIContentAnalyzerService:
@@ -113,6 +121,8 @@ class AIContentAnalyzerService:
                 revenue_signals=result.get("revenue_signals", [])[:5],
                 has_financing=result.get("has_financing", False),
                 certifications=result.get("certifications", [])[:10],
+                decision_maker_name=result.get("decision_maker_name"),
+                decision_maker_title=result.get("decision_maker_title"),
             )
 
         except Exception as e:
