@@ -1,0 +1,120 @@
+"""Shared enrichment service for synchronous and asynchronous contact enrichment.
+
+This service provides the core enrichment logic that can be called:
+1. Synchronously during AI Find Leads import (before saving to database)
+2. Asynchronously by the EnrichmentWorker (for existing pending contacts)
+"""
+
+from datetime import UTC, datetime
+from typing import Any
+
+from app.core.config import settings
+from app.services.scraping.ai_content_analyzer import AIContentAnalyzerService
+from app.services.scraping.lead_scorer import compute_lead_score
+from app.services.scraping.website_scraper import WebsiteScraperError, WebsiteScraperService
+
+
+async def enrich_contact_data(
+    website_url: str,
+    company_name: str,
+    google_places_data: dict[str, Any],
+    enable_ai: bool = True,
+) -> dict[str, Any]:
+    """Enrich a contact with website data synchronously.
+
+    Args:
+        website_url: The website URL to scrape
+        company_name: The company name for context
+        google_places_data: Google Places data to include in business_intel
+        enable_ai: Whether to enable AI content analysis
+
+    Returns:
+        Dictionary with keys:
+            - business_intel: Combined data from all sources
+            - linkedin_url: Extracted LinkedIn URL or None
+            - lead_score: Computed lead score (0-160)
+            - enrichment_status: "enriched" or "failed"
+            - error: Error message if failed, None otherwise
+    """
+    if not website_url:
+        return {
+            "business_intel": google_places_data,
+            "linkedin_url": None,
+            "lead_score": 0,
+            "enrichment_status": "failed",
+            "error": "No website URL provided",
+        }
+
+    scraper = WebsiteScraperService()
+    ai_analyzer: AIContentAnalyzerService | None = None
+
+    try:
+        # Scrape website
+        result = await scraper.scrape_website(website_url)
+
+        # Extract data
+        social_links: dict[str, Any] = result.get("social_links", {})
+        website_meta: dict[str, Any] = result.get("website_meta", {})
+
+        # Build business_intel JSONB
+        business_intel: dict[str, Any] = google_places_data.copy()
+        business_intel["social_links"] = social_links
+        business_intel["website_meta"] = website_meta
+
+        # Extract ad pixels from scrape result
+        ad_pixels = result.get("ad_pixels", {})
+        business_intel["ad_pixels"] = ad_pixels
+
+        # Generate AI website summary if enabled
+        html_content = result.get("html_content")
+        if enable_ai and settings.enable_ai_enrichment and html_content:
+            ai_analyzer = AIContentAnalyzerService()
+            website_summary = await ai_analyzer.generate_website_summary(
+                html_content=html_content,
+                website_url=website_url,
+                business_name=company_name,
+            )
+            if website_summary:
+                business_intel["website_summary"] = website_summary.model_dump()
+
+        # Compute lead score
+        lead_score = compute_lead_score(business_intel)
+
+        return {
+            "business_intel": business_intel,
+            "linkedin_url": social_links.get("linkedin"),
+            "lead_score": lead_score,
+            "enrichment_status": "enriched",
+            "error": None,
+        }
+
+    except WebsiteScraperError as e:
+        # Store error in business_intel
+        business_intel = google_places_data.copy()
+        business_intel["enrichment_error"] = str(e)
+        business_intel["enrichment_failed_at"] = datetime.now(UTC).isoformat()
+
+        return {
+            "business_intel": business_intel,
+            "linkedin_url": None,
+            "lead_score": 0,
+            "enrichment_status": "failed",
+            "error": str(e),
+        }
+
+    except Exception as e:
+        # Unexpected error
+        business_intel = google_places_data.copy()
+        business_intel["enrichment_error"] = f"Unexpected error: {e}"
+        business_intel["enrichment_failed_at"] = datetime.now(UTC).isoformat()
+
+        return {
+            "business_intel": business_intel,
+            "linkedin_url": None,
+            "lead_score": 0,
+            "enrichment_status": "failed",
+            "error": f"Unexpected error: {e}",
+        }
+
+    finally:
+        await scraper.close()

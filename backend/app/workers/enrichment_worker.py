@@ -5,6 +5,9 @@ This background worker:
 2. Scrapes website for social media links and metadata
 3. Updates contact with linkedin_url, business_intel, enrichment_status
 4. Handles errors gracefully with status tracking
+
+The worker uses the shared enrichment_service for the core enrichment logic.
+This allows the same logic to be used synchronously during AI Find Leads import.
 """
 
 from datetime import UTC, datetime
@@ -16,9 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.models.contact import Contact
-from app.services.scraping.ai_content_analyzer import AIContentAnalyzerService
-from app.services.scraping.lead_scorer import compute_lead_score
-from app.services.scraping.website_scraper import WebsiteScraperError, WebsiteScraperService
+from app.services.scraping.enrichment_service import enrich_contact_data
 from app.workers.base import BaseWorker, WorkerRegistry
 
 # Worker configuration
@@ -33,21 +34,14 @@ class EnrichmentWorker(BaseWorker):
 
     def __init__(self) -> None:
         super().__init__()
-        self._scraper: WebsiteScraperService | None = None
-        self._ai_analyzer: AIContentAnalyzerService | None = None
 
     async def _on_start(self) -> None:
-        """Initialize scraper and AI analyzer services."""
-        self._scraper = WebsiteScraperService()
-        if settings.enable_ai_enrichment:
-            self._ai_analyzer = AIContentAnalyzerService()
+        """Initialize worker (no services needed, they're created per-request)."""
+        pass
 
     async def _on_stop(self) -> None:
-        """Clean up scraper and AI analyzer services."""
-        if self._scraper:
-            await self._scraper.close()
-            self._scraper = None
-        self._ai_analyzer = None
+        """Clean up (no services to clean up)."""
+        pass
 
     async def _process_items(self) -> None:
         """Process all pending contacts for enrichment."""
@@ -95,10 +89,6 @@ class EnrichmentWorker(BaseWorker):
             website_url=contact.website_url,
         )
 
-        if not self._scraper:
-            log.error("Scraper not initialized")
-            return
-
         if not contact.website_url:
             contact.enrichment_status = "skipped"
             log.debug("No website URL, skipping")
@@ -107,64 +97,45 @@ class EnrichmentWorker(BaseWorker):
         try:
             log.info("Starting website enrichment")
 
-            # Scrape website
-            result = await self._scraper.scrape_website(contact.website_url)
+            # Build google_places data from existing business_intel
+            google_places_data: dict[str, Any] = {}
+            if contact.business_intel:
+                google_places_data = contact.business_intel.get("google_places", {})
 
-            # Extract data
-            social_links: dict[str, Any] = result.get("social_links", {})
-            website_meta: dict[str, Any] = result.get("website_meta", {})
-
-            # Update linkedin_url if found
-            if social_links.get("linkedin"):
-                contact.linkedin_url = social_links["linkedin"]
-
-            # Build business_intel JSONB
-            business_intel: dict[str, Any] = contact.business_intel or {}
-            business_intel["social_links"] = social_links
-            business_intel["website_meta"] = website_meta
-
-            # Extract ad pixels from scrape result
-            ad_pixels = result.get("ad_pixels", {})
-            business_intel["ad_pixels"] = ad_pixels
-
-            # Generate AI website summary if enabled
-            html_content = result.get("html_content")
-            if self._ai_analyzer and html_content:
-                website_summary = await self._ai_analyzer.generate_website_summary(
-                    html_content=html_content,
-                    website_url=contact.website_url,
-                    business_name=contact.company_name,
-                )
-                if website_summary:
-                    business_intel["website_summary"] = website_summary.model_dump()
-
-            # Compute lead score
-            contact.lead_score = compute_lead_score(business_intel)
-
-            contact.business_intel = business_intel
-
-            # Update status
-            contact.enrichment_status = "enriched"
-            contact.enriched_at = datetime.now(UTC)
-
-            log.info(
-                "Contact enriched successfully",
-                linkedin_found=bool(social_links.get("linkedin")),
-                social_count=sum(1 for v in social_links.values() if v),
-                lead_score=contact.lead_score,
-                has_ad_pixels=any(ad_pixels.values()),
+            # Call the shared enrichment service
+            enrichment_result = await enrich_contact_data(
+                website_url=contact.website_url,
+                company_name=contact.company_name or "",
+                google_places_data=google_places_data,
+                enable_ai=settings.enable_ai_enrichment,
             )
 
-        except WebsiteScraperError as e:
-            log.warning("Website scraping failed", error=str(e))
+            # Update contact with enrichment results
+            contact.business_intel = enrichment_result["business_intel"]
+            contact.linkedin_url = enrichment_result["linkedin_url"]
+            contact.lead_score = enrichment_result["lead_score"]
+            contact.enrichment_status = enrichment_result["enrichment_status"]
 
-            # Store error in business_intel
-            business_intel = contact.business_intel or {}
-            business_intel["enrichment_error"] = str(e)
-            business_intel["enrichment_failed_at"] = datetime.now(UTC).isoformat()
-            contact.business_intel = business_intel
+            if enrichment_result["enrichment_status"] == "enriched":
+                contact.enriched_at = datetime.now(UTC)
 
-            contact.enrichment_status = "failed"
+                # Extract info for logging
+                business_intel = enrichment_result["business_intel"]
+                social_links = business_intel.get("social_links", {})
+                ad_pixels = business_intel.get("ad_pixels", {})
+
+                log.info(
+                    "Contact enriched successfully",
+                    linkedin_found=bool(social_links.get("linkedin")),
+                    social_count=sum(1 for v in social_links.values() if v),
+                    lead_score=contact.lead_score,
+                    has_ad_pixels=any(ad_pixels.values()),
+                )
+            else:
+                log.warning(
+                    "Enrichment failed",
+                    error=enrichment_result.get("error"),
+                )
 
         except Exception as e:
             log.exception("Unexpected enrichment error", error=str(e))

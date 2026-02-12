@@ -110,10 +110,17 @@ export function FindLeadsAIPage() {
       setImportResult(data);
       queryClient.invalidateQueries({ queryKey: ["contacts", workspaceId] });
       if (data.imported > 0) {
-        const enrichMsg = data.queued_for_enrichment > 0
-          ? ` (${data.queued_for_enrichment} queued for AI enrichment)`
+        const rejectedMsg = data.rejected_low_score > 0
+          ? ` (${data.rejected_low_score} rejected below quality threshold)`
           : "";
-        toast.success(`Successfully imported ${data.imported} leads${enrichMsg}`);
+        toast.success(`Successfully imported ${data.imported} leads${rejectedMsg}`);
+      } else {
+        const reasons = [];
+        if (data.rejected_low_score > 0) reasons.push(`${data.rejected_low_score} below quality threshold`);
+        if (data.enrichment_failed > 0) reasons.push(`${data.enrichment_failed} enrichment failed`);
+        if (data.skipped_duplicates > 0) reasons.push(`${data.skipped_duplicates} duplicates`);
+        if (data.skipped_no_phone > 0) reasons.push(`${data.skipped_no_phone} no phone`);
+        toast.error(`No leads imported: ${reasons.join(", ")}`);
       }
     },
     onError: (error) => {
@@ -260,20 +267,29 @@ export function FindLeadsAIPage() {
           <div className="flex flex-col h-full p-6 gap-4">
             {/* Import Result Banner */}
             {importResult && (
-              <Card className="border-green-500/50 bg-green-500/5">
+              <Card className={importResult.imported > 0 ? "border-green-500/50 bg-green-500/5" : "border-yellow-500/50 bg-yellow-500/5"}>
                 <CardContent className="p-4">
                   <div className="flex items-center gap-4">
-                    <CheckCircle2 className="h-8 w-8 text-green-500" />
+                    {importResult.imported > 0 ? (
+                      <CheckCircle2 className="h-8 w-8 text-green-500" />
+                    ) : (
+                      <AlertCircle className="h-8 w-8 text-yellow-500" />
+                    )}
                     <div className="flex-1">
                       <p className="font-medium">
-                        Successfully imported {importResult.imported} leads
+                        {importResult.imported > 0
+                          ? `Successfully imported ${importResult.imported} leads`
+                          : "No leads imported"}
                       </p>
-                      <div className="flex gap-4 text-sm text-muted-foreground">
-                        {importResult.queued_for_enrichment > 0 && (
+                      <div className="flex gap-4 text-sm text-muted-foreground flex-wrap">
+                        {importResult.rejected_low_score > 0 && (
                           <span className="flex items-center gap-1">
-                            <Sparkles className="h-3 w-3" />
-                            {importResult.queued_for_enrichment} queued for AI enrichment
+                            <XCircle className="h-3 w-3" />
+                            {importResult.rejected_low_score} rejected below quality threshold
                           </span>
+                        )}
+                        {importResult.enrichment_failed > 0 && (
+                          <span>{importResult.enrichment_failed} enrichment failed</span>
                         )}
                         {importResult.skipped_duplicates > 0 && (
                           <span>{importResult.skipped_duplicates} duplicates skipped</span>
@@ -283,9 +299,11 @@ export function FindLeadsAIPage() {
                         )}
                       </div>
                     </div>
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href="/">View Contacts</Link>
-                    </Button>
+                    {importResult.imported > 0 && (
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href="/">View Contacts</Link>
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>
