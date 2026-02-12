@@ -13,6 +13,13 @@ class MessageTemplateCreate(BaseModel):
     message_template: str = Field(..., min_length=1)
 
 
+class MessageTemplateUpdate(BaseModel):
+    """Schema for updating a message template."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    message_template: str | None = Field(default=None, min_length=1)
+
+
 class MessageTemplateResponse(BaseModel):
     """Schema for message template response."""
 

@@ -60,13 +60,16 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useQuery } from "@tanstack/react-query";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import {
   useAutomations,
   useCreateAutomation,
+  useUpdateAutomation,
   useDeleteAutomation,
   useToggleAutomation,
 } from "@/hooks/useAutomations";
+import { automationsApi } from "@/lib/api/automations";
 import type { Automation, AutomationTriggerType, AutomationActionType } from "@/types";
 
 const triggerTypeConfig: Record<AutomationTriggerType, { label: string; icon: LucideIcon; color: string }> = {
@@ -127,9 +130,16 @@ export function AutomationsPage() {
   const [newAutomationDescription, setNewAutomationDescription] = useState("");
   const [newTriggerType, setNewTriggerType] = useState<AutomationTriggerType>("event");
   const [newActionType, setNewActionType] = useState<AutomationActionType>("send_sms");
+  const [editingAutomation, setEditingAutomation] = useState<Automation | null>(null);
 
   const { data, isLoading, error } = useAutomations(workspaceId ?? "");
+  const { data: statsData } = useQuery({
+    queryKey: ["automationStats", workspaceId],
+    queryFn: () => automationsApi.getStats(workspaceId!),
+    enabled: !!workspaceId,
+  });
   const createMutation = useCreateAutomation(workspaceId ?? "");
+  const updateMutation = useUpdateAutomation(workspaceId ?? "");
   const deleteMutation = useDeleteAutomation(workspaceId ?? "");
   const toggleMutation = useToggleAutomation(workspaceId ?? "");
 
@@ -150,23 +160,45 @@ export function AutomationsPage() {
     }
 
     try {
-      await createMutation.mutateAsync({
-        name: newAutomationName,
-        description: newAutomationDescription || undefined,
-        trigger_type: newTriggerType,
-        trigger_config: {},
-        actions: [{ type: newActionType, config: {} }],
-        is_active: true,
-      });
-      toast.success("Automation created successfully");
+      if (editingAutomation) {
+        await updateMutation.mutateAsync({
+          id: editingAutomation.id,
+          data: {
+            name: newAutomationName,
+            description: newAutomationDescription || undefined,
+            trigger_type: newTriggerType,
+            actions: [{ type: newActionType, config: {} }],
+          },
+        });
+        toast.success("Automation updated successfully");
+        setEditingAutomation(null);
+      } else {
+        await createMutation.mutateAsync({
+          name: newAutomationName,
+          description: newAutomationDescription || undefined,
+          trigger_type: newTriggerType,
+          trigger_config: {},
+          actions: [{ type: newActionType, config: {} }],
+          is_active: true,
+        });
+        toast.success("Automation created successfully");
+      }
       setIsCreateDialogOpen(false);
       setNewAutomationName("");
       setNewAutomationDescription("");
       setNewTriggerType("event");
       setNewActionType("send_sms");
     } catch {
-      toast.error("Failed to create automation");
+      toast.error(editingAutomation ? "Failed to update automation" : "Failed to create automation");
     }
+  };
+
+  const handleConfigureAutomation = (automation: Automation) => {
+    setNewAutomationName(automation.name);
+    setNewAutomationDescription(automation.description ?? "");
+    setNewTriggerType(automation.trigger_type);
+    setNewActionType(automation.actions[0]?.type ?? "send_sms");
+    setEditingAutomation(automation);
   };
 
   const handleToggleAutomation = async (automation: Automation) => {
@@ -221,18 +253,30 @@ export function AutomationsPage() {
             Create workflows to automate repetitive tasks
           </p>
         </div>
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <Dialog
+          open={isCreateDialogOpen || !!editingAutomation}
+          onOpenChange={(open) => {
+            if (!open) {
+              setIsCreateDialogOpen(false);
+              setEditingAutomation(null);
+              setNewAutomationName("");
+              setNewAutomationDescription("");
+              setNewTriggerType("event");
+              setNewActionType("send_sms");
+            }
+          }}
+        >
           <DialogTrigger asChild>
-            <Button>
+            <Button onClick={() => { setEditingAutomation(null); setIsCreateDialogOpen(true); }}>
               <Plus className="mr-2 size-4" />
               Create Automation
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>Create Automation</DialogTitle>
+              <DialogTitle>{editingAutomation ? "Configure Automation" : "Create Automation"}</DialogTitle>
               <DialogDescription>
-                Set up a new automated workflow
+                {editingAutomation ? "Modify the automation settings" : "Set up a new automated workflow"}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -307,18 +351,25 @@ export function AutomationsPage() {
             <DialogFooter>
               <Button
                 variant="outline"
-                onClick={() => setIsCreateDialogOpen(false)}
+                onClick={() => {
+                  setIsCreateDialogOpen(false);
+                  setEditingAutomation(null);
+                  setNewAutomationName("");
+                  setNewAutomationDescription("");
+                  setNewTriggerType("event");
+                  setNewActionType("send_sms");
+                }}
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleCreateAutomation}
-                disabled={createMutation.isPending}
+                disabled={createMutation.isPending || updateMutation.isPending}
               >
-                {createMutation.isPending && (
+                {(createMutation.isPending || updateMutation.isPending) && (
                   <Loader2 className="mr-2 size-4 animate-spin" />
                 )}
-                Create
+                {editingAutomation ? "Save Changes" : "Create"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -353,7 +404,7 @@ export function AutomationsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {isLoading ? <Skeleton className="h-8 w-8" /> : "-"}
+              {isLoading ? <Skeleton className="h-8 w-8" /> : statsData?.triggered_today ?? 0}
             </div>
           </CardContent>
         </Card>
@@ -391,7 +442,7 @@ export function AutomationsPage() {
               </p>
             </div>
             {!searchQuery && (
-              <Button onClick={() => setIsCreateDialogOpen(true)}>
+              <Button onClick={() => { setEditingAutomation(null); setIsCreateDialogOpen(true); }}>
                 <Plus className="mr-2 size-4" />
                 Create Automation
               </Button>
@@ -442,7 +493,9 @@ export function AutomationsPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleConfigureAutomation(automation)}
+                            >
                               <Settings2 className="mr-2 size-4" />
                               Configure
                             </DropdownMenuItem>

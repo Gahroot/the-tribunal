@@ -1,10 +1,12 @@
 """Automation management endpoints."""
 
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from pydantic import BaseModel
+from sqlalchemy import func, select
 
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.db.pagination import paginate
@@ -18,6 +20,56 @@ from app.schemas.automation import (
 )
 
 router = APIRouter()
+
+
+class AutomationStatsResponse(BaseModel):
+    """Automation statistics response."""
+
+    total: int
+    active: int
+    triggered_today: int
+
+
+@router.get("/stats", response_model=AutomationStatsResponse)
+async def get_automation_stats(
+    workspace_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> AutomationStatsResponse:
+    """Get automation statistics for a workspace."""
+    # Total automations
+    total_result = await db.execute(
+        select(func.count()).select_from(Automation).where(
+            Automation.workspace_id == workspace_id,
+        )
+    )
+    total = total_result.scalar_one()
+
+    # Active automations
+    active_result = await db.execute(
+        select(func.count()).select_from(Automation).where(
+            Automation.workspace_id == workspace_id,
+            Automation.is_active.is_(True),
+        )
+    )
+    active = active_result.scalar_one()
+
+    # Triggered today
+    today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    triggered_today_result = await db.execute(
+        select(func.count()).select_from(Automation).where(
+            Automation.workspace_id == workspace_id,
+            Automation.last_triggered_at >= today_start,
+        )
+    )
+    triggered_today = triggered_today_result.scalar_one()
+
+    return AutomationStatsResponse(
+        total=total,
+        active=active,
+        triggered_today=triggered_today,
+    )
 
 
 @router.get("", response_model=PaginatedAutomations)

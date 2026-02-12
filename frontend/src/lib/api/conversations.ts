@@ -6,7 +6,6 @@ import type {
   FollowupSendResponse,
   FollowupSettings,
   Message,
-  TimelineItem,
 } from "@/types";
 
 export interface ConversationsListParams {
@@ -70,12 +69,6 @@ export const conversationsApi = {
     return response.data;
   },
 
-  markAsRead: async (workspaceId: string, conversationId: string): Promise<void> => {
-    await api.post(
-      `/api/v1/workspaces/${workspaceId}/conversations/${conversationId}/read`
-    );
-  },
-
   toggleAI: async (
     workspaceId: string,
     conversationId: string,
@@ -101,14 +94,6 @@ export const conversationsApi = {
     const response = await api.post<Message>(
       `/api/v1/workspaces/${workspaceId}/contacts/${contactId}/messages`,
       { body, from_number: fromNumber }
-    );
-    return response.data;
-  },
-
-  // Get unified timeline for a contact (combines SMS, calls, appointments)
-  getContactTimeline: async (contactId: number): Promise<TimelineItem[]> => {
-    const response = await api.get<TimelineItem[]>(
-      `/api/v1/crm/contacts/${contactId}/timeline`
     );
     return response.data;
   },

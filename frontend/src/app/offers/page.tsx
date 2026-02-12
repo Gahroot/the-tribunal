@@ -84,6 +84,42 @@ export default function OffersPage() {
     },
   });
 
+  const duplicateMutation = useMutation({
+    mutationFn: (offer: Offer) =>
+      offersApi.create(workspaceId!, {
+        name: `${offer.name} (Copy)`,
+        description: offer.description,
+        discount_type: offer.discount_type,
+        discount_value: offer.discount_value,
+        terms: offer.terms,
+        valid_from: offer.valid_from,
+        valid_until: offer.valid_until,
+        is_active: false,
+        headline: offer.headline,
+        subheadline: offer.subheadline,
+        regular_price: offer.regular_price,
+        offer_price: offer.offer_price,
+        savings_amount: offer.savings_amount,
+        guarantee_type: offer.guarantee_type,
+        guarantee_days: offer.guarantee_days,
+        guarantee_text: offer.guarantee_text,
+        urgency_type: offer.urgency_type,
+        urgency_text: offer.urgency_text,
+        scarcity_count: offer.scarcity_count,
+        value_stack_items: offer.value_stack_items,
+        cta_text: offer.cta_text,
+        cta_subtext: offer.cta_subtext,
+        is_public: offer.is_public,
+        public_slug: offer.public_slug,
+        require_email: offer.require_email,
+        require_phone: offer.require_phone,
+        require_name: offer.require_name,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["offers", workspaceId] });
+    },
+  });
+
   const offers = data?.items || [];
   const activeOffers = offers.filter((o) => o.is_active);
 
@@ -242,11 +278,15 @@ export default function OffersPage() {
                             <Edit className="size-4 mr-2" />
                             Edit
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => router.push(`/offers/${offer.id}`)}
+                          >
                             <Eye className="size-4 mr-2" />
                             Preview
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => duplicateMutation.mutate(offer)}
+                          >
                             <Copy className="size-4 mr-2" />
                             Duplicate
                           </DropdownMenuItem>

@@ -13,6 +13,7 @@ from app.models.workspace import Workspace
 from app.schemas.message_template import (
     MessageTemplateCreate,
     MessageTemplateResponse,
+    MessageTemplateUpdate,
     PaginatedMessageTemplates,
 )
 
@@ -57,6 +58,66 @@ async def create_message_template(
         **template_in.model_dump(),
     )
     db.add(template)
+    await db.commit()
+    await db.refresh(template)
+
+    return template
+
+
+@router.get("/{template_id}", response_model=MessageTemplateResponse)
+async def get_message_template(
+    workspace_id: uuid.UUID,
+    template_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> MessageTemplate:
+    """Get a message template by ID."""
+    result = await db.execute(
+        select(MessageTemplate).where(
+            MessageTemplate.id == template_id,
+            MessageTemplate.workspace_id == workspace_id,
+        )
+    )
+    template = result.scalar_one_or_none()
+
+    if not template:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Message template not found",
+        )
+
+    return template
+
+
+@router.put("/{template_id}", response_model=MessageTemplateResponse)
+async def update_message_template(
+    workspace_id: uuid.UUID,
+    template_id: uuid.UUID,
+    template_in: MessageTemplateUpdate,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> MessageTemplate:
+    """Update a message template."""
+    result = await db.execute(
+        select(MessageTemplate).where(
+            MessageTemplate.id == template_id,
+            MessageTemplate.workspace_id == workspace_id,
+        )
+    )
+    template = result.scalar_one_or_none()
+
+    if not template:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Message template not found",
+        )
+
+    update_data = template_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(template, field, value)
+
     await db.commit()
     await db.refresh(template)
 

@@ -43,6 +43,14 @@ class PaginatedPhoneNumbers(BaseModel):
     pages: int
 
 
+class PhoneNumberUpdate(BaseModel):
+    """Schema for updating a phone number."""
+
+    friendly_name: str | None = None
+    assigned_agent_id: uuid.UUID | None = None
+    is_active: bool | None = None
+
+
 class SearchPhoneNumbersRequest(BaseModel):
     """Search phone numbers request."""
 
@@ -122,6 +130,40 @@ async def get_phone_number(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Phone number not found",
         )
+
+    return phone_number
+
+
+@router.put("/{phone_number_id}", response_model=PhoneNumberResponse)
+async def update_phone_number(
+    workspace_id: uuid.UUID,
+    phone_number_id: uuid.UUID,
+    phone_number_in: PhoneNumberUpdate,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> PhoneNumber:
+    """Update a phone number."""
+    result = await db.execute(
+        select(PhoneNumber).where(
+            PhoneNumber.id == phone_number_id,
+            PhoneNumber.workspace_id == workspace_id,
+        )
+    )
+    phone_number = result.scalar_one_or_none()
+
+    if not phone_number:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Phone number not found",
+        )
+
+    update_data = phone_number_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(phone_number, field, value)
+
+    await db.commit()
+    await db.refresh(phone_number)
 
     return phone_number
 

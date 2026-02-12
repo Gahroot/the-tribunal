@@ -63,13 +63,6 @@ export const callsApi = {
     return response.data;
   },
 
-  getContactCalls: async (workspaceId: string, contactId: number): Promise<CallRecord[]> => {
-    const response = await api.get<CallRecord[]>(
-      `/api/v1/workspaces/${workspaceId}/contacts/${contactId}/calls`
-    );
-    return response.data;
-  },
-
   initiate: async (
     workspaceId: string,
     data: InitiateCallRequest
