@@ -27,6 +27,7 @@ from app.core.config import settings
 from app.services.ai.call_context import lookup_call_context, save_call_transcript
 from app.services.ai.elevenlabs_voice_agent import ElevenLabsVoiceAgentSession
 from app.services.ai.grok import GrokVoiceAgentSession
+from app.services.ai.ivr.gate import GateOutcome, GateResult, IVRGate
 from app.services.ai.tool_executor import create_tool_callback
 from app.services.ai.voice_agent import VoiceAgentSession
 from app.services.ai.voice_session_factory import create_voice_session
@@ -127,12 +128,17 @@ async def _setup_voice_session(
     log: Any,
     call_control_id: str | None = None,
     is_outbound: bool = True,
+    *,
+    skip_ivr_detection: bool = False,
 ) -> None:
     """Configure voice session with agent settings and context.
 
     Note: The greeting is NOT sent here. It's triggered when the Telnyx
     stream starts (in _receive_from_telnyx_and_send_to_provider) to ensure
     audio is ready before the AI starts speaking.
+
+    Args:
+        skip_ivr_detection: If True, skip AI-based IVR detection (Phase 1 gate handled it)
     """
     # Set up tool callback for Grok and ElevenLabs voice sessions (both support tools)
     if isinstance(voice_session, (GrokVoiceAgentSession, ElevenLabsVoiceAgentSession)):
@@ -156,8 +162,12 @@ async def _setup_voice_session(
         log.info("tool_callback_configured", session_type=type(voice_session).__name__)
 
         # Enable IVR detection for outbound Grok calls ONLY if agent has it enabled
-        # This respects the agent's enable_ivr_navigation setting
-        if is_outbound and isinstance(voice_session, GrokVoiceAgentSession):
+        # Skip if Phase 1 gate already handled IVR navigation
+        if (
+            is_outbound
+            and isinstance(voice_session, GrokVoiceAgentSession)
+            and not skip_ivr_detection
+        ):
             # Check if agent has IVR navigation enabled
             ivr_enabled = agent and getattr(agent, "enable_ivr_navigation", False)
 
@@ -198,6 +208,8 @@ async def _setup_voice_session(
                     agent_name=agent.name if agent else None,
                     enable_ivr_navigation=False,
                 )
+        elif skip_ivr_detection:
+            log.info("ivr_detection_skipped_phase1_gate_handled")
     else:
         log.info(
             "tool_callback_not_configured",
@@ -304,6 +316,77 @@ async def voice_stream_bridge(  # noqa: PLR0912, PLR0915
             hint="Check message has agent_id and conversation has assigned_agent_id",
         )
 
+    # ── Phase 1: IVR Gate ──────────────────────────────────────────────
+    # For outbound calls with IVR navigation enabled, run the cheap
+    # Phase 1 gate (Whisper transcription + regex classification) before
+    # connecting the expensive AI provider.
+    ivr_gate_active = (
+        is_outbound
+        and agent is not None
+        and getattr(agent, "enable_ivr_navigation", False)
+    )
+
+    gate_result: GateResult | None = None
+    if ivr_gate_active:
+        navigation_goal = "Reach a human representative"
+        if agent.ivr_navigation_goal:
+            navigation_goal = agent.ivr_navigation_goal
+        elif offer_info and offer_info.get("name"):
+            navigation_goal = f"Reach someone to discuss {offer_info['name']}"
+
+        gate = IVRGate(
+            call_control_id=call_id,
+            navigation_goal=navigation_goal,
+            agent_config={
+                "loop_threshold": agent.ivr_loop_threshold or 2,
+                "post_dtmf_cooldown_ms": getattr(agent, "ivr_post_dtmf_cooldown_ms", 3000),
+                "silence_duration_ms": getattr(agent, "ivr_silence_duration_ms", 3000),
+            },
+            log=log,
+        )
+        gate_result = await gate.run(websocket)
+        log.info(
+            "ivr_gate_result",
+            outcome=gate_result.outcome.value,
+            duration=round(gate_result.duration_seconds, 1),
+            dtmf_attempts=gate_result.dtmf_attempts,
+            transcripts=len(gate_result.transcript_history),
+        )
+
+        if gate_result.outcome == GateOutcome.VOICEMAIL_DETECTED:
+            # Hangup - webhook handler will trigger SMS fallback
+            log.info("ivr_gate_voicemail_hangup", call_id=call_id)
+            from app.services.telephony.telnyx_voice import TelnyxVoiceService
+
+            svc = TelnyxVoiceService(settings.telnyx_api_key)
+            await svc.hangup_call(call_id)
+            elapsed = time.time() - connection_start
+            with contextlib.suppress(Exception):
+                await _save_call_duration(call_id, round(elapsed), log)
+            with contextlib.suppress(Exception):
+                await websocket.close()
+            return
+
+        if gate_result.outcome == GateOutcome.CALL_DROPPED:
+            log.info("ivr_gate_call_dropped", call_id=call_id)
+            elapsed = time.time() - connection_start
+            with contextlib.suppress(Exception):
+                await _save_call_duration(call_id, round(elapsed), log)
+            with contextlib.suppress(Exception):
+                await websocket.close()
+            return
+
+        # HUMAN_DETECTED, TIMEOUT, FALLBACK_AI, ERROR → proceed to Phase 2
+
+        # Inject IVR navigation context for Phase 2 AI
+        if gate_result.transcript_history:
+            contact_info = dict(contact_info) if contact_info else {}
+            contact_info["ivr_navigation_context"] = (
+                "[IVR Navigation Complete] You navigated through an automated phone system. "
+                f"What you heard: {' | '.join(gate_result.transcript_history)}"
+            )
+
+    # ── Phase 2: AI Provider ───────────────────────────────────────────
     # Determine which voice provider to use
     voice_provider = "openai"  # default
     if agent and agent.voice_provider:
@@ -397,6 +480,7 @@ async def voice_stream_bridge(  # noqa: PLR0912, PLR0915
             log,
             call_control_id=call_id,
             is_outbound=is_outbound,
+            skip_ivr_detection=bool(gate_result),
         )
         log.info(
             "voice_session_configured",
@@ -411,7 +495,13 @@ async def voice_stream_bridge(  # noqa: PLR0912, PLR0915
             is_outbound=is_outbound,
         )
         relay_task = asyncio.create_task(
-            _relay_audio(websocket, voice_session, log, is_outbound=is_outbound)
+            _relay_audio(
+                websocket,
+                voice_session,
+                log,
+                is_outbound=is_outbound,
+                stream_already_started=bool(gate_result),
+            )
         )
 
         # Wait for relay to complete (it will run until disconnect)
@@ -477,6 +567,7 @@ async def _relay_audio(
     log: Any,
     *,
     is_outbound: bool = False,
+    stream_already_started: bool = False,
 ) -> None:
     """Relay audio bidirectionally between Telnyx and voice provider.
 
@@ -492,6 +583,7 @@ async def _relay_audio(
         voice_session: Voice provider session (OpenAI or Grok)
         log: Logger instance
         is_outbound: If True, this is an outbound call - don't greet first
+        stream_already_started: If True, Phase 1 gate already consumed the start event
     """
     # Event to synchronize greeting trigger with audio sending
     greeting_triggered = asyncio.Event()
@@ -523,6 +615,7 @@ async def _relay_audio(
         _receive_from_telnyx_and_send_to_provider(
             websocket, voice_session, log, greeting_triggered, stream_id_holder,
             is_outbound=is_outbound,
+            stream_already_started=stream_already_started,
         )
     )
     recv_task = asyncio.create_task(
@@ -581,6 +674,7 @@ async def _receive_from_telnyx_and_send_to_provider(  # noqa: PLR0912, PLR0915
     stream_id_holder: dict[str, str],
     *,
     is_outbound: bool = False,
+    stream_already_started: bool = False,
 ) -> None:
     """Receive audio from Telnyx and send to voice provider.
 
@@ -596,13 +690,32 @@ async def _receive_from_telnyx_and_send_to_provider(  # noqa: PLR0912, PLR0915
         greeting_triggered: Event to signal when greeting has been triggered
         stream_id_holder: Dict to store stream_id for use in outbound messages
         is_outbound: If True, this is an outbound call - don't greet first
+        stream_already_started: If True, Phase 1 gate already consumed the start event
     """
     import json
 
-    stream_started = False
+    stream_started = stream_already_started
     audio_chunks_received = 0
     total_audio_bytes = 0
     start_time = time.time()
+
+    # If Phase 1 gate already consumed the start event, trigger greeting immediately
+    if stream_already_started:
+        log.info("stream_already_started_from_phase1_gate", triggering_greeting=True)
+        await asyncio.sleep(0.3)
+        try:
+            session_types = (GrokVoiceAgentSession, ElevenLabsVoiceAgentSession)
+            if isinstance(voice_session, session_types):
+                await voice_session.trigger_initial_response(is_outbound=is_outbound)
+            elif not is_outbound:
+                await voice_session.trigger_initial_response()
+            else:
+                log.info("skipping_greeting_for_outbound_call_phase2")
+            greeting_triggered.set()
+            log.info("greeting_triggered_after_phase1_gate")
+        except Exception as e:
+            log.exception("trigger_initial_response_failed_phase2", error=str(e))
+            raise
 
     try:
         while True:
