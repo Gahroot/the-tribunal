@@ -441,10 +441,12 @@ export interface Campaign {
   // Stats
   total_contacts: number;
   messages_sent: number;
-  messages_delivered?: number;
-  messages_failed?: number;
+  messages_delivered: number;
+  messages_failed: number;
   replies_received: number;
   contacts_qualified: number;
+  contacts_opted_out: number;
+  appointments_booked: number;
   // Backwards compatibility - old field names
   type?: CampaignType;
   sent_count?: number;

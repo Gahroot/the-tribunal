@@ -21,7 +21,7 @@ export { campaignQueryKeys, useCampaigns, useCampaign, useCreateCampaign, useUpd
 export function useCampaignAnalytics(workspaceId: string, campaignId: string) {
   return useQuery({
     queryKey: ["campaignAnalytics", workspaceId, campaignId],
-    queryFn: () => campaignsApi.getStats(workspaceId, campaignId),
+    queryFn: () => campaignsApi.getAnalytics(workspaceId, campaignId),
     enabled: !!workspaceId && !!campaignId,
   });
 }

@@ -276,6 +276,12 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
               </div>
               <div>
                 <p className="text-2xl font-bold">
+                  {campaign.messages_delivered}
+                </p>
+                <p className="text-xs text-muted-foreground">Delivered</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold">
                   {campaign.replies_received}
                 </p>
                 <p className="text-xs text-muted-foreground">Replies</p>
@@ -286,11 +292,25 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
                 </p>
                 <p className="text-xs text-muted-foreground">Qualified</p>
               </div>
-              {campaign.campaign_type === "voice_sms_fallback" && (
+              <div>
+                <p className="text-2xl font-bold">
+                  {campaign.contacts_opted_out}
+                </p>
+                <p className="text-xs text-muted-foreground">Opted Out</p>
+              </div>
+              {campaign.messages_failed > 0 && (
+                <div>
+                  <p className="text-2xl font-bold text-red-600">
+                    {campaign.messages_failed}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Failed</p>
+                </div>
+              )}
+              {campaign.appointments_booked > 0 && (
                 <div>
                   <p className="text-2xl font-bold flex items-center gap-1.5">
                     <CalendarCheck className="size-5 text-green-600" />
-                    {(campaign as unknown as { appointments_booked?: number }).appointments_booked ?? 0}
+                    {campaign.appointments_booked}
                   </p>
                   <p className="text-xs text-muted-foreground">Booked</p>
                 </div>

@@ -75,8 +75,12 @@ class CampaignResponse(BaseModel):
     max_follow_ups: int
     total_contacts: int
     messages_sent: int
+    messages_delivered: int
+    messages_failed: int
     replies_received: int
     contacts_qualified: int
+    contacts_opted_out: int
+    appointments_booked: int
     created_at: datetime
     updated_at: datetime
 

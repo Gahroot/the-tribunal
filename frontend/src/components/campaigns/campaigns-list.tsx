@@ -146,7 +146,7 @@ export function CampaignsList() {
   const getDeliveryRate = (campaign: Campaign) => {
     if (campaign.messages_sent === 0) return 0;
     return Math.round(
-      ((campaign.messages_delivered ?? 0) / campaign.messages_sent) * 100
+      (campaign.messages_delivered / campaign.messages_sent) * 100
     );
   };
 
