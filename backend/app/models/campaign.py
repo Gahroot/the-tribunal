@@ -23,6 +23,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.agent import Agent
+    from app.models.appointment import Appointment
     from app.models.contact import Contact
     from app.models.conversation import Conversation
     from app.models.offer import Offer
@@ -181,6 +182,12 @@ class Campaign(Base):
     contacts_qualified: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     contacts_opted_out: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     appointments_booked: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    appointments_completed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # Guarantee tracking
+    guarantee_target: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    guarantee_window_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    guarantee_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     # Voice campaign statistics
     calls_attempted: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -222,6 +229,9 @@ class Campaign(Base):
     offer: Mapped["Offer | None"] = relationship("Offer", back_populates="campaigns")
     campaign_contacts: Mapped[list["CampaignContact"]] = relationship(
         "CampaignContact", back_populates="campaign", cascade="all, delete-orphan"
+    )
+    appointments: Mapped[list["Appointment"]] = relationship(
+        "Appointment", back_populates="campaign"
     )
 
     def __repr__(self) -> str:

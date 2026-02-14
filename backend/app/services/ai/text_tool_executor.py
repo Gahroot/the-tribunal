@@ -314,10 +314,14 @@ class TextToolExecutor(BaseToolExecutor):
         contact = self._contact
         assert contact is not None
 
+        # Resolve campaign_id from conversation
+        campaign_id_val = getattr(self.conversation, "campaign_id", None)
+
         appointment = Appointment(
             workspace_id=self.conversation.workspace_id,
             contact_id=contact.id,
             agent_id=self.agent.id,
+            campaign_id=campaign_id_val,
             scheduled_at=self._appointment_datetime,
             duration_minutes=duration_minutes,
             status="scheduled",

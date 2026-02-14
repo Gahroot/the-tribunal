@@ -27,6 +27,7 @@ import {
 import { campaignStatusColors } from "@/lib/status-colors";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { campaignsApi } from "@/lib/api/campaigns";
+import { GuaranteeProgress } from "@/components/campaigns/guarantee-progress";
 
 interface CampaignDetailProps {
   campaignId: string;
@@ -318,6 +319,10 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
             </div>
           </CardContent>
         </Card>
+
+        {campaign.guarantee_target && campaign.guarantee_target > 0 && (
+          <GuaranteeProgress campaignId={campaignId} campaignType={campaign.campaign_type} />
+        )}
       </div>
 
       {/* Scheduling info */}

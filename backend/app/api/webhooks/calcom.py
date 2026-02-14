@@ -11,8 +11,10 @@ from app.core.webhook_security import verify_calcom_webhook
 from app.db.session import AsyncSessionLocal
 from app.models.agent import Agent
 from app.models.appointment import Appointment, AppointmentStatus
+from app.models.campaign import Campaign, CampaignContact
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
+from app.services.campaigns.guarantee_tracker import increment_completed_and_check_guarantee
 
 router = APIRouter()
 logger = structlog.get_logger()
@@ -57,6 +59,8 @@ async def calcom_booking_webhook(request: Request) -> dict[str, str]:
         await handle_booking_rescheduled(data, log)
     elif trigger == "BOOKING_CANCELLED":
         await handle_booking_cancelled(data, log)
+    elif trigger == "MEETING_ENDED":
+        await handle_meeting_ended(data, log)
     else:
         log.debug("unhandled_event_type")
 
@@ -97,7 +101,29 @@ async def _find_recent_voice_message(
     return None
 
 
-async def handle_booking_created(data: dict[str, Any], log: Any) -> None:
+async def _resolve_campaign_id(db: Any, contact_id: int, log: Any) -> Any:
+    """Find the most recent active campaign for a contact."""
+    try:
+        cc_result = await db.execute(
+            select(CampaignContact.campaign_id)
+            .join(Campaign, CampaignContact.campaign_id == Campaign.id)
+            .where(
+                CampaignContact.contact_id == contact_id,
+                Campaign.status.in_(["running", "paused"]),
+            )
+            .order_by(CampaignContact.created_at.desc())
+            .limit(1)
+        )
+        cc_row = cc_result.first()
+        if cc_row:
+            log.info("resolved_campaign_for_appointment", campaign_id=str(cc_row[0]))
+            return cc_row[0]
+    except Exception as e:
+        log.warning("campaign_resolution_failed", error=str(e))
+    return None
+
+
+async def handle_booking_created(data: dict[str, Any], log: Any) -> None:  # noqa: PLR0912
     """Handle new Cal.com booking.
 
     Args:
@@ -145,11 +171,10 @@ async def handle_booking_created(data: dict[str, Any], log: Any) -> None:
 
         if not contact:
             log.warning("contact_not_found", email=email)
-            # Create contact if it doesn't exist
-            # For now, we skip and just log
             return
 
         workspace_id = contact.workspace_id
+        campaign_id_val = await _resolve_campaign_id(db, contact.id, log)
 
         # Look up agent by event type ID if provided
         agent = None
@@ -191,6 +216,7 @@ async def handle_booking_created(data: dict[str, Any], log: Any) -> None:
                 contact_id=contact.id,
                 agent_id=agent.id if agent else None,
                 message_id=message_id,
+                campaign_id=campaign_id_val,
                 scheduled_at=scheduled_at,
                 duration_minutes=duration_minutes,
                 status="scheduled",
@@ -304,4 +330,67 @@ async def handle_booking_cancelled(data: dict[str, Any], log: Any) -> None:
             "booking_cancelled",
             appointment_id=appointment.id,
             status=AppointmentStatus.CANCELLED.value,
+        )
+
+
+async def handle_meeting_ended(data: dict[str, Any], log: Any) -> None:
+    """Handle Cal.com MEETING_ENDED event.
+
+    Marks appointments as completed or no_show based on meeting data.
+    """
+    booking_uid = data.get("uid", "")
+
+    log = log.bind(booking_uid=booking_uid)
+    log.info("processing_meeting_ended")
+
+    if not booking_uid:
+        log.warning("missing_booking_uid")
+        return
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(Appointment).where(
+                Appointment.calcom_booking_uid == booking_uid,
+            )
+        )
+        appointment = result.scalar_one_or_none()
+
+        if not appointment:
+            log.warning("appointment_not_found")
+            return
+
+        # Skip if already in terminal state
+        if appointment.status in (
+            AppointmentStatus.COMPLETED.value,
+            AppointmentStatus.CANCELLED.value,
+        ):
+            log.info("appointment_already_terminal", status=appointment.status)
+            return
+
+        # Determine if completed or no-show
+        no_show_host = data.get("noShowHost", False)
+        attendees = data.get("attendees", [])
+
+        if no_show_host or not attendees:
+            appointment.status = AppointmentStatus.NO_SHOW.value
+            log.info("appointment_no_show", appointment_id=appointment.id)
+        else:
+            appointment.status = AppointmentStatus.COMPLETED.value
+            log.info("appointment_completed", appointment_id=appointment.id)
+
+            # Update campaign guarantee tracking
+            if appointment.campaign_id:
+                await increment_completed_and_check_guarantee(
+                    db, appointment.campaign_id, log
+                )
+
+        appointment.sync_status = "synced"
+        appointment.last_synced_at = datetime.now(UTC)
+
+        await db.commit()
+
+        log.info(
+            "meeting_ended_processed",
+            appointment_id=appointment.id,
+            status=appointment.status,
         )

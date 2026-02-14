@@ -250,11 +250,15 @@ class VoiceToolExecutor(BaseToolExecutor):
                 except ValueError:
                     scheduled_at = datetime.now(UTC)
 
+                # Resolve campaign_id from conversation
+                campaign_id_val = getattr(message.conversation, "campaign_id", None)
+
                 appointment = Appointment(
                     workspace_id=message.conversation.workspace_id,
                     contact_id=message.conversation.contact_id,
                     agent_id=message.agent_id,
                     message_id=message.id,
+                    campaign_id=campaign_id_val,
                     scheduled_at=scheduled_at,
                     duration_minutes=duration_minutes,
                     status="scheduled",

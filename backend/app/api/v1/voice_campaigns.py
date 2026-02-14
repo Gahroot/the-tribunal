@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,12 +22,14 @@ from app.models.contact import Contact
 from app.models.workspace import Workspace
 from app.schemas.campaign import (
     CampaignContactAdd,
+    GuaranteeProgressResponse,
     VoiceCampaignAnalytics,
     VoiceCampaignContactResponse,
     VoiceCampaignCreate,
     VoiceCampaignResponse,
     VoiceCampaignUpdate,
 )
+from app.services.campaigns.guarantee_tracker import check_guarantee_expiry
 from app.utils.datetime import parse_time_string
 
 router = APIRouter()
@@ -332,6 +335,8 @@ async def start_voice_campaign(
 
     campaign.status = CampaignStatus.RUNNING.value
     campaign.started_at = datetime.now(UTC)
+    if campaign.guarantee_target and campaign.guarantee_target > 0:
+        campaign.guarantee_status = "pending"
     await db.commit()
 
     return {"status": "running", "message": f"Voice campaign started with {contact_count} contacts"}
@@ -532,6 +537,48 @@ async def get_voice_campaign_analytics(
         answer_rate=answer_rate,
         fallback_rate=fallback_rate,
         qualification_rate=qualification_rate,
+    )
+
+
+@router.get("/{campaign_id}/guarantee", response_model=GuaranteeProgressResponse)
+async def get_voice_guarantee_progress(
+    workspace_id: uuid.UUID,
+    campaign_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> GuaranteeProgressResponse:
+    """Get voice campaign guarantee progress."""
+    log = structlog.get_logger().bind(campaign_id=str(campaign_id))
+    campaign = await _get_voice_campaign(db, campaign_id, workspace_id)
+
+    # Lazy expiry check
+    if campaign.guarantee_status == "pending":
+        await check_guarantee_expiry(db, campaign_id, log)
+        await db.commit()
+        await db.refresh(campaign)
+
+    # Calculate days remaining
+    days_remaining = None
+    deadline = None
+    if campaign.started_at and campaign.guarantee_window_days:
+        from datetime import timedelta
+
+        deadline_dt = campaign.started_at + timedelta(days=campaign.guarantee_window_days)
+        deadline = deadline_dt.isoformat()
+        remaining = (deadline_dt - datetime.now(UTC)).days
+        days_remaining = max(0, remaining)
+
+    return GuaranteeProgressResponse(
+        campaign_id=str(campaign.id),
+        guarantee_target=campaign.guarantee_target,
+        appointments_booked=campaign.appointments_booked,
+        appointments_completed=campaign.appointments_completed,
+        guarantee_status=campaign.guarantee_status,
+        guarantee_window_days=campaign.guarantee_window_days,
+        days_remaining=days_remaining,
+        deadline=deadline,
+        started_at=campaign.started_at.isoformat() if campaign.started_at else None,
     )
 
 

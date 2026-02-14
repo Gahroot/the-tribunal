@@ -26,6 +26,8 @@ class CampaignCreate(BaseModel):
     follow_up_delay_hours: int = 24
     follow_up_message: str | None = None
     max_follow_ups: int = 2
+    guarantee_target: int | None = None
+    guarantee_window_days: int | None = None
 
 
 class CampaignUpdate(BaseModel):
@@ -47,6 +49,8 @@ class CampaignUpdate(BaseModel):
     follow_up_delay_hours: int | None = None
     follow_up_message: str | None = None
     max_follow_ups: int | None = None
+    guarantee_target: int | None = None
+    guarantee_window_days: int | None = None
 
 
 class CampaignResponse(BaseModel):
@@ -81,6 +85,10 @@ class CampaignResponse(BaseModel):
     contacts_qualified: int
     contacts_opted_out: int
     appointments_booked: int
+    appointments_completed: int = 0
+    guarantee_target: int | None = None
+    guarantee_window_days: int | None = None
+    guarantee_status: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -186,6 +194,8 @@ class VoiceCampaignCreate(BaseModel):
     sending_days: list[int] | None = None  # [0,1,2,3,4] = Mon-Fri
     timezone: str = "America/New_York"
     calls_per_minute: int = 5
+    guarantee_target: int | None = None
+    guarantee_window_days: int | None = None
 
 
 class VoiceCampaignUpdate(BaseModel):
@@ -218,6 +228,8 @@ class VoiceCampaignUpdate(BaseModel):
     sending_days: list[int] | None = None
     timezone: str | None = None
     calls_per_minute: int | None = None
+    guarantee_target: int | None = None
+    guarantee_window_days: int | None = None
 
 
 class VoiceCampaignResponse(BaseModel):
@@ -270,6 +282,10 @@ class VoiceCampaignResponse(BaseModel):
     contacts_qualified: int
     contacts_opted_out: int
     appointments_booked: int
+    appointments_completed: int = 0
+    guarantee_target: int | None = None
+    guarantee_window_days: int | None = None
+    guarantee_status: str | None = None
 
     # Timestamps
     started_at: datetime | None
@@ -297,6 +313,20 @@ class VoiceCampaignResponse(BaseModel):
         if isinstance(v, time):
             return v.strftime("%H:%M")
         return v
+
+
+class GuaranteeProgressResponse(BaseModel):
+    """Guarantee progress response."""
+
+    campaign_id: str
+    guarantee_target: int | None
+    appointments_booked: int
+    appointments_completed: int
+    guarantee_status: str | None
+    guarantee_window_days: int | None
+    days_remaining: int | None
+    deadline: str | None
+    started_at: str | None
 
 
 class VoiceCampaignContactResponse(BaseModel):

@@ -54,6 +54,7 @@ class AppointmentResponse(AppointmentBase):
     contact: ContactSummary | None = None
     agent_id: uuid.UUID | None
     message_id: uuid.UUID | None = None
+    campaign_id: uuid.UUID | None = None
     scheduled_at: datetime
     status: str
     calcom_booking_uid: str | None

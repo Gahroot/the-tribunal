@@ -5,6 +5,7 @@ import type {
   CampaignStatus,
   CampaignType,
   CampaignContactStatus,
+  GuaranteeProgress,
 } from "@/types";
 import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
 
@@ -145,6 +146,14 @@ export const campaignsApi = {
     const response = await api.post<Campaign>(
       `/api/v1/workspaces/${workspaceId}/campaigns/${id}/duplicate`,
       { name }
+    );
+    return response.data;
+  },
+
+  // Get campaign guarantee progress
+  getGuaranteeProgress: async (workspaceId: string, campaignId: string): Promise<GuaranteeProgress> => {
+    const response = await api.get<GuaranteeProgress>(
+      `/api/v1/workspaces/${workspaceId}/campaigns/${campaignId}/guarantee`
     );
     return response.data;
   },

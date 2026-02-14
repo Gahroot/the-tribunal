@@ -4,6 +4,7 @@ import type {
   VoiceCampaignContact,
   VoiceCampaignAnalytics,
   CampaignStatus,
+  GuaranteeProgress,
 } from "@/types";
 import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
 
@@ -181,6 +182,14 @@ export const voiceCampaignsApi = {
   ): Promise<VoiceCampaignAnalytics> => {
     const response = await api.get<VoiceCampaignAnalytics>(
       `/api/v1/workspaces/${workspaceId}/voice-campaigns/${campaignId}/analytics`
+    );
+    return response.data;
+  },
+
+  // Get voice campaign guarantee progress
+  getGuaranteeProgress: async (workspaceId: string, campaignId: string): Promise<GuaranteeProgress> => {
+    const response = await api.get<GuaranteeProgress>(
+      `/api/v1/workspaces/${workspaceId}/voice-campaigns/${campaignId}/guarantee`
     );
     return response.data;
   },

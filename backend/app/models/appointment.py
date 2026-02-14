@@ -13,6 +13,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.agent import Agent
+    from app.models.campaign import Campaign
     from app.models.contact import Contact
     from app.models.conversation import Message
     from app.models.workspace import Workspace
@@ -54,6 +55,12 @@ class Appointment(Base):
     message_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("messages.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    campaign_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("campaigns.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -100,6 +107,7 @@ class Appointment(Base):
     contact: Mapped["Contact"] = relationship("Contact", back_populates="appointments")
     agent: Mapped["Agent | None"] = relationship("Agent", back_populates="appointments")
     message: Mapped["Message | None"] = relationship("Message", back_populates="appointment")
+    campaign: Mapped["Campaign | None"] = relationship("Campaign", back_populates="appointments")
 
     def __repr__(self) -> str:
         return (

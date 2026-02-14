@@ -229,6 +229,7 @@ export interface Appointment {
   workspace_id?: string;
   agent_id?: string;
   message_id?: string;
+  campaign_id?: string;
   scheduled_at: string;
   duration_minutes: number;
   status: "scheduled" | "completed" | "cancelled" | "no_show";
@@ -447,6 +448,10 @@ export interface Campaign {
   contacts_qualified: number;
   contacts_opted_out: number;
   appointments_booked: number;
+  appointments_completed: number;
+  guarantee_target?: number;
+  guarantee_window_days?: number;
+  guarantee_status?: "pending" | "met" | "missed" | null;
   // Backwards compatibility - old field names
   type?: CampaignType;
   sent_count?: number;
@@ -902,6 +907,10 @@ export interface VoiceCampaign {
   contacts_qualified: number;
   contacts_opted_out: number;
   appointments_booked: number;
+  appointments_completed: number;
+  guarantee_target?: number;
+  guarantee_window_days?: number;
+  guarantee_status?: "pending" | "met" | "missed" | null;
 
   // Timestamps
   started_at?: string;
@@ -952,6 +961,18 @@ export interface VoiceCampaignAnalytics {
   answer_rate: number;
   fallback_rate: number;
   qualification_rate: number;
+}
+
+export interface GuaranteeProgress {
+  campaign_id: string;
+  guarantee_target: number | null;
+  appointments_booked: number;
+  appointments_completed: number;
+  guarantee_status: "pending" | "met" | "missed" | null;
+  guarantee_window_days: number | null;
+  days_remaining: number | null;
+  deadline: string | null;
+  started_at: string | null;
 }
 
 // SMS Campaign Types (extended)
