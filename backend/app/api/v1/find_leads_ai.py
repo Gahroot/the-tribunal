@@ -196,9 +196,13 @@ async def import_leads_ai(  # noqa: PLR0912, PLR0915
         enrichment_results = await asyncio.gather(*enrichment_tasks, return_exceptions=True)
 
     # Process results and create contacts
-    for result in enrichment_results:
+    for i, result in enumerate(enrichment_results):
         if isinstance(result, BaseException):
-            errors.append(f"Enrichment error: {result!s}")
+            lead_name = leads_to_enrich[i][0].name if i < len(leads_to_enrich) else "unknown"
+            error_type = type(result).__name__
+            errors.append(f"Enrichment failed for {lead_name}: {error_type}: {result!s}")
+            enrichment_failed += 1
+            lead_details.append(LeadImportDetail(name=lead_name, status="enrichment_failed"))
             continue
 
         lead = result["lead"]
