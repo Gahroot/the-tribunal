@@ -1,5 +1,6 @@
 """Voice test WebSocket endpoint for browser-based agent testing."""
 
+import audioop
 import asyncio
 import base64
 import contextlib
@@ -115,11 +116,14 @@ async def _handle_start_message(
         temperature=agent.temperature,
     )
 
-    await websocket.send_json({"type": "connected"})
+    await websocket.send_json({
+        "type": "connected",
+        "audio_format": {"encoding": "pcm16", "sampleRate": 24000, "channels": 1},
+    })
 
     # Start receiving audio from provider
     receive_task = asyncio.create_task(
-        _receive_from_provider(websocket, voice_session, log)
+        _receive_from_provider(websocket, voice_session, voice_provider, log)
     )
 
     # Trigger initial greeting if configured
@@ -129,15 +133,48 @@ async def _handle_start_message(
     return receive_task
 
 
+def _normalize_client_audio_for_provider(
+    audio_pcm16_16k: bytes,
+    voice_provider: str,
+) -> bytes:
+    """Convert client PCM16 16kHz audio to the provider's expected format.
+
+    - OpenAI expects g711_ulaw at 8kHz
+    - Grok expects PCM16 at 24kHz
+    - ElevenLabs hybrid uses Grok STT, so also PCM16 24kHz
+
+    Args:
+        audio_pcm16_16k: PCM16 audio at 16kHz from the mobile client
+        voice_provider: Provider name (openai, grok, elevenlabs)
+
+    Returns:
+        Audio bytes in the provider's expected format
+    """
+    if voice_provider in ("grok", "elevenlabs"):
+        # Resample PCM16 16kHz → 24kHz
+        pcm_24k, _ = audioop.ratecv(audio_pcm16_16k, 2, 1, 16000, 24000, None)
+        return pcm_24k
+
+    # OpenAI: PCM16 16kHz → resample to 8kHz → encode as mu-law
+    pcm_8k, _ = audioop.ratecv(audio_pcm16_16k, 2, 1, 16000, 8000, None)
+    return audioop.lin2ulaw(pcm_8k, 2)
+
+
 async def _handle_audio_message(
     voice_session: VoiceSessionType,
     message: dict[str, Any],
+    voice_provider: str,
 ) -> None:
-    """Handle audio message from client."""
+    """Handle audio message from client.
+
+    Converts client PCM16 16kHz audio to the provider's expected format
+    before forwarding.
+    """
     audio_b64 = message.get("data", "")
     if audio_b64:
         audio_pcm = base64.b64decode(audio_b64)
-        await voice_session.send_audio_chunk(audio_pcm)
+        converted = _normalize_client_audio_for_provider(audio_pcm, voice_provider)
+        await voice_session.send_audio_chunk(converted)
 
 
 async def _process_messages(
@@ -173,7 +210,7 @@ async def _process_messages(
                     session_active = True
 
             elif msg_type == "audio" and session_active:
-                await _handle_audio_message(voice_session, message)
+                await _handle_audio_message(voice_session, message, voice_provider)
 
             elif msg_type == "stop":
                 log.info("stop_requested")
@@ -261,21 +298,54 @@ async def voice_test_endpoint(
         log.info("voice_test_session_ended")
 
 
+def _normalize_audio_to_pcm16_24k(audio_data: bytes, voice_provider: str) -> bytes:
+    """Normalize audio from any provider to PCM16 at 24kHz.
+
+    - Grok already outputs PCM16/24kHz — passed through unchanged.
+    - OpenAI outputs g711_ulaw at 8kHz — decode ulaw→PCM16, upsample 8k→24k.
+    - ElevenLabs outputs ulaw at 8kHz — decode ulaw→PCM16, upsample 8k→24k.
+
+    Args:
+        audio_data: Raw audio bytes from the provider
+        voice_provider: Provider name (openai, grok, elevenlabs)
+
+    Returns:
+        PCM16 audio at 24kHz
+    """
+    if voice_provider == "grok":
+        # Already PCM16/24kHz
+        return audio_data
+
+    # OpenAI and ElevenLabs: ulaw 8kHz → PCM16 24kHz
+    # Step 1: Decode ulaw to linear PCM16 (2 bytes per sample)
+    pcm_8k = audioop.ulaw2lin(audio_data, 2)
+
+    # Step 2: Upsample from 8kHz to 24kHz (3x)
+    pcm_24k, _ = audioop.ratecv(pcm_8k, 2, 1, 8000, 24000, None)
+
+    return pcm_24k
+
+
 async def _receive_from_provider(
     websocket: WebSocket,
     voice_session: VoiceSessionType,
+    voice_provider: str,
     log: Any,
 ) -> None:
     """Receive audio from voice provider and send to browser.
 
+    All audio is normalized to PCM16/24kHz before sending to the client.
+
     Args:
         websocket: Browser WebSocket connection
         voice_session: Voice provider session
+        voice_provider: Provider name for format detection
         log: Logger instance
     """
     try:
-        async for audio_pcm in voice_session.receive_audio_stream():
-            audio_b64 = base64.b64encode(audio_pcm).decode("utf-8")
+        async for audio_data in voice_session.receive_audio_stream():
+            normalized = _normalize_audio_to_pcm16_24k(audio_data, voice_provider)
+            audio_b64 = base64.b64encode(normalized).decode("utf-8")
             await websocket.send_json({
                 "type": "audio",
                 "data": audio_b64,
