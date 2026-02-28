@@ -22,7 +22,7 @@ from app.schemas.contact import (
     QualificationSignals,
 )
 from app.services.contacts import ContactImportService, ContactService
-from app.services.contacts.contact_import import ImportErrorDetail
+from app.services.contacts.contact_import import CONTACT_FIELDS, ImportErrorDetail
 
 router = APIRouter()
 
@@ -444,6 +444,58 @@ class ImportResult(BaseModel):
     created_contacts: list[ContactResponse]
 
 
+class CSVPreviewResponse(BaseModel):
+    """Response from previewing a CSV file for import."""
+
+    headers: list[str]
+    sample_rows: list[dict[str, str]]
+    suggested_mapping: dict[str, str | None]
+    contact_fields: list[dict[str, Any]]
+
+
+@router.post("/import/preview", response_model=CSVPreviewResponse)
+async def preview_import_csv(
+    workspace_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    file: UploadFile,
+) -> CSVPreviewResponse:
+    """Preview a CSV file before importing.
+
+    Returns the headers, sample rows, and suggested field mappings.
+    """
+    await get_workspace(workspace_id, current_user, db)
+
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File must be a CSV file",
+        )
+
+    try:
+        content = await file.read()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to read file: {e!s}",
+        ) from e
+
+    try:
+        preview = ContactImportService.preview_csv(content)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
+
+    return CSVPreviewResponse(
+        headers=preview["headers"],
+        sample_rows=preview["sample_rows"],
+        suggested_mapping=preview["suggested_mapping"],
+        contact_fields=CONTACT_FIELDS,
+    )
+
+
 @router.post("/import", response_model=ImportResult)
 async def import_contacts_csv(
     workspace_id: uuid.UUID,
@@ -453,6 +505,7 @@ async def import_contacts_csv(
     skip_duplicates: bool = Form(default=True),
     default_status: str = Form(default="new"),
     source: str = Form(default="csv_import"),
+    column_mapping: str | None = Form(default=None),
 ) -> ImportResult:
     """Import contacts from a CSV file.
 
@@ -492,6 +545,17 @@ async def import_contacts_csv(
             detail=f"Failed to read file: {e!s}",
         ) from e
 
+    # Parse column mapping if provided
+    explicit_mapping: dict[str, str] | None = None
+    if column_mapping:
+        try:
+            explicit_mapping = json.loads(column_mapping)
+        except json.JSONDecodeError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid column_mapping JSON",
+            ) from e
+
     # Use import service
     import_service = ContactImportService(db)
     try:
@@ -501,6 +565,7 @@ async def import_contacts_csv(
             skip_duplicates=skip_duplicates,
             default_status=default_status,
             source=source,
+            explicit_mapping=explicit_mapping,
         )
     except ValueError as e:
         raise HTTPException(

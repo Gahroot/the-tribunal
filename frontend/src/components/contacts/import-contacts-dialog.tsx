@@ -3,9 +3,14 @@
 import { useState, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Upload, FileText, AlertCircle, CheckCircle2, X, Download } from "lucide-react";
+import { Upload, FileText, AlertCircle, CheckCircle2, X, Download, Loader2 } from "lucide-react";
 
-import { contactsApi, type ImportResult, type ImportOptions } from "@/lib/api/contacts";
+import {
+  contactsApi,
+  type ImportResult,
+  type ImportOptions,
+  type CSVPreviewResult,
+} from "@/lib/api/contacts";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +32,14 @@ import {
 } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
 interface ImportContactsDialogProps {
@@ -34,7 +47,9 @@ interface ImportContactsDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-type ImportStep = "upload" | "options" | "importing" | "results";
+type ImportStep = "upload" | "mapping" | "options" | "importing" | "results";
+
+const SKIP_VALUE = "__skip__";
 
 export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialogProps) {
   const queryClient = useQueryClient();
@@ -50,11 +65,31 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
   });
   const [result, setResult] = useState<ImportResult | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [preview, setPreview] = useState<CSVPreviewResult | null>(null);
+  const [columnMapping, setColumnMapping] = useState<Record<string, string | null>>({});
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  const isMappingValid = (): boolean => {
+    const mappedFields = new Set(
+      Object.values(columnMapping).filter((v): v is string => v !== null && v !== SKIP_VALUE)
+    );
+    return mappedFields.has("first_name") && mappedFields.has("phone_number");
+  };
 
   const importMutation = useMutation({
     mutationFn: async () => {
       if (!workspaceId || !file) throw new Error("Missing workspace or file");
-      return contactsApi.importCSV(workspaceId, file, options);
+      // Build column_mapping from columnMapping state (filter out skips/nulls)
+      const mapping: Record<string, string> = {};
+      for (const [csvHeader, fieldName] of Object.entries(columnMapping)) {
+        if (fieldName && fieldName !== SKIP_VALUE) {
+          mapping[csvHeader] = fieldName;
+        }
+      }
+      return contactsApi.importCSV(workspaceId, file, {
+        ...options,
+        column_mapping: Object.keys(mapping).length > 0 ? mapping : undefined,
+      });
     },
     onSuccess: (data) => {
       setResult(data);
@@ -71,13 +106,28 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
     },
   });
 
-  const handleFileSelect = (selectedFile: File) => {
+  const handleFileSelect = async (selectedFile: File) => {
     if (!selectedFile.name.toLowerCase().endsWith(".csv")) {
       toast.error("Please select a CSV file");
       return;
     }
     setFile(selectedFile);
-    setStep("options");
+
+    if (!workspaceId) return;
+
+    setPreviewLoading(true);
+    setStep("mapping");
+    try {
+      const previewResult = await contactsApi.previewCSV(workspaceId, selectedFile);
+      setPreview(previewResult);
+      setColumnMapping(previewResult.suggested_mapping);
+    } catch {
+      toast.error("Failed to preview CSV file. Please check the file format.");
+      setStep("upload");
+      setFile(null);
+    } finally {
+      setPreviewLoading(false);
+    }
   };
 
   const handleDrag = (e: React.DragEvent) => {
@@ -115,6 +165,8 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
     setStep("upload");
     setFile(null);
     setResult(null);
+    setPreview(null);
+    setColumnMapping({});
     onOpenChange(false);
   };
 
@@ -131,18 +183,44 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
     URL.revokeObjectURL(url);
   };
 
+  // Get set of already-mapped field names (excluding the current header) for disabling duplicates
+  const getMappedFields = (excludeHeader: string): Set<string> => {
+    const mapped = new Set<string>();
+    for (const [header, field] of Object.entries(columnMapping)) {
+      if (header !== excludeHeader && field && field !== SKIP_VALUE) {
+        mapped.add(field);
+      }
+    }
+    return mapped;
+  };
+
+  // Get sample data for a header from preview rows
+  const getSampleData = (header: string): string => {
+    if (!preview) return "";
+    return preview.sample_rows
+      .slice(0, 3)
+      .map((row) => row[header] || "")
+      .filter(Boolean)
+      .join(", ");
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[550px]">
+      <DialogContent className={cn(
+        "sm:max-w-[550px]",
+        step === "mapping" && "sm:max-w-[700px]"
+      )}>
         <DialogHeader>
           <DialogTitle>
             {step === "upload" && "Import Contacts"}
+            {step === "mapping" && "Map Fields"}
             {step === "options" && "Import Options"}
             {step === "importing" && "Importing..."}
             {step === "results" && "Import Complete"}
           </DialogTitle>
           <DialogDescription>
             {step === "upload" && "Upload a CSV file to import contacts in bulk."}
+            {step === "mapping" && "Map your CSV columns to contact fields."}
             {step === "options" && "Configure how your contacts should be imported."}
             {step === "importing" && "Please wait while we import your contacts."}
             {step === "results" && "Here's a summary of your import."}
@@ -211,6 +289,96 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
           </div>
         )}
 
+        {/* Mapping Step */}
+        {step === "mapping" && (
+          <div className="space-y-4">
+            {previewLoading ? (
+              <div className="py-8 flex flex-col items-center gap-3">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Analyzing CSV file...</p>
+              </div>
+            ) : preview && (
+              <>
+                {/* File info */}
+                <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg text-sm">
+                  <FileText className="h-5 w-5 text-primary shrink-0" />
+                  <span className="font-medium truncate">{file?.name}</span>
+                  <span className="text-muted-foreground shrink-0">
+                    {preview.headers.length} columns, {preview.sample_rows.length}+ rows
+                  </span>
+                </div>
+
+                {/* Required fields warning */}
+                {!isMappingValid() && (
+                  <div className="flex items-center gap-2 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-sm text-yellow-600">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    <span>
+                      Map both <strong>First Name</strong> and <strong>Phone Number</strong> to continue.
+                    </span>
+                  </div>
+                )}
+
+                {/* Mapping table */}
+                <ScrollArea className="h-[300px] rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[180px]">CSV Column</TableHead>
+                        <TableHead className="w-[200px]">Maps To</TableHead>
+                        <TableHead>Sample Data</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {preview.headers.map((header) => {
+                        const mappedFields = getMappedFields(header);
+                        const currentValue = columnMapping[header];
+                        return (
+                          <TableRow key={header}>
+                            <TableCell className="font-mono text-xs">
+                              {header}
+                            </TableCell>
+                            <TableCell>
+                              <Select
+                                value={currentValue ?? SKIP_VALUE}
+                                onValueChange={(value) =>
+                                  setColumnMapping((prev) => ({
+                                    ...prev,
+                                    [header]: value === SKIP_VALUE ? null : value,
+                                  }))
+                                }
+                              >
+                                <SelectTrigger className="h-8 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value={SKIP_VALUE}>-- Skip --</SelectItem>
+                                  {preview.contact_fields.map((field) => (
+                                    <SelectItem
+                                      key={field.name}
+                                      value={field.name}
+                                      disabled={mappedFields.has(field.name)}
+                                    >
+                                      {field.label}
+                                      {field.required ? " *" : ""}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground truncate max-w-[200px]">
+                              {getSampleData(header)}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+              </>
+            )}
+          </div>
+        )}
+
         {/* Options Step */}
         {step === "options" && file && (
           <div className="space-y-6">
@@ -228,6 +396,8 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
                 size="icon"
                 onClick={() => {
                   setFile(null);
+                  setPreview(null);
+                  setColumnMapping({});
                   setStep("upload");
                 }}
               >
@@ -347,9 +517,30 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
               Cancel
             </Button>
           )}
+          {step === "mapping" && (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setFile(null);
+                  setPreview(null);
+                  setColumnMapping({});
+                  setStep("upload");
+                }}
+              >
+                Back
+              </Button>
+              <Button
+                onClick={() => setStep("options")}
+                disabled={previewLoading || !isMappingValid()}
+              >
+                Continue
+              </Button>
+            </>
+          )}
           {step === "options" && (
             <>
-              <Button variant="outline" onClick={() => setStep("upload")}>
+              <Button variant="outline" onClick={() => setStep("mapping")}>
                 Back
               </Button>
               <Button onClick={handleStartImport}>

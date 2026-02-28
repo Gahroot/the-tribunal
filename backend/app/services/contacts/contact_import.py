@@ -30,6 +30,17 @@ CSV_FIELD_MAPPING = {
 
 VALID_STATUSES = {"new", "contacted", "qualified", "converted", "lost"}
 
+CONTACT_FIELDS = [
+    {"name": "first_name", "label": "First Name", "required": True},
+    {"name": "last_name", "label": "Last Name", "required": False},
+    {"name": "email", "label": "Email", "required": False},
+    {"name": "phone_number", "label": "Phone Number", "required": True},
+    {"name": "company_name", "label": "Company Name", "required": False},
+    {"name": "status", "label": "Status", "required": False},
+    {"name": "tags", "label": "Tags", "required": False},
+    {"name": "notes", "label": "Notes", "required": False},
+]
+
 
 @dataclass
 class ImportErrorDetail:
@@ -226,6 +237,45 @@ class ContactImportService:
         self.db = db
         self.log = logger.bind(service="contact_import")
 
+    @staticmethod
+    def preview_csv(file_content: bytes) -> dict[str, Any]:
+        """Preview a CSV file: extract headers, sample rows, and suggest field mapping.
+
+        Args:
+            file_content: Raw CSV file content
+
+        Returns:
+            Dictionary with headers, sample_rows, and suggested_mapping
+        """
+        text_content = _read_csv_content(file_content)
+        reader = csv.DictReader(io.StringIO(text_content))
+        headers = list(reader.fieldnames or [])
+        if not headers:
+            raise ValueError("CSV file has no headers")
+
+        sample_rows: list[dict[str, str]] = []
+        for i, row in enumerate(reader):
+            if i >= 5:
+                break
+            sample_rows.append(dict(row))
+
+        # Build suggested mapping: csv_header -> field_name or None
+        suggested_mapping: dict[str, str | None] = {}
+        for header in headers:
+            matched_field: str | None = None
+            header_lower = header.lower().strip()
+            for field_name, aliases in CSV_FIELD_MAPPING.items():
+                if header_lower in [a.lower() for a in aliases]:
+                    matched_field = field_name
+                    break
+            suggested_mapping[header] = matched_field
+
+        return {
+            "headers": headers,
+            "sample_rows": sample_rows,
+            "suggested_mapping": suggested_mapping,
+        }
+
     async def import_csv(
         self,
         workspace_id: uuid.UUID,
@@ -233,6 +283,7 @@ class ContactImportService:
         skip_duplicates: bool = True,
         default_status: str = "new",
         source: str = "csv_import",
+        explicit_mapping: dict[str, str] | None = None,
     ) -> ImportResult:
         """Import contacts from CSV file.
 
@@ -242,6 +293,7 @@ class ContactImportService:
             skip_duplicates: Whether to skip contacts with duplicate phone numbers
             default_status: Default status for new contacts
             source: Source identifier for imported contacts
+            explicit_mapping: Optional mapping of csv_header -> field_name
 
         Returns:
             ImportResult with summary of import operation
@@ -255,8 +307,21 @@ class ContactImportService:
         rows = await self._parse_csv(file_content)
         headers = list(rows[0].keys()) if rows else []
 
-        # Validate headers
-        column_mapping = {f: find_csv_column(headers, f) for f in CSV_FIELD_MAPPING}
+        # Build column mapping
+        if explicit_mapping:
+            # Invert: {csv_header: field_name} -> {field_name: csv_header}
+            column_mapping: dict[str, str | None] = dict.fromkeys(
+                CSV_FIELD_MAPPING, None
+            )
+            for csv_header, field_name in explicit_mapping.items():
+                if field_name in column_mapping:
+                    column_mapping[field_name] = csv_header
+        else:
+            column_mapping = {
+                f: find_csv_column(headers, f) for f in CSV_FIELD_MAPPING
+            }
+
+        # Validate required fields
         if not column_mapping["first_name"]:
             raise ValueError("CSV must have a 'first_name' column")
         if not column_mapping["phone_number"]:

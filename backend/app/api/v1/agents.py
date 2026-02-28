@@ -49,6 +49,8 @@ class AgentCreate(BaseModel):
     reminder_minutes_before: int = 30
     # Experiment auto-evaluation
     auto_evaluate: bool = False
+    # Greeting
+    initial_greeting: str | None = None
 
 
 class AgentUpdate(BaseModel):
@@ -83,6 +85,8 @@ class AgentUpdate(BaseModel):
     reminder_minutes_before: int | None = None
     # Experiment auto-evaluation
     auto_evaluate: bool | None = None
+    # Greeting
+    initial_greeting: str | None = None
 
 
 class AgentResponse(BaseModel):
@@ -119,6 +123,8 @@ class AgentResponse(BaseModel):
     reminder_minutes_before: int
     # Experiment auto-evaluation
     auto_evaluate: bool
+    # Greeting
+    initial_greeting: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -198,6 +204,7 @@ async def create_agent(
         reminder_enabled=agent_in.reminder_enabled,
         reminder_minutes_before=agent_in.reminder_minutes_before,
         auto_evaluate=agent_in.auto_evaluate,
+        initial_greeting=agent_in.initial_greeting,
     )
     db.add(agent)
     await db.commit()

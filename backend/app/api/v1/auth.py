@@ -20,7 +20,7 @@ from app.core.security import (
 from app.db.session import get_db
 from app.models.user import User
 from app.models.workspace import WorkspaceMembership
-from app.schemas.user import RefreshTokenRequest, Token, UserCreate, UserResponse, UserWithWorkspace
+from app.schemas.user import ChangePasswordRequest, RefreshTokenRequest, Token, UserCreate, UserResponse, UserWithWorkspace
 
 router = APIRouter()
 
@@ -152,6 +152,27 @@ async def refresh_token(
     )
 
     return Token(access_token=access_token, refresh_token=new_refresh_token)
+
+
+@router.post("/change-password", status_code=status.HTTP_200_OK)
+async def change_password(
+    body: ChangePasswordRequest,
+    current_user: CurrentUser,
+    db: DB,
+) -> dict[str, str]:
+    """Change current user's password."""
+    # Verify current password
+    if not verify_password(body.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+
+    # Update password
+    current_user.hashed_password = get_password_hash(body.new_password)
+    await db.commit()
+
+    return {"message": "Password updated successfully"}
 
 
 @router.get("/me", response_model=UserWithWorkspace)

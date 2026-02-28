@@ -13,6 +13,7 @@ from app.core.origin_validation import validate_origin
 from app.core.utils import get_client_ip
 from app.models.campaign import CampaignContact
 from app.models.contact import Contact
+from app.models.conversation import Conversation
 from app.models.demo_request import DemoRequest
 from app.models.lead_source import LeadSource
 from app.schemas.lead_source import LeadSubmitRequest, LeadSubmitResponse
@@ -52,20 +53,40 @@ async def _action_auto_text(
         f"Hi {contact.first_name}! Thanks for your interest. "
         "We'll be in touch shortly."
     )
+    # Substitute {first_name} placeholder in custom templates
+    template = template.replace("{first_name}", contact.first_name or "")
     if not settings.telnyx_api_key or not from_number:
         logger.warning("auto_text_skipped", reason="telnyx not configured")
         return
     sms_service = TelnyxSMSService(settings.telnyx_api_key)
+    agent_id_str = config.get("agent_id")
+    agent_id = uuid.UUID(agent_id_str) if agent_id_str else None
     try:
-        agent_id_str = config.get("agent_id")
         await sms_service.send_message(
             to_number=contact.phone_number,
             from_number=from_number,
             body=template,
             db=db,
             workspace_id=lead_source.workspace_id,
-            agent_id=uuid.UUID(agent_id_str) if agent_id_str else None,
+            agent_id=agent_id,
         )
+        # Assign agent to the conversation so replies get AI responses
+        if agent_id:
+            from app.services.telephony.telnyx import normalize_phone_number
+
+            norm_from = normalize_phone_number(from_number)
+            norm_to = normalize_phone_number(contact.phone_number)
+            conv_result = await db.execute(
+                select(Conversation).where(
+                    Conversation.workspace_id == lead_source.workspace_id,
+                    Conversation.workspace_phone == norm_from,
+                    Conversation.contact_phone == norm_to,
+                )
+            )
+            conversation = conv_result.scalar_one_or_none()
+            if conversation:
+                conversation.assigned_agent_id = agent_id
+                conversation.ai_enabled = True
     except Exception:
         logger.exception("auto_text_failed", contact_id=contact.id)
     finally:

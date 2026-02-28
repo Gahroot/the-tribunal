@@ -16,6 +16,7 @@ from app.services.ai.text_agent import schedule_ai_response
 from app.services.campaigns.conversation_syncer import CampaignConversationSyncer
 from app.services.telephony.call_outcome_classifier import CallOutcomeClassifier
 from app.services.telephony.telnyx import TelnyxSMSService
+from app.services.push_notifications import push_notification_service
 from app.services.telephony.voice_agent_resolver import VoiceAgentResolver
 
 router = APIRouter()
@@ -161,6 +162,25 @@ async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:
                     log.exception("campaign_reply_stats_failed", error=str(e))
 
             log.info("inbound_sms_processed", message_id=str(message.id))
+
+            # Push notification for inbound SMS
+            try:
+                truncated_body = body[:100] + "..." if len(body) > 100 else body
+                await push_notification_service.send_to_workspace_members(
+                    db=db,
+                    workspace_id=str(workspace_id),
+                    title="New Message",
+                    body=truncated_body,
+                    data={
+                        "type": "message",
+                        "conversationId": str(message.conversation_id),
+                        "screen": f"/(tabs)/messages/{message.conversation_id}",
+                    },
+                    notification_type="message",
+                    channel_id="messages",
+                )
+            except Exception as e:
+                log.exception("push_notification_failed", error=str(e))
         finally:
             await sms_service.close()
 
@@ -414,6 +434,24 @@ async def handle_call_initiated(payload: dict[Any, Any], log: Any) -> None:
 
         log.info("call_initiated_processed", message_id=str(message.id))
 
+        # Push notification for incoming call
+        try:
+            await push_notification_service.send_to_workspace_members(
+                db=db,
+                workspace_id=str(workspace_id),
+                title="Incoming Call",
+                body=from_number,
+                data={
+                    "type": "call",
+                    "messageId": str(message.id),
+                    "screen": f"/call/{message.id}",
+                },
+                notification_type="call",
+                channel_id="calls",
+            )
+        except Exception as e:
+            log.exception("push_notification_failed", error=str(e))
+
         # Auto-answer calls if phone number has an assigned active agent
         await auto_answer_call_if_agent_assigned(
             call_control_id=call_control_id,
@@ -634,6 +672,30 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:  # noqa
             await db.commit()
             log.info("message_updated", message_id=str(message.id), status=message.status)
 
+            # Push notification for missed/failed inbound calls
+            if message.direction == "inbound" and message.status in ("no_answer", "failed"):
+                try:
+                    from_number, _ = _extract_phone_numbers(payload)
+                    workspace_id = (
+                        message.conversation.workspace_id if message.conversation else None
+                    )
+                    if workspace_id:
+                        await push_notification_service.send_to_workspace_members(
+                            db=db,
+                            workspace_id=str(workspace_id),
+                            title="Missed Call",
+                            body=from_number,
+                            data={
+                                "type": "missed_call",
+                                "messageId": str(message.id),
+                                "screen": f"/(tabs)/calls/{message.id}",
+                            },
+                            notification_type="call",
+                            channel_id="calls",
+                        )
+                except Exception as e:
+                    log.exception("push_notification_failed", error=str(e))
+
             # Create CallOutcome record for attribution and analysis
             try:
                 from app.services.ai.call_outcome_service import create_outcome_from_hangup
@@ -696,6 +758,35 @@ async def handle_machine_detection(payload: dict[Any, Any], log: Any) -> None:
         return
 
     log.info("voicemail_detected_hanging_up")
+
+    # Push notification for voicemail
+    try:
+        from app.models.conversation import Message
+
+        async with AsyncSessionLocal() as push_db:
+            msg_result = await push_db.execute(
+                select(Message)
+                .options(selectinload(Message.conversation))
+                .where(Message.provider_message_id == call_control_id)
+            )
+            msg = msg_result.scalar_one_or_none()
+            if msg and msg.conversation:
+                from_number, _ = _extract_phone_numbers(payload)
+                await push_notification_service.send_to_workspace_members(
+                    db=push_db,
+                    workspace_id=str(msg.conversation.workspace_id),
+                    title="New Voicemail",
+                    body=from_number,
+                    data={
+                        "type": "voicemail",
+                        "messageId": str(msg.id),
+                        "screen": f"/(tabs)/calls/{msg.id}",
+                    },
+                    notification_type="voicemail",
+                    channel_id="calls",
+                )
+    except Exception as e:
+        log.exception("push_notification_failed", error=str(e))
 
     # Hang up the call
     from app.services.telephony.telnyx_voice import TelnyxVoiceService

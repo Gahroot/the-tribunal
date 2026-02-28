@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 
 class UserCreate(BaseModel):
@@ -75,6 +75,9 @@ class NotificationSettings(BaseModel):
     notification_email: bool
     notification_sms: bool
     notification_push: bool
+    notification_push_calls: bool
+    notification_push_messages: bool
+    notification_push_voicemail: bool
 
 
 class NotificationSettingsUpdate(BaseModel):
@@ -83,6 +86,9 @@ class NotificationSettingsUpdate(BaseModel):
     notification_email: bool | None = None
     notification_sms: bool | None = None
     notification_push: bool | None = None
+    notification_push_calls: bool | None = None
+    notification_push_messages: bool | None = None
+    notification_push_voicemail: bool | None = None
 
 
 class IntegrationStatus(BaseModel):
@@ -108,3 +114,51 @@ class TeamMemberResponse(BaseModel):
     full_name: str | None
     role: str
     created_at: datetime
+
+
+# Business Hours schemas
+class DaySchedule(BaseModel):
+    """Schema for a single day's schedule."""
+
+    enabled: bool
+    open: str
+    close: str
+
+
+class BusinessHoursSettings(BaseModel):
+    """Schema for business hours settings."""
+
+    is_24_7: bool = False
+    schedule: dict[str, DaySchedule] = {}
+
+
+class BusinessHoursUpdate(BaseModel):
+    """Schema for updating business hours."""
+
+    is_24_7: bool | None = None
+    schedule: dict[str, DaySchedule] | None = None
+
+
+# Call Forwarding schemas
+class CallForwardingSettings(BaseModel):
+    """Schema for call forwarding settings."""
+
+    enabled: bool = False
+    forward_to: str | None = None
+    mode: str = "no_answer"
+
+
+class CallForwardingUpdate(BaseModel):
+    """Schema for updating call forwarding."""
+
+    enabled: bool | None = None
+    forward_to: str | None = None
+    mode: str | None = None
+
+
+# Change Password schema
+class ChangePasswordRequest(BaseModel):
+    """Schema for changing password."""
+
+    current_password: str
+    new_password: str = Field(..., min_length=8)

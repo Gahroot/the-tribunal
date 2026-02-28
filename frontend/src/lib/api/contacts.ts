@@ -75,6 +75,20 @@ export interface ImportOptions {
   skip_duplicates?: boolean;
   default_status?: string;
   source?: string;
+  column_mapping?: Record<string, string>;
+}
+
+export interface ContactFieldDef {
+  name: string;
+  label: string;
+  required: boolean;
+}
+
+export interface CSVPreviewResult {
+  headers: string[];
+  sample_rows: Record<string, string>[];
+  suggested_mapping: Record<string, string | null>;
+  contact_fields: ContactFieldDef[];
 }
 
 export interface BulkDeleteResponse {
@@ -171,6 +185,25 @@ export const contactsApi = {
     return response.data;
   },
 
+  previewCSV: async (
+    workspaceId: string,
+    file: File,
+  ): Promise<CSVPreviewResult> => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await api.post<CSVPreviewResult>(
+      `/api/v1/workspaces/${workspaceId}/contacts/import/preview`,
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      }
+    );
+    return response.data;
+  },
+
   importCSV: async (
     workspaceId: string,
     file: File,
@@ -186,6 +219,9 @@ export const contactsApi = {
     }
     if (options.source) {
       formData.append("source", options.source);
+    }
+    if (options.column_mapping) {
+      formData.append("column_mapping", JSON.stringify(options.column_mapping));
     }
 
     const response = await api.post<ImportResult>(
