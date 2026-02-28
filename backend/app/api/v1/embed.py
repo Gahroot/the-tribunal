@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.origin_validation import validate_origin
 from app.db.session import get_db
 from app.models.agent import Agent
 
@@ -83,45 +84,6 @@ class TranscriptRequest(BaseModel):
     session_id: str
     transcript: str
     duration_seconds: int
-
-
-def validate_origin(request: Request, allowed_domains: list[str]) -> bool:
-    """Validate the request origin against allowed domains."""
-    origin = request.headers.get("origin") or request.headers.get("referer")
-
-    if not origin:
-        # Reject requests without origin header (security requirement)
-        return False
-
-    # Parse origin
-    try:
-        from urllib.parse import urlparse
-
-        parsed = urlparse(origin)
-        host = parsed.hostname or ""
-    except Exception:
-        return False
-
-    # If no domains configured, reject all (must explicitly configure allowed domains)
-    if not allowed_domains:
-        return False
-
-    # Check if host matches any allowed domain
-    for domain in allowed_domains:
-        domain = domain.lower().strip()
-        host_lower = host.lower()
-
-        # Exact match
-        if host_lower == domain:
-            return True
-
-        # Wildcard subdomain match (*.example.com)
-        if domain.startswith("*."):
-            base_domain = domain[2:]
-            if host_lower == base_domain or host_lower.endswith(f".{base_domain}"):
-                return True
-
-    return False
 
 
 async def get_agent_by_public_id(db: AsyncSession, public_id: str) -> Agent:

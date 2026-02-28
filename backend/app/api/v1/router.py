@@ -16,12 +16,15 @@ from app.api.v1 import (
     conversations,
     dashboard,
     demo,
+    device_tokens,
     embed,
     find_leads_ai,
     improvement_suggestions,
     integrations,
     invitations,
+    lead_form,
     lead_magnets,
+    lead_sources,
     message_templates,
     message_tests,
     offers,
@@ -41,6 +44,7 @@ api_router = APIRouter()
 # Include routers
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 api_router.include_router(settings.router, prefix="/settings", tags=["Settings"])
+api_router.include_router(device_tokens.router, prefix="/settings", tags=["Settings"])
 api_router.include_router(workspaces.router, prefix="/workspaces", tags=["Workspaces"])
 api_router.include_router(
     contacts.router,
@@ -195,4 +199,16 @@ api_router.include_router(
     embed.router,
     prefix="/p/embed",
     tags=["Public Embed"],
+)
+# Lead Sources CRUD (authenticated)
+api_router.include_router(
+    lead_sources.router,
+    prefix="/workspaces/{workspace_id}/lead-sources",
+    tags=["Lead Sources"],
+)
+# Public lead form endpoint (no auth, origin-validated, rate-limited)
+api_router.include_router(
+    lead_form.router,
+    prefix="/p/leads",
+    tags=["Public Lead Form"],
 )

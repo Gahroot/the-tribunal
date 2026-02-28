@@ -12,8 +12,10 @@ from app.models.campaign_report import CampaignReport
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
 from app.models.demo_request import DemoRequest
+from app.models.device_token import DeviceToken
 from app.models.invitation import WorkspaceInvitation
 from app.models.lead_magnet import LeadMagnet
+from app.models.lead_source import LeadSource
 from app.models.message_template import MessageTemplate
 from app.models.message_test import (
     MessageTest,
@@ -57,6 +59,7 @@ __all__ = [
     "GlobalOptOut",
     "Offer",
     "LeadMagnet",
+    "LeadSource",
     "OfferLeadMagnet",
     "Automation",
     "Pipeline",
@@ -79,4 +82,5 @@ __all__ = [
     "Tag",
     "ContactTag",
     "Segment",
+    "DeviceToken",
 ]
