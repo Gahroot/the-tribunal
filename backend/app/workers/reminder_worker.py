@@ -8,12 +8,13 @@ import uuid
 import zoneinfo
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
+from app.models.agent import Agent
 from app.models.appointment import Appointment
 from app.models.conversation import Conversation
 from app.models.phone_number import PhoneNumber
@@ -34,7 +35,24 @@ class ReminderWorker(BaseWorker):
         async with AsyncSessionLocal() as db:
             now = datetime.now(UTC)
 
-            # Broad window: fetch appointments within the next 60 minutes
+            # Determine the lookahead window from the largest reminder offset
+            # configured across all reminder-enabled agents.  This ensures
+            # agents with reminder_minutes_before > 60 (e.g. 120, 1440) are
+            # never silently skipped.  Cap at 1500 min (25 h) as a safety
+            # ceiling; default to 60 if no enabled agents exist.
+            max_lookahead = 1500  # 25 hours — safe ceiling for any reminder offset
+            max_result = await db.execute(
+                select(func.max(Agent.reminder_minutes_before)).where(
+                    Agent.reminder_enabled.is_(True)
+                )
+            )
+            raw_max: int | None = max_result.scalar_one_or_none()
+            lookahead_minutes = min(raw_max, max_lookahead) if raw_max else 60
+            self.logger.debug(
+                "Reminder lookahead window", lookahead_minutes=lookahead_minutes
+            )
+
+            # Broad window: fetch appointments within the lookahead window
             # that haven't had a reminder sent yet
             result = await db.execute(
                 select(Appointment)
@@ -48,7 +66,7 @@ class ReminderWorker(BaseWorker):
                         Appointment.status == "scheduled",
                         Appointment.reminder_sent_at.is_(None),
                         Appointment.scheduled_at > now,
-                        Appointment.scheduled_at <= now + timedelta(minutes=60),
+                        Appointment.scheduled_at <= now + timedelta(minutes=lookahead_minutes),
                         Appointment.agent_id.is_not(None),
                         Appointment.contact_id.is_not(None),
                     )
