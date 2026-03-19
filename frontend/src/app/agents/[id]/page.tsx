@@ -120,6 +120,8 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
       ivrMenuBufferSilenceMs: 2000,
       reminderEnabled: true,
       reminderMinutesBefore: 30,
+      reminderOffsets: [1440, 120, 30],
+      reminderTemplate: null,
       autoEvaluate: false,
     },
   });
@@ -154,6 +156,8 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
         ivrMenuBufferSilenceMs: agent.ivr_menu_buffer_silence_ms ?? 2000,
         reminderEnabled: agent.reminder_enabled ?? true,
         reminderMinutesBefore: agent.reminder_minutes_before ?? 30,
+        reminderOffsets: agent.reminder_offsets ?? [1440, 120, 30],
+        reminderTemplate: agent.reminder_template ?? null,
         autoEvaluate: agent.auto_evaluate ?? false,
       });
     }
@@ -247,6 +251,8 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
       ivr_menu_buffer_silence_ms: data.ivrMenuBufferSilenceMs,
       reminder_enabled: data.reminderEnabled,
       reminder_minutes_before: data.reminderMinutesBefore,
+      reminder_offsets: data.reminderOffsets,
+      reminder_template: data.reminderTemplate ?? null,
       auto_evaluate: data.autoEvaluate,
     };
 

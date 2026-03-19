@@ -9,6 +9,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,7 @@ import {
 import { ChevronDown, Phone } from "lucide-react";
 import type { AgentResponse } from "@/lib/api/agents";
 import type { EditAgentFormValues } from "@/components/agents/agent-edit-schema";
+import { ReminderOffsetsInput } from "@/components/agents/reminder-offsets-input";
 
 interface AdvancedTabProps {
   form: UseFormReturn<EditAgentFormValues>;
@@ -27,7 +29,22 @@ interface AdvancedTabProps {
   agent: AgentResponse;
 }
 
+const DEFAULT_REMINDER_TEMPLATE_PLACEHOLDER =
+  "Hi {first_name}, this is a reminder about your appointment on {appointment_date} at {appointment_time}. Reply STOP to opt out.";
+
+const REMINDER_VARIABLES = [
+  { name: "{first_name}", description: "Contact's first name" },
+  { name: "{last_name}", description: "Contact's last name" },
+  { name: "{appointment_date}", description: "Date of the appointment (e.g. March 22, 2026)" },
+  { name: "{appointment_time}", description: "Time of the appointment (e.g. 2:30 PM)" },
+  { name: "{reschedule_link}", description: "Link for the contact to reschedule" },
+];
+
 export function AdvancedTab({ form, voiceProvider, agent }: AdvancedTabProps) {
+  const reminderEnabled = form.watch("reminderEnabled");
+  const reminderTemplate = form.watch("reminderTemplate") ?? "";
+  const charCount = (reminderTemplate ?? "").length;
+
   return (
     <>
       <Card>
@@ -130,7 +147,7 @@ export function AdvancedTab({ form, voiceProvider, agent }: AdvancedTabProps) {
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium">Appointment Reminders</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-4">
           <FormField
             control={form.control}
             name="reminderEnabled"
@@ -149,29 +166,82 @@ export function AdvancedTab({ form, voiceProvider, agent }: AdvancedTabProps) {
             )}
           />
 
-          {form.watch("reminderEnabled") && (
-            <FormField
-              control={form.control}
-              name="reminderMinutesBefore"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Minutes Before Appointment</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      min={5}
-                      max={1440}
-                      value={field.value}
-                      onChange={(e) => field.onChange(parseInt(e.target.value) || 30)}
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    How many minutes before the appointment to send the reminder (5-1440)
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+          {reminderEnabled && (
+            <>
+              {/* Multi-touch reminder offsets */}
+              <FormField
+                control={form.control}
+                name="reminderOffsets"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Reminder Times</FormLabel>
+                    <FormControl>
+                      <ReminderOffsetsInput
+                        value={field.value}
+                        onChange={field.onChange}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Send reminders at each of these times before the appointment.
+                    </FormDescription>
+                    {field.value.length === 0 && (
+                      <p className="text-xs text-amber-600">
+                        Add at least one reminder time for reminders to be sent.
+                      </p>
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Custom SMS template */}
+              <FormField
+                control={form.control}
+                name="reminderTemplate"
+                render={({ field }) => (
+                  <FormItem>
+                    <div className="flex items-center justify-between">
+                      <FormLabel>Custom SMS Template</FormLabel>
+                      <span
+                        className={`text-xs ${charCount > 160 ? "text-amber-600 font-medium" : "text-muted-foreground"}`}
+                      >
+                        {charCount} / 160
+                        {charCount > 160 ? ` (${Math.ceil(charCount / 153)} segments)` : ""}
+                      </span>
+                    </div>
+                    <FormControl>
+                      <Textarea
+                        placeholder={DEFAULT_REMINDER_TEMPLATE_PLACEHOLDER}
+                        className="min-h-[90px] font-mono text-sm resize-none"
+                        value={field.value ?? ""}
+                        onChange={(e) => field.onChange(e.target.value || null)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Leave blank to use the default message shown in the placeholder above.
+                    </FormDescription>
+                    <FormMessage />
+
+                    {/* Available variables */}
+                    <div className="rounded-md border bg-muted/30 p-3 space-y-1.5">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        Available variables
+                      </p>
+                      <div className="grid gap-1">
+                        {REMINDER_VARIABLES.map((v) => (
+                          <div key={v.name} className="flex items-baseline gap-2">
+                            <code className="text-xs font-mono bg-background border rounded px-1 py-0.5 text-foreground shrink-0">
+                              {v.name}
+                            </code>
+                            <span className="text-xs text-muted-foreground">{v.description}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </FormItem>
+                )}
+              />
+            </>
           )}
         </CardContent>
       </Card>
