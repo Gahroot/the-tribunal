@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.db.redis import get_redis
 from app.models.agent import Agent
+from app.models.appointment import Appointment
 from app.models.campaign import Campaign
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
@@ -78,6 +79,16 @@ class TodayOverview(BaseModel):
     failed: int
 
 
+class AppointmentStats(BaseModel):
+    """Appointment performance metrics for the dashboard."""
+
+    appointments_today: int
+    appointments_this_week: int
+    show_up_rate_30d: float | None  # null when fewer than 5 completed+no_show in window
+    no_shows_30d: int
+    completed_30d: int
+
+
 class DashboardResponse(BaseModel):
     """Complete dashboard response."""
 
@@ -86,6 +97,7 @@ class DashboardResponse(BaseModel):
     campaign_stats: list[CampaignStat]
     agent_stats: list[AgentStat]
     today_overview: TodayOverview
+    appointment_stats: AppointmentStats
 
 
 def format_time_ago(dt: datetime) -> str:
@@ -440,6 +452,72 @@ async def get_today_overview(
     )
 
 
+async def get_appointment_stats(
+    db: AsyncSession, workspace: Workspace
+) -> AppointmentStats:
+    """Get appointment performance metrics."""
+    now = datetime.now(UTC)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end = today_start + timedelta(days=1)
+    week_end = now + timedelta(days=7)
+    thirty_days_ago = now - timedelta(days=30)
+
+    # Appointments scheduled for today (status=scheduled)
+    today_result = await db.execute(
+        select(func.count()).select_from(Appointment).where(
+            Appointment.workspace_id == workspace.id,
+            Appointment.scheduled_at >= today_start,
+            Appointment.scheduled_at < today_end,
+            Appointment.status == "scheduled",
+        )
+    )
+    appointments_today = today_result.scalar() or 0
+
+    # Appointments scheduled in the next 7 days (status=scheduled)
+    week_result = await db.execute(
+        select(func.count()).select_from(Appointment).where(
+            Appointment.workspace_id == workspace.id,
+            Appointment.scheduled_at >= now,
+            Appointment.scheduled_at < week_end,
+            Appointment.status == "scheduled",
+        )
+    )
+    appointments_this_week = week_result.scalar() or 0
+
+    # Completed and no-show counts for last 30 days
+    completed_result = await db.execute(
+        select(func.count()).select_from(Appointment).where(
+            Appointment.workspace_id == workspace.id,
+            Appointment.scheduled_at >= thirty_days_ago,
+            Appointment.status == "completed",
+        )
+    )
+    completed_30d = completed_result.scalar() or 0
+
+    no_shows_result = await db.execute(
+        select(func.count()).select_from(Appointment).where(
+            Appointment.workspace_id == workspace.id,
+            Appointment.scheduled_at >= thirty_days_ago,
+            Appointment.status == "no_show",
+        )
+    )
+    no_shows_30d = no_shows_result.scalar() or 0
+
+    # Show-up rate: only meaningful with >= 5 total outcomes
+    total_outcomes = completed_30d + no_shows_30d
+    show_up_rate_30d: float | None = None
+    if total_outcomes >= 5:
+        show_up_rate_30d = round(completed_30d / total_outcomes * 100, 1)
+
+    return AppointmentStats(
+        appointments_today=appointments_today,
+        appointments_this_week=appointments_this_week,
+        show_up_rate_30d=show_up_rate_30d,
+        no_shows_30d=no_shows_30d,
+        completed_30d=completed_30d,
+    )
+
+
 async def get_cached_dashboard(
     db: AsyncSession, workspace: Workspace
 ) -> DashboardResponse:
@@ -474,6 +552,7 @@ async def get_cached_dashboard(
     campaign_stats = await get_campaign_stats(db, workspace)
     agent_stats = await get_agent_stats(db, workspace)
     today_overview = await get_today_overview(db, workspace)
+    appointment_stats = await get_appointment_stats(db, workspace)
 
     response = DashboardResponse(
         stats=stats,
@@ -481,6 +560,7 @@ async def get_cached_dashboard(
         campaign_stats=campaign_stats,
         agent_stats=agent_stats,
         today_overview=today_overview,
+        appointment_stats=appointment_stats,
     )
 
     # Try to cache the result

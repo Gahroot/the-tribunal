@@ -14,6 +14,9 @@ import {
   CheckCircle,
   XCircle,
   Calendar,
+  CalendarDays,
+  CalendarCheck,
+  UserX,
   Bot,
   Loader2,
   AlertCircle,
@@ -41,6 +44,7 @@ import type {
   CampaignStat,
   AgentStat,
   TodayOverview,
+  AppointmentStats,
 } from "@/lib/api/dashboard";
 
 const containerVariants = {
@@ -505,6 +509,107 @@ function QuickActionsCard() {
   );
 }
 
+interface AppointmentStatsCardProps {
+  appointmentStats: AppointmentStats | undefined;
+  isLoading: boolean;
+}
+
+function AppointmentStatsCard({ appointmentStats, isLoading }: AppointmentStatsCardProps) {
+  const showUpRate = appointmentStats?.show_up_rate_30d ?? null;
+
+  const rateColor =
+    showUpRate === null
+      ? "text-muted-foreground"
+      : showUpRate >= 70
+        ? "text-green-500"
+        : showUpRate >= 50
+          ? "text-yellow-500"
+          : "text-red-500";
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <CalendarDays className="size-5" />
+            Appointments
+          </CardTitle>
+          <CardDescription>Scheduling performance</CardDescription>
+        </div>
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/calendar">
+            View Calendar
+            <ArrowUpRight className="ml-2 size-4" />
+          </Link>
+        </Button>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {isLoading ? (
+            <>
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="space-y-1 text-center">
+                  <Skeleton className="h-8 w-12 mx-auto" />
+                  <Skeleton className="h-3 w-16 mx-auto" />
+                  <Skeleton className="h-3 w-20 mx-auto" />
+                </div>
+              ))}
+            </>
+          ) : (
+            <>
+              <div className="space-y-1 text-center">
+                <div className="flex items-center justify-center gap-1 text-blue-500">
+                  <Calendar className="size-4" />
+                  <span className="text-2xl font-bold">
+                    {appointmentStats?.appointments_today ?? 0}
+                  </span>
+                </div>
+                <p className="text-xs font-medium">Today</p>
+                <p className="text-xs text-muted-foreground">Scheduled</p>
+              </div>
+
+              <div className="space-y-1 text-center">
+                <div className="flex items-center justify-center gap-1 text-purple-500">
+                  <CalendarCheck className="size-4" />
+                  <span className="text-2xl font-bold">
+                    {appointmentStats?.appointments_this_week ?? 0}
+                  </span>
+                </div>
+                <p className="text-xs font-medium">This Week</p>
+                <p className="text-xs text-muted-foreground">Upcoming</p>
+              </div>
+
+              <div className="space-y-1 text-center">
+                <div className={`flex items-center justify-center gap-1 ${rateColor}`}>
+                  <TrendingUp className="size-4" />
+                  <span className="text-2xl font-bold">
+                    {showUpRate !== null ? `${showUpRate}%` : "—"}
+                  </span>
+                </div>
+                <p className="text-xs font-medium">Show-Up Rate</p>
+                <p className="text-xs text-muted-foreground">
+                  {showUpRate !== null ? "Last 30 days" : "Not enough data"}
+                </p>
+              </div>
+
+              <div className="space-y-1 text-center">
+                <div className="flex items-center justify-center gap-1 text-red-500">
+                  <UserX className="size-4" />
+                  <span className="text-2xl font-bold">
+                    {appointmentStats?.no_shows_30d ?? 0}
+                  </span>
+                </div>
+                <p className="text-xs font-medium">No-Shows</p>
+                <p className="text-xs text-muted-foreground">Last 30 days</p>
+              </div>
+            </>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function ErrorState({ error }: { error: Error }) {
   return (
     <div className="p-6">
@@ -568,6 +673,18 @@ export function DashboardPage() {
 
       {/* Stats Grid */}
       <StatsGrid stats={data?.stats} isLoading={isLoading} />
+
+      {/* Appointment KPIs */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15 }}
+      >
+        <AppointmentStatsCard
+          appointmentStats={data?.appointment_stats}
+          isLoading={isLoading}
+        />
+      </motion.div>
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Active Campaigns */}
