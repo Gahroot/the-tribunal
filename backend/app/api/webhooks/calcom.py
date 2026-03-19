@@ -282,6 +282,13 @@ async def handle_booking_rescheduled(data: dict[str, Any], log: Any) -> None:
         appointment.sync_status = "synced"
         appointment.last_synced_at = datetime.now(UTC)
 
+        # Reset reminder tracking so the reminder worker re-fires for the new time
+        appointment.reminder_sent_at = None
+        log.info(
+            "reminder_tracking_reset_for_rescheduled_appointment",
+            uid=booking_uid,
+        )
+
         await db.commit()
         await db.refresh(appointment)
 
