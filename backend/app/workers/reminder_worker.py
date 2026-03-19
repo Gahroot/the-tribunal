@@ -18,6 +18,7 @@ from app.models.agent import Agent
 from app.models.appointment import Appointment
 from app.models.conversation import Conversation
 from app.models.phone_number import PhoneNumber
+from app.services.rate_limiting.opt_out_manager import OptOutManager
 from app.services.telephony.telnyx import TelnyxSMSService
 from app.workers.base import BaseWorker, WorkerRegistry
 
@@ -29,6 +30,10 @@ class ReminderWorker(BaseWorker):
 
     POLL_INTERVAL_SECONDS = 60
     COMPONENT_NAME = "reminder_worker"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.opt_out_manager = OptOutManager()
 
     async def _process_items(self) -> None:
         """Find and send due appointment reminders."""
@@ -126,6 +131,22 @@ class ReminderWorker(BaseWorker):
         contact_phone = contact.phone_number
         if not contact_phone:
             log.warning("Contact has no phone number")
+            return
+
+        # Check global opt-out before sending — TCPA compliance
+        is_opted_out = await self.opt_out_manager.check_opt_out(
+            workspace.id,
+            contact_phone,
+            db,
+        )
+        if is_opted_out:
+            log.info(
+                "Skipping reminder — contact has opted out",
+                contact_id=contact.id,
+                phone=contact_phone,
+            )
+            # Do NOT set reminder_sent_at so the appointment stays eligible
+            # if the contact re-opts-in before the appointment.
             return
 
         # Resolve the from number
