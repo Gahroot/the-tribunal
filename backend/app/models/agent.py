@@ -110,6 +110,10 @@ class Agent(Base):
         ARRAY(Integer), default=lambda: [1440, 120, 30], nullable=False
     )
     reminder_template: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Send re-engagement SMS with rebook link when a contact no-shows
+    noshow_sms_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False, server_default="true"
+    )
 
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

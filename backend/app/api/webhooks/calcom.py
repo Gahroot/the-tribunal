@@ -668,7 +668,7 @@ async def handle_booking_cancelled(data: dict[str, Any], log: Any) -> None:
         )
 
 
-async def handle_meeting_ended(data: dict[str, Any], log: Any) -> None:
+async def handle_meeting_ended(data: dict[str, Any], log: Any) -> None:  # noqa: PLR0912, PLR0915
     """Handle Cal.com MEETING_ENDED event.
 
     Marks appointments as completed or no_show based on meeting data.
@@ -722,6 +722,8 @@ async def handle_meeting_ended(data: dict[str, Any], log: Any) -> None:
         appointment.sync_status = "synced"
         appointment.last_synced_at = datetime.now(UTC)
 
+        is_no_show = appointment.status == AppointmentStatus.NO_SHOW.value
+
         await db.commit()
 
         log.info(
@@ -729,3 +731,93 @@ async def handle_meeting_ended(data: dict[str, Any], log: Any) -> None:
             appointment_id=appointment.id,
             status=appointment.status,
         )
+
+        # Send no-show re-engagement SMS with rebook link.
+        # Wrapped in try/except — never affects the webhook response.
+        if is_no_show:
+            try:
+                contact_result = await db.execute(
+                    select(Contact).where(Contact.id == appointment.contact_id)
+                )
+                noshow_contact = contact_result.scalar_one_or_none()
+
+                if noshow_contact:
+                    # Load agent (used for noshow_sms_enabled flag + rebook URL)
+                    noshow_agent: Agent | None = None
+                    if appointment.agent_id:
+                        agent_result = await db.execute(
+                            select(Agent).where(Agent.id == appointment.agent_id)
+                        )
+                        noshow_agent = agent_result.scalar_one_or_none()
+
+                    # Respect agent-level toggle (default True when no agent)
+                    sms_enabled = (
+                        noshow_agent.noshow_sms_enabled
+                        if noshow_agent is not None
+                        else True
+                    )
+                    if not sms_enabled:
+                        log.info(
+                            "noshow_sms_disabled_for_agent",
+                            agent_id=str(appointment.agent_id),
+                        )
+                    else:
+                        first_name = noshow_contact.first_name or "there"
+
+                        # Generate rebook URL if possible
+                        booking_url: str | None = None
+                        if (
+                            noshow_agent is not None
+                            and noshow_agent.calcom_event_type_id
+                            and settings.calcom_api_key
+                        ):
+                            try:
+                                from app.services.calendar.calcom import CalComService
+
+                                calcom = CalComService(settings.calcom_api_key)
+                                contact_name = " ".join(
+                                    filter(
+                                        None,
+                                        [noshow_contact.first_name, noshow_contact.last_name],
+                                    )
+                                ) or first_name
+                                booking_url = calcom.generate_booking_url(
+                                    event_type_id=noshow_agent.calcom_event_type_id,
+                                    contact_email=noshow_contact.email or "",
+                                    contact_name=contact_name,
+                                    contact_phone=noshow_contact.phone_number,
+                                )
+                            except Exception:
+                                log.warning(
+                                    "noshow_sms_rebook_url_failed",
+                                    appointment_id=appointment.id,
+                                )
+
+                        if booking_url:
+                            noshow_body = (
+                                f"Hi {first_name}, we missed you at your appointment today. "
+                                f"No worries \u2014 would you like to find another time? "
+                                f"Book here: {booking_url}"
+                            )
+                        else:
+                            noshow_body = (
+                                f"Hi {first_name}, we missed you at your appointment today. "
+                                f"No worries \u2014 would you like to find another time? "
+                                "Reply here to rebook."
+                            )
+
+                        log.info(
+                            "sending_noshow_reengagement_sms",
+                            contact_id=noshow_contact.id,
+                            appointment_id=appointment.id,
+                            has_rebook_url=booking_url is not None,
+                        )
+                        await _send_lifecycle_sms(
+                            db=db,
+                            workspace_id=noshow_contact.workspace_id,
+                            contact=noshow_contact,
+                            agent=noshow_agent,
+                            body_text=noshow_body,
+                        )
+            except Exception as e:
+                log.warning("noshow_sms_setup_failed", error=str(e))
