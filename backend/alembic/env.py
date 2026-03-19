@@ -14,6 +14,7 @@ from app.models import (  # noqa: F401 - Import all models to register them
     Agent,
     Appointment,
     Automation,
+    AutomationExecution,
     BanditDecision,
     CallFeedback,
     CallOutcome,

@@ -15,11 +15,12 @@ import {
   X,
   Loader2,
   Trash2,
+  Bell,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -131,6 +132,7 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
   const { selectedContact, setSelectedContact, timeline } = useContactStore();
   const isMobile = useIsMobile();
   const workspaceId = useWorkspaceId();
+  const queryClient = useQueryClient();
 
   // Dialog states
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -204,6 +206,33 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
 
   // Delete contact mutation
   const deleteContactMutation = useDeleteContact(workspaceId ?? "");
+
+  // Send reminder mutation (tracks sending state per appointment id)
+  const [sendingReminderIds, setSendingReminderIds] = useState<Set<number>>(new Set());
+
+  const handleSendReminder = async (appointmentId: number) => {
+    if (!workspaceId) return;
+    setSendingReminderIds((prev) => new Set(prev).add(appointmentId));
+    try {
+      const result = await appointmentsApi.sendReminder(workspaceId, appointmentId);
+      if (result.success) {
+        toast.success(`Reminder sent to ${result.sent_to ?? "contact"}`);
+        void queryClient.invalidateQueries({
+          queryKey: ["appointments", workspaceId, { contact_id: selectedContact?.id }],
+        });
+      } else {
+        toast.error(result.message || "Failed to send reminder");
+      }
+    } catch {
+      toast.error("Failed to send reminder");
+    } finally {
+      setSendingReminderIds((prev) => {
+        const next = new Set(prev);
+        next.delete(appointmentId);
+        return next;
+      });
+    }
+  };
 
   // Handle call action
   const handleCall = () => {
@@ -498,6 +527,22 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
                     >
                       {apt.status}
                     </Badge>
+                    {apt.status === "scheduled" && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 shrink-0"
+                        title="Send SMS reminder"
+                        disabled={sendingReminderIds.has(apt.id)}
+                        onClick={() => void handleSendReminder(apt.id)}
+                      >
+                        {sendingReminderIds.has(apt.id) ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Bell className="h-3 w-3" />
+                        )}
+                      </Button>
+                    )}
                   </div>
                 ))}
                 {contactAppointments.length > 3 && (

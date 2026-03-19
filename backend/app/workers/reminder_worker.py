@@ -7,11 +7,17 @@ Supports multi-touch sequences: fires a separate SMS for each configured offset
 in agent.reminder_offsets (e.g. 1440 min = 24 h, 120 min = 2 h, 30 min before)
 and tracks which offsets have already fired in appointment.reminders_sent so
 duplicate sends never occur across worker poll cycles.
+
+Also supports a value-reinforcement pre-appointment message: a single SMS sent
+``agent.value_reinforcement_offset_minutes`` minutes before the appointment.
+The fired state is stored in ``appointment.reminders_sent`` using the sentinel
+integer ``VR_SENTINEL`` (-1) so it is compatible with the existing
+``ARRAY(Integer)`` column.
 """
 
 import re
-import uuid
 import zoneinfo
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import and_, select, text
@@ -24,8 +30,8 @@ from app.models.agent import Agent
 from app.models.appointment import Appointment
 from app.models.contact import Contact
 from app.models.conversation import Conversation
-from app.models.phone_number import PhoneNumber
 from app.models.workspace import Workspace
+from app.services.calendar.reminder_service import resolve_from_number
 from app.services.rate_limiting.opt_out_manager import OptOutManager
 from app.services.telephony.telnyx import TelnyxSMSService
 from app.workers.base import BaseWorker, WorkerRegistry
@@ -34,6 +40,11 @@ MAX_REMINDERS_PER_TICK = 20
 
 # Agentless appointments use this single offset (minutes before)
 _AGENTLESS_DEFAULT_OFFSETS = [60]
+
+# Sentinel stored in reminders_sent to indicate the value-reinforcement message
+# has already been sent for an appointment.  Uses -1 because normal reminder
+# offsets are always positive integers and the column is ARRAY(Integer).
+VR_SENTINEL = -1
 
 
 class ReminderWorker(BaseWorker):
@@ -102,23 +113,24 @@ class ReminderWorker(BaseWorker):
                     if appt.scheduled_at <= threshold:
                         due_pairs.append((appt, offset))
 
-            if not due_pairs:
-                return
+            if due_pairs:
+                self.logger.info(
+                    "Processing appointment reminders",
+                    count=len(due_pairs),
+                )
 
-            self.logger.info(
-                "Processing appointment reminders",
-                count=len(due_pairs),
-            )
+                for appt, offset in due_pairs:
+                    try:
+                        await self._send_reminder(appt, offset, db)
+                    except Exception:
+                        self.logger.exception(
+                            "Error sending appointment reminder",
+                            appointment_id=appt.id,
+                            offset_minutes=offset,
+                        )
 
-            for appt, offset in due_pairs:
-                try:
-                    await self._send_reminder(appt, offset, db)
-                except Exception:
-                    self.logger.exception(
-                        "Error sending appointment reminder",
-                        appointment_id=appt.id,
-                        offset_minutes=offset,
-                    )
+            # Value-reinforcement pre-appointment messages
+            await self._process_value_reinforcement(appointments, now, db)
 
     async def _send_reminder(
         self,
@@ -169,7 +181,7 @@ class ReminderWorker(BaseWorker):
         agent_id = agent.id if agent is not None else None
 
         # Resolve the from number
-        from_number = await self._resolve_from_number(
+        from_number = await resolve_from_number(
             db, contact.id, workspace.id, agent_id
         )
         if not from_number:
@@ -233,6 +245,132 @@ class ReminderWorker(BaseWorker):
         finally:
             await sms_service.close()
 
+    async def _process_value_reinforcement(
+        self,
+        appointments: Sequence[Appointment],
+        now: datetime,
+        db: AsyncSession,
+    ) -> None:
+        """Iterate over fetched appointments and fire any due VR messages.
+
+        Extracted from ``_process_items`` to keep branch count below the
+        ruff PLR0912 threshold.
+        """
+        for appt in appointments:
+            agent = appt.agent
+            if agent is None:
+                continue
+            if not agent.value_reinforcement_enabled:
+                continue
+            if not agent.value_reinforcement_template:
+                continue
+
+            already_sent: list[int] = list(appt.reminders_sent or [])
+            if VR_SENTINEL in already_sent:
+                continue  # Already sent the VR message for this appointment
+
+            vr_offset = agent.value_reinforcement_offset_minutes
+            threshold = now + timedelta(minutes=vr_offset)
+            if appt.scheduled_at > threshold:
+                continue  # Not within the VR send window yet
+
+            try:
+                await self._send_value_reinforcement(appt, db)
+            except Exception:
+                self.logger.exception(
+                    "Error sending value-reinforcement message",
+                    appointment_id=appt.id,
+                )
+
+    async def _send_value_reinforcement(
+        self,
+        appt: Appointment,
+        db: AsyncSession,
+    ) -> None:
+        """Send the value-reinforcement pre-appointment SMS for an appointment.
+
+        Uses the same opt-out check and 3-strategy from-number resolution as
+        the standard reminder send path.  Tracks delivery via the VR_SENTINEL
+        integer in ``appointment.reminders_sent``.
+        """
+        agent = appt.agent
+        contact = appt.contact
+        workspace = appt.workspace
+
+        log = self.logger.bind(appointment_id=appt.id, message_type="value_reinforcement")
+
+        if agent is None or contact is None or workspace is None:
+            log.warning("Missing agent, contact, or workspace for VR message")
+            return
+
+        telnyx_key = settings.telnyx_api_key
+        if not telnyx_key:
+            log.warning("No Telnyx API key configured")
+            return
+
+        contact_phone = contact.phone_number
+        if not contact_phone:
+            log.warning("Contact has no phone number")
+            return
+
+        # TCPA compliance — skip opted-out contacts
+        is_opted_out = await self.opt_out_manager.check_opt_out(
+            workspace.id,
+            contact_phone,
+            db,
+        )
+        if is_opted_out:
+            log.info(
+                "Skipping value-reinforcement — contact has opted out",
+                contact_id=contact.id,
+                phone=contact_phone,
+            )
+            # Mark as sent so we don't keep checking on every poll cycle.
+            await self._mark_offset_sent(appt, VR_SENTINEL, db)
+            return
+
+        # Resolve the from number using the same 3-strategy approach
+        from_number = await resolve_from_number(
+            db, contact.id, workspace.id, agent.id
+        )
+        if not from_number:
+            log.warning(
+                "Could not resolve from number for VR message, will retry next tick"
+            )
+            return
+
+        # Render the template — value_reinforcement_template is non-None here
+        # because _process_items checks it before calling this method.
+        body = self._render_value_reinforcement_body(
+            template=agent.value_reinforcement_template or "",
+            contact=contact,
+            appointment=appt,
+            workspace=workspace,
+        )
+
+        sms_service = TelnyxSMSService(telnyx_key)
+        try:
+            message = await sms_service.send_message(
+                to_number=contact_phone,
+                from_number=from_number,
+                body=body,
+                db=db,
+                workspace_id=workspace.id,
+                agent_id=agent.id,
+            )
+
+            log.info("Value-reinforcement message sent", message_id=str(message.id))
+
+            # Mark the VR message as sent using the sentinel value
+            await self._mark_offset_sent(appt, VR_SENTINEL, db)
+
+            await db.commit()
+
+        except Exception as e:
+            log.exception("Failed to send value-reinforcement SMS", error=str(e))
+        finally:
+            await sms_service.close()
+
     async def _mark_offset_sent(
         self,
         appt: Appointment,
@@ -244,6 +382,9 @@ class ReminderWorker(BaseWorker):
         Uses PostgreSQL array_append to avoid overwriting concurrent updates.
         After the append we refresh the ORM object so subsequent reads are
         accurate within the same session.
+
+        The ``offset_minutes`` value may be ``VR_SENTINEL`` (-1) for the
+        value-reinforcement message.
         """
         now = datetime.now(UTC)
         await db.execute(
@@ -353,74 +494,50 @@ class ReminderWorker(BaseWorker):
 
         return message
 
-    # ------------------------------------------------------------------
-    # From-number resolution
-    # ------------------------------------------------------------------
-
-    async def _resolve_from_number(
+    def _render_value_reinforcement_body(
         self,
-        db: AsyncSession,
-        contact_id: int,
-        workspace_id: uuid.UUID,
-        agent_id: uuid.UUID | None,
-    ) -> str | None:
-        """Resolve the best from-number for the reminder.
+        template: str,
+        contact: Contact,
+        appointment: Appointment,
+        workspace: Workspace,
+    ) -> str:
+        """Build the SMS body for a value-reinforcement message.
 
-        Strategy 1: Find existing conversation with this contact (reuse same number).
-        Strategy 2: Fall back to agent's assigned phone number (if agent exists).
-        Strategy 3: Fall back to any active SMS-enabled workspace phone number.
+        Renders the template with placeholders:
+          {first_name}, {appointment_date}, {appointment_time}
+
+        Times are formatted in the workspace timezone (falls back to UTC).
         """
-        # Strategy 1 — existing conversation
-        result = await db.execute(
-            select(Conversation.workspace_phone)
-            .where(
-                and_(
-                    Conversation.contact_id == contact_id,
-                    Conversation.workspace_id == workspace_id,
-                )
-            )
-            .order_by(Conversation.last_message_at.desc().nulls_last())
-            .limit(1)
-        )
-        phone = result.scalar_one_or_none()
-        if phone:
-            return str(phone)
+        tz_name = (workspace.settings or {}).get("timezone", "UTC")
+        try:
+            tz = zoneinfo.ZoneInfo(str(tz_name))
+        except (KeyError, zoneinfo.ZoneInfoNotFoundError):
+            tz = zoneinfo.ZoneInfo("UTC")
 
-        # Strategy 2 — agent's assigned phone number
-        if agent_id is not None:
-            result = await db.execute(
-                select(PhoneNumber.phone_number)
-                .where(
-                    and_(
-                        PhoneNumber.assigned_agent_id == agent_id,
-                        PhoneNumber.is_active.is_(True),
-                        PhoneNumber.sms_enabled.is_(True),
-                    )
-                )
-                .limit(1)
-            )
-            phone = result.scalar_one_or_none()
-            if phone:
-                return str(phone)
+        local_dt = appointment.scheduled_at.astimezone(tz)
+        date_str = local_dt.strftime("%A, %B %-d")
+        time_str = local_dt.strftime("%-I:%M %p")
 
-        # Strategy 3 — any active SMS-enabled workspace phone number (agentless fallback)
-        result = await db.execute(
-            select(PhoneNumber.phone_number)
-            .where(
-                and_(
-                    PhoneNumber.workspace_id == workspace_id,
-                    PhoneNumber.is_active.is_(True),
-                    PhoneNumber.sms_enabled.is_(True),
-                )
-            )
-            .order_by(PhoneNumber.created_at)
-            .limit(1)
-        )
-        phone = result.scalar_one_or_none()
-        if phone:
-            return str(phone)
+        replacements: dict[str, str] = {
+            "first_name": contact.first_name or "",
+            "appointment_date": date_str,
+            "appointment_time": time_str,
+        }
 
-        return None
+        message = template
+        for placeholder, value in replacements.items():
+            try:
+                pattern = re.compile(rf"\{{{placeholder}\}}", re.IGNORECASE)
+                message = pattern.sub(value, message)
+            except Exception:
+                self.logger.warning(
+                    "Placeholder replacement failed in value-reinforcement template",
+                    placeholder=placeholder,
+                    appointment_id=appointment.id,
+                )
+
+        return message
+
 
 
 # Singleton registry

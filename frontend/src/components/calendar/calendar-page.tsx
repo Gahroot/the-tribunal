@@ -13,6 +13,8 @@ import {
   Loader2,
   AlertCircle,
   Trash2,
+  RefreshCw,
+  Bell,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -39,7 +41,20 @@ import { useAppointments, useDeleteAppointment } from "@/hooks/useAppointments";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { toast } from "sonner";
 import { appointmentStatusColors } from "@/lib/status-colors";
-import type { Contact } from "@/types";
+import { NewAppointmentDialog } from "@/components/calendar/new-appointment-dialog";
+import { appointmentsApi } from "@/lib/api/appointments";
+import type { Appointment, Contact } from "@/types";
+
+// Status filter options
+const STATUS_OPTIONS = [
+  { value: "", label: "All" },
+  { value: "scheduled", label: "Scheduled" },
+  { value: "no_show", label: "No-Show" },
+  { value: "completed", label: "Completed" },
+  { value: "cancelled", label: "Cancelled" },
+] as const;
+
+type StatusFilter = "" | "scheduled" | "no_show" | "completed" | "cancelled";
 
 // Helper to get contact initials
 function getInitials(firstName: string, lastName?: string): string {
@@ -54,9 +69,175 @@ function getContactName(contact: Contact | null | undefined): string {
   return [contact.first_name, contact.last_name].filter(Boolean).join(" ");
 }
 
+// Helper to convert minutes offset to human-readable label
+function offsetToLabel(minutes: number): string {
+  if (minutes >= 1440 && minutes % 1440 === 0) return `${minutes / 1440}d`;
+  if (minutes >= 60 && minutes % 60 === 0) return `${minutes / 60}h`;
+  return `${minutes}m`;
+}
+
+interface ReminderBadgesProps {
+  reminderSentAt?: string | null;
+  remindersSent?: number[] | null;
+  reminderOffsets?: number[] | null;
+}
+
+function ReminderBadges({ reminderSentAt, remindersSent, reminderOffsets }: ReminderBadgesProps) {
+  const sent = remindersSent ?? [];
+
+  // If we have reminder offsets (from agent data on appointment), show multi-badge
+  if (reminderOffsets && reminderOffsets.length > 0) {
+    return (
+      <div className="flex flex-wrap gap-1">
+        {reminderOffsets.map((offset) => {
+          const fired = sent.includes(offset);
+          return (
+            <Badge
+              key={offset}
+              variant="outline"
+              className={fired
+                ? "text-green-600 border-green-300 text-[10px] py-0"
+                : "text-muted-foreground border-muted text-[10px] py-0"
+              }
+            >
+              {offsetToLabel(offset)}{fired ? " ✓" : ""}
+            </Badge>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // If we have fired reminders but no offset config, show fired ones
+  if (sent.length > 0) {
+    return (
+      <div className="flex flex-wrap gap-1">
+        {sent.map((offset) => (
+          <Badge
+            key={offset}
+            variant="outline"
+            className="text-green-600 border-green-300 text-[10px] py-0"
+          >
+            {offsetToLabel(offset)} ✓
+          </Badge>
+        ))}
+      </div>
+    );
+  }
+
+  // Legacy fallback: just reminder_sent_at set
+  if (reminderSentAt) {
+    return (
+      <Badge variant="outline" className="text-green-600 border-green-300 text-[10px] py-0">
+        Reminder sent
+      </Badge>
+    );
+  }
+
+  return null;
+}
+
+interface SyncButtonProps {
+  appointment: Appointment;
+  workspaceId: string;
+  onSynced: () => void;
+}
+
+function SyncButton({ appointment, workspaceId, onSynced }: SyncButtonProps) {
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  if (appointment.sync_status !== "pending") return null;
+
+  const handleSync = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsSyncing(true);
+    try {
+      const result = await appointmentsApi.syncAppointment(workspaceId, appointment.id);
+      if (result.status === "synced") {
+        toast.success("Synced to Cal.com");
+        onSynced();
+      } else {
+        toast.error(`Sync failed: ${result.error ?? "Unknown error"}`);
+      }
+    } catch {
+      toast.error("Failed to sync appointment");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="text-xs h-7 gap-1"
+      onClick={handleSync}
+      disabled={isSyncing}
+      title="Sync to Cal.com"
+    >
+      {isSyncing ? (
+        <Loader2 className="size-3 animate-spin" />
+      ) : (
+        <RefreshCw className="size-3" />
+      )}
+      Sync
+    </Button>
+  );
+}
+
+interface SendReminderButtonProps {
+  appointment: Appointment;
+  workspaceId: string;
+  onSent: () => void;
+}
+
+function SendReminderButton({ appointment, workspaceId, onSent }: SendReminderButtonProps) {
+  const [isSending, setIsSending] = useState(false);
+
+  if (appointment.status !== "scheduled") return null;
+
+  const handleSend = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsSending(true);
+    try {
+      const result = await appointmentsApi.sendReminder(workspaceId, appointment.id);
+      if (result.success) {
+        toast.success(`Reminder sent to ${result.sent_to ?? "contact"}`);
+        onSent();
+      } else {
+        toast.error(result.message || "Failed to send reminder");
+      }
+    } catch {
+      toast.error("Failed to send reminder");
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="text-xs h-7 gap-1"
+      onClick={handleSend}
+      disabled={isSending}
+      title="Send SMS reminder"
+    >
+      {isSending ? (
+        <Loader2 className="size-3 animate-spin" />
+      ) : (
+        <Bell className="size-3" />
+      )}
+      Remind
+    </Button>
+  );
+}
+
 export function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<number | null>(null);
+  const [isScheduleOpen, setIsScheduleOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("");
   const workspaceId = useWorkspaceId();
 
   // Compute week bounds before the data fetch so they drive the query key + params
@@ -64,14 +245,18 @@ export function CalendarPage() {
   const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
-  const { data: appointmentsData, isLoading, error } = useAppointments(
+  const queryParams = useMemo(() => ({
+    page: 1,
+    page_size: 100,
+    date_from: weekStart.toISOString(),
+    date_to: weekEnd.toISOString(),
+    ...(statusFilter ? { status_filter: statusFilter } : {}),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [weekStart.toISOString(), weekEnd.toISOString(), statusFilter]);
+
+  const { data: appointmentsData, isLoading, error, refetch } = useAppointments(
     workspaceId ?? "",
-    {
-      page: 1,
-      page_size: 100,
-      date_from: weekStart.toISOString(),
-      date_to: weekEnd.toISOString(),
-    }
+    queryParams
   );
   const deleteAppointmentMutation = useDeleteAppointment(workspaceId ?? "");
 
@@ -79,6 +264,8 @@ export function CalendarPage() {
     () => appointmentsData?.items || [],
     [appointmentsData?.items]
   );
+
+  const totalCount = appointmentsData?.total ?? 0;
 
   const todayAppointments = useMemo(
     () =>
@@ -142,11 +329,38 @@ export function CalendarPage() {
               Cal.com Settings
             </Link>
           </Button>
-          <Button>
+          <Button onClick={() => setIsScheduleOpen(true)}>
             <Plus className="mr-2 size-4" />
             New Appointment
           </Button>
         </div>
+      </div>
+
+      <NewAppointmentDialog
+        open={isScheduleOpen}
+        onOpenChange={setIsScheduleOpen}
+      />
+
+      {/* Filter Bar */}
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+          {STATUS_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setStatusFilter(opt.value as StatusFilter)}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                statusFilter === opt.value
+                  ? "bg-background shadow-sm text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <span className="text-sm text-muted-foreground">
+          {totalCount} result{totalCount !== 1 ? "s" : ""}
+        </span>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -233,6 +447,11 @@ export function CalendarPage() {
                                   <p className="text-xs text-muted-foreground">
                                     {format(new Date(apt.scheduled_at), "h:mm a")}
                                   </p>
+                                  {apt.sync_status === "pending" && (
+                                    <Badge variant="outline" className="text-amber-600 border-amber-300 text-[10px] py-0 mt-0.5">
+                                      pending sync
+                                    </Badge>
+                                  )}
                                 </motion.button>
                               </DialogTrigger>
                               <DialogContent>
@@ -263,30 +482,65 @@ export function CalendarPage() {
                                         >
                                           {apt.status}
                                         </Badge>
+                                        <ReminderBadges
+                                          reminderSentAt={apt.reminder_sent_at}
+                                          remindersSent={apt.reminders_sent}
+                                        />
                                         {apt.reminder_sent_at && (
-                                          <Badge variant="outline" className="text-green-600 border-green-300">
-                                            Reminder sent
-                                          </Badge>
+                                          <p className="text-xs text-muted-foreground">
+                                            Last reminder: {format(new Date(apt.reminder_sent_at), "MMM d, h:mm a")}
+                                          </p>
                                         )}
                                       </div>
                                     </div>
-                                    {apt.status === "scheduled" && (
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={() => handleDeleteAppointment(apt.id)}
-                                        disabled={deleteAppointmentMutation.isPending}
-                                        className="text-destructive hover:text-destructive"
-                                      >
-                                        <Trash2 className="size-4" />
-                                      </Button>
-                                    )}
+                                    <div className="flex items-center gap-2">
+                                      {workspaceId && (
+                                        <SyncButton
+                                          appointment={apt}
+                                          workspaceId={workspaceId}
+                                          onSynced={() => void refetch()}
+                                        />
+                                      )}
+                                      {workspaceId && apt.status === "scheduled" && (
+                                        <SendReminderButton
+                                          appointment={apt}
+                                          workspaceId={workspaceId}
+                                          onSent={() => void refetch()}
+                                        />
+                                      )}
+                                      {apt.status === "scheduled" && (
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => handleDeleteAppointment(apt.id)}
+                                          disabled={deleteAppointmentMutation.isPending}
+                                          className="text-destructive hover:text-destructive"
+                                        >
+                                          <Trash2 className="size-4" />
+                                        </Button>
+                                      )}
+                                    </div>
                                   </div>
                                   <div className="grid gap-2 text-sm">
                                     <div className="flex items-center gap-2">
                                       <Clock className="size-4 text-muted-foreground" />
                                       <span>{apt.duration_minutes} minutes</span>
                                     </div>
+                                    {apt.sync_status === "pending" && (
+                                      <div className="flex items-center gap-2 text-amber-600">
+                                        <span className="text-xs">Not synced to Cal.com</span>
+                                      </div>
+                                    )}
+                                    {apt.sync_status === "synced" && apt.calcom_booking_uid && (
+                                      <div className="text-xs text-muted-foreground">
+                                        Cal.com UID: {apt.calcom_booking_uid}
+                                      </div>
+                                    )}
+                                    {apt.sync_error && (
+                                      <div className="text-xs text-destructive">
+                                        Sync error: {apt.sync_error}
+                                      </div>
+                                    )}
                                     {apt.notes && (
                                       <div className="text-sm text-muted-foreground">
                                         {apt.notes}
@@ -346,11 +600,10 @@ export function CalendarPage() {
                           {format(new Date(apt.scheduled_at), "h:mm a")} • {apt.duration_minutes}min
                         </p>
                       </div>
-                      {apt.reminder_sent_at && (
-                        <Badge variant="outline" className="text-green-600 border-green-300 text-[10px] py-0">
-                          Reminded
-                        </Badge>
-                      )}
+                      <ReminderBadges
+                        reminderSentAt={apt.reminder_sent_at}
+                        remindersSent={apt.reminders_sent}
+                      />
                       <Badge
                         variant="outline"
                         className={appointmentStatusColors[apt.status]}
@@ -394,6 +647,11 @@ export function CalendarPage() {
                         {apt.service_type || "Appointment"} • {format(new Date(apt.scheduled_at), "h:mm a")}
                       </p>
                     </div>
+                    {apt.sync_status === "pending" && (
+                      <Badge variant="outline" className="text-amber-600 border-amber-300 text-[10px] py-0 shrink-0">
+                        sync
+                      </Badge>
+                    )}
                     <Badge
                       variant="outline"
                       className={appointmentStatusColors[apt.status]}
@@ -415,10 +673,12 @@ export function CalendarPage() {
               <div className="grid grid-cols-2 gap-4 text-center">
                 <div className="p-3 rounded-lg bg-muted/50">
                   <div className="text-2xl font-bold">
-                    {appointmentsList.length}
+                    {totalCount}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    Total
+                    {statusFilter
+                      ? STATUS_OPTIONS.find((o) => o.value === statusFilter)?.label ?? "Filtered"
+                      : "Total"}
                   </div>
                 </div>
                 <div className="p-3 rounded-lg bg-muted/50">

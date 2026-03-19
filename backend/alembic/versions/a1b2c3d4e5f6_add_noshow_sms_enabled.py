@@ -1,7 +1,7 @@
 """Add noshow_sms_enabled to agents.
 
-Revision ID: a1b2c3d4e5f6
-Revises: z8a9b0c1d2e3
+Revision ID: f0a1b2c3d4e5
+Revises: e3f4g5h6i7j8
 Create Date: 2026-03-19 00:00:00.000000
 
 """
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "a1b2c3d4e5f6"
-down_revision: str | None = "z8a9b0c1d2e3"
+revision: str = "f0a1b2c3d4e5"
+down_revision: str | None = "e3f4g5h6i7j8"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

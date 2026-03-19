@@ -16,6 +16,10 @@ from app.core.config import settings
 from app.db.redis import close_redis
 from app.websockets.voice_bridge import router as voice_bridge_router
 from app.websockets.voice_test import router as voice_test_router
+from app.workers.automation_worker import (
+    start_automation_worker,
+    stop_automation_worker,
+)
 from app.workers.campaign_worker import start_campaign_worker, stop_campaign_worker
 from app.workers.enrichment_worker import (
     start_enrichment_worker,
@@ -29,6 +33,14 @@ from app.workers.followup_worker import start_followup_worker, stop_followup_wor
 from app.workers.message_test_worker import (
     start_message_test_worker,
     stop_message_test_worker,
+)
+from app.workers.never_booked_worker import (
+    start_never_booked_worker,
+    stop_never_booked_worker,
+)
+from app.workers.noshow_reengagement_worker import (
+    start_noshow_reengagement_worker,
+    stop_noshow_reengagement_worker,
 )
 from app.workers.prompt_improvement_worker import (
     start_prompt_improvement_worker,
@@ -131,7 +143,7 @@ def _validate_startup_config() -> None:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: PLR0915
     """Application lifespan handler."""
     log = logger.bind(context="app_lifespan")
     log.info("Starting AI CRM backend...")
@@ -160,6 +172,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info("Prompt improvement worker started")
     await start_experiment_evaluation_worker()
     log.info("Experiment evaluation worker started")
+    await start_automation_worker()
+    log.info("Automation worker started")
+    await start_noshow_reengagement_worker()
+    log.info("No-show re-engagement worker started")
+    await start_never_booked_worker()
+    log.info("Never-booked re-engagement worker started")
 
     yield
 
@@ -185,6 +203,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info("Prompt improvement worker stopped")
     await stop_experiment_evaluation_worker()
     log.info("Experiment evaluation worker stopped")
+    await stop_automation_worker()
+    log.info("Automation worker stopped")
+    await stop_noshow_reengagement_worker()
+    log.info("No-show re-engagement worker stopped")
+    await stop_never_booked_worker()
+    log.info("Never-booked re-engagement worker stopped")
     await close_redis()
 
 

@@ -27,6 +27,21 @@ export const editAgentFormSchema = z.object({
   reminderMinutesBefore: z.number().min(5).max(1440),
   reminderOffsets: z.array(z.number().int().min(1).max(10080)),
   reminderTemplate: z.string().nullable().optional(),
+  // No-show re-engagement
+  noshowSmsEnabled: z.boolean(),
+  // No-show multi-day re-engagement sequence
+  noshowReengagementEnabled: z.boolean(),
+  noshowDay3Template: z.string().nullable().optional(),
+  noshowDay7Template: z.string().nullable().optional(),
+  // Never-booked re-engagement
+  neverBookedReengagementEnabled: z.boolean(),
+  neverBookedDelayDays: z.number().int().min(1).max(365),
+  neverBookedMaxAttempts: z.number().int().min(1).max(10),
+  neverBookedTemplate: z.string().nullable().optional(),
+  // Value-reinforcement pre-appointment message
+  valueReinforcementEnabled: z.boolean(),
+  valueReinforcementOffsetMinutes: z.number().int().min(1).max(10080),
+  valueReinforcementTemplate: z.string().nullable().optional(),
   // Experiment auto-evaluation
   autoEvaluate: z.boolean(),
 });
@@ -47,6 +62,17 @@ export const TAB_FIELDS: Record<string, (keyof EditAgentFormValues)[]> = {
     "reminderMinutesBefore",
     "reminderOffsets",
     "reminderTemplate",
+    "noshowSmsEnabled",
+    "noshowReengagementEnabled",
+    "noshowDay3Template",
+    "noshowDay7Template",
+    "neverBookedReengagementEnabled",
+    "neverBookedDelayDays",
+    "neverBookedMaxAttempts",
+    "neverBookedTemplate",
+    "valueReinforcementEnabled",
+    "valueReinforcementOffsetMinutes",
+    "valueReinforcementTemplate",
     "autoEvaluate",
   ],
 };

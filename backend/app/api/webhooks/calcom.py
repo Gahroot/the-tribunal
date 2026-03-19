@@ -29,6 +29,58 @@ router = APIRouter()
 logger = structlog.get_logger()
 
 
+# ---------------------------------------------------------------------------
+# Contact tag / status helpers
+# ---------------------------------------------------------------------------
+
+def _apply_contact_tag(contact: Any, tag: str) -> None:
+    """Add *tag* to contact.tags list if not already present."""
+    current_tags: list[str] = contact.tags or []
+    if tag not in current_tags:
+        contact.tags = current_tags + [tag]
+
+
+async def _find_contact_by_attendee(
+    email: str | None,
+    phone: str | None,
+    db: Any,
+    log: Any,
+) -> "Contact | None":
+    """Look up a Contact by email, falling back to phone number.
+
+    Args:
+        email: Attendee email address (may be empty/None).
+        phone: Attendee phone number in any format (may be empty/None).
+        db: Async SQLAlchemy session.
+        log: Bound structlog logger.
+
+    Returns:
+        Matched Contact ORM object, or None when no match is found.
+    """
+    contact: Contact | None = None
+
+    if email:
+        result = await db.execute(select(Contact).where(Contact.email == email))
+        contact = result.scalar_one_or_none()
+
+    if not contact and phone:
+        # Normalise: keep digits only, then match the last 10 digits
+        digits = re.sub(r"\D", "", phone)
+        if len(digits) >= 10:
+            suffix = digits[-10:]
+            result = await db.execute(
+                select(Contact).where(Contact.phone_number.like(f"%{suffix}"))
+            )
+            contact = result.scalar_one_or_none()
+            if contact:
+                log.info("contact_matched_by_phone_fallback", contact_id=contact.id)
+
+    if not contact:
+        log.warning("contact_not_found", email=email, phone=phone)
+
+    return contact
+
+
 @router.post("/booking")
 async def calcom_booking_webhook(request: Request) -> dict[str, str]:
     """Handle Cal.com booking events.
@@ -385,7 +437,11 @@ async def handle_booking_created(data: dict[str, Any], log: Any) -> None:  # noq
         return
 
     attendee = attendees[0]
-    email = attendee.get("email", "")
+    email: str = attendee.get("email", "") or ""
+    # Cal.com may supply the attendee phone as "phoneNumber" or "phone"
+    attendee_phone: str | None = (
+        attendee.get("phoneNumber") or attendee.get("phone") or None
+    )
 
     log = log.bind(
         booking_uid=booking_uid,
@@ -395,7 +451,8 @@ async def handle_booking_created(data: dict[str, Any], log: Any) -> None:  # noq
     )
     log.info("processing_booking_created")
 
-    if not all([booking_uid, email, scheduled_at_str]):
+    # At least a booking UID and start time are required; email OR phone identifies contact
+    if not all([booking_uid, scheduled_at_str]) or not (email or attendee_phone):
         log.warning("missing_required_fields")
         return
 
@@ -406,13 +463,21 @@ async def handle_booking_created(data: dict[str, Any], log: Any) -> None:  # noq
         return
 
     async with AsyncSessionLocal() as db:
-        # Look up contact by email
-        contact_result = await db.execute(select(Contact).where(Contact.email == email))
-        contact = contact_result.scalar_one_or_none()
+        # Look up contact by email with phone-number fallback
+        contact = await _find_contact_by_attendee(
+            email=email or None,
+            phone=attendee_phone,
+            db=db,
+            log=log,
+        )
 
         if not contact:
-            log.warning("contact_not_found", email=email)
             return
+
+        # Apply lifecycle tag and status for scheduled appointment
+        _apply_contact_tag(contact, "appointment-scheduled")
+        contact.last_appointment_status = "scheduled"
+        db.add(contact)
 
         workspace_id = contact.workspace_id
         campaign_id_val = await _resolve_campaign_id(db, contact.id, log)
@@ -623,7 +688,7 @@ async def handle_booking_rescheduled(data: dict[str, Any], log: Any) -> None:
             log.warning("rescheduled_sms_setup_failed", error=str(e))
 
 
-async def handle_booking_cancelled(data: dict[str, Any], log: Any) -> None:
+async def handle_booking_cancelled(data: dict[str, Any], log: Any) -> None:  # noqa: PLR0915
     """Handle Cal.com booking cancellation.
 
     Args:
@@ -666,6 +731,16 @@ async def handle_booking_cancelled(data: dict[str, Any], log: Any) -> None:
         appointment.sync_status = "synced"
         appointment.last_synced_at = datetime.now(UTC)
         appointment.sync_error = None  # Clear any previous sync errors
+
+        # Update contact lifecycle fields for cancellation
+        cancelled_contact_result = await db.execute(
+            select(Contact).where(Contact.id == appointment.contact_id)
+        )
+        _cancelled_contact_pre = cancelled_contact_result.scalar_one_or_none()
+        if _cancelled_contact_pre:
+            _apply_contact_tag(_cancelled_contact_pre, "appointment-cancelled")
+            _cancelled_contact_pre.last_appointment_status = "cancelled"
+            db.add(_cancelled_contact_pre)
 
         await db.commit()
         await db.refresh(appointment)
@@ -814,6 +889,21 @@ async def handle_meeting_ended(data: dict[str, Any], log: Any) -> None:  # noqa:
 
         is_no_show = appointment.status == AppointmentStatus.NO_SHOW.value
 
+        # Update contact lifecycle tags and status fields before committing
+        meeting_contact_result = await db.execute(
+            select(Contact).where(Contact.id == appointment.contact_id)
+        )
+        meeting_contact = meeting_contact_result.scalar_one_or_none()
+        if meeting_contact:
+            if is_no_show:
+                _apply_contact_tag(meeting_contact, "no-show")
+                meeting_contact.last_appointment_status = "no_show"
+                meeting_contact.noshow_count = (meeting_contact.noshow_count or 0) + 1
+            else:
+                _apply_contact_tag(meeting_contact, "showed-up")
+                meeting_contact.last_appointment_status = "completed"
+            db.add(meeting_contact)
+
         await db.commit()
 
         log.info(
@@ -883,7 +973,17 @@ async def handle_meeting_ended(data: dict[str, Any], log: Any) -> None:  # noqa:
                                     appointment_id=appointment.id,
                                 )
 
-                        if booking_url:
+                        # Build the no-show SMS body.
+                        # Use agent.noshow_template when set (supports {first_name}
+                        # and {reschedule_link} placeholders); fall back to the
+                        # built-in messages.
+                        if noshow_agent is not None and noshow_agent.noshow_template:
+                            noshow_body = noshow_agent.noshow_template.replace(
+                                "{first_name}", first_name
+                            ).replace(
+                                "{reschedule_link}", booking_url or ""
+                            )
+                        elif booking_url:
                             noshow_body = (
                                 f"Hi {first_name}, we missed you at your appointment today. "
                                 f"No worries \u2014 would you like to find another time? "
@@ -911,3 +1011,48 @@ async def handle_meeting_ended(data: dict[str, Any], log: Any) -> None:  # noqa:
                         )
             except Exception as e:
                 log.warning("noshow_sms_setup_failed", error=str(e))
+
+        # Send post-meeting SMS for completed (attended) appointments.
+        # Only fires when agent.post_meeting_sms_enabled is True and a template
+        # is configured. Wrapped in try/except — never affects webhook response.
+        if not is_no_show:
+            try:
+                contact_result = await db.execute(
+                    select(Contact).where(Contact.id == appointment.contact_id)
+                )
+                completed_contact = contact_result.scalar_one_or_none()
+
+                if completed_contact:
+                    # Load agent
+                    completed_agent: Agent | None = None
+                    if appointment.agent_id:
+                        agent_result = await db.execute(
+                            select(Agent).where(Agent.id == appointment.agent_id)
+                        )
+                        completed_agent = agent_result.scalar_one_or_none()
+
+                    if (
+                        completed_agent is not None
+                        and completed_agent.post_meeting_sms_enabled
+                        and completed_agent.post_meeting_template
+                    ):
+                        first_name = completed_contact.first_name or "there"
+                        post_meeting_body = (
+                            completed_agent.post_meeting_template.replace(
+                                "{first_name}", first_name
+                            )
+                        )
+                        log.info(
+                            "sending_post_meeting_sms",
+                            contact_id=completed_contact.id,
+                            appointment_id=appointment.id,
+                        )
+                        await _send_lifecycle_sms(
+                            db=db,
+                            workspace_id=completed_contact.workspace_id,
+                            contact=completed_contact,
+                            agent=completed_agent,
+                            body_text=post_meeting_body,
+                        )
+            except Exception as e:
+                log.warning("post_meeting_sms_setup_failed", error=str(e))

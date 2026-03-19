@@ -40,10 +40,18 @@ const REMINDER_VARIABLES = [
   { name: "{reschedule_link}", description: "Link for the contact to reschedule" },
 ];
 
+const VR_TEMPLATE_PLACEHOLDER =
+  "Hi {first_name}, just a reminder that your appointment is tomorrow on {appointment_date} at {appointment_time}. We're looking forward to seeing you — reply here if you have any questions!";
+
 export function AdvancedTab({ form, voiceProvider, agent }: AdvancedTabProps) {
   const reminderEnabled = form.watch("reminderEnabled");
   const reminderTemplate = form.watch("reminderTemplate") ?? "";
   const charCount = (reminderTemplate ?? "").length;
+  const vrEnabled = form.watch("valueReinforcementEnabled");
+  const vrTemplate = form.watch("valueReinforcementTemplate") ?? "";
+  const vrCharCount = (vrTemplate ?? "").length;
+  const noshowReengagementEnabled = form.watch("noshowReengagementEnabled");
+  const neverBookedReengagementEnabled = form.watch("neverBookedReengagementEnabled");
 
   return (
     <>
@@ -238,6 +246,296 @@ export function AdvancedTab({ form, voiceProvider, agent }: AdvancedTabProps) {
                         ))}
                       </div>
                     </div>
+                  </FormItem>
+                )}
+              />
+            </>
+          )}
+
+          {/* No-Show Re-engagement SMS */}
+          <FormField
+            control={form.control}
+            name="noshowSmsEnabled"
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                <div className="space-y-0.5">
+                  <FormLabel className="text-base">No-Show Re-engagement SMS</FormLabel>
+                  <FormDescription>
+                    Automatically send a rebook SMS when a contact misses their appointment
+                  </FormDescription>
+                </div>
+                <FormControl>
+                  <Switch checked={field.value} onCheckedChange={field.onChange} />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+        </CardContent>
+      </Card>
+
+      {/* No-Show Re-engagement Sequence */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium">No-Show Re-engagement Sequence</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <FormField
+            control={form.control}
+            name="noshowReengagementEnabled"
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                <div className="space-y-0.5">
+                  <FormLabel className="text-base">Enable Multi-Day Re-engagement</FormLabel>
+                  <FormDescription>
+                    Automatically send Day-3 and Day-7 SMS messages to no-show contacts to win them back
+                  </FormDescription>
+                </div>
+                <FormControl>
+                  <Switch checked={field.value} onCheckedChange={field.onChange} />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+
+          {noshowReengagementEnabled && (
+            <>
+              <FormField
+                control={form.control}
+                name="noshowDay3Template"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Day 3 Message</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Message sent 3 days after no-show — e.g. Hey {first_name}, we'd still love to connect. Want to reschedule? {reschedule_link}"
+                        className="min-h-[90px] font-mono text-sm resize-none"
+                        value={field.value ?? ""}
+                        onChange={(e) => field.onChange(e.target.value || null)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Sent ~3 days after the no-show. Leave blank to use the default message.
+                      Supports{" "}
+                      <code className="text-xs font-mono bg-muted rounded px-1">{"{first_name}"}</code>{" "}
+                      and{" "}
+                      <code className="text-xs font-mono bg-muted rounded px-1">{"{reschedule_link}"}</code>.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="noshowDay7Template"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Day 7 Message</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Value-first offer message — e.g. Hi {first_name}, we're offering 300 free video ads to qualified businesses. Still interested? Book here: {reschedule_link}"
+                        className="min-h-[90px] font-mono text-sm resize-none"
+                        value={field.value ?? ""}
+                        onChange={(e) => field.onChange(e.target.value || null)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Sent ~7 days after the no-show (only if the Day-3 message was already sent).
+                      Leave blank to use the default message.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Never-Booked Re-engagement */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium">Never-Booked Re-engagement</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <FormField
+            control={form.control}
+            name="neverBookedReengagementEnabled"
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                <div className="space-y-0.5">
+                  <FormLabel className="text-base">Enable Never-Booked Re-engagement</FormLabel>
+                  <FormDescription>
+                    Send a follow-up to contacts who replied but never booked an appointment
+                  </FormDescription>
+                </div>
+                <FormControl>
+                  <Switch checked={field.value} onCheckedChange={field.onChange} />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+
+          {neverBookedReengagementEnabled && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="neverBookedDelayDays"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Days before re-engaging</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={365}
+                          placeholder="7"
+                          value={field.value}
+                          onChange={(e) => field.onChange(parseInt(e.target.value) || 7)}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        How many days of inactivity before sending
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="neverBookedMaxAttempts"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Max re-engagement attempts</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={10}
+                          placeholder="2"
+                          value={field.value}
+                          onChange={(e) => field.onChange(parseInt(e.target.value) || 2)}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Maximum messages per contact
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <FormField
+                control={form.control}
+                name="neverBookedTemplate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Re-engagement Message</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Hi {first_name}, just checking in — we're still offering our free video ads strategy session. Book your spot: {booking_link}"
+                        className="min-h-[90px] font-mono text-sm resize-none"
+                        value={field.value ?? ""}
+                        onChange={(e) => field.onChange(e.target.value || null)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Leave blank to use the default message. Supports{" "}
+                      <code className="text-xs font-mono bg-muted rounded px-1">{"{first_name}"}</code>{" "}
+                      and{" "}
+                      <code className="text-xs font-mono bg-muted rounded px-1">{"{booking_link}"}</code>.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Value-Reinforcement Message */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium">Value-Reinforcement Message</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <FormField
+            control={form.control}
+            name="valueReinforcementEnabled"
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                <div className="space-y-0.5">
+                  <FormLabel className="text-base">Enable Value-Reinforcement SMS</FormLabel>
+                  <FormDescription>
+                    Send a pre-appointment SMS to re-engage and excite the contact before they show up
+                  </FormDescription>
+                </div>
+                <FormControl>
+                  <Switch checked={field.value} onCheckedChange={field.onChange} />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+
+          {vrEnabled && (
+            <>
+              <FormField
+                control={form.control}
+                name="valueReinforcementOffsetMinutes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Minutes before appointment</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={10080}
+                        placeholder="120"
+                        value={field.value}
+                        onChange={(e) => field.onChange(parseInt(e.target.value) || 120)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      How many minutes before the appointment to send this message (e.g. 120 = 2 hours before).
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="valueReinforcementTemplate"
+                render={({ field }) => (
+                  <FormItem>
+                    <div className="flex items-center justify-between">
+                      <FormLabel>Value-Reinforcement Message</FormLabel>
+                      <span
+                        className={`text-xs ${vrCharCount > 160 ? "text-amber-600 font-medium" : "text-muted-foreground"}`}
+                      >
+                        {vrCharCount} / 160
+                        {vrCharCount > 160 ? ` (${Math.ceil(vrCharCount / 153)} segments)` : ""}
+                      </span>
+                    </div>
+                    <FormControl>
+                      <Textarea
+                        placeholder={VR_TEMPLATE_PLACEHOLDER}
+                        className="min-h-[90px] font-mono text-sm resize-none"
+                        value={field.value ?? ""}
+                        onChange={(e) => field.onChange(e.target.value || null)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      A message sent before the appointment to build excitement and reduce no-shows. Supports{" "}
+                      <code className="text-xs font-mono bg-muted rounded px-1">{"{first_name}"}</code>,{" "}
+                      <code className="text-xs font-mono bg-muted rounded px-1">{"{appointment_date}"}</code>, and{" "}
+                      <code className="text-xs font-mono bg-muted rounded px-1">{"{appointment_time}"}</code>.
+                    </FormDescription>
+                    <FormMessage />
                   </FormItem>
                 )}
               />

@@ -114,6 +114,42 @@ class Agent(Base):
     noshow_sms_enabled: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False, server_default="true"
     )
+    # Custom no-show SMS template; supports {first_name} and {reschedule_link}
+    noshow_template: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Post-meeting SMS (sent when a meeting is marked completed/attended)
+    post_meeting_sms_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
+    post_meeting_template: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Value-reinforcement follow-up (sent X minutes after a completed meeting)
+    value_reinforcement_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
+    value_reinforcement_offset_minutes: Mapped[int] = mapped_column(
+        Integer, default=120, server_default="120", nullable=False
+    )
+    value_reinforcement_template: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Never-booked re-engagement (drip for contacts who never booked)
+    never_booked_reengagement_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
+    never_booked_delay_days: Mapped[int] = mapped_column(
+        Integer, default=7, server_default="7", nullable=False
+    )
+    never_booked_template: Mapped[str | None] = mapped_column(Text, nullable=True)
+    never_booked_max_attempts: Mapped[int] = mapped_column(
+        Integer, default=2, server_default="2", nullable=False
+    )
+
+    # No-show multi-day re-engagement sequence
+    noshow_reengagement_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False
+    )
+    noshow_day3_template: Mapped[str | None] = mapped_column(Text, nullable=True)
+    noshow_day7_template: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

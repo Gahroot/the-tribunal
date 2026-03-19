@@ -31,6 +31,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { AppointmentPerformanceCard } from "@/components/dashboard/appointment-performance-card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -740,6 +741,17 @@ export function DashboardPage() {
           <QuickActionsCard />
         </motion.div>
       </div>
+
+      {/* Show-up Rate Analytics */}
+      {workspaceId && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6 }}
+        >
+          <AppointmentPerformanceCard workspaceId={workspaceId} />
+        </motion.div>
+      )}
     </div>
   );
 }

@@ -3,6 +3,7 @@
 from app.models.agent import Agent
 from app.models.appointment import Appointment
 from app.models.automation import Automation
+from app.models.automation_execution import AutomationExecution
 from app.models.bandit_decision import BanditDecision, DecisionType
 from app.models.call_feedback import CallFeedback
 from app.models.call_outcome import CallOutcome
@@ -62,6 +63,7 @@ __all__ = [
     "LeadSource",
     "OfferLeadMagnet",
     "Automation",
+    "AutomationExecution",
     "Pipeline",
     "PipelineStage",
     "Opportunity",

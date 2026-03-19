@@ -31,6 +31,19 @@ export interface AgentResponse {
   reminder_minutes_before: number;
   reminder_offsets: number[];
   reminder_template: string | null;
+  noshow_sms_enabled: boolean;
+  // No-show multi-day re-engagement sequence
+  noshow_reengagement_enabled: boolean;
+  noshow_day3_template: string | null;
+  noshow_day7_template: string | null;
+  // Never-booked re-engagement
+  never_booked_reengagement_enabled: boolean;
+  never_booked_delay_days: number;
+  never_booked_max_attempts: number;
+  never_booked_template: string | null;
+  value_reinforcement_enabled: boolean;
+  value_reinforcement_offset_minutes: number;
+  value_reinforcement_template: string | null;
   auto_evaluate: boolean;
   created_at: string;
   updated_at: string;
@@ -106,6 +119,19 @@ export interface UpdateAgentRequest {
   reminder_minutes_before?: number;
   reminder_offsets?: number[];
   reminder_template?: string | null;
+  noshow_sms_enabled?: boolean;
+  // No-show multi-day re-engagement sequence
+  noshow_reengagement_enabled?: boolean;
+  noshow_day3_template?: string | null;
+  noshow_day7_template?: string | null;
+  // Never-booked re-engagement
+  never_booked_reengagement_enabled?: boolean;
+  never_booked_delay_days?: number;
+  never_booked_max_attempts?: number;
+  never_booked_template?: string | null;
+  value_reinforcement_enabled?: boolean;
+  value_reinforcement_offset_minutes?: number;
+  value_reinforcement_template?: string | null;
   auto_evaluate?: boolean;
 }
 

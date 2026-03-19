@@ -53,6 +53,24 @@ class AgentCreate(BaseModel):
     auto_evaluate: bool = False
     # Greeting
     initial_greeting: str | None = None
+    # No-show SMS template
+    noshow_template: str | None = None
+    # Post-meeting SMS
+    post_meeting_sms_enabled: bool = False
+    post_meeting_template: str | None = None
+    # Value-reinforcement follow-up
+    value_reinforcement_enabled: bool = False
+    value_reinforcement_offset_minutes: int = 120
+    value_reinforcement_template: str | None = None
+    # Never-booked re-engagement
+    never_booked_reengagement_enabled: bool = False
+    never_booked_delay_days: int = 7
+    never_booked_template: str | None = None
+    never_booked_max_attempts: int = 2
+    # No-show multi-day re-engagement
+    noshow_reengagement_enabled: bool = True
+    noshow_day3_template: str | None = None
+    noshow_day7_template: str | None = None
 
 
 class AgentUpdate(BaseModel):
@@ -91,6 +109,24 @@ class AgentUpdate(BaseModel):
     auto_evaluate: bool | None = None
     # Greeting
     initial_greeting: str | None = None
+    # No-show SMS template
+    noshow_template: str | None = None
+    # Post-meeting SMS
+    post_meeting_sms_enabled: bool | None = None
+    post_meeting_template: str | None = None
+    # Value-reinforcement follow-up
+    value_reinforcement_enabled: bool | None = None
+    value_reinforcement_offset_minutes: int | None = None
+    value_reinforcement_template: str | None = None
+    # Never-booked re-engagement
+    never_booked_reengagement_enabled: bool | None = None
+    never_booked_delay_days: int | None = None
+    never_booked_template: str | None = None
+    never_booked_max_attempts: int | None = None
+    # No-show multi-day re-engagement
+    noshow_reengagement_enabled: bool | None = None
+    noshow_day3_template: str | None = None
+    noshow_day7_template: str | None = None
 
 
 class AgentResponse(BaseModel):
@@ -131,6 +167,24 @@ class AgentResponse(BaseModel):
     auto_evaluate: bool
     # Greeting
     initial_greeting: str | None
+    # No-show SMS template
+    noshow_template: str | None = None
+    # Post-meeting SMS
+    post_meeting_sms_enabled: bool = False
+    post_meeting_template: str | None = None
+    # Value-reinforcement follow-up
+    value_reinforcement_enabled: bool = False
+    value_reinforcement_offset_minutes: int = 120
+    value_reinforcement_template: str | None = None
+    # Never-booked re-engagement
+    never_booked_reengagement_enabled: bool = False
+    never_booked_delay_days: int = 7
+    never_booked_template: str | None = None
+    never_booked_max_attempts: int = 2
+    # No-show multi-day re-engagement
+    noshow_reengagement_enabled: bool = True
+    noshow_day3_template: str | None = None
+    noshow_day7_template: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -213,6 +267,19 @@ async def create_agent(
         reminder_template=agent_in.reminder_template,
         auto_evaluate=agent_in.auto_evaluate,
         initial_greeting=agent_in.initial_greeting,
+        noshow_template=agent_in.noshow_template,
+        post_meeting_sms_enabled=agent_in.post_meeting_sms_enabled,
+        post_meeting_template=agent_in.post_meeting_template,
+        value_reinforcement_enabled=agent_in.value_reinforcement_enabled,
+        value_reinforcement_offset_minutes=agent_in.value_reinforcement_offset_minutes,
+        value_reinforcement_template=agent_in.value_reinforcement_template,
+        never_booked_reengagement_enabled=agent_in.never_booked_reengagement_enabled,
+        never_booked_delay_days=agent_in.never_booked_delay_days,
+        never_booked_template=agent_in.never_booked_template,
+        never_booked_max_attempts=agent_in.never_booked_max_attempts,
+        noshow_reengagement_enabled=agent_in.noshow_reengagement_enabled,
+        noshow_day3_template=agent_in.noshow_day3_template,
+        noshow_day7_template=agent_in.noshow_day7_template,
     )
     db.add(agent)
     await db.commit()

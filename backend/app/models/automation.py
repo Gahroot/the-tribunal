@@ -11,6 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.automation_execution import AutomationExecution
     from app.models.workspace import Workspace
 
 
@@ -53,6 +54,11 @@ class Automation(Base):
     last_triggered_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Timestamp of the last time the worker evaluated this automation's trigger.
+    # Used to bound contact queries to "updated since last_evaluated_at".
+    last_evaluated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
@@ -67,6 +73,11 @@ class Automation(Base):
 
     # Relationships
     workspace: Mapped["Workspace"] = relationship("Workspace", back_populates="automations")
+    executions: Mapped[list["AutomationExecution"]] = relationship(
+        "AutomationExecution",
+        back_populates="automation",
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self) -> str:
         return f"<Automation(id={self.id}, name={self.name}, trigger={self.trigger_type})>"

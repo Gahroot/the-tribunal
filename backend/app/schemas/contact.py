@@ -85,6 +85,8 @@ class ContactResponse(BaseModel):
     business_intel: dict[str, Any] | None = None
     enrichment_status: str | None = None
     enriched_at: datetime | None = None
+    noshow_count: int = 0
+    last_appointment_status: str | None = None
     tag_objects: list[TagResponse] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
