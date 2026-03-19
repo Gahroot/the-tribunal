@@ -1,19 +1,15 @@
 """Tests for IVRGate - Phase 1 orchestrator."""
 
-import asyncio
 import base64
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
+from unittest.mock import AsyncMock, patch
 
 from app.services.ai.ivr.gate import (
     FIRST_BUFFER_SECONDS,
-    GATE_TIMEOUT_SECONDS,
+    NORMAL_BUFFER_SECONDS,
     GateOutcome,
     GateResult,
     IVRGate,
-    NORMAL_BUFFER_SECONDS,
 )
 from app.services.ai.ivr.types import IVRMode
 
@@ -59,7 +55,6 @@ def _make_silence(seconds: float) -> bytes:
 class TestGateOutcomes:
     """Tests for different gate outcomes."""
 
-    @pytest.mark.asyncio
     async def test_human_detected(self):
         """Gate should return HUMAN_DETECTED when classifier sees human."""
         gate = IVRGate(call_control_id="test-call")
@@ -75,18 +70,23 @@ class TestGateOutcomes:
         ])
         ws.send_text = AsyncMock()
 
-        with patch.object(gate._transcriber, "transcribe", return_value="Hello, how can I help you?"):
-            with patch.object(
+        with (
+            patch.object(
+                gate._transcriber,
+                "transcribe",
+                return_value="Hello, how can I help you?",
+            ),
+            patch.object(
                 gate._classifier, "classify",
                 return_value=(IVRMode.CONVERSATION, 0.9),
-            ):
-                result = await gate.run(ws)
+            ),
+        ):
+            result = await gate.run(ws)
 
         assert result.outcome == GateOutcome.HUMAN_DETECTED
         assert len(result.transcript_history) == 1
         assert result.transcript_history[0] == "Hello, how can I help you?"
 
-    @pytest.mark.asyncio
     async def test_voicemail_detected(self):
         """Gate should return VOICEMAIL_DETECTED when classifier sees voicemail."""
         gate = IVRGate(call_control_id="test-call")
@@ -103,17 +103,15 @@ class TestGateOutcomes:
         with patch.object(
             gate._transcriber, "transcribe",
             return_value="Please leave a message after the beep.",
+        ), patch.object(
+            gate._classifier, "classify",
+            return_value=(IVRMode.VOICEMAIL, 0.85),
         ):
-            with patch.object(
-                gate._classifier, "classify",
-                return_value=(IVRMode.VOICEMAIL, 0.85),
-            ):
-                result = await gate.run(ws)
+            result = await gate.run(ws)
 
         assert result.outcome == GateOutcome.VOICEMAIL_DETECTED
         assert "leave a message" in result.transcript_history[0]
 
-    @pytest.mark.asyncio
     async def test_call_dropped(self):
         """Gate should return CALL_DROPPED on stop event."""
         gate = IVRGate(call_control_id="test-call")
@@ -130,7 +128,6 @@ class TestGateOutcomes:
         assert result.outcome == GateOutcome.CALL_DROPPED
         assert result.dtmf_attempts == 0
 
-    @pytest.mark.asyncio
     async def test_ivr_sends_dtmf(self):
         """Gate should send DTMF when IVR is detected."""
         gate = IVRGate(call_control_id="test-call")
@@ -167,8 +164,14 @@ class TestGateOutcomes:
         ])
 
         with (
-            patch.object(gate._transcriber, "transcribe", side_effect=lambda _: next(transcribe_results)),
-            patch.object(gate._classifier, "classify", side_effect=lambda _: next(classify_results)),
+            patch.object(
+                gate._transcriber, "transcribe",
+                side_effect=lambda _: next(transcribe_results),
+            ),
+            patch.object(
+                gate._classifier, "classify",
+                side_effect=lambda _: next(classify_results),
+            ),
             patch.object(gate, "_send_dtmf", new_callable=AsyncMock) as mock_dtmf,
             patch("app.services.ai.ivr.gate.asyncio.sleep", new_callable=AsyncMock),
         ):
@@ -178,7 +181,6 @@ class TestGateOutcomes:
         assert result.dtmf_attempts == 1
         mock_dtmf.assert_called_once()
 
-    @pytest.mark.asyncio
     async def test_empty_transcript_continues(self):
         """Empty transcript should continue listening, not exit."""
         gate = IVRGate(call_control_id="test-call")
@@ -207,8 +209,14 @@ class TestGateOutcomes:
         classify_results = iter([(IVRMode.CONVERSATION, 0.8)])
 
         with (
-            patch.object(gate._transcriber, "transcribe", side_effect=lambda _: next(transcribe_results)),
-            patch.object(gate._classifier, "classify", side_effect=lambda _: next(classify_results)),
+            patch.object(
+                gate._transcriber, "transcribe",
+                side_effect=lambda _: next(transcribe_results),
+            ),
+            patch.object(
+                gate._classifier, "classify",
+                side_effect=lambda _: next(classify_results),
+            ),
         ):
             result = await gate.run(ws)
 
@@ -216,7 +224,6 @@ class TestGateOutcomes:
         # Empty transcript should not be in history
         assert "" not in result.transcript_history
 
-    @pytest.mark.asyncio
     async def test_fallback_ai_on_navigator_exhaustion(self):
         """Gate should return FALLBACK_AI when navigator gives up."""
         gate = IVRGate(
@@ -296,7 +303,6 @@ class TestGateConfig:
 class TestGateKeepalive:
     """Tests for keepalive silence frame sending."""
 
-    @pytest.mark.asyncio
     async def test_keepalive_sends_silence(self):
         """Keepalive should send silence frames to websocket."""
         gate = IVRGate(call_control_id="test")

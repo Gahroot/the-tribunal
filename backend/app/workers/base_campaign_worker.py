@@ -9,8 +9,8 @@ Extracts common patterns from campaign_worker.py and voice_campaign_worker.py:
 from abc import abstractmethod
 from datetime import UTC, datetime, time
 from typing import Any
+from zoneinfo import ZoneInfo
 
-import pytz
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import QueryableAttribute, selectinload
@@ -130,7 +130,7 @@ class BaseCampaignWorker(BaseWorker):
             )
             return True
 
-        tz = pytz.timezone(campaign.timezone or "UTC")
+        tz = ZoneInfo(campaign.timezone or "UTC")
         now = datetime.now(tz)
 
         if campaign.sending_days and now.weekday() not in campaign.sending_days:

@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from app.models.workspace import Workspace
 
 
-class TrustTier(str, Enum):
+class TrustTier(StrEnum):
     """10DLC trust tier levels."""
 
     LOW_VOLUME = "low_volume"
@@ -24,7 +24,7 @@ class TrustTier(str, Enum):
     HIGH_VOLUME = "high_volume"
 
 
-class PhoneNumberHealthStatus(str, Enum):
+class PhoneNumberHealthStatus(StrEnum):
     """Phone number health status."""
 
     HEALTHY = "healthy"

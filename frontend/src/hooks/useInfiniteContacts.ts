@@ -121,7 +121,7 @@ export function useInfiniteContacts({
     total,
     isLoading: query.isLoading,
     isFetchingNextPage: query.isFetchingNextPage,
-    hasNextPage: query.hasNextPage ?? false,
+    hasNextPage: query.hasNextPage,
     fetchNextPage: query.fetchNextPage,
     error: query.error,
   };

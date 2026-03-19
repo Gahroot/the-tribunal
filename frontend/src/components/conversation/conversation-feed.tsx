@@ -45,6 +45,15 @@ import { conversationsApi } from "@/lib/api/conversations";
 import { MessageItem } from "./message-item";
 import type { TimelineItem, Conversation } from "@/types";
 
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err !== null && "response" in err) {
+    const axErr = err as { response?: { data?: { detail?: string } } };
+    return axErr.response?.data?.detail ?? fallback;
+  }
+  return fallback;
+}
+
 interface ConversationFeedProps {
   className?: string;
 }
@@ -227,8 +236,8 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
         onSuccess: () => {
           toast.success(newState ? "AI engagement enabled" : "AI engagement disabled");
         },
-        onError: () => {
-          toast.error("Failed to toggle AI");
+        onError: (err: unknown) => {
+          toast.error(getErrorMessage(err, "Failed to toggle AI"));
         },
       }
     );
@@ -246,8 +255,8 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
         onSuccess: () => {
           toast.success(agentId ? "Agent assigned" : "Agent unassigned");
         },
-        onError: () => {
-          toast.error("Failed to assign agent");
+        onError: (err: unknown) => {
+          toast.error(getErrorMessage(err, "Failed to assign agent"));
         },
       }
     );
@@ -265,8 +274,8 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
         toast.success("Conversation history cleared");
         setShowClearHistoryDialog(false);
       },
-      onError: () => {
-        toast.error("Failed to clear history");
+      onError: (err: unknown) => {
+        toast.error(getErrorMessage(err, "Failed to clear history"));
       },
     });
   };

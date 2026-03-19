@@ -21,7 +21,7 @@ Usage:
     )
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 # Language code to name mapping
@@ -67,7 +67,7 @@ def build_text_instructions(
         now = datetime.now(tz)
         current_datetime = now.strftime("%A, %B %d, %Y at %I:%M %p")
     except Exception:
-        current_datetime = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
+        current_datetime = datetime.now(UTC).strftime("%A, %B %d, %Y at %I:%M %p")
 
     phone_context = f"\nContact Phone: {contact_phone}" if contact_phone else ""
     offer_section = f"\n\n[OFFER CONTEXT]\n{offer_context}" if offer_context else ""
@@ -129,7 +129,7 @@ def build_booking_instructions(
         now = datetime.now(tz)
         current_date = now.strftime("%Y-%m-%d")
     except Exception:
-        current_date = datetime.now().strftime("%Y-%m-%d")
+        current_date = datetime.now(UTC).strftime("%Y-%m-%d")
 
     # Email context if known
     email_context = ""

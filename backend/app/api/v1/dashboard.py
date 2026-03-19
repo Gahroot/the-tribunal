@@ -1,10 +1,10 @@
 """Dashboard statistics endpoints."""
 
 import json
-import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
+import structlog
 from fastapi import APIRouter
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -19,7 +19,7 @@ from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
 from app.models.workspace import Workspace
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 router = APIRouter()
 
 
@@ -537,15 +537,15 @@ async def get_cached_dashboard(
         cached_data = await redis.get(cache_key)
 
         if cached_data:
-            logger.debug(f"Cache hit for dashboard stats: {workspace.id}")
+            logger.debug("Cache hit for dashboard stats", workspace_id=workspace.id)
             data = json.loads(cached_data)
             return DashboardResponse(**data)
     except Exception as e:
         # Log error but continue to compute normally
-        logger.warning(f"Redis cache read failed for dashboard {workspace.id}: {e}")
+        logger.warning("Redis cache read failed for dashboard", workspace_id=workspace.id, error=e)
 
     # Cache miss or Redis unavailable - compute stats
-    logger.debug(f"Cache miss for dashboard stats: {workspace.id}")
+    logger.debug("Cache miss for dashboard stats", workspace_id=workspace.id)
 
     stats = await get_core_stats(db, workspace)
     recent_activity = await get_recent_activity(db, workspace)
@@ -569,10 +569,10 @@ async def get_cached_dashboard(
         # Convert Pydantic model to dict for JSON serialization
         cache_data = response.model_dump(mode="json")
         await redis.setex(cache_key, cache_ttl, json.dumps(cache_data))
-        logger.debug(f"Cached dashboard stats for {workspace.id} (TTL: {cache_ttl}s)")
+        logger.debug("Cached dashboard stats", workspace_id=workspace.id, ttl=cache_ttl)
     except Exception as e:
         # Log error but don't fail the request
-        logger.warning(f"Redis cache write failed for dashboard {workspace.id}: {e}")
+        logger.warning("Redis cache write failed for dashboard", workspace_id=workspace.id, error=e)
 
     return response
 

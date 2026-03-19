@@ -1,11 +1,11 @@
 """Authentication endpoints."""
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import DB, CurrentUser
@@ -17,20 +17,71 @@ from app.core.security import (
     get_password_hash,
     verify_password,
 )
+from app.core.utils import get_client_ip
 from app.db.session import get_db
+from app.models.auth_rate_limit import AuthRateLimit
 from app.models.user import User
 from app.models.workspace import WorkspaceMembership
-from app.schemas.user import ChangePasswordRequest, RefreshTokenRequest, Token, UserCreate, UserResponse, UserWithWorkspace
+from app.schemas.user import (
+    ChangePasswordRequest,
+    RefreshTokenRequest,
+    Token,
+    UserCreate,
+    UserResponse,
+    UserWithWorkspace,
+)
 
 router = APIRouter()
+
+# Max auth attempts per IP per 15-minute window
+_AUTH_RATE_LIMIT = 10
+_AUTH_RATE_WINDOW_MINUTES = 15
+
+
+async def _check_auth_rate_limit(db: AsyncSession, client_ip: str, endpoint: str) -> None:
+    """Check IP-based rate limit for authentication endpoints.
+
+    Args:
+        db: Database session
+        client_ip: Client IP address
+        endpoint: The endpoint being accessed (login, register, refresh)
+
+    Raises:
+        HTTPException: If rate limit exceeded
+    """
+    window_start = datetime.now(UTC) - timedelta(minutes=_AUTH_RATE_WINDOW_MINUTES)
+
+    count_result = await db.execute(
+        select(func.count()).where(
+            AuthRateLimit.client_ip == client_ip,
+            AuthRateLimit.endpoint == endpoint,
+            AuthRateLimit.created_at >= window_start,
+        )
+    )
+    count = count_result.scalar() or 0
+
+    if count >= _AUTH_RATE_LIMIT:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests. Please try again later.",
+        )
+
+    # Record this attempt
+    rate_limit_record = AuthRateLimit(client_ip=client_ip, endpoint=endpoint)
+    db.add(rate_limit_record)
+    await db.flush()
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(
     user_in: UserCreate,
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> User:
     """Register a new user."""
+    client_ip = get_client_ip(request, settings.trusted_proxies)
+    await _check_auth_rate_limit(db, client_ip, "register")
+
     # Check if email already exists
     result = await db.execute(select(User).where(User.email == user_in.email))
     if result.scalar_one_or_none() is not None:
@@ -55,9 +106,13 @@ async def register(
 @router.post("/login", response_model=Token)
 async def login(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Token:
     """Login and get access token."""
+    client_ip = get_client_ip(request, settings.trusted_proxies)
+    await _check_auth_rate_limit(db, client_ip, "login")
+
     # Find user by email
     result = await db.execute(select(User).where(User.email == form_data.username))
     user = result.scalar_one_or_none()
@@ -88,15 +143,21 @@ async def login(
         expires_delta=refresh_token_expires,
     )
 
+    await db.commit()
+
     return Token(access_token=access_token, refresh_token=refresh_token)
 
 
 @router.post("/refresh", response_model=Token)
 async def refresh_token(
     refresh_request: RefreshTokenRequest,
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Token:
     """Refresh access token using refresh token."""
+    client_ip = get_client_ip(request, settings.trusted_proxies)
+    await _check_auth_rate_limit(db, client_ip, "refresh")
+
     # Decode and validate refresh token
     payload = decode_refresh_token(refresh_request.refresh_token)
     if payload is None:
@@ -150,6 +211,8 @@ async def refresh_token(
         data={"sub": str(user.id)},
         expires_delta=refresh_token_expires,
     )
+
+    await db.commit()
 
     return Token(access_token=access_token, refresh_token=new_refresh_token)
 

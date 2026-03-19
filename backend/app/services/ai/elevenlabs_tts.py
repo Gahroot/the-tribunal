@@ -12,8 +12,8 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import structlog
-import websockets
-from websockets.asyncio.client import ClientConnection
+from websockets.asyncio.client import ClientConnection, connect
+from websockets.exceptions import ConnectionClosed
 
 logger = structlog.get_logger()
 
@@ -114,7 +114,7 @@ class ElevenLabsTTSSession:
                 f"&output_format={output_format}"
             )
 
-            self.ws = await websockets.connect(
+            self.ws = await connect(
                 url,
                 additional_headers={
                     "xi-api-key": self.api_key,
@@ -248,7 +248,7 @@ class ElevenLabsTTSSession:
                         error=str(e),
                     )
 
-        except websockets.exceptions.ConnectionClosed as e:
+        except ConnectionClosed as e:
             self.logger.warning(
                 "elevenlabs_connection_closed",
                 code=e.code,

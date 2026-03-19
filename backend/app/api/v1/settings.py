@@ -249,10 +249,10 @@ async def get_business_hours(
         )
 
     # Get workspace settings
-    result = await db.execute(
+    ws_result = await db.execute(
         select(Workspace).where(Workspace.id == workspace_id)
     )
-    workspace = result.scalar_one()
+    workspace: Workspace = ws_result.scalar_one()
 
     business_hours = workspace.settings.get("business_hours", {})
     return BusinessHoursSettings(**business_hours)
@@ -282,17 +282,17 @@ async def update_business_hours(
         )
 
     # Get workspace
-    result = await db.execute(
+    ws_result2 = await db.execute(
         select(Workspace).where(Workspace.id == workspace_id)
     )
-    workspace = result.scalar_one()
+    workspace: Workspace = ws_result2.scalar_one()
 
     # Merge update into settings
     current_settings = dict(workspace.settings)
     business_hours = current_settings.get("business_hours", {})
 
     update_data = update.model_dump(exclude_unset=True)
-    if "schedule" in update_data:
+    if "schedule" in update_data and update.schedule is not None:
         # Convert DaySchedule models to dicts
         update_data["schedule"] = {
             day: sched.model_dump() for day, sched in update.schedule.items()
@@ -330,10 +330,10 @@ async def get_call_forwarding(
         )
 
     # Get workspace settings
-    result = await db.execute(
+    ws_result3 = await db.execute(
         select(Workspace).where(Workspace.id == workspace_id)
     )
-    workspace = result.scalar_one()
+    workspace: Workspace = ws_result3.scalar_one()
 
     call_forwarding = workspace.settings.get("call_forwarding", {})
     return CallForwardingSettings(**call_forwarding)
@@ -363,10 +363,10 @@ async def update_call_forwarding(
         )
 
     # Get workspace
-    result = await db.execute(
+    ws_result4 = await db.execute(
         select(Workspace).where(Workspace.id == workspace_id)
     )
-    workspace = result.scalar_one()
+    workspace: Workspace = ws_result4.scalar_one()
 
     # Merge update into settings
     current_settings = dict(workspace.settings)

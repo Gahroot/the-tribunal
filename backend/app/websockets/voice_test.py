@@ -1,7 +1,7 @@
 """Voice test WebSocket endpoint for browser-based agent testing."""
 
-import audioop
 import asyncio
+import audioop
 import base64
 import contextlib
 import json

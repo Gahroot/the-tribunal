@@ -2,6 +2,7 @@
 
 from app.models.agent import Agent
 from app.models.appointment import Appointment
+from app.models.auth_rate_limit import AuthRateLimit
 from app.models.automation import Automation
 from app.models.automation_execution import AutomationExecution
 from app.models.bandit_decision import BanditDecision, DecisionType
@@ -85,4 +86,5 @@ __all__ = [
     "ContactTag",
     "Segment",
     "DeviceToken",
+    "AuthRateLimit",
 ]

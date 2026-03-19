@@ -1,5 +1,6 @@
 """Email service for sending transactional emails."""
 
+import asyncio
 from typing import TYPE_CHECKING
 
 import structlog
@@ -114,7 +115,7 @@ async def send_invitation_email(
 
     try:
         sg = SendGridAPIClient(settings.sendgrid_api_key)
-        response = sg.send(mail)
+        response = await asyncio.to_thread(sg.send, mail)
 
         if response.status_code in (200, 201, 202):
             logger.info(

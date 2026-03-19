@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
@@ -30,14 +30,14 @@ if TYPE_CHECKING:
     from app.models.workspace import Workspace
 
 
-class CampaignType(str, Enum):
+class CampaignType(StrEnum):
     """Campaign type."""
 
     SMS = "sms"
     VOICE_SMS_FALLBACK = "voice_sms_fallback"
 
 
-class CampaignStatus(str, Enum):
+class CampaignStatus(StrEnum):
     """Campaign status."""
 
     DRAFT = "draft"
@@ -48,7 +48,7 @@ class CampaignStatus(str, Enum):
     CANCELED = "canceled"
 
 
-class CampaignContactStatus(str, Enum):
+class CampaignContactStatus(StrEnum):
     """Contact status within a campaign."""
 
     PENDING = "pending"

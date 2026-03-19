@@ -8,7 +8,8 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import structlog
-import websockets
+from websockets.asyncio.client import connect
+from websockets.exceptions import ConnectionClosed, InvalidStatus
 
 from app.models.agent import Agent
 from app.services.ai.voice_agent_base import VoiceAgentBase
@@ -61,7 +62,7 @@ class VoiceAgentSession(VoiceAgentBase):
         )
 
         try:
-            self.ws = await websockets.connect(
+            self.ws = await connect(
                 url,
                 additional_headers={
                     "Authorization": f"Bearer {self.api_key}",
@@ -79,7 +80,7 @@ class VoiceAgentSession(VoiceAgentBase):
             self.logger.info("openai_session_configured")
 
             return True
-        except websockets.exceptions.InvalidStatus as e:
+        except InvalidStatus as e:
             self.logger.error(
                 "openai_connection_rejected",
                 status_code=e.response.status_code if hasattr(e, "response") else "unknown",
@@ -614,7 +615,7 @@ class VoiceAgentSession(VoiceAgentBase):
                     # Log unknown event types for debugging
                     self.logger.debug("openai_event", event_type=event_type)
 
-        except websockets.exceptions.ConnectionClosed as e:
+        except ConnectionClosed as e:
             self.logger.warning(
                 "openai_websocket_closed",
                 code=e.code,

@@ -19,6 +19,15 @@ import { Label } from "@/components/ui/label";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { messageTemplatesApi } from "@/lib/api/message-templates";
 
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err !== null && "response" in err) {
+    const axErr = err as { response?: { data?: { detail?: string } } };
+    return axErr.response?.data?.detail ?? fallback;
+  }
+  return fallback;
+}
+
 interface SaveTemplateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -52,8 +61,8 @@ export function SaveTemplateDialog({
       setName("");
       onOpenChange(false);
     },
-    onError: () => {
-      toast.error("Failed to save template");
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err, "Failed to save template"));
     },
   });
 

@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
@@ -33,14 +33,14 @@ if TYPE_CHECKING:
     from app.models.workspace import Workspace
 
 
-class MessageDirection(str, Enum):
+class MessageDirection(StrEnum):
     """Message direction."""
 
     INBOUND = "inbound"
     OUTBOUND = "outbound"
 
 
-class MessageStatus(str, Enum):
+class MessageStatus(StrEnum):
     """Message delivery status."""
 
     QUEUED = "queued"
@@ -51,7 +51,7 @@ class MessageStatus(str, Enum):
     RECEIVED = "received"
 
 
-class MessageChannel(str, Enum):
+class MessageChannel(StrEnum):
     """Message channel."""
 
     SMS = "sms"
@@ -170,7 +170,7 @@ class Conversation(Base):
         return f"<Conversation(id={self.id}, contact_phone={self.contact_phone})>"
 
 
-class BounceType(str, Enum):
+class BounceType(StrEnum):
     """Bounce type classification."""
 
     HARD = "hard"

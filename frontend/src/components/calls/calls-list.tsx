@@ -103,7 +103,7 @@ export function CallsList() {
 
   const { data, isLoading, error, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ["calls", workspaceId, directionFilter, statusFilter, debouncedSearch],
-    queryFn: ({ pageParam = 1 }) => {
+    queryFn: ({ pageParam }) => {
       if (!workspaceId) throw new Error("Workspace not loaded");
       return callsApi.list(workspaceId, {
         page: pageParam,

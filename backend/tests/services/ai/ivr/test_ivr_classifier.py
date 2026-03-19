@@ -9,7 +9,6 @@ The fix ensures that:
 2. Voicemail is only returned when there are NO IVR patterns
 """
 
-import pytest
 
 from app.services.ai.ivr_detector import IVRClassifier, IVRMode
 

@@ -14,7 +14,7 @@ from collections.abc import AsyncIterator, Callable
 from typing import TYPE_CHECKING, Any
 
 import structlog
-import websockets
+from websockets.asyncio.client import connect
 
 from app.models.agent import Agent
 from app.services.ai.grok.audio_stream import AudioStreamConfig, AudioStreamManager
@@ -147,7 +147,7 @@ class GrokVoiceAgentSession(VoiceAgentBase):
         self.logger.info("connecting_to_grok_realtime_api")
 
         try:
-            self.ws = await websockets.connect(
+            self.ws = await connect(
                 self.BASE_URL,
                 additional_headers={
                     "Authorization": f"Bearer {self.api_key}",

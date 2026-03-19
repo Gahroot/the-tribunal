@@ -55,6 +55,15 @@ import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import type { MessageTest } from "@/types";
 import { messageTestsApi } from "@/lib/api/message-tests";
 
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err !== null && "response" in err) {
+    const axErr = err as { response?: { data?: { detail?: string } } };
+    return axErr.response?.data?.detail ?? fallback;
+  }
+  return fallback;
+}
+
 export function ExperimentsList() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -81,7 +90,7 @@ export function ExperimentsList() {
       queryClient.invalidateQueries({ queryKey: ["message-tests", workspaceId] });
       toast.success("Test paused");
     },
-    onError: () => toast.error("Failed to pause test"),
+    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to pause test")),
   });
 
   const startMutation = useMutation({
@@ -93,7 +102,7 @@ export function ExperimentsList() {
       queryClient.invalidateQueries({ queryKey: ["message-tests", workspaceId] });
       toast.success("Test started");
     },
-    onError: () => toast.error("Failed to start test"),
+    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to start test")),
   });
 
   const completeMutation = useMutation({
@@ -105,7 +114,7 @@ export function ExperimentsList() {
       queryClient.invalidateQueries({ queryKey: ["message-tests", workspaceId] });
       toast.success("Test completed");
     },
-    onError: () => toast.error("Failed to complete test"),
+    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to complete test")),
   });
 
   const deleteMutation = useMutation({
@@ -117,7 +126,7 @@ export function ExperimentsList() {
       queryClient.invalidateQueries({ queryKey: ["message-tests", workspaceId] });
       toast.success("Test deleted");
     },
-    onError: () => toast.error("Failed to delete test"),
+    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to delete test")),
   });
 
   const filteredTests = tests.filter((test) => {

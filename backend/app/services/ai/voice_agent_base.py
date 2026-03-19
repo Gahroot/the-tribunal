@@ -23,6 +23,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import structlog
+from websockets import State
 from websockets.asyncio.client import ClientConnection
 
 from app.models.agent import Agent
@@ -110,7 +111,7 @@ class VoiceAgentBase(ABC):
         if self.ws is None:
             return False
         try:
-            return bool(getattr(self.ws, "open", False))
+            return self.ws.state == State.OPEN
         except Exception:
             return False
 

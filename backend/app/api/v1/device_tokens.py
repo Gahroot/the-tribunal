@@ -27,7 +27,11 @@ class RegisterTokenResponse(BaseModel):
     platform: str | None
 
 
-@router.post("/device-tokens", response_model=RegisterTokenResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/device-tokens",
+    response_model=RegisterTokenResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def register_device_token(
     body: RegisterTokenRequest,
     current_user: CurrentUser,

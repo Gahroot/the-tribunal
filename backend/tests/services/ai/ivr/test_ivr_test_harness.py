@@ -208,7 +208,6 @@ class TestIVRTestReport:
 class TestMockLLMClient:
     """Tests for MockLLMClient."""
 
-    @pytest.mark.asyncio
     async def test_returns_responses_in_order(self) -> None:
         """Test mock returns responses sequentially."""
         client = MockLLMClient(responses=[
@@ -223,7 +222,6 @@ class TestMockLLMClient:
         assert r2 == "Second response"
         assert client.call_count == 2
 
-    @pytest.mark.asyncio
     async def test_raises_when_exhausted(self) -> None:
         """Test mock raises IndexError when responses exhausted."""
         client = MockLLMClient(responses=["Only one"])
@@ -233,7 +231,6 @@ class TestMockLLMClient:
         with pytest.raises(IndexError):
             await client.generate_response("prompt", "transcript", [])
 
-    @pytest.mark.asyncio
     async def test_records_calls(self) -> None:
         """Test mock records call parameters."""
         client = MockLLMClient(responses=["response"])
@@ -252,7 +249,6 @@ class TestMockLLMClient:
 class TestIVRTestHarness:
     """Tests for IVRTestHarness."""
 
-    @pytest.mark.asyncio
     async def test_successful_navigation(
         self,
         mock_agent: MockAgent,
@@ -274,7 +270,6 @@ class TestIVRTestHarness:
         assert len(result.turns) == 2  # Initial + terminal
         assert result.reached_goal is True
 
-    @pytest.mark.asyncio
     async def test_nested_navigation(
         self,
         mock_agent: MockAgent,
@@ -297,7 +292,6 @@ class TestIVRTestHarness:
         assert "support_menu" in result.navigation_path
         assert "operator" in result.navigation_path
 
-    @pytest.mark.asyncio
     async def test_loop_detection(
         self,
         mock_agent: MockAgent,
@@ -320,7 +314,6 @@ class TestIVRTestHarness:
         assert result.outcome_reason == "loop_detected"
         assert result.reached_goal is False
 
-    @pytest.mark.asyncio
     async def test_max_turns_exceeded(
         self,
         mock_agent: MockAgent,
@@ -342,7 +335,6 @@ class TestIVRTestHarness:
         assert result.outcome_reason == "max_turns"
         assert len(result.turns) == 3
 
-    @pytest.mark.asyncio
     async def test_llm_error_handling(
         self,
         mock_agent: MockAgent,
@@ -358,7 +350,6 @@ class TestIVRTestHarness:
         assert result.status == "error"
         assert "llm_error" in result.outcome_reason
 
-    @pytest.mark.asyncio
     async def test_run_scenarios(
         self,
         mock_agent: MockAgent,
@@ -387,7 +378,6 @@ class TestIVRTestHarness:
         assert report.failed == 0
         assert len(report.results) == 2
 
-    @pytest.mark.asyncio
     async def test_no_dtmf_in_response(
         self,
         mock_agent: MockAgent,
@@ -408,7 +398,6 @@ class TestIVRTestHarness:
         # Second turn should have DTMF
         assert result.turns[1].dtmf_sent == "1"
 
-    @pytest.mark.asyncio
     async def test_invalid_dtmf(
         self,
         mock_agent: MockAgent,

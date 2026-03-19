@@ -20,7 +20,6 @@ from app.services.ai.ivr_detector import (
 )
 from app.services.ai.testing import IVRSimulator, MockLLMClient, ScenarioLoader
 
-
 # Path to scenario files
 SCENARIOS_DIR = Path(__file__).parent / "scenarios"
 

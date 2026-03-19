@@ -18,6 +18,15 @@ import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { messageTemplatesApi } from "@/lib/api/message-templates";
 import type { MessageTemplate } from "@/types";
 
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err !== null && "response" in err) {
+    const axErr = err as { response?: { data?: { detail?: string } } };
+    return axErr.response?.data?.detail ?? fallback;
+  }
+  return fallback;
+}
+
 interface LoadTemplateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -53,8 +62,8 @@ export function LoadTemplateDialog({
       });
       toast.success("Template deleted");
     },
-    onError: () => {
-      toast.error("Failed to delete template");
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err, "Failed to delete template"));
     },
   });
 

@@ -44,6 +44,15 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err !== null && "response" in err) {
+    const axErr = err as { response?: { data?: { detail?: string } } };
+    return axErr.response?.data?.detail ?? fallback;
+  }
+  return fallback;
+}
+
 export function ExperimentDashboard() {
   const workspaceId = useWorkspaceId();
   const { data: agentsData, isLoading: agentsLoading } = useAgents(workspaceId ?? "", { page_size: 100 });
@@ -120,7 +129,7 @@ function AgentExperimentSection({ agentId, agentName }: { agentId: string; agent
       void queryClient.invalidateQueries({ queryKey: ["promptVersionComparison"] });
       setDeclareWinnerVersion(null);
     },
-    onError: () => toast.error("Failed to declare winner"),
+    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to declare winner")),
   });
 
   const pauseMutation = useMutation({
@@ -132,7 +141,7 @@ function AgentExperimentSection({ agentId, agentName }: { agentId: string; agent
       toast.success("Version paused");
       void queryClient.invalidateQueries({ queryKey: ["promptVersionComparison"] });
     },
-    onError: () => toast.error("Failed to pause version"),
+    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to pause version")),
   });
 
   const resumeMutation = useMutation({
@@ -144,7 +153,7 @@ function AgentExperimentSection({ agentId, agentName }: { agentId: string; agent
       toast.success("Version resumed");
       void queryClient.invalidateQueries({ queryKey: ["promptVersionComparison"] });
     },
-    onError: () => toast.error("Failed to resume version"),
+    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to resume version")),
   });
 
   const eliminateMutation = useMutation({
@@ -157,7 +166,7 @@ function AgentExperimentSection({ agentId, agentName }: { agentId: string; agent
       void queryClient.invalidateQueries({ queryKey: ["promptVersionComparison"] });
       setEliminateVersion(null);
     },
-    onError: () => toast.error("Failed to eliminate version"),
+    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to eliminate version")),
   });
 
   if (isLoading) {

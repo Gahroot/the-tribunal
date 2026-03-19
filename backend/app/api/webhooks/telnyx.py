@@ -14,9 +14,9 @@ from app.db.session import AsyncSessionLocal
 from app.models.phone_number import PhoneNumber
 from app.services.ai.text_agent import schedule_ai_response
 from app.services.campaigns.conversation_syncer import CampaignConversationSyncer
+from app.services.push_notifications import push_notification_service
 from app.services.telephony.call_outcome_classifier import CallOutcomeClassifier
 from app.services.telephony.telnyx import TelnyxSMSService
-from app.services.push_notifications import push_notification_service
 from app.services.telephony.voice_agent_resolver import VoiceAgentResolver
 
 router = APIRouter()
@@ -66,7 +66,7 @@ async def telnyx_sms_webhook(request: Request) -> dict[str, str]:
     return {"status": "ok"}
 
 
-async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:
+async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:  # noqa: PLR0915
     """Handle inbound SMS message."""
     from app.services.telephony.telnyx import normalize_phone_number
 

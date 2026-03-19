@@ -29,6 +29,15 @@ import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { campaignsApi } from "@/lib/api/campaigns";
 import { GuaranteeProgress } from "@/components/campaigns/guarantee-progress";
 
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err !== null && "response" in err) {
+    const axErr = err as { response?: { data?: { detail?: string } } };
+    return axErr.response?.data?.detail ?? fallback;
+  }
+  return fallback;
+}
+
 interface CampaignDetailProps {
   campaignId: string;
 }
@@ -59,8 +68,8 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
         queryKey: ["campaigns", workspaceId, campaignId],
       });
     },
-    onError: () => {
-      toast.error("Failed to start campaign");
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err, "Failed to start campaign"));
     },
   });
 
@@ -76,8 +85,8 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
         queryKey: ["campaigns", workspaceId, campaignId],
       });
     },
-    onError: () => {
-      toast.error("Failed to pause campaign");
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err, "Failed to pause campaign"));
     },
   });
 
@@ -93,8 +102,8 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
         queryKey: ["campaigns", workspaceId, campaignId],
       });
     },
-    onError: () => {
-      toast.error("Failed to resume campaign");
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err, "Failed to resume campaign"));
     },
   });
 
@@ -110,8 +119,8 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
         queryKey: ["campaigns", workspaceId, campaignId],
       });
     },
-    onError: () => {
-      toast.error("Failed to cancel campaign");
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err, "Failed to cancel campaign"));
     },
   });
 

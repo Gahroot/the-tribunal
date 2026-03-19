@@ -1,6 +1,5 @@
 """Tests for ScriptedNavigator - IVR menu extraction and DTMF navigation."""
 
-import pytest
 
 from app.services.ai.ivr.navigator import NavigationAction, ScriptedNavigator
 

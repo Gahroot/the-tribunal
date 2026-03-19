@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from app.models.workspace import Workspace
 
 
-class MessageTestStatus(str, Enum):
+class MessageTestStatus(StrEnum):
     """Message test status."""
 
     DRAFT = "draft"
@@ -39,7 +39,7 @@ class MessageTestStatus(str, Enum):
     COMPLETED = "completed"
 
 
-class TestContactStatus(str, Enum):
+class TestContactStatus(StrEnum):
     """Contact status within a message test."""
 
     PENDING = "pending"

@@ -6,7 +6,6 @@ Tests verify:
 - Threshold tuning behavior
 """
 
-import pytest
 
 from app.services.ai.ivr_detector import LoopDetector
 

@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 
 from sqlalchemy import DateTime, Float, ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -19,7 +19,7 @@ if True:  # TYPE_CHECKING equivalent to avoid circular imports
         from app.models.prompt_version import PromptVersion
 
 
-class DecisionType(str, Enum):
+class DecisionType(StrEnum):
     """How the arm was selected."""
 
     EXPLORE = "explore"

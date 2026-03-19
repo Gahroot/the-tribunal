@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 import structlog
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
@@ -69,7 +70,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response: Response = await call_next(request)
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
         return response
@@ -246,6 +247,17 @@ app.include_router(voice_test_router, tags=["voice"])
 
 # Mount static files for lead magnets and other assets
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Global handler for unhandled exceptions.
+
+    Logs the full error internally but returns a generic message to the client
+    to avoid leaking internal details.
+    """
+    logger.error("unhandled_exception", exc_info=exc, path=str(request.url))
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
 @app.get("/health")

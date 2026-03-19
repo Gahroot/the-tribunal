@@ -41,6 +41,15 @@ import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { messageTestsApi } from "@/lib/api/message-tests";
 import type { VariantAnalytics } from "@/types";
 
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err !== null && "response" in err) {
+    const axErr = err as { response?: { data?: { detail?: string } } };
+    return axErr.response?.data?.detail ?? fallback;
+  }
+  return fallback;
+}
+
 interface TestAnalyticsProps {
   testId: string;
 }
@@ -87,7 +96,7 @@ export function TestAnalytics({ testId }: TestAnalyticsProps) {
       toast.success("Winner selected");
       setShowWinnerDialog(false);
     },
-    onError: () => toast.error("Failed to select winner"),
+    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to select winner")),
   });
 
   const convertToCampaignMutation = useMutation({
@@ -107,7 +116,7 @@ export function TestAnalytics({ testId }: TestAnalyticsProps) {
       toast.success(data.message);
       setShowConvertDialog(false);
     },
-    onError: () => toast.error("Failed to convert to campaign"),
+    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to convert to campaign")),
   });
 
   if (isLoading) {

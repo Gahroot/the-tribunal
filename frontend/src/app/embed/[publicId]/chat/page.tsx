@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef, use } from "react";
+import { useEffect, useState, useCallback, useRef, use, Suspense } from "react";
 import { Send, X, MessageSquare, Loader2 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
@@ -27,7 +27,7 @@ interface ChatEmbedPageProps {
   params: Promise<{ publicId: string }>;
 }
 
-export default function ChatEmbedPage({ params }: ChatEmbedPageProps) {
+function ChatEmbedPageContent({ params }: ChatEmbedPageProps) {
   const { publicId } = use(params);
   const searchParams = useSearchParams();
   const theme = (searchParams.get("theme") as "light" | "dark" | "auto") ?? "auto";
@@ -397,5 +397,13 @@ export default function ChatEmbedPage({ params }: ChatEmbedPageProps) {
         </button>
       )}
     </div>
+  );
+}
+
+export default function ChatEmbedPage({ params }: ChatEmbedPageProps) {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <ChatEmbedPageContent params={params} />
+    </Suspense>
   );
 }

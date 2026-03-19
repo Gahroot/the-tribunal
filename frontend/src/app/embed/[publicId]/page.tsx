@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef, use } from "react";
+import { useEffect, useState, useCallback, useRef, use, Suspense } from "react";
 import { Mic, MicOff, X, Phone } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
@@ -63,7 +63,7 @@ interface EmbedPageProps {
   params: Promise<{ publicId: string }>;
 }
 
-export default function EmbedPage({ params }: EmbedPageProps) {
+function EmbedPageContent({ params }: EmbedPageProps) {
   const { publicId } = use(params);
   const searchParams = useSearchParams();
   const theme = (searchParams.get("theme") as "light" | "dark" | "auto") ?? "auto";
@@ -930,5 +930,13 @@ export default function EmbedPage({ params }: EmbedPageProps) {
         }
       `}</style>
     </div>
+  );
+}
+
+export default function EmbedPage({ params }: EmbedPageProps) {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <EmbedPageContent params={params} />
+    </Suspense>
   );
 }

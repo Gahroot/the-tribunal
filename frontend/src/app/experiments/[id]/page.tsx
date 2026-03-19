@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useState, use } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -35,15 +35,17 @@ const statusColors: Record<MessageTestStatus, string> = {
   completed: "bg-purple-500/10 text-purple-500 border-purple-500/20",
 };
 
-export default function ExperimentDetailPage() {
-  const params = useParams();
+interface ExperimentDetailPageProps {
+  params: Promise<{ id: string }>;
+}
+
+export default function ExperimentDetailPage({ params }: ExperimentDetailPageProps) {
+  const { id: testId } = use(params);
   const router = useRouter();
   const workspaceId = useWorkspaceId();
   const queryClient = useQueryClient();
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [selectedVariant, setSelectedVariant] = useState<TestVariant | null>(null);
-
-  const testId = params.id as string;
 
   const {
     data: test,

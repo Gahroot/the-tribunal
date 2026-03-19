@@ -1,6 +1,7 @@
 """Webhook signature validation for Telnyx."""
 
 import base64
+import time
 from functools import wraps
 from typing import Any
 
@@ -86,6 +87,16 @@ async def verify_telnyx_webhook(request: Request) -> bool:
     if not signature or not timestamp:
         logger.warning("missing_telnyx_signature")
         raise HTTPException(status_code=403, detail="Missing Telnyx signature")
+
+    # Reject requests with timestamps older than 5 minutes (replay-attack prevention)
+    try:
+        current_time = int(time.time())
+        if abs(current_time - int(timestamp)) > 300:
+            logger.warning("telnyx_webhook_timestamp_too_old", timestamp=timestamp)
+            raise HTTPException(status_code=403, detail="Webhook timestamp too old")
+    except ValueError as err:
+        logger.warning("telnyx_webhook_invalid_timestamp", timestamp=timestamp)
+        raise HTTPException(status_code=403, detail="Invalid webhook timestamp") from err
 
     # Get raw body
     body = await request.body()
@@ -180,6 +191,18 @@ async def verify_calcom_webhook(request: Request) -> bool:
     if not signature:
         logger.warning("missing_calcom_signature")
         raise HTTPException(status_code=403, detail="Missing Cal.com signature")
+
+    # Reject requests with timestamps older than 5 minutes (replay-attack prevention)
+    timestamp = request.headers.get("x-cal-timestamp", "")
+    if timestamp:
+        try:
+            current_time = int(time.time())
+            if abs(current_time - int(timestamp)) > 300:
+                logger.warning("calcom_webhook_timestamp_too_old", timestamp=timestamp)
+                raise HTTPException(status_code=403, detail="Webhook timestamp too old")
+        except ValueError as err:
+            logger.warning("calcom_webhook_invalid_timestamp", timestamp=timestamp)
+            raise HTTPException(status_code=403, detail="Invalid webhook timestamp") from err
 
     # Get raw body
     body = await request.body()

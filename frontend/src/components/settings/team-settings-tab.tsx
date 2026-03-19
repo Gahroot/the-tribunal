@@ -57,6 +57,15 @@ import { workspacesApi } from "@/lib/api/workspaces";
 import { invitationsApi } from "@/lib/api/invitations";
 import { TIMEZONE_OPTIONS } from "@/lib/constants";
 
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err !== null && "response" in err) {
+    const axErr = err as { response?: { data?: { detail?: string } } };
+    return axErr.response?.data?.detail ?? fallback;
+  }
+  return fallback;
+}
+
 function getInitials(name: string | null, email: string): string {
   if (name) {
     const parts = name.split(" ");
@@ -124,8 +133,8 @@ export function TeamSettingsTab() {
       queryClient.invalidateQueries({ queryKey: ["invitations", workspaceId] });
       toast.success("Invitation cancelled");
     },
-    onError: () => {
-      toast.error("Failed to cancel invitation");
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err, "Failed to cancel invitation"));
     },
   });
 
@@ -140,8 +149,8 @@ export function TeamSettingsTab() {
       toast.success("Workspace updated successfully");
       setTimeout(() => setWorkspaceSaved(false), 2000);
     },
-    onError: () => {
-      toast.error("Failed to update workspace");
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err, "Failed to update workspace"));
     },
   });
 
@@ -162,8 +171,8 @@ export function TeamSettingsTab() {
         router.push("/");
       }
     },
-    onError: () => {
-      toast.error("Failed to delete workspace");
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err, "Failed to delete workspace"));
     },
   });
 
@@ -174,8 +183,8 @@ export function TeamSettingsTab() {
       queryClient.invalidateQueries({ queryKey: ["workspaces"] });
       toast.success("Default workspace updated");
     },
-    onError: () => {
-      toast.error("Failed to set default workspace");
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err, "Failed to set default workspace"));
     },
   });
 
@@ -237,8 +246,8 @@ export function TeamSettingsTab() {
       toast.success("Company information updated successfully");
       setTimeout(() => setCompanySaved(false), 2000);
     },
-    onError: () => {
-      toast.error("Failed to update company information");
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err, "Failed to update company information"));
     },
   });
 

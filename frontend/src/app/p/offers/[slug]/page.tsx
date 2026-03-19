@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { useParams } from "next/navigation";
+import { useState, use } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Check,
@@ -23,9 +22,12 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 import { publicOffersApi, OptInRequest } from "@/lib/api/public-offers";
 
-export default function PublicOfferPage() {
-  const params = useParams();
-  const slug = params.slug as string;
+interface PublicOfferPageProps {
+  params: Promise<{ slug: string }>;
+}
+
+export default function PublicOfferPage({ params }: PublicOfferPageProps) {
+  const { slug } = use(params);
 
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");

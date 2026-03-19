@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -19,7 +19,7 @@ if True:  # TYPE_CHECKING equivalent to avoid circular imports
         from app.models.user import User
 
 
-class FeedbackSource(str, Enum):
+class FeedbackSource(StrEnum):
     """Source of the feedback."""
 
     USER = "user"  # Dashboard user feedback
@@ -28,7 +28,7 @@ class FeedbackSource(str, Enum):
     AGENT_SELF_EVAL = "agent_self_eval"  # Agent's own assessment
 
 
-class ThumbsRating(str, Enum):
+class ThumbsRating(StrEnum):
     """Simple thumbs up/down rating."""
 
     UP = "up"

@@ -16,9 +16,8 @@ from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 import structlog
-import websockets
-from websockets.asyncio.client import ClientConnection
-from websockets.exceptions import ConnectionClosedError
+from websockets.asyncio.client import ClientConnection, connect
+from websockets.exceptions import ConnectionClosed, ConnectionClosedError
 
 from app.models.agent import Agent
 from app.services.ai.elevenlabs_tts import ElevenLabsTTSSession, get_voice_id
@@ -236,7 +235,7 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
         try:
             # Connect to Grok Realtime API
             self.logger.info("connecting_to_grok_stt_llm")
-            self.grok_ws = await websockets.connect(
+            self.grok_ws = await connect(
                 self.GROK_BASE_URL,
                 additional_headers={
                     "Authorization": f"Bearer {self.xai_api_key}",
@@ -616,7 +615,7 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
                 else:
                     self.logger.debug("grok_event", event_type=event_type)
 
-        except websockets.exceptions.ConnectionClosed as e:
+        except ConnectionClosed as e:
             self.logger.warning(
                 "grok_connection_closed",
                 code=e.code,

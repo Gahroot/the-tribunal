@@ -3,6 +3,15 @@ import { promptVersionsApi, type VersionComparisonResponse } from "@/lib/api/pro
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { toast } from "sonner";
 
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err !== null && "response" in err) {
+    const axErr = err as { response?: { data?: { detail?: string } } };
+    return axErr.response?.data?.detail ?? fallback;
+  }
+  return fallback;
+}
+
 export const promptVersionQueryKeys = {
   comparison: (workspaceId: string, agentId: string) =>
     ["promptVersionComparison", workspaceId, agentId] as const,
@@ -38,7 +47,7 @@ export function useActivateVersion(agentId: string) {
       void queryClient.invalidateQueries({ queryKey: ["promptVersionComparison"] });
       void queryClient.invalidateQueries({ queryKey: ["promptVersions"] });
     },
-    onError: () => toast.error("Failed to declare winner"),
+    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to declare winner")),
   });
 }
 
@@ -55,7 +64,7 @@ export function usePauseVersion(agentId: string) {
       toast.success("Version paused");
       void queryClient.invalidateQueries({ queryKey: ["promptVersionComparison"] });
     },
-    onError: () => toast.error("Failed to pause version"),
+    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to pause version")),
   });
 }
 
@@ -72,7 +81,7 @@ export function useResumeVersion(agentId: string) {
       toast.success("Version resumed");
       void queryClient.invalidateQueries({ queryKey: ["promptVersionComparison"] });
     },
-    onError: () => toast.error("Failed to resume version"),
+    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to resume version")),
   });
 }
 
@@ -89,6 +98,6 @@ export function useEliminateVersion(agentId: string) {
       toast.success("Version eliminated from testing");
       void queryClient.invalidateQueries({ queryKey: ["promptVersionComparison"] });
     },
-    onError: () => toast.error("Failed to eliminate version"),
+    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to eliminate version")),
   });
 }

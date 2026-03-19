@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from app.models.workspace import Workspace
 
 
-class AppointmentStatus(str, Enum):
+class AppointmentStatus(StrEnum):
     """Appointment status."""
 
     SCHEDULED = "scheduled"

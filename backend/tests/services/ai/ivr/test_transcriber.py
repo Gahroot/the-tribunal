@@ -57,19 +57,16 @@ class TestWhisperTranscriber:
             t._client = mock_client
             yield t
 
-    @pytest.mark.asyncio
     async def test_too_short_audio_returns_empty(self, transcriber: WhisperTranscriber):
         """Audio shorter than MIN_AUDIO_BYTES should return empty string."""
         result = await transcriber.transcribe(bytes([0xFF] * (MIN_AUDIO_BYTES - 1)))
         assert result == ""
 
-    @pytest.mark.asyncio
     async def test_empty_audio_returns_empty(self, transcriber: WhisperTranscriber):
         """Empty audio should return empty string."""
         result = await transcriber.transcribe(b"")
         assert result == ""
 
-    @pytest.mark.asyncio
     async def test_successful_transcription(self, transcriber: WhisperTranscriber):
         """Valid audio should be transcribed via Whisper API."""
         transcriber._client.audio = MagicMock()
@@ -89,7 +86,6 @@ class TestWhisperTranscriber:
         assert call_kwargs["model"] == "whisper-1"
         assert call_kwargs["response_format"] == "text"
 
-    @pytest.mark.asyncio
     async def test_api_error_returns_empty(self, transcriber: WhisperTranscriber):
         """API errors should be caught and return empty string."""
         transcriber._client.audio = MagicMock()

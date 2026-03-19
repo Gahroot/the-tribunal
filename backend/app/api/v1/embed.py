@@ -4,7 +4,6 @@ These endpoints are unauthenticated but require domain validation
 and are rate-limited for security.
 """
 
-import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
@@ -535,7 +534,8 @@ async def trigger_embed_text(
     await db.flush()
 
     # Send initial text using agent's greeting (not hardcoded)
-    greeting = agent.initial_greeting or f"Hi! Thanks for reaching out to {agent.name}. How can I help you today?"
+    default_greeting = f"Hi! Thanks for reaching out to {agent.name}. How can I help you today?"
+    greeting = agent.initial_greeting or default_greeting
     sms_service = TelnyxSMSService(settings.telnyx_api_key)
     try:
         await sms_service.send_message(

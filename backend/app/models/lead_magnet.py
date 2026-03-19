@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from app.models.workspace import Workspace
 
 
-class LeadMagnetType(str, Enum):
+class LeadMagnetType(StrEnum):
     """Types of lead magnets."""
 
     PDF = "pdf"
@@ -35,7 +35,7 @@ class LeadMagnetType(str, Enum):
     VIDEO_COURSE = "video_course"
 
 
-class DeliveryMethod(str, Enum):
+class DeliveryMethod(StrEnum):
     """How the lead magnet is delivered."""
 
     EMAIL = "email"

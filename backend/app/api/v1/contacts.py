@@ -398,8 +398,7 @@ class TimelineItem(BaseModel):
     original_id: uuid.UUID
     original_type: str  # "sms_message", "call_record", "appointment", "note"
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 @router.get("/{contact_id}/timeline", response_model=list[TimelineItem])

@@ -117,7 +117,7 @@ export class PageErrorBoundary extends Component<Props, State> {
             <h1 className="text-2xl font-bold">Oops! Something went wrong</h1>
             <p className="mt-2 max-w-md text-muted-foreground">
               We encountered an unexpected error while loading this page.
-              Our team has been notified.
+              Please try again or refresh the page.
             </p>
             {process.env.NODE_ENV === "development" && this.state.error && (
               <pre className="mt-4 max-w-lg overflow-auto rounded-md bg-muted p-4 text-left text-xs">

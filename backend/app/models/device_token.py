@@ -40,4 +40,5 @@ class DeviceToken(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<DeviceToken(id={self.id}, user_id={self.user_id}, token={self.expo_push_token[:20]}...)>"
+        token_preview = self.expo_push_token[:20]
+        return f"<DeviceToken(id={self.id}, user_id={self.user_id}, token={token_preview}...)>"

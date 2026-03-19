@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 
 from sqlalchemy import DateTime, Float, ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -18,7 +18,7 @@ if True:  # TYPE_CHECKING equivalent to avoid circular imports
         from app.models.prompt_version import PromptVersion
 
 
-class OutcomeType(str, Enum):
+class OutcomeType(StrEnum):
     """Call outcome types."""
 
     NO_ANSWER = "no_answer"
@@ -31,7 +31,7 @@ class OutcomeType(str, Enum):
     FAILED = "failed"
 
 
-class ClassifiedBy(str, Enum):
+class ClassifiedBy(StrEnum):
     """How the outcome was classified."""
 
     HANGUP_CAUSE = "hangup_cause"  # Classified from Telnyx hangup cause

@@ -9,7 +9,7 @@ class UserCreate(BaseModel):
     """Schema for creating a user."""
 
     email: EmailStr
-    password: str
+    password: str = Field(..., min_length=8)
     full_name: str | None = None
 
 

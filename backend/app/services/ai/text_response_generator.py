@@ -220,7 +220,7 @@ async def generate_text_response(  # noqa: PLR0915, PLR0912
             "model": "gpt-4o-mini",
             "messages": api_messages,
             "temperature": agent.temperature,
-            "max_tokens": 500,
+            "max_completion_tokens": 500,
         }
 
         # Include tools if booking is configured
@@ -306,7 +306,7 @@ async def generate_text_response(  # noqa: PLR0915, PLR0912
                     model="gpt-4o-mini",
                     messages=api_messages,  # type: ignore[arg-type]
                     temperature=agent.temperature,
-                    max_tokens=500,
+                    max_completion_tokens=500,
                 ),
                 timeout=30.0,
             )
@@ -420,7 +420,7 @@ Recent conversation:
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.7,
-                max_tokens=200,
+                max_completion_tokens=200,
             ),
             timeout=30.0,
         )
