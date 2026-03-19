@@ -1,6 +1,7 @@
 """Appointment management endpoints."""
 
 import uuid
+from datetime import datetime
 from typing import Annotated
 
 import structlog
@@ -32,11 +33,22 @@ async def list_appointments(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     status_filter: str | None = None,
+    contact_id: int | None = None,
+    agent_id: str | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
 ) -> PaginatedAppointments:
     """List appointments in a workspace.
 
     Requires workspace membership. All appointments are filtered by workspace_id
     to ensure workspace isolation.
+
+    Optional filters:
+    - status_filter: filter by appointment status
+    - contact_id: filter by contact (indexed)
+    - agent_id: filter by agent UUID (indexed)
+    - date_from: appointments scheduled on or after this datetime (indexed)
+    - date_to: appointments scheduled on or before this datetime (indexed)
     """
     log = logger.bind(
         workspace_id=str(workspace_id),
@@ -53,6 +65,14 @@ async def list_appointments(
 
     if status_filter:
         query = query.where(Appointment.status == status_filter)
+    if contact_id is not None:
+        query = query.where(Appointment.contact_id == contact_id)
+    if agent_id is not None:
+        query = query.where(Appointment.agent_id == uuid.UUID(agent_id))
+    if date_from is not None:
+        query = query.where(Appointment.scheduled_at >= date_from)
+    if date_to is not None:
+        query = query.where(Appointment.scheduled_at <= date_to)
 
     query = query.order_by(Appointment.scheduled_at.desc())
     result = await paginate_unique(db, query, page=page, page_size=page_size)

@@ -38,7 +38,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useContactStore } from "@/lib/contact-store";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useAppointments } from "@/hooks/useAppointments";
+import { appointmentsApi } from "@/lib/api/appointments";
 import { useToggleContactAI, useDeleteContact } from "@/hooks/useContacts";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { callsApi, type InitiateCallRequest } from "@/lib/api/calls";
@@ -137,11 +137,17 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  // Fetch appointments for this contact
-  const { data: appointmentsData, isLoading: appointmentsLoading } = useAppointments(
-    workspaceId ?? "",
-    { page: 1, page_size: 50 }
-  );
+  // Fetch appointments for this contact only (server-side filter by contact_id)
+  const { data: appointmentsData, isLoading: appointmentsLoading } = useQuery({
+    queryKey: ["appointments", workspaceId, { contact_id: selectedContact?.id }],
+    queryFn: () =>
+      appointmentsApi.list(workspaceId!, {
+        page: 1,
+        page_size: 50,
+        contact_id: selectedContact!.id,
+      }),
+    enabled: !!workspaceId && !!selectedContact,
+  });
 
   // Fetch phone numbers for calls
   const { data: phoneNumbersData } = useQuery({
@@ -286,10 +292,8 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
       ? selectedContact.tags.split(",").map((t) => t.trim()).filter(Boolean)
       : [];
 
-  // Filter appointments for this contact
-  const contactAppointments = (appointmentsData?.items || []).filter(
-    (apt) => apt.contact_id === selectedContact.id
-  );
+  // Appointments are already filtered server-side by contact_id
+  const contactAppointments = appointmentsData?.items || [];
 
   // Calculate some stats from timeline
   const callCount = timeline.filter(t => t.type === "call").length;

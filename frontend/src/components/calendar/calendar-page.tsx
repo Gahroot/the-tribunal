@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
-import { format, addDays, startOfWeek, isSameDay } from "date-fns";
+import { format, addDays, startOfWeek, endOfWeek, isSameDay } from "date-fns";
 import {
   ChevronLeft,
   ChevronRight,
@@ -59,9 +59,19 @@ export function CalendarPage() {
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<number | null>(null);
   const workspaceId = useWorkspaceId();
 
+  // Compute week bounds before the data fetch so they drive the query key + params
+  const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
+  const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+
   const { data: appointmentsData, isLoading, error } = useAppointments(
     workspaceId ?? "",
-    { page: 1, page_size: 100 }
+    {
+      page: 1,
+      page_size: 100,
+      date_from: weekStart.toISOString(),
+      date_to: weekEnd.toISOString(),
+    }
   );
   const deleteAppointmentMutation = useDeleteAppointment(workspaceId ?? "");
 
@@ -69,9 +79,6 @@ export function CalendarPage() {
     () => appointmentsData?.items || [],
     [appointmentsData?.items]
   );
-
-  const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
   const todayAppointments = useMemo(
     () =>
