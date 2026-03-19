@@ -4,19 +4,25 @@ These endpoints are unauthenticated but require domain validation
 and are rate-limited for security.
 """
 
+import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 import httpx
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel
-from sqlalchemy import select
+from pydantic import BaseModel, field_validator
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.origin_validation import validate_origin
+from app.core.utils import get_client_ip
 from app.db.session import get_db
 from app.models.agent import Agent
+from app.models.demo_request import DemoRequest
+from app.services.telephony.telnyx import TelnyxSMSService
+from app.services.telephony.telnyx_voice import TelnyxVoiceService
 
 # Database dependency type alias
 DB = Annotated[AsyncSession, Depends(get_db)]
@@ -84,6 +90,63 @@ class TranscriptRequest(BaseModel):
     session_id: str
     transcript: str
     duration_seconds: int
+
+
+class EmbedPhoneRequest(BaseModel):
+    """Request for embed call/text endpoints."""
+
+    phone_number: str
+
+    @field_validator("phone_number")
+    @classmethod
+    def validate_phone(cls, v: str) -> str:
+        """Validate and normalize phone number to E.164 format."""
+        digits = "".join(c for c in v if c.isdigit())
+        if len(digits) == 10:
+            return f"+1{digits}"
+        elif len(digits) == 11 and digits.startswith("1"):
+            return f"+{digits}"
+        else:
+            raise ValueError("Phone number must be a valid US number (10 digits)")
+
+
+async def _check_embed_rate_limits(
+    db: AsyncSession, client_ip: str, phone_number: str
+) -> None:
+    """Check rate limits for embed call/text requests."""
+    now = datetime.now(UTC)
+    hour_ago = now - timedelta(hours=1)
+    day_ago = now - timedelta(days=1)
+
+    # Check IP rate limit
+    ip_count_result = await db.execute(
+        select(func.count()).where(
+            DemoRequest.client_ip == client_ip,
+            DemoRequest.created_at >= hour_ago,
+        )
+    )
+    ip_count = ip_count_result.scalar() or 0
+
+    if ip_count >= settings.demo_ip_rate_limit:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Rate limit exceeded. Please try again later.",
+        )
+
+    # Check phone rate limit
+    phone_count_result = await db.execute(
+        select(func.count()).where(
+            DemoRequest.phone_number == phone_number,
+            DemoRequest.created_at >= day_ago,
+        )
+    )
+    phone_count = phone_count_result.scalar() or 0
+
+    if phone_count >= settings.demo_phone_rate_limit:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="This phone number has reached its daily limit. Please try again tomorrow.",
+        )
 
 
 async def get_agent_by_public_id(db: AsyncSession, public_id: str) -> Agent:
@@ -361,3 +424,144 @@ async def save_transcript(
     )
 
     return {"status": "saved"}
+
+
+@router.post("/{public_id}/call")
+async def trigger_embed_call(
+    public_id: str,
+    body: EmbedPhoneRequest,
+    request: Request,
+    db: DB,
+) -> dict[str, bool | str]:
+    """Trigger an AI call via the embed widget."""
+    agent = await get_agent_by_public_id(db, public_id)
+
+    # Validate origin
+    if not validate_origin(request, agent.allowed_domains):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Origin not allowed",
+        )
+
+    if not settings.telnyx_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Voice service not available",
+        )
+
+    client_ip = get_client_ip(request, settings.trusted_proxies)
+    await _check_embed_rate_limits(db, client_ip, body.phone_number)
+
+    # Record the request
+    demo_record = DemoRequest(
+        phone_number=body.phone_number,
+        request_type="embed_call",
+        client_ip=client_ip,
+    )
+    db.add(demo_record)
+    await db.flush()
+
+    # Initiate the call
+    voice_service = TelnyxVoiceService(settings.telnyx_api_key)
+    try:
+        api_base = settings.api_base_url or "https://example.com"
+        webhook_url = f"{api_base}/webhooks/telnyx/voice"
+        connection_id = settings.telnyx_connection_id if settings.telnyx_connection_id else None
+
+        await voice_service.initiate_call(
+            to_number=body.phone_number,
+            from_number=settings.demo_from_phone_number,
+            connection_id=connection_id,
+            webhook_url=webhook_url,
+            db=db,
+            workspace_id=agent.workspace_id,
+            contact_phone=body.phone_number,
+            agent_id=agent.id,
+        )
+
+        demo_record.status = "initiated"
+        await db.commit()
+
+        return {
+            "success": True,
+            "message": "Call initiated! You should receive a call within 10 seconds.",
+        }
+    except Exception as e:
+        demo_record.status = "failed"
+        demo_record.error_message = str(e)[:500]
+        await db.commit()
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to initiate call. Please try again.",
+        ) from e
+    finally:
+        await voice_service.close()
+
+
+@router.post("/{public_id}/text")
+async def trigger_embed_text(
+    public_id: str,
+    body: EmbedPhoneRequest,
+    request: Request,
+    db: DB,
+) -> dict[str, bool | str]:
+    """Trigger an AI text via the embed widget."""
+    agent = await get_agent_by_public_id(db, public_id)
+
+    # Validate origin
+    if not validate_origin(request, agent.allowed_domains):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Origin not allowed",
+        )
+
+    if not settings.telnyx_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="SMS service not available",
+        )
+
+    client_ip = get_client_ip(request, settings.trusted_proxies)
+    await _check_embed_rate_limits(db, client_ip, body.phone_number)
+
+    # Record the request
+    demo_record = DemoRequest(
+        phone_number=body.phone_number,
+        request_type="embed_text",
+        client_ip=client_ip,
+    )
+    db.add(demo_record)
+    await db.flush()
+
+    # Send initial text using agent's greeting (not hardcoded)
+    greeting = agent.initial_greeting or f"Hi! Thanks for reaching out to {agent.name}. How can I help you today?"
+    sms_service = TelnyxSMSService(settings.telnyx_api_key)
+    try:
+        await sms_service.send_message(
+            to_number=body.phone_number,
+            from_number=settings.demo_from_phone_number,
+            body=greeting,
+            db=db,
+            workspace_id=agent.workspace_id,
+            agent_id=agent.id,
+        )
+
+        demo_record.status = "initiated"
+        await db.commit()
+
+        return {
+            "success": True,
+            "message": "Text sent! Check your phone for a message.",
+        }
+    except Exception as e:
+        demo_record.status = "failed"
+        demo_record.error_message = str(e)[:500]
+        await db.commit()
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to send text. Please try again.",
+        ) from e
+    finally:
+        await sms_service.close()
