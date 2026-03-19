@@ -44,6 +44,9 @@ export interface AgentResponse {
   value_reinforcement_enabled: boolean;
   value_reinforcement_offset_minutes: number;
   value_reinforcement_template: string | null;
+  // Post-meeting SMS
+  post_meeting_sms_enabled: boolean;
+  post_meeting_template: string | null;
   auto_evaluate: boolean;
   created_at: string;
   updated_at: string;
@@ -132,6 +135,9 @@ export interface UpdateAgentRequest {
   value_reinforcement_enabled?: boolean;
   value_reinforcement_offset_minutes?: number;
   value_reinforcement_template?: string | null;
+  // Post-meeting SMS
+  post_meeting_sms_enabled?: boolean;
+  post_meeting_template?: string | null;
   auto_evaluate?: boolean;
 }
 

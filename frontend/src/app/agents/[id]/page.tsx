@@ -133,6 +133,8 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
       valueReinforcementEnabled: false,
       valueReinforcementOffsetMinutes: 120,
       valueReinforcementTemplate: null,
+      postMeetingSmsEnabled: false,
+      postMeetingTemplate: null,
       autoEvaluate: false,
     },
   });
@@ -180,6 +182,8 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
         valueReinforcementEnabled: agent.value_reinforcement_enabled ?? false,
         valueReinforcementOffsetMinutes: agent.value_reinforcement_offset_minutes ?? 120,
         valueReinforcementTemplate: agent.value_reinforcement_template ?? null,
+        postMeetingSmsEnabled: agent.post_meeting_sms_enabled ?? false,
+        postMeetingTemplate: agent.post_meeting_template ?? null,
         autoEvaluate: agent.auto_evaluate ?? false,
       });
     }
@@ -286,6 +290,8 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
       value_reinforcement_enabled: data.valueReinforcementEnabled,
       value_reinforcement_offset_minutes: data.valueReinforcementOffsetMinutes,
       value_reinforcement_template: data.valueReinforcementTemplate ?? null,
+      post_meeting_sms_enabled: data.postMeetingSmsEnabled,
+      post_meeting_template: data.postMeetingTemplate ?? null,
       auto_evaluate: data.autoEvaluate,
     };
 

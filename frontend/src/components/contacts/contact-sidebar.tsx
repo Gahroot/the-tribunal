@@ -16,6 +16,7 @@ import {
   Loader2,
   Trash2,
   Bell,
+  AlertTriangle,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -491,6 +492,32 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
                 <span>
                   Last activity: {format(new Date(lastActivity.timestamp), "MMM d, h:mm a")}
                 </span>
+              </div>
+            )}
+            {(!!selectedContact.noshow_count || selectedContact.last_appointment_status) && (
+              <div className="flex items-center gap-2 px-2 flex-wrap">
+                {!!selectedContact.noshow_count && selectedContact.noshow_count > 0 && (
+                  <div className="flex items-center gap-1.5 text-xs text-amber-600">
+                    <AlertTriangle className="h-3 w-3" />
+                    <span>
+                      {selectedContact.noshow_count} no-show{selectedContact.noshow_count !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                )}
+                {selectedContact.last_appointment_status && (
+                  <Badge
+                    variant={
+                      selectedContact.last_appointment_status === "no_show"
+                        ? "destructive"
+                        : selectedContact.last_appointment_status === "completed"
+                          ? "default"
+                          : "secondary"
+                    }
+                    className="text-xs"
+                  >
+                    Last: {selectedContact.last_appointment_status.replace(/_/g, " ")}
+                  </Badge>
+                )}
               </div>
             )}
           </div>

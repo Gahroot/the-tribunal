@@ -42,6 +42,9 @@ export const editAgentFormSchema = z.object({
   valueReinforcementEnabled: z.boolean(),
   valueReinforcementOffsetMinutes: z.number().int().min(1).max(10080),
   valueReinforcementTemplate: z.string().nullable().optional(),
+  // Post-meeting SMS
+  postMeetingSmsEnabled: z.boolean(),
+  postMeetingTemplate: z.string().nullable().optional(),
   // Experiment auto-evaluation
   autoEvaluate: z.boolean(),
 });
@@ -73,6 +76,8 @@ export const TAB_FIELDS: Record<string, (keyof EditAgentFormValues)[]> = {
     "valueReinforcementEnabled",
     "valueReinforcementOffsetMinutes",
     "valueReinforcementTemplate",
+    "postMeetingSmsEnabled",
+    "postMeetingTemplate",
     "autoEvaluate",
   ],
 };

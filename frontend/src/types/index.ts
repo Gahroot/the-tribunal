@@ -67,6 +67,8 @@ export interface Contact {
   enrichment_status?: EnrichmentStatus;
   enriched_at?: string;
   lead_score?: number;
+  noshow_count?: number;
+  last_appointment_status?: string | null;
 }
 
 export type EnrichmentStatus = "pending" | "enriched" | "failed" | "skipped";
