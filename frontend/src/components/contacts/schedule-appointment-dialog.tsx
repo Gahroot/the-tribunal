@@ -11,6 +11,7 @@ import { CalendarIcon, Loader2 } from "lucide-react";
 
 import { appointmentsApi, type CreateAppointmentRequest } from "@/lib/api/appointments";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useAgents } from "@/hooks/useAgents";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -24,6 +25,7 @@ import {
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -52,6 +54,7 @@ const appointmentFormSchema = z.object({
   duration_minutes: z.number().min(15).max(480),
   service_type: z.string().optional(),
   notes: z.string().optional(),
+  agent_id: z.string().optional(),
 });
 
 type AppointmentFormValues = z.infer<typeof appointmentFormSchema>;
@@ -87,6 +90,12 @@ export function ScheduleAppointmentDialog({
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const { data: agentsData, isLoading: agentsLoading } = useAgents(
+    workspaceId ?? "",
+    { active_only: true, page_size: 100 }
+  );
+  const agents = agentsData?.items ?? [];
+
   const displayName = [contact.first_name, contact.last_name].filter(Boolean).join(" ");
 
   const form = useForm<AppointmentFormValues>({
@@ -95,6 +104,7 @@ export function ScheduleAppointmentDialog({
       duration_minutes: 30,
       service_type: "",
       notes: "",
+      agent_id: undefined,
     },
   });
 
@@ -133,6 +143,7 @@ export function ScheduleAppointmentDialog({
       duration_minutes: data.duration_minutes,
       service_type: data.service_type || undefined,
       notes: data.notes || undefined,
+      agent_id: data.agent_id || undefined,
     };
 
     createAppointmentMutation.mutate(request);
@@ -241,6 +252,55 @@ export function ScheduleAppointmentDialog({
                       <SelectItem value="120">2 hours</SelectItem>
                     </SelectContent>
                   </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="agent_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Assigned Agent</FormLabel>
+                  <Select
+                    onValueChange={(val) => field.onChange(val === "none" ? undefined : val)}
+                    value={field.value ?? "none"}
+                    disabled={agentsLoading}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        {agentsLoading ? (
+                          <span className="flex items-center gap-2 text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Loading agents...
+                          </span>
+                        ) : (
+                          <SelectValue placeholder="No agent (reminders disabled)" />
+                        )}
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="none">No agent</SelectItem>
+                      {agents.length === 0 && !agentsLoading ? (
+                        <SelectItem value="__empty__" disabled>
+                          No active agents configured
+                        </SelectItem>
+                      ) : (
+                        agents.map((agent) => (
+                          <SelectItem key={agent.id} value={agent.id}>
+                            {agent.name}
+                            {agent.reminder_enabled && (
+                              <span className="ml-2 text-xs text-muted-foreground">· SMS reminders</span>
+                            )}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    Selecting an agent enables automated SMS reminders for this appointment.
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
