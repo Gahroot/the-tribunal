@@ -64,6 +64,7 @@ class AppointmentResponse(AppointmentBase):
     last_synced_at: datetime | None
     sync_error: str | None = None  # Stored error message from Cal.com sync failures
     reminder_sent_at: datetime | None = None
+    reminders_sent: list[int] = []
     created_at: datetime
     updated_at: datetime
 

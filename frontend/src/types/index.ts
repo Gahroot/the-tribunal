@@ -244,6 +244,7 @@ export interface Appointment {
   created_at: string;
   updated_at: string;
   reminder_sent_at?: string;
+  reminders_sent?: number[];
 }
 
 // Unified timeline item for the conversation feed

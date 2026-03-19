@@ -2,13 +2,19 @@
 
 Sends SMS reminders before scheduled appointments using the same phone number
 the contact was originally reached on, ensuring a seamless conversation thread.
+
+Supports multi-touch sequences: fires a separate SMS for each configured offset
+in agent.reminder_offsets (e.g. 1440 min = 24 h, 120 min = 2 h, 30 min before)
+and tracks which offsets have already fired in appointment.reminders_sent so
+duplicate sends never occur across worker poll cycles.
 """
 
+import re
 import uuid
 import zoneinfo
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -16,13 +22,18 @@ from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.models.agent import Agent
 from app.models.appointment import Appointment
+from app.models.contact import Contact
 from app.models.conversation import Conversation
 from app.models.phone_number import PhoneNumber
+from app.models.workspace import Workspace
 from app.services.rate_limiting.opt_out_manager import OptOutManager
 from app.services.telephony.telnyx import TelnyxSMSService
 from app.workers.base import BaseWorker, WorkerRegistry
 
 MAX_REMINDERS_PER_TICK = 20
+
+# Agentless appointments use this single offset (minutes before)
+_AGENTLESS_DEFAULT_OFFSETS = [60]
 
 
 class ReminderWorker(BaseWorker):
@@ -40,25 +51,13 @@ class ReminderWorker(BaseWorker):
         async with AsyncSessionLocal() as db:
             now = datetime.now(UTC)
 
-            # Determine the lookahead window from the largest reminder offset
-            # configured across all reminder-enabled agents.  This ensures
-            # agents with reminder_minutes_before > 60 (e.g. 120, 1440) are
-            # never silently skipped.  Cap at 1500 min (25 h) as a safety
-            # ceiling; default to 60 if no enabled agents exist.
-            max_lookahead = 1500  # 25 hours — safe ceiling for any reminder offset
-            max_result = await db.execute(
-                select(func.max(Agent.reminder_minutes_before)).where(
-                    Agent.reminder_enabled.is_(True)
-                )
-            )
-            raw_max: int | None = max_result.scalar_one_or_none()
-            lookahead_minutes = min(raw_max, max_lookahead) if raw_max else 60
-            self.logger.debug(
-                "Reminder lookahead window", lookahead_minutes=lookahead_minutes
-            )
+            # Use a fixed 25-hour lookahead window — covers the largest
+            # standard offset (1440 min = 24 h) with a safety margin.
+            lookahead_minutes = 1500  # 25 hours
 
-            # Broad window: fetch appointments within the lookahead window
-            # that haven't had a reminder sent yet
+            # Broad fetch: scheduled appointments in the lookahead window
+            # that still have at least one offset potentially unsent.
+            # Precise per-offset filtering happens in Python after loading.
             result = await db.execute(
                 select(Appointment)
                 .options(
@@ -69,7 +68,6 @@ class ReminderWorker(BaseWorker):
                 .where(
                     and_(
                         Appointment.status == "scheduled",
-                        Appointment.reminder_sent_at.is_(None),
                         Appointment.scheduled_at > now,
                         Appointment.scheduled_at <= now + timedelta(minutes=lookahead_minutes),
                         Appointment.contact_id.is_not(None),
@@ -83,41 +81,55 @@ class ReminderWorker(BaseWorker):
             if not appointments:
                 return
 
-            # Filter by each agent's reminder config.
-            # Agentless (manually scheduled) appointments use a 60-minute default.
-            due: list[Appointment] = []
+            # Build the list of (appointment, offset) pairs that are due
+            due_pairs: list[tuple[Appointment, int]] = []
             for appt in appointments:
                 agent = appt.agent
                 if agent is not None and not agent.reminder_enabled:
                     continue
-                reminder_minutes = (
-                    agent.reminder_minutes_before if agent is not None else 60
-                )
-                threshold = now + timedelta(minutes=reminder_minutes)
-                if appt.scheduled_at <= threshold:
-                    due.append(appt)
 
-            if not due:
+                offsets = (
+                    agent.reminder_offsets
+                    if agent is not None and agent.reminder_offsets
+                    else _AGENTLESS_DEFAULT_OFFSETS
+                )
+                already_sent: list[int] = list(appt.reminders_sent or [])
+
+                for offset in offsets:
+                    if offset in already_sent:
+                        continue  # Already fired this touchpoint
+                    threshold = now + timedelta(minutes=offset)
+                    if appt.scheduled_at <= threshold:
+                        due_pairs.append((appt, offset))
+
+            if not due_pairs:
                 return
 
-            self.logger.info("Processing appointment reminders", count=len(due))
+            self.logger.info(
+                "Processing appointment reminders",
+                count=len(due_pairs),
+            )
 
-            for appt in due:
+            for appt, offset in due_pairs:
                 try:
-                    await self._send_reminder(appt, db)
+                    await self._send_reminder(appt, offset, db)
                 except Exception:
                     self.logger.exception(
                         "Error sending appointment reminder",
                         appointment_id=appt.id,
+                        offset_minutes=offset,
                     )
 
     async def _send_reminder(
         self,
         appt: Appointment,
+        offset_minutes: int,
         db: AsyncSession,
     ) -> None:
-        """Send a single appointment reminder SMS."""
-        log = self.logger.bind(appointment_id=appt.id)
+        """Send a single appointment reminder SMS for the given offset."""
+        log = self.logger.bind(
+            appointment_id=appt.id, offset_minutes=offset_minutes
+        )
         agent = appt.agent
         contact = appt.contact
         workspace = appt.workspace
@@ -136,7 +148,7 @@ class ReminderWorker(BaseWorker):
             log.warning("Contact has no phone number")
             return
 
-        # Check global opt-out before sending — TCPA compliance
+        # TCPA compliance — skip opted-out contacts
         is_opted_out = await self.opt_out_manager.check_opt_out(
             workspace.id,
             contact_phone,
@@ -148,8 +160,10 @@ class ReminderWorker(BaseWorker):
                 contact_id=contact.id,
                 phone=contact_phone,
             )
-            # Do NOT set reminder_sent_at so the appointment stays eligible
-            # if the contact re-opts-in before the appointment.
+            # Mark this offset as "sent" so we don't keep checking it every tick
+            # for an opted-out contact.  The offset never fires, but it won't
+            # silently retry on every poll cycle.
+            await self._mark_offset_sent(appt, offset_minutes, db)
             return
 
         agent_id = agent.id if agent is not None else None
@@ -169,21 +183,13 @@ class ReminderWorker(BaseWorker):
                 from_number=from_number,
             )
 
-        # Format time in workspace timezone or UTC
-        tz_name = (workspace.settings or {}).get("timezone", "UTC")
-        try:
-            tz = zoneinfo.ZoneInfo(tz_name)
-        except (KeyError, zoneinfo.ZoneInfoNotFoundError):
-            tz = zoneinfo.ZoneInfo("UTC")
-
-        local_time = appt.scheduled_at.astimezone(tz)
-        time_str = local_time.strftime("%-I:%M %p")
-
-        first_name = contact.first_name or "there"
-        body = (
-            f"Hi {first_name}, just a reminder about your upcoming appointment "
-            f"at {time_str}. Check your email for the video call link. "
-            f"Reply here if you need to reschedule."
+        # Build SMS body
+        body = self._render_reminder_body(
+            template=agent.reminder_template if agent is not None else None,
+            contact=contact,
+            appointment=appt,
+            workspace=workspace,
+            agent=agent,
         )
 
         sms_service = TelnyxSMSService(telnyx_key)
@@ -199,8 +205,8 @@ class ReminderWorker(BaseWorker):
 
             log.info("Appointment reminder sent", message_id=str(message.id))
 
-            # Mark reminder as sent
-            appt.reminder_sent_at = datetime.now(UTC)
+            # Mark this offset as fired and update legacy reminder_sent_at
+            await self._mark_offset_sent(appt, offset_minutes, db)
 
             # If an agent owns this appointment, assign the conversation to them
             if agent is not None:
@@ -226,6 +232,130 @@ class ReminderWorker(BaseWorker):
             log.exception("Failed to send reminder SMS", error=str(e))
         finally:
             await sms_service.close()
+
+    async def _mark_offset_sent(
+        self,
+        appt: Appointment,
+        offset_minutes: int,
+        db: AsyncSession,
+    ) -> None:
+        """Append offset_minutes to appointment.reminders_sent and update reminder_sent_at.
+
+        Uses PostgreSQL array_append to avoid overwriting concurrent updates.
+        After the append we refresh the ORM object so subsequent reads are
+        accurate within the same session.
+        """
+        now = datetime.now(UTC)
+        await db.execute(
+            text(
+                "UPDATE appointments "
+                "SET reminders_sent = array_append(reminders_sent, :offset), "
+                "    reminder_sent_at = :now "
+                "WHERE id = :appt_id"
+            ),
+            {"offset": offset_minutes, "now": now, "appt_id": appt.id},
+        )
+        # Sync the in-memory object so the caller's view is consistent
+        current = list(appt.reminders_sent or [])
+        if offset_minutes not in current:
+            current.append(offset_minutes)
+        appt.reminders_sent = current
+        appt.reminder_sent_at = now
+
+    # ------------------------------------------------------------------
+    # Template rendering
+    # ------------------------------------------------------------------
+
+    def _render_reminder_body(
+        self,
+        template: str | None,
+        contact: Contact,
+        appointment: Appointment,
+        workspace: Workspace,
+        agent: Agent | None,
+    ) -> str:
+        """Build the SMS body for a reminder.
+
+        If agent.reminder_template is set, render it with placeholders:
+          {first_name}, {last_name}, {appointment_date}, {appointment_time},
+          {appointment_datetime}, {reschedule_link}
+
+        Falls back to the original hardcoded message when no template is set.
+
+        Times are formatted in the workspace timezone (falls back to UTC).
+        """
+        # Resolve timezone
+        tz_name = (workspace.settings or {}).get("timezone", "UTC")
+        try:
+            tz = zoneinfo.ZoneInfo(str(tz_name))
+        except (KeyError, zoneinfo.ZoneInfoNotFoundError):
+            tz = zoneinfo.ZoneInfo("UTC")
+
+        local_dt = appointment.scheduled_at.astimezone(tz)
+        # e.g. "Monday, March 24"
+        date_str = local_dt.strftime("%A, %B %-d")
+        # e.g. "3:00 PM"
+        time_str = local_dt.strftime("%-I:%M %p")
+        datetime_str = f"{date_str} at {time_str}"
+
+        first_name = contact.first_name or "there"
+
+        # No custom template — return the original hardcoded message unchanged
+        if not template:
+            return (
+                f"Hi {first_name}, just a reminder about your upcoming appointment "
+                f"at {time_str}. Check your email for the video call link. "
+                f"Reply here if you need to reschedule."
+            )
+
+        # Build reschedule link if agent has a Cal.com event type configured
+        reschedule_link = ""
+        if agent is not None and agent.calcom_event_type_id and settings.calcom_api_key:
+            try:
+                from app.services.calendar.calcom import CalComService
+
+                calcom = CalComService(settings.calcom_api_key)
+                contact_name = " ".join(
+                    filter(None, [contact.first_name, contact.last_name])
+                ) or first_name
+                reschedule_link = calcom.generate_booking_url(
+                    event_type_id=agent.calcom_event_type_id,
+                    contact_email=contact.email or "",
+                    contact_name=contact_name,
+                    contact_phone=contact.phone_number,
+                )
+            except Exception:
+                self.logger.warning(
+                    "Could not generate reschedule link for reminder template",
+                    appointment_id=appointment.id,
+                )
+
+        replacements: dict[str, str] = {
+            "first_name": contact.first_name or "",
+            "last_name": contact.last_name or "",
+            "appointment_date": date_str,
+            "appointment_time": time_str,
+            "appointment_datetime": datetime_str,
+            "reschedule_link": reschedule_link,
+        }
+
+        message = template
+        for placeholder, value in replacements.items():
+            try:
+                pattern = re.compile(rf"\{{{placeholder}\}}", re.IGNORECASE)
+                message = pattern.sub(value, message)
+            except Exception:
+                self.logger.warning(
+                    "Placeholder replacement failed in reminder template",
+                    placeholder=placeholder,
+                    appointment_id=appointment.id,
+                )
+
+        return message
+
+    # ------------------------------------------------------------------
+    # From-number resolution
+    # ------------------------------------------------------------------
 
     async def _resolve_from_number(
         self,

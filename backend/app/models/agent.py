@@ -105,6 +105,11 @@ class Agent(Base):
     # Appointment reminder settings
     reminder_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     reminder_minutes_before: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
+    # Multi-touch reminder offsets (minutes before appointment) and custom SMS body
+    reminder_offsets: Mapped[list[int]] = mapped_column(
+        ARRAY(Integer), default=lambda: [1440, 120, 30], nullable=False
+    )
+    reminder_template: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

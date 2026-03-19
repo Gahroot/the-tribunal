@@ -29,6 +29,8 @@ export interface AgentResponse {
   enable_recording: boolean;
   reminder_enabled: boolean;
   reminder_minutes_before: number;
+  reminder_offsets: number[];
+  reminder_template: string | null;
   auto_evaluate: boolean;
   created_at: string;
   updated_at: string;
@@ -72,6 +74,8 @@ export interface CreateAgentRequest {
   enable_recording?: boolean;
   reminder_enabled?: boolean;
   reminder_minutes_before?: number;
+  reminder_offsets?: number[];
+  reminder_template?: string | null;
   auto_evaluate?: boolean;
 }
 
@@ -100,6 +104,8 @@ export interface UpdateAgentRequest {
   enable_recording?: boolean;
   reminder_enabled?: boolean;
   reminder_minutes_before?: number;
+  reminder_offsets?: number[];
+  reminder_template?: string | null;
   auto_evaluate?: boolean;
 }
 

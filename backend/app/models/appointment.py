@@ -6,7 +6,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -89,6 +89,10 @@ class Appointment(Base):
     # Reminder tracking
     reminder_sent_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    # Multi-touch reminder tracking — list of offsets (minutes) already sent
+    reminders_sent: Mapped[list[int]] = mapped_column(
+        ARRAY(Integer), default=list, nullable=False
     )
 
     # Timestamps

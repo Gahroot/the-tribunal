@@ -47,6 +47,8 @@ class AgentCreate(BaseModel):
     # Appointment reminder settings
     reminder_enabled: bool = True
     reminder_minutes_before: int = 30
+    reminder_offsets: list[int] = [1440, 120, 30]
+    reminder_template: str | None = None
     # Experiment auto-evaluation
     auto_evaluate: bool = False
     # Greeting
@@ -83,6 +85,8 @@ class AgentUpdate(BaseModel):
     # Appointment reminder settings
     reminder_enabled: bool | None = None
     reminder_minutes_before: int | None = None
+    reminder_offsets: list[int] | None = None
+    reminder_template: str | None = None
     # Experiment auto-evaluation
     auto_evaluate: bool | None = None
     # Greeting
@@ -121,6 +125,8 @@ class AgentResponse(BaseModel):
     # Appointment reminder settings
     reminder_enabled: bool
     reminder_minutes_before: int
+    reminder_offsets: list[int]
+    reminder_template: str | None
     # Experiment auto-evaluation
     auto_evaluate: bool
     # Greeting
@@ -203,6 +209,8 @@ async def create_agent(
         enable_recording=agent_in.enable_recording,
         reminder_enabled=agent_in.reminder_enabled,
         reminder_minutes_before=agent_in.reminder_minutes_before,
+        reminder_offsets=agent_in.reminder_offsets,
+        reminder_template=agent_in.reminder_template,
         auto_evaluate=agent_in.auto_evaluate,
         initial_greeting=agent_in.initial_greeting,
     )

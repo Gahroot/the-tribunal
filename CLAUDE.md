@@ -102,3 +102,8 @@ cd backend && uv run alembic upgrade head
 ```
 
 If changes require server restart, read server output and fix ALL warnings/errors.
+
+## Production
+
+The app is deployed on Railway. Use `railway` CLI for logs, deploys, and environment management.
+This is a live, actively used CRM with real contact data. Never run destructive database operations (DROP, TRUNCATE, DELETE without WHERE) against production. Always test migrations locally first and back up data before schema changes that touch contact/lead tables.

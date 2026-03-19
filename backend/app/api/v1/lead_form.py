@@ -3,9 +3,11 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 
+import httpx
 import structlog
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import DB
 from app.core.config import settings
@@ -16,7 +18,9 @@ from app.models.contact import Contact
 from app.models.conversation import Conversation
 from app.models.demo_request import DemoRequest
 from app.models.lead_source import LeadSource
+from app.models.workspace import WorkspaceMembership
 from app.schemas.lead_source import LeadSubmitRequest, LeadSubmitResponse
+from app.services.push_notifications import push_notification_service
 from app.services.telephony.telnyx import TelnyxSMSService
 from app.services.telephony.telnyx_voice import TelnyxVoiceService
 
@@ -168,6 +172,72 @@ async def _execute_action(
         await handler(lead_source, contact, db)
 
 
+async def _notify_new_lead(
+    lead_source: LeadSource, contact: Contact, db: DB
+) -> None:
+    """Send SMS and push notifications to workspace members about a new lead."""
+    config = lead_source.action_config or {}
+    from_number = config.get("from_phone_number", settings.demo_from_phone_number)
+    name = contact.first_name or "Unknown"
+    if contact.last_name:
+        name = f"{name} {contact.last_name}"
+
+    body = f"New lead: {name} - {contact.phone_number}"
+
+    # Send push notification to all workspace members
+    try:
+        await push_notification_service.send_to_workspace_members(
+            db=db,
+            workspace_id=str(lead_source.workspace_id),
+            title="New Lead",
+            body=body,
+            data={
+                "type": "new_lead",
+                "contactId": str(contact.id),
+            },
+            notification_type="message",
+        )
+    except Exception:
+        logger.exception("lead_push_notification_failed", contact_id=contact.id)
+
+    # Send SMS notification to workspace members who have SMS notifications enabled
+    if not settings.telnyx_api_key or not from_number:
+        return
+
+    result = await db.execute(
+        select(WorkspaceMembership)
+        .options(selectinload(WorkspaceMembership.user))
+        .where(WorkspaceMembership.workspace_id == lead_source.workspace_id)
+    )
+    members = result.scalars().all()
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        for member in members:
+            user = member.user
+            if not user.notification_sms or not user.phone_number:
+                continue
+            try:
+                await client.post(
+                    "https://api.telnyx.com/v2/messages",
+                    headers={
+                        "Authorization": f"Bearer {settings.telnyx_api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "from": from_number,
+                        "to": user.phone_number,
+                        "text": body,
+                        "type": "SMS",
+                    },
+                )
+            except Exception:
+                logger.exception(
+                    "lead_sms_notification_failed",
+                    user_id=user.id,
+                    contact_id=contact.id,
+                )
+
+
 @router.options("/{public_key}")
 async def lead_form_preflight(
     public_key: str,
@@ -245,6 +315,8 @@ async def submit_lead(
     )
     existing_contact = existing_result.scalar_one_or_none()
 
+    is_new_lead = existing_contact is None
+
     if existing_contact:
         # Update existing contact with new info
         existing_contact.first_name = body.first_name or existing_contact.first_name
@@ -280,6 +352,13 @@ async def submit_lead(
 
     # Execute post-capture action
     await _execute_action(lead_source, contact, db)
+
+    # Notify workspace members about new lead via SMS and push
+    if is_new_lead:
+        try:
+            await _notify_new_lead(lead_source, contact, db)
+        except Exception:
+            logger.exception("lead_notification_failed", contact_id=contact.id)
 
     demo_record.status = "initiated"
     await db.commit()
