@@ -565,6 +565,63 @@ async def handle_booking_rescheduled(data: dict[str, Any], log: Any) -> None:
 
         log.info("booking_rescheduled", appointment_id=appointment.id)
 
+        # Send rescheduled notification SMS — failures must not affect the webhook response
+        try:
+            contact_result = await db.execute(
+                select(Contact).where(Contact.id == appointment.contact_id)
+            )
+            contact = contact_result.scalar_one_or_none()
+
+            if contact:
+                # Load agent (optional — used for from-number resolution)
+                rescheduled_agent: Agent | None = None
+                if appointment.agent_id:
+                    agent_result = await db.execute(
+                        select(Agent).where(Agent.id == appointment.agent_id)
+                    )
+                    rescheduled_agent = agent_result.scalar_one_or_none()
+
+                # Load workspace for timezone formatting
+                ws_result = await db.execute(
+                    select(Workspace).where(Workspace.id == contact.workspace_id)
+                )
+                workspace = ws_result.scalar_one_or_none()
+
+                # Format new date/time in workspace timezone
+                tz_name = (
+                    ((workspace.settings if workspace else None) or {}).get("timezone", "UTC")
+                )
+                try:
+                    tz = zoneinfo.ZoneInfo(str(tz_name))
+                except (KeyError, zoneinfo.ZoneInfoNotFoundError):
+                    tz = zoneinfo.ZoneInfo("UTC")
+
+                local_dt = appointment.scheduled_at.astimezone(tz)
+                new_date = local_dt.strftime("%A, %B %-d")  # e.g. "Monday, March 24"
+                new_time = local_dt.strftime("%-I:%M %p")   # e.g. "3:00 PM"
+
+                first_name = contact.first_name or "there"
+                rescheduled_body = (
+                    f"Hi {first_name}, your appointment has been rescheduled to "
+                    f"{new_date} at {new_time}. See you then! "
+                    "Reply here if you need to make any changes."
+                )
+
+                log.info(
+                    "sending_rescheduled_notification_sms",
+                    contact_id=contact.id,
+                    appointment_id=appointment.id,
+                )
+                await _send_lifecycle_sms(
+                    db=db,
+                    workspace_id=contact.workspace_id,
+                    contact=contact,
+                    agent=rescheduled_agent,
+                    body_text=rescheduled_body,
+                )
+        except Exception as e:
+            log.warning("rescheduled_sms_setup_failed", error=str(e))
+
 
 async def handle_booking_cancelled(data: dict[str, Any], log: Any) -> None:
     """Handle Cal.com booking cancellation.
