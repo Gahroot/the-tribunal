@@ -639,6 +639,15 @@ async def handle_booking_cancelled(data: dict[str, Any], log: Any) -> None:
         log.warning("missing_booking_uid")
         return
 
+    # Determine if cancellation was host-initiated.
+    # Cal.com sets `cancelledBy` to the email of the actor who cancelled.
+    # If it matches the organizer email, the host cancelled — skip the rebook SMS.
+    cancelled_by_email: str = (data.get("cancelledBy") or "").strip().lower()
+    organizer_email: str = (data.get("organizer", {}).get("email") or "").strip().lower()
+    is_host_initiated = bool(
+        cancelled_by_email and organizer_email and cancelled_by_email == organizer_email
+    )
+
     async with AsyncSessionLocal() as db:
         # Find appointment by booking UID
         result = await db.execute(
@@ -665,7 +674,88 @@ async def handle_booking_cancelled(data: dict[str, Any], log: Any) -> None:
             "booking_cancelled",
             appointment_id=appointment.id,
             status=AppointmentStatus.CANCELLED.value,
+            is_host_initiated=is_host_initiated,
         )
+
+        # Send rebook SMS for attendee-initiated cancellations only.
+        # Host-initiated cancellations are intentional — no rebook prompt needed.
+        # Wrapped in try/except — never affects the webhook response.
+        if not is_host_initiated:
+            try:
+                contact_result = await db.execute(
+                    select(Contact).where(Contact.id == appointment.contact_id)
+                )
+                cancelled_contact = contact_result.scalar_one_or_none()
+
+                if cancelled_contact:
+                    # Load agent (used for rebook URL generation + from-number resolution)
+                    cancelled_agent: Agent | None = None
+                    if appointment.agent_id:
+                        agent_result = await db.execute(
+                            select(Agent).where(Agent.id == appointment.agent_id)
+                        )
+                        cancelled_agent = agent_result.scalar_one_or_none()
+
+                    first_name = cancelled_contact.first_name or "there"
+
+                    # Generate rebook URL if agent has a Cal.com event type configured
+                    rebook_url: str | None = None
+                    if (
+                        cancelled_agent is not None
+                        and cancelled_agent.calcom_event_type_id
+                        and settings.calcom_api_key
+                    ):
+                        try:
+                            from app.services.calendar.calcom import CalComService
+
+                            calcom = CalComService(settings.calcom_api_key)
+                            contact_name = " ".join(
+                                filter(
+                                    None,
+                                    [cancelled_contact.first_name, cancelled_contact.last_name],
+                                )
+                            ) or first_name
+                            rebook_url = calcom.generate_booking_url(
+                                event_type_id=cancelled_agent.calcom_event_type_id,
+                                contact_email=cancelled_contact.email or "",
+                                contact_name=contact_name,
+                                contact_phone=cancelled_contact.phone_number,
+                            )
+                        except Exception:
+                            log.warning(
+                                "cancellation_sms_rebook_url_failed",
+                                appointment_id=appointment.id,
+                            )
+
+                    if rebook_url:
+                        cancellation_body = (
+                            f"Hi {first_name}, your appointment has been cancelled. "
+                            f"We\u2019d love to find another time that works for you \u2014 "
+                            f"book here: {rebook_url}. "
+                            "Or reply to this message and we\u2019ll help you reschedule."
+                        )
+                    else:
+                        cancellation_body = (
+                            f"Hi {first_name}, your appointment has been cancelled. "
+                            "We\u2019d love to find another time that works for you. "
+                            "Reply to this message and we\u2019ll help you reschedule."
+                        )
+
+                    log.info(
+                        "sending_cancellation_rebook_sms",
+                        contact_id=cancelled_contact.id,
+                        appointment_id=appointment.id,
+                        has_rebook_url=rebook_url is not None,
+                    )
+                    await _send_lifecycle_sms(
+                        db=db,
+                        workspace_id=cancelled_contact.workspace_id,
+                        contact=cancelled_contact,
+                        agent=cancelled_agent,
+                        body_text=cancellation_body,
+                    )
+            except Exception as e:
+                log.warning("cancellation_sms_setup_failed", error=str(e))
 
 
 async def handle_meeting_ended(data: dict[str, Any], log: Any) -> None:  # noqa: PLR0912, PLR0915
