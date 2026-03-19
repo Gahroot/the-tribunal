@@ -72,7 +72,6 @@ class ReminderWorker(BaseWorker):
                         Appointment.reminder_sent_at.is_(None),
                         Appointment.scheduled_at > now,
                         Appointment.scheduled_at <= now + timedelta(minutes=lookahead_minutes),
-                        Appointment.agent_id.is_not(None),
                         Appointment.contact_id.is_not(None),
                     )
                 )
@@ -84,13 +83,17 @@ class ReminderWorker(BaseWorker):
             if not appointments:
                 return
 
-            # Filter by each agent's reminder config
+            # Filter by each agent's reminder config.
+            # Agentless (manually scheduled) appointments use a 60-minute default.
             due: list[Appointment] = []
             for appt in appointments:
                 agent = appt.agent
-                if agent is None or not agent.reminder_enabled:
+                if agent is not None and not agent.reminder_enabled:
                     continue
-                threshold = now + timedelta(minutes=agent.reminder_minutes_before)
+                reminder_minutes = (
+                    agent.reminder_minutes_before if agent is not None else 60
+                )
+                threshold = now + timedelta(minutes=reminder_minutes)
                 if appt.scheduled_at <= threshold:
                     due.append(appt)
 
@@ -119,8 +122,8 @@ class ReminderWorker(BaseWorker):
         contact = appt.contact
         workspace = appt.workspace
 
-        if agent is None or contact is None or workspace is None:
-            log.warning("Missing agent, contact, or workspace")
+        if contact is None or workspace is None:
+            log.warning("Missing contact or workspace")
             return
 
         telnyx_key = settings.telnyx_api_key
@@ -149,13 +152,22 @@ class ReminderWorker(BaseWorker):
             # if the contact re-opts-in before the appointment.
             return
 
+        agent_id = agent.id if agent is not None else None
+
         # Resolve the from number
         from_number = await self._resolve_from_number(
-            db, contact.id, workspace.id, agent.id
+            db, contact.id, workspace.id, agent_id
         )
         if not from_number:
             log.warning("Could not resolve from number, will retry next tick")
             return
+
+        if agent is None:
+            log.info(
+                "Sending reminder for agentless (manually scheduled) appointment",
+                contact_id=contact.id,
+                from_number=from_number,
+            )
 
         # Format time in workspace timezone or UTC
         tz_name = (workspace.settings or {}).get("timezone", "UTC")
@@ -182,7 +194,7 @@ class ReminderWorker(BaseWorker):
                 body=body,
                 db=db,
                 workspace_id=workspace.id,
-                agent_id=agent.id,
+                agent_id=agent_id,
             )
 
             log.info("Appointment reminder sent", message_id=str(message.id))
@@ -190,22 +202,23 @@ class ReminderWorker(BaseWorker):
             # Mark reminder as sent
             appt.reminder_sent_at = datetime.now(UTC)
 
-            # Ensure the conversation is assigned to the booking agent with AI enabled
-            conv_result = await db.execute(
-                select(Conversation).where(
-                    and_(
-                        Conversation.workspace_phone == from_number,
-                        Conversation.contact_phone == contact_phone,
-                        Conversation.workspace_id == workspace.id,
+            # If an agent owns this appointment, assign the conversation to them
+            if agent is not None:
+                conv_result = await db.execute(
+                    select(Conversation).where(
+                        and_(
+                            Conversation.workspace_phone == from_number,
+                            Conversation.contact_phone == contact_phone,
+                            Conversation.workspace_id == workspace.id,
+                        )
                     )
+                    .order_by(Conversation.updated_at.desc())
+                    .limit(1)
                 )
-                .order_by(Conversation.updated_at.desc())
-                .limit(1)
-            )
-            conversation = conv_result.scalars().first()
-            if conversation:
-                conversation.assigned_agent_id = agent.id
-                conversation.ai_enabled = True
+                conversation = conv_result.scalars().first()
+                if conversation:
+                    conversation.assigned_agent_id = agent.id
+                    conversation.ai_enabled = True
 
             await db.commit()
 
@@ -219,12 +232,13 @@ class ReminderWorker(BaseWorker):
         db: AsyncSession,
         contact_id: int,
         workspace_id: uuid.UUID,
-        agent_id: uuid.UUID,
+        agent_id: uuid.UUID | None,
     ) -> str | None:
         """Resolve the best from-number for the reminder.
 
         Strategy 1: Find existing conversation with this contact (reuse same number).
-        Strategy 2: Fall back to agent's assigned phone number.
+        Strategy 2: Fall back to agent's assigned phone number (if agent exists).
+        Strategy 3: Fall back to any active SMS-enabled workspace phone number.
         """
         # Strategy 1 — existing conversation
         result = await db.execute(
@@ -243,15 +257,33 @@ class ReminderWorker(BaseWorker):
             return str(phone)
 
         # Strategy 2 — agent's assigned phone number
+        if agent_id is not None:
+            result = await db.execute(
+                select(PhoneNumber.phone_number)
+                .where(
+                    and_(
+                        PhoneNumber.assigned_agent_id == agent_id,
+                        PhoneNumber.is_active.is_(True),
+                        PhoneNumber.sms_enabled.is_(True),
+                    )
+                )
+                .limit(1)
+            )
+            phone = result.scalar_one_or_none()
+            if phone:
+                return str(phone)
+
+        # Strategy 3 — any active SMS-enabled workspace phone number (agentless fallback)
         result = await db.execute(
             select(PhoneNumber.phone_number)
             .where(
                 and_(
-                    PhoneNumber.assigned_agent_id == agent_id,
+                    PhoneNumber.workspace_id == workspace_id,
                     PhoneNumber.is_active.is_(True),
                     PhoneNumber.sms_enabled.is_(True),
                 )
             )
+            .order_by(PhoneNumber.created_at)
             .limit(1)
         )
         phone = result.scalar_one_or_none()
