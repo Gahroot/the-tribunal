@@ -11,6 +11,15 @@ interface ContactStore {
   contacts: Contact[];
   setContacts: (contacts: Contact[]) => void;
 
+  // Pagination
+  contactsPage: number;
+  contactsPageSize: number;
+  contactsTotal: number;
+  contactsTotalPages: number;
+  setContactsPage: (page: number) => void;
+  setContactsPageSize: (size: number) => void;
+  setPaginationMeta: (meta: { total: number; pages: number }) => void;
+
   // Timeline items for selected contact
   timeline: TimelineItem[];
   setTimeline: (items: TimelineItem[]) => void;
@@ -64,6 +73,15 @@ export const useContactStore = create<ContactStore>((set) => ({
   contacts: [],
   setContacts: (contacts) => set({ contacts }),
 
+  // Pagination
+  contactsPage: 1,
+  contactsPageSize: 25,
+  contactsTotal: 0,
+  contactsTotalPages: 1,
+  setContactsPage: (page) => set({ contactsPage: page }),
+  setContactsPageSize: (size) => set({ contactsPageSize: size, contactsPage: 1 }),
+  setPaginationMeta: (meta) => set({ contactsTotal: meta.total, contactsTotalPages: meta.pages }),
+
   // Timeline
   timeline: [],
   setTimeline: (items) => set({ timeline: items }),
@@ -82,19 +100,19 @@ export const useContactStore = create<ContactStore>((set) => ({
 
   // Search
   searchQuery: "",
-  setSearchQuery: (query) => set({ searchQuery: query }),
+  setSearchQuery: (query) => set({ searchQuery: query, contactsPage: 1 }),
 
   // Filters
   statusFilter: null,
-  setStatusFilter: (status) => set({ statusFilter: status }),
+  setStatusFilter: (status) => set({ statusFilter: status, contactsPage: 1 }),
 
   // Sorting
   sortBy: "created_at",
-  setSortBy: (sortBy) => set({ sortBy }),
+  setSortBy: (sortBy) => set({ sortBy, contactsPage: 1 }),
 
   // Advanced filters
   filters: null,
-  setFilters: (filters) => set({ filters }),
+  setFilters: (filters) => set({ filters, contactsPage: 1 }),
 
   // AI Agents
   agents: [],

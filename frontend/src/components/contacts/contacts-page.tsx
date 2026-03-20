@@ -2,11 +2,12 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import {
   Search, Plus, User, Phone, Mail, Users, Upload, Trash2, X,
-  CheckSquare, Square, MapPin, ArrowUpDown, Tags, RefreshCw,
+  CheckSquare, Square, ArrowUpDown, Tags, RefreshCw,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,7 @@ import { ScrapeLeadsDialog } from "@/components/contacts/scrape-leads-dialog";
 import { BulkTagDialog } from "@/components/contacts/bulk-tag-dialog";
 import { TagBadge } from "@/components/tags/tag-badge";
 import { ContactFilterBuilder } from "@/components/filters/contact-filter-builder";
+import { ResourceListPagination } from "@/components/resource-list/resource-list-pagination";
 import { useBulkDeleteContacts, useBulkUpdateStatus, useContactIds } from "@/hooks/useContacts";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { contactStatusColors, contactStatusLabels, contactStatusDotColors } from "@/lib/status-colors";
@@ -265,15 +267,33 @@ function StatusFilter({ selectedStatus, onStatusChange, counts }: StatusFilterPr
 const ALL_STATUSES: ContactStatus[] = ["new", "contacted", "qualified", "converted", "lost"];
 
 export function ContactsPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = React.useState(false);
   const [isScrapeDialogOpen, setIsScrapeDialogOpen] = React.useState(false);
+
+  // Auto-open import dialog when navigated here with ?import=true
+  React.useEffect(() => {
+    if (searchParams.get("import") === "true") {
+      setIsImportDialogOpen(true);
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("import");
+      const newUrl = params.size > 0 ? `/?${params.toString()}` : "/";
+      router.replace(newUrl, { scroll: false });
+    }
+  }, [searchParams, router]);
+
   const [isSelectionMode, setIsSelectionMode] = React.useState(false);
   const [selectedIds, setSelectedIds] = React.useState<Set<number>>(new Set());
   const [selectAllMatchingIds, setSelectAllMatchingIds] = React.useState<Set<number> | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [isBulkTagDialogOpen, setIsBulkTagDialogOpen] = React.useState(false);
   const [lastClickedIndex, setLastClickedIndex] = React.useState<number | null>(null);
+
+  // Debounced search input: local state updates immediately, store updates after delay
+  const [inputValue, setInputValue] = React.useState("");
+
   const workspaceId = useWorkspaceId();
   const bulkDeleteMutation = useBulkDeleteContacts(workspaceId ?? "");
   const bulkUpdateStatusMutation = useBulkUpdateStatus(workspaceId ?? "");
@@ -289,7 +309,26 @@ export function ContactsPage() {
     setContacts,
     filters,
     setFilters,
+    contactsPage,
+    contactsTotal,
+    contactsTotalPages,
+    setContactsPage,
   } = useContactStore();
+
+  // Sync local input value when external search query changes (e.g. on mount)
+  React.useEffect(() => {
+    setInputValue(searchQuery);
+  // Only run on mount to avoid fighting the debounce
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Debounce search: update store query 400ms after user stops typing
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchQuery(inputValue);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [inputValue, setSearchQuery]);
 
   // Build params for the /ids endpoint (for "select all matching")
   const idsParams = React.useMemo<ContactIdsParams>(() => {
@@ -305,6 +344,22 @@ export function ContactsPage() {
   const selectedCount = effectiveSelectedIds.size;
   const selectedArray = React.useMemo(() => Array.from(effectiveSelectedIds), [effectiveSelectedIds]);
 
+  // Status counts from current page contacts (all count uses server total)
+  const statusCounts = React.useMemo<Record<ContactStatus | "all", number>>(() => {
+    const counts: Record<ContactStatus | "all", number> = {
+      all: contactsTotal,
+      new: 0,
+      contacted: 0,
+      qualified: 0,
+      converted: 0,
+      lost: 0,
+    };
+    contacts.forEach((contact) => {
+      counts[contact.status]++;
+    });
+    return counts;
+  }, [contacts, contactsTotal]);
+
   const handleToggleSelectionMode = () => {
     if (isSelectionMode) {
       // Exiting selection mode — clear everything
@@ -319,27 +374,26 @@ export function ContactsPage() {
     // If we were in "select all matching" mode, drop back to manual selection
     if (selectAllMatchingIds) {
       setSelectAllMatchingIds(null);
-      // Copy the "all matching" set as the starting point for manual editing
       const next = new Set(selectAllMatchingIds);
       if (checked) next.add(contactId);
       else next.delete(contactId);
       setSelectedIds(next);
 
-      const idx = filteredContacts.findIndex((c) => c.id === contactId);
+      const idx = contacts.findIndex((c) => c.id === contactId);
       if (idx !== -1) setLastClickedIndex(idx);
       return;
     }
 
     // Shift+click range selection
     if (shiftKey && lastClickedIndex !== null) {
-      const currentIndex = filteredContacts.findIndex((c) => c.id === contactId);
+      const currentIndex = contacts.findIndex((c) => c.id === contactId);
       if (currentIndex !== -1) {
         const start = Math.min(lastClickedIndex, currentIndex);
         const end = Math.max(lastClickedIndex, currentIndex);
         setSelectedIds((prev) => {
           const next = new Set(prev);
           for (let i = start; i <= end; i++) {
-            next.add(filteredContacts[i].id);
+            next.add(contacts[i].id);
           }
           return next;
         });
@@ -355,14 +409,14 @@ export function ContactsPage() {
       return next;
     });
 
-    const idx = filteredContacts.findIndex((c) => c.id === contactId);
+    const idx = contacts.findIndex((c) => c.id === contactId);
     if (idx !== -1) setLastClickedIndex(idx);
   };
 
   const handleSelectAllVisible = () => {
     setSelectAllMatchingIds(null);
-    const allVisibleIds = new Set(filteredContacts.map((c) => c.id));
-    if (filteredContacts.every((c) => selectedIds.has(c.id))) {
+    const allVisibleIds = new Set(contacts.map((c) => c.id));
+    if (contacts.every((c) => selectedIds.has(c.id))) {
       // Deselect all visible
       setSelectedIds((prev) => {
         const next = new Set(prev);
@@ -425,7 +479,6 @@ export function ContactsPage() {
     if (!workspaceId || selectedCount === 0) return;
     try {
       const result = await bulkUpdateStatusMutation.mutateAsync({ ids: selectedArray, status });
-      // Update local state
       setContacts(contacts.map((c) =>
         effectiveSelectedIds.has(c.id) ? { ...c, status } : c
       ));
@@ -435,64 +488,11 @@ export function ContactsPage() {
     }
   };
 
-  // Calculate status counts
-  const statusCounts = React.useMemo(() => {
-    const counts: Record<ContactStatus | "all", number> = {
-      all: contacts.length,
-      new: 0,
-      contacted: 0,
-      qualified: 0,
-      converted: 0,
-      lost: 0,
-    };
-    contacts.forEach((contact) => {
-      counts[contact.status]++;
-    });
-    return counts;
-  }, [contacts]);
-
-  // Filter contacts based on search query and status filter
-  // eslint-disable-next-line react-hooks/preserve-manual-memoization
-  const filteredContacts = React.useMemo(() => {
-    let filtered = contacts;
-
-    // Apply status filter
-    if (statusFilter) {
-      filtered = filtered.filter((contact) => contact.status === statusFilter);
-    }
-
-    // Apply search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter((contact) => {
-        const fullName = `${contact.first_name} ${contact.last_name}`.toLowerCase();
-        const phone = contact.phone_number?.toLowerCase() ?? "";
-        const email = contact.email?.toLowerCase() ?? "";
-        const company = contact.company_name?.toLowerCase() ?? "";
-        const tags = typeof contact.tags === "string"
-          ? contact.tags.toLowerCase()
-          : Array.isArray(contact.tags)
-          ? contact.tags.join(" ").toLowerCase()
-          : "";
-
-        return (
-          fullName.includes(query) ||
-          phone.includes(query) ||
-          email.includes(query) ||
-          company.includes(query) ||
-          tags.includes(query)
-        );
-      });
-    }
-
-    return filtered;
-  }, [contacts, searchQuery, statusFilter]);
-
-  const allVisibleSelected = filteredContacts.length > 0 && filteredContacts.every((c) => effectiveSelectedIds.has(c.id));
-  const someVisibleSelected = filteredContacts.some((c) => effectiveSelectedIds.has(c.id));
+  const allVisibleSelected = contacts.length > 0 && contacts.every((c) => effectiveSelectedIds.has(c.id));
+  const someVisibleSelected = contacts.some((c) => effectiveSelectedIds.has(c.id));
   const hasActiveFilters = !!(searchQuery.trim() || statusFilter || filters);
   // Show "select all matching" when all visible are selected and there might be more matching the filters
-  const showSelectAllMatching = allVisibleSelected && !selectAllMatchingIds && contacts.length > 0;
+  const showSelectAllMatching = allVisibleSelected && !selectAllMatchingIds && contactsTotal > contacts.length;
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -503,16 +503,12 @@ export function ContactsPage() {
             <Users className="h-6 w-6 text-primary" />
             <h1 className="text-2xl font-bold">Contacts</h1>
             <Badge variant="secondary" className="text-sm">
-              {contacts.length}
+              {contactsTotal}
             </Badge>
           </div>
           <div className="flex items-center gap-2">
             {!isSelectionMode && (
               <>
-                <Button variant="outline" className="gap-2" onClick={() => setIsScrapeDialogOpen(true)}>
-                  <MapPin className="h-4 w-4" />
-                  Find Leads
-                </Button>
                 <Button variant="outline" className="gap-2" onClick={() => setIsImportDialogOpen(true)}>
                   <Upload className="h-4 w-4" />
                   Import CSV
@@ -523,7 +519,7 @@ export function ContactsPage() {
                 </Button>
               </>
             )}
-            {filteredContacts.length > 0 && (
+            {contacts.length > 0 && (
               <Button
                 variant={isSelectionMode ? "default" : "outline"}
                 className="gap-2"
@@ -617,7 +613,7 @@ export function ContactsPage() {
             {showSelectAllMatching && (
               <div className="flex items-center justify-center gap-2 py-2 px-3 bg-muted/50 rounded-lg border text-sm">
                 <span className="text-muted-foreground">
-                  All {filteredContacts.length} contacts on this page are selected.
+                  All {contacts.length} contacts on this page are selected.
                 </span>
                 <Button
                   variant="link"
@@ -630,7 +626,7 @@ export function ContactsPage() {
                     ? "Loading..."
                     : hasActiveFilters
                       ? "Select all contacts matching current filters"
-                      : `Select all ${contacts.length} contacts`}
+                      : `Select all ${contactsTotal} contacts`}
                 </Button>
               </div>
             )}
@@ -660,8 +656,8 @@ export function ContactsPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search by name, email, phone, or company..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
               className="pl-9"
             />
           </div>
@@ -704,7 +700,7 @@ export function ContactsPage() {
                 <ContactCardSkeleton key={i} />
               ))}
             </div>
-          ) : filteredContacts.length === 0 ? (
+          ) : contacts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <User className="h-16 w-16 text-muted-foreground/50 mb-4" />
               <h3 className="text-lg font-medium mb-1">
@@ -725,7 +721,7 @@ export function ContactsPage() {
           ) : (
             <AnimatePresence mode="popLayout">
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {filteredContacts.map((contact) => (
+                {contacts.map((contact) => (
                   <ContactCard
                     key={contact.id}
                     contact={contact}
@@ -736,6 +732,19 @@ export function ContactsPage() {
                 ))}
               </div>
             </AnimatePresence>
+          )}
+
+          {contactsTotalPages > 1 && (
+            <div className="mt-6">
+              <ResourceListPagination
+                filteredCount={contacts.length}
+                totalCount={contactsTotal}
+                resourceName="contacts"
+                page={contactsPage}
+                totalPages={contactsTotalPages}
+                onPageChange={setContactsPage}
+              />
+            </div>
           )}
         </div>
       </ScrollArea>

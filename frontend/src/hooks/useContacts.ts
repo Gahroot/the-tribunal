@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import {
   contactsApi,
   type ContactsListParams,
@@ -24,6 +24,18 @@ const {
 });
 
 export { contactQueryKeys, useContacts, useContact, useCreateContact, useUpdateContact, useDeleteContact };
+
+/**
+ * Fetch a single page of contacts with server-side filtering/sorting/pagination
+ */
+export function useContactsPaginated(workspaceId: string, params: ContactsListParams) {
+  return useQuery({
+    queryKey: ["contacts", workspaceId, params],
+    queryFn: () => contactsApi.list(workspaceId, params),
+    enabled: !!workspaceId,
+    placeholderData: keepPreviousData,
+  });
+}
 
 /**
  * Fetch ALL contacts across all pages for a workspace
