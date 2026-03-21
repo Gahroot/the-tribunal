@@ -43,15 +43,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-
-function getErrorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "object" && err !== null && "response" in err) {
-    const axErr = err as { response?: { data?: { detail?: string } } };
-    return axErr.response?.data?.detail ?? fallback;
-  }
-  return fallback;
-}
+import { getApiErrorMessage } from "@/lib/utils/errors";
 
 export function ExperimentDashboard() {
   const workspaceId = useWorkspaceId();
@@ -129,7 +121,7 @@ function AgentExperimentSection({ agentId, agentName }: { agentId: string; agent
       void queryClient.invalidateQueries({ queryKey: ["promptVersionComparison"] });
       setDeclareWinnerVersion(null);
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to declare winner")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to declare winner")),
   });
 
   const pauseMutation = useMutation({
@@ -141,7 +133,7 @@ function AgentExperimentSection({ agentId, agentName }: { agentId: string; agent
       toast.success("Version paused");
       void queryClient.invalidateQueries({ queryKey: ["promptVersionComparison"] });
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to pause version")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to pause version")),
   });
 
   const resumeMutation = useMutation({
@@ -153,7 +145,7 @@ function AgentExperimentSection({ agentId, agentName }: { agentId: string; agent
       toast.success("Version resumed");
       void queryClient.invalidateQueries({ queryKey: ["promptVersionComparison"] });
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to resume version")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to resume version")),
   });
 
   const eliminateMutation = useMutation({
@@ -166,7 +158,7 @@ function AgentExperimentSection({ agentId, agentName }: { agentId: string; agent
       void queryClient.invalidateQueries({ queryKey: ["promptVersionComparison"] });
       setEliminateVersion(null);
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to eliminate version")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to eliminate version")),
   });
 
   if (isLoading) {

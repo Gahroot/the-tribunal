@@ -5,7 +5,7 @@ import { AnimatePresence } from "framer-motion";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
 import { Send, Paperclip, Mic, Phone, MoreVertical, MessageSquare, Loader2, PhoneOutgoing, Bot, User, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -40,19 +40,12 @@ import { usePhoneNumbers } from "@/hooks/usePhoneNumbers";
 import { useAgents } from "@/hooks/useAgents";
 import { useToggleConversationAI, useAssignAgent, useClearConversationHistory } from "@/hooks/useConversations";
 import { useContactStore } from "@/lib/contact-store";
+import { useContactTimeline } from "@/hooks/useContacts";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { conversationsApi } from "@/lib/api/conversations";
 import { MessageItem } from "./message-item";
-import type { TimelineItem, Conversation } from "@/types";
-
-function getErrorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "object" && err !== null && "response" in err) {
-    const axErr = err as { response?: { data?: { detail?: string } } };
-    return axErr.response?.data?.detail ?? fallback;
-  }
-  return fallback;
-}
+import type { Conversation } from "@/types";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 
 interface ConversationFeedProps {
   className?: string;
@@ -104,8 +97,16 @@ function LoadingSkeleton() {
 }
 
 export function ConversationFeed({ className }: ConversationFeedProps) {
-  const { selectedContact, timeline, isLoadingTimeline, addTimelineItem, clearTimeline } = useContactStore();
+  const { selectedContact } = useContactStore();
   const workspaceId = useWorkspaceId();
+  const queryClient = useQueryClient();
+
+  // Fetch timeline via React Query (polls every 3s)
+  const { data: timelineData, isLoading: isLoadingTimeline } = useContactTimeline(
+    workspaceId ?? "",
+    selectedContact?.id ?? 0,
+  );
+  const timeline = React.useMemo(() => timelineData ?? [], [timelineData]);
   const [message, setMessage] = React.useState("");
   const [isSending, setIsSending] = React.useState(false);
   const [selectedFromNumber, setSelectedFromNumber] = React.useState<string | undefined>();
@@ -159,8 +160,9 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
   }, [timeline]);
 
   // Group timeline items by date
+  type TimelineGroup = { date: Date; items: typeof timeline };
   const groupedTimeline = React.useMemo(() => {
-    const groups: { date: Date; items: TimelineItem[] }[] = [];
+    const groups: TimelineGroup[] = [];
 
     timeline.forEach((item) => {
       const itemDate = new Date(item.timestamp);
@@ -184,27 +186,17 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
     setIsSending(true);
 
     try {
-      const sentMessage = await conversationsApi.sendMessageToContact(
+      await conversationsApi.sendMessageToContact(
         workspaceId,
         selectedContact.id,
         messageBody,
         selectedFromNumber
       );
 
-      // Add the sent message to the timeline
-      const timelineItem: TimelineItem = {
-        id: sentMessage.id,
-        type: "sms",
-        timestamp: sentMessage.created_at,
-        direction: "outbound",
-        is_ai: sentMessage.is_ai,
-        content: sentMessage.body,
-        status: sentMessage.status,
-        original_id: sentMessage.id,
-        original_type: "sms_message",
-      };
-
-      addTimelineItem(timelineItem);
+      // Invalidate timeline so the sent message appears immediately
+      void queryClient.invalidateQueries({
+        queryKey: ["contact-timeline", workspaceId, selectedContact.id],
+      });
       toast.success("Message sent");
     } catch (error) {
       // Restore the message if sending failed
@@ -237,7 +229,7 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
           toast.success(newState ? "AI engagement enabled" : "AI engagement disabled");
         },
         onError: (err: unknown) => {
-          toast.error(getErrorMessage(err, "Failed to toggle AI"));
+          toast.error(getApiErrorMessage(err, "Failed to toggle AI"));
         },
       }
     );
@@ -256,7 +248,7 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
           toast.success(agentId ? "Agent assigned" : "Agent unassigned");
         },
         onError: (err: unknown) => {
-          toast.error(getErrorMessage(err, "Failed to assign agent"));
+          toast.error(getApiErrorMessage(err, "Failed to assign agent"));
         },
       }
     );
@@ -270,12 +262,14 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
 
     clearHistoryMutation.mutate(contactConversation.id, {
       onSuccess: () => {
-        clearTimeline();
+        void queryClient.invalidateQueries({
+          queryKey: ["contact-timeline", workspaceId, selectedContact?.id],
+        });
         toast.success("Conversation history cleared");
         setShowClearHistoryDialog(false);
       },
       onError: (err: unknown) => {
-        toast.error(getErrorMessage(err, "Failed to clear history"));
+        toast.error(getApiErrorMessage(err, "Failed to clear history"));
       },
     });
   };

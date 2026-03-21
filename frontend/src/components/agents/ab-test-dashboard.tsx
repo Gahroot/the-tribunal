@@ -33,16 +33,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 import { useState } from "react";
-
-function getErrorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "object" && err !== null && "response" in err) {
-    const axErr = err as { response?: { data?: { detail?: string } } };
-    return axErr.response?.data?.detail ?? fallback;
-  }
-  return fallback;
-}
 
 interface ABTestDashboardProps {
   agentId: string;
@@ -75,7 +67,7 @@ export function ABTestDashboard({ agentId }: ABTestDashboardProps) {
       void queryClient.invalidateQueries({ queryKey: ["promptVersions"] });
       setDeclareWinnerVersion(null);
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to declare winner")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to declare winner")),
   });
 
   const pauseMutation = useMutation({
@@ -88,7 +80,7 @@ export function ABTestDashboard({ agentId }: ABTestDashboardProps) {
       void queryClient.invalidateQueries({ queryKey: ["promptVersionComparison"] });
       void queryClient.invalidateQueries({ queryKey: ["promptVersions"] });
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to pause version")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to pause version")),
   });
 
   const resumeMutation = useMutation({
@@ -101,7 +93,7 @@ export function ABTestDashboard({ agentId }: ABTestDashboardProps) {
       void queryClient.invalidateQueries({ queryKey: ["promptVersionComparison"] });
       void queryClient.invalidateQueries({ queryKey: ["promptVersions"] });
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to resume version")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to resume version")),
   });
 
   const eliminateMutation = useMutation({
@@ -115,7 +107,7 @@ export function ABTestDashboard({ agentId }: ABTestDashboardProps) {
       void queryClient.invalidateQueries({ queryKey: ["promptVersions"] });
       setEliminateVersion(null);
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to eliminate version")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to eliminate version")),
   });
 
   if (isLoading) {

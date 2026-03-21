@@ -69,15 +69,7 @@ import { agentsApi } from "@/lib/api/agents";
 import { callsApi } from "@/lib/api/calls";
 import { phoneNumbersApi } from "@/lib/api/phone-numbers";
 import type { Agent } from "@/types";
-
-function getErrorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "object" && err !== null && "response" in err) {
-    const axErr = err as { response?: { data?: { detail?: string } } };
-    return axErr.response?.data?.detail ?? fallback;
-  }
-  return fallback;
-}
+import { getApiErrorMessage } from "@/lib/utils/errors";
 
 const channelModeIcons: Record<string, LucideIcon> = {
   voice: Phone,
@@ -119,7 +111,7 @@ export function AgentsList() {
       toast.success("Agent status updated");
     },
     onError: (err: unknown) => {
-      toast.error(getErrorMessage(err, "Failed to update agent status"));
+      toast.error(getApiErrorMessage(err, "Failed to update agent status"));
     },
   });
 
@@ -135,7 +127,7 @@ export function AgentsList() {
       toast.success("Agent deleted");
     },
     onError: (err: unknown) => {
-      toast.error(getErrorMessage(err, "Failed to delete agent"));
+      toast.error(getApiErrorMessage(err, "Failed to delete agent"));
     },
   });
 
@@ -165,7 +157,7 @@ export function AgentsList() {
       toast.success("Agent duplicated");
     },
     onError: (err: unknown) => {
-      toast.error(getErrorMessage(err, "Failed to duplicate agent"));
+      toast.error(getApiErrorMessage(err, "Failed to duplicate agent"));
     },
   });
 
@@ -195,7 +187,7 @@ export function AgentsList() {
       setSelectedAgent(null);
     },
     onError: (err: unknown) => {
-      toast.error(getErrorMessage(err, "Failed to initiate call"));
+      toast.error(getApiErrorMessage(err, "Failed to initiate call"));
     },
   });
 

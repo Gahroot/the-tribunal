@@ -48,15 +48,7 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-
-function getErrorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "object" && err !== null && "response" in err) {
-    const axErr = err as { response?: { data?: { detail?: string } } };
-    return axErr.response?.data?.detail ?? fallback;
-  }
-  return fallback;
-}
+import { getApiErrorMessage } from "@/lib/utils/errors";
 
 interface PromptVersionHistoryProps {
   agentId: string;
@@ -85,7 +77,7 @@ export function PromptVersionHistory({ agentId }: PromptVersionHistoryProps) {
       toast.success("Version activated");
       void queryClient.invalidateQueries({ queryKey: ["promptVersions"] });
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to activate version")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to activate version")),
   });
 
   const activateForTestingMutation = useMutation({
@@ -97,7 +89,7 @@ export function PromptVersionHistory({ agentId }: PromptVersionHistoryProps) {
       toast.success("Version added to A/B test");
       void queryClient.invalidateQueries({ queryKey: ["promptVersions"] });
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to activate for testing")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to activate for testing")),
   });
 
   const deactivateMutation = useMutation({
@@ -109,7 +101,7 @@ export function PromptVersionHistory({ agentId }: PromptVersionHistoryProps) {
       toast.success("Version deactivated");
       void queryClient.invalidateQueries({ queryKey: ["promptVersions"] });
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to deactivate version")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to deactivate version")),
   });
 
   const pauseMutation = useMutation({
@@ -121,7 +113,7 @@ export function PromptVersionHistory({ agentId }: PromptVersionHistoryProps) {
       toast.success("Version paused");
       void queryClient.invalidateQueries({ queryKey: ["promptVersions"] });
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to pause version")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to pause version")),
   });
 
   const resumeMutation = useMutation({
@@ -133,7 +125,7 @@ export function PromptVersionHistory({ agentId }: PromptVersionHistoryProps) {
       toast.success("Version resumed");
       void queryClient.invalidateQueries({ queryKey: ["promptVersions"] });
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to resume version")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to resume version")),
   });
 
   const eliminateMutation = useMutation({
@@ -145,7 +137,7 @@ export function PromptVersionHistory({ agentId }: PromptVersionHistoryProps) {
       toast.success("Version eliminated from testing");
       void queryClient.invalidateQueries({ queryKey: ["promptVersions"] });
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to eliminate version")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to eliminate version")),
   });
 
   const rollbackMutation = useMutation({
@@ -157,7 +149,7 @@ export function PromptVersionHistory({ agentId }: PromptVersionHistoryProps) {
       toast.success("Rolled back to this version");
       void queryClient.invalidateQueries({ queryKey: ["promptVersions"] });
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to rollback")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to rollback")),
   });
 
   const getStatusBadge = (version: PromptVersionResponse) => {

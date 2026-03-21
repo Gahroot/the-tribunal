@@ -17,15 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { messageTemplatesApi } from "@/lib/api/message-templates";
 import type { MessageTemplate } from "@/types";
-
-function getErrorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "object" && err !== null && "response" in err) {
-    const axErr = err as { response?: { data?: { detail?: string } } };
-    return axErr.response?.data?.detail ?? fallback;
-  }
-  return fallback;
-}
+import { getApiErrorMessage } from "@/lib/utils/errors";
 
 interface LoadTemplateDialogProps {
   open: boolean;
@@ -63,7 +55,7 @@ export function LoadTemplateDialog({
       toast.success("Template deleted");
     },
     onError: (err: unknown) => {
-      toast.error(getErrorMessage(err, "Failed to delete template"));
+      toast.error(getApiErrorMessage(err, "Failed to delete template"));
     },
   });
 

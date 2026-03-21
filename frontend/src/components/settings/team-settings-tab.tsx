@@ -56,15 +56,7 @@ import { settingsApi, type TeamMember } from "@/lib/api/settings";
 import { workspacesApi } from "@/lib/api/workspaces";
 import { invitationsApi } from "@/lib/api/invitations";
 import { TIMEZONE_OPTIONS } from "@/lib/constants";
-
-function getErrorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "object" && err !== null && "response" in err) {
-    const axErr = err as { response?: { data?: { detail?: string } } };
-    return axErr.response?.data?.detail ?? fallback;
-  }
-  return fallback;
-}
+import { getApiErrorMessage } from "@/lib/utils/errors";
 
 function getInitials(name: string | null, email: string): string {
   if (name) {
@@ -134,7 +126,7 @@ export function TeamSettingsTab() {
       toast.success("Invitation cancelled");
     },
     onError: (err: unknown) => {
-      toast.error(getErrorMessage(err, "Failed to cancel invitation"));
+      toast.error(getApiErrorMessage(err, "Failed to cancel invitation"));
     },
   });
 
@@ -150,7 +142,7 @@ export function TeamSettingsTab() {
       setTimeout(() => setWorkspaceSaved(false), 2000);
     },
     onError: (err: unknown) => {
-      toast.error(getErrorMessage(err, "Failed to update workspace"));
+      toast.error(getApiErrorMessage(err, "Failed to update workspace"));
     },
   });
 
@@ -172,7 +164,7 @@ export function TeamSettingsTab() {
       }
     },
     onError: (err: unknown) => {
-      toast.error(getErrorMessage(err, "Failed to delete workspace"));
+      toast.error(getApiErrorMessage(err, "Failed to delete workspace"));
     },
   });
 
@@ -184,7 +176,7 @@ export function TeamSettingsTab() {
       toast.success("Default workspace updated");
     },
     onError: (err: unknown) => {
-      toast.error(getErrorMessage(err, "Failed to set default workspace"));
+      toast.error(getApiErrorMessage(err, "Failed to set default workspace"));
     },
   });
 
@@ -247,7 +239,7 @@ export function TeamSettingsTab() {
       setTimeout(() => setCompanySaved(false), 2000);
     },
     onError: (err: unknown) => {
-      toast.error(getErrorMessage(err, "Failed to update company information"));
+      toast.error(getApiErrorMessage(err, "Failed to update company information"));
     },
   });
 

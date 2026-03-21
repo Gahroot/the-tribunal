@@ -1,16 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { promptVersionsApi, type VersionComparisonResponse } from "@/lib/api/prompt-versions";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { toast } from "sonner";
-
-function getErrorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "object" && err !== null && "response" in err) {
-    const axErr = err as { response?: { data?: { detail?: string } } };
-    return axErr.response?.data?.detail ?? fallback;
-  }
-  return fallback;
-}
+import { getApiErrorMessage } from "@/lib/utils/errors";
 
 export const promptVersionQueryKeys = {
   comparison: (workspaceId: string, agentId: string) =>
@@ -19,9 +10,7 @@ export const promptVersionQueryKeys = {
     ["promptVersionComparison", workspaceId] as const,
 };
 
-export function usePromptComparison(agentId: string) {
-  const workspaceId = useWorkspaceId();
-
+export function usePromptComparison(workspaceId: string, agentId: string) {
   return useQuery<VersionComparisonResponse>({
     queryKey: promptVersionQueryKeys.comparison(workspaceId ?? "", agentId),
     queryFn: () => {
@@ -33,8 +22,7 @@ export function usePromptComparison(agentId: string) {
   });
 }
 
-export function useActivateVersion(agentId: string) {
-  const workspaceId = useWorkspaceId();
+export function useActivateVersion(workspaceId: string, agentId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -47,12 +35,11 @@ export function useActivateVersion(agentId: string) {
       void queryClient.invalidateQueries({ queryKey: ["promptVersionComparison"] });
       void queryClient.invalidateQueries({ queryKey: ["promptVersions"] });
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to declare winner")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to declare winner")),
   });
 }
 
-export function usePauseVersion(agentId: string) {
-  const workspaceId = useWorkspaceId();
+export function usePauseVersion(workspaceId: string, agentId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -64,12 +51,11 @@ export function usePauseVersion(agentId: string) {
       toast.success("Version paused");
       void queryClient.invalidateQueries({ queryKey: ["promptVersionComparison"] });
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to pause version")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to pause version")),
   });
 }
 
-export function useResumeVersion(agentId: string) {
-  const workspaceId = useWorkspaceId();
+export function useResumeVersion(workspaceId: string, agentId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -81,12 +67,11 @@ export function useResumeVersion(agentId: string) {
       toast.success("Version resumed");
       void queryClient.invalidateQueries({ queryKey: ["promptVersionComparison"] });
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to resume version")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to resume version")),
   });
 }
 
-export function useEliminateVersion(agentId: string) {
-  const workspaceId = useWorkspaceId();
+export function useEliminateVersion(workspaceId: string, agentId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -98,6 +83,6 @@ export function useEliminateVersion(agentId: string) {
       toast.success("Version eliminated from testing");
       void queryClient.invalidateQueries({ queryKey: ["promptVersionComparison"] });
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to eliminate version")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to eliminate version")),
   });
 }

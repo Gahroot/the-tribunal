@@ -58,15 +58,7 @@ import { campaignStatusColors } from "@/lib/status-colors";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import type { Campaign, CampaignType } from "@/types";
 import { campaignsApi } from "@/lib/api/campaigns";
-
-function getErrorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "object" && err !== null && "response" in err) {
-    const axErr = err as { response?: { data?: { detail?: string } } };
-    return axErr.response?.data?.detail ?? fallback;
-  }
-  return fallback;
-}
+import { getApiErrorMessage } from "@/lib/utils/errors";
 
 const typeIcons: Record<CampaignType, LucideIcon> = {
   sms: MessageSquare,
@@ -103,7 +95,7 @@ export function CampaignsList() {
       queryClient.invalidateQueries({ queryKey: ["campaigns", workspaceId] });
       toast.success("Campaign paused");
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to pause campaign")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to pause campaign")),
   });
 
   const startMutation = useMutation({
@@ -115,7 +107,7 @@ export function CampaignsList() {
       queryClient.invalidateQueries({ queryKey: ["campaigns", workspaceId] });
       toast.success("Campaign started");
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to start campaign")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to start campaign")),
   });
 
   const deleteMutation = useMutation({
@@ -127,7 +119,7 @@ export function CampaignsList() {
       queryClient.invalidateQueries({ queryKey: ["campaigns", workspaceId] });
       toast.success("Campaign deleted");
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to delete campaign")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to delete campaign")),
   });
 
   const duplicateMutation = useMutation({
@@ -139,7 +131,7 @@ export function CampaignsList() {
       queryClient.invalidateQueries({ queryKey: ["campaigns", workspaceId] });
       toast.success("Campaign duplicated");
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to duplicate campaign")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to duplicate campaign")),
   });
 
   const filteredCampaigns = campaigns.filter((campaign) => {
@@ -206,14 +198,6 @@ export function CampaignsList() {
                       <div className="text-xs text-muted-foreground">AI calls with auto-text on failures</div>
                     </div>
                   </Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem disabled className="flex items-center justify-between opacity-60">
-                  <span className="flex items-center">
-                    <Mail className="mr-2 size-4" />
-                    Email Campaign
-                  </span>
-                  <span className="text-xs bg-muted px-1.5 py-0.5 rounded">Coming Soon</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

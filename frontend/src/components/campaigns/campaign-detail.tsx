@@ -28,15 +28,7 @@ import { campaignStatusColors } from "@/lib/status-colors";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { campaignsApi } from "@/lib/api/campaigns";
 import { GuaranteeProgress } from "@/components/campaigns/guarantee-progress";
-
-function getErrorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "object" && err !== null && "response" in err) {
-    const axErr = err as { response?: { data?: { detail?: string } } };
-    return axErr.response?.data?.detail ?? fallback;
-  }
-  return fallback;
-}
+import { getApiErrorMessage } from "@/lib/utils/errors";
 
 interface CampaignDetailProps {
   campaignId: string;
@@ -69,7 +61,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
       });
     },
     onError: (err: unknown) => {
-      toast.error(getErrorMessage(err, "Failed to start campaign"));
+      toast.error(getApiErrorMessage(err, "Failed to start campaign"));
     },
   });
 
@@ -86,7 +78,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
       });
     },
     onError: (err: unknown) => {
-      toast.error(getErrorMessage(err, "Failed to pause campaign"));
+      toast.error(getApiErrorMessage(err, "Failed to pause campaign"));
     },
   });
 
@@ -103,7 +95,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
       });
     },
     onError: (err: unknown) => {
-      toast.error(getErrorMessage(err, "Failed to resume campaign"));
+      toast.error(getApiErrorMessage(err, "Failed to resume campaign"));
     },
   });
 
@@ -120,7 +112,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
       });
     },
     onError: (err: unknown) => {
-      toast.error(getErrorMessage(err, "Failed to cancel campaign"));
+      toast.error(getApiErrorMessage(err, "Failed to cancel campaign"));
     },
   });
 

@@ -46,15 +46,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-
-function getErrorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "object" && err !== null && "response" in err) {
-    const axErr = err as { response?: { data?: { detail?: string } } };
-    return axErr.response?.data?.detail ?? fallback;
-  }
-  return fallback;
-}
+import { getApiErrorMessage } from "@/lib/utils/errors";
 
 interface SuggestionsQueueProps {
   agentId?: string;
@@ -98,7 +90,7 @@ export function SuggestionsQueue({
       void queryClient.invalidateQueries({ queryKey: ["improvementSuggestions"] });
       void queryClient.invalidateQueries({ queryKey: ["promptVersions"] });
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to approve suggestion")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to approve suggestion")),
   });
 
   const rejectMutation = useMutation({
@@ -112,7 +104,7 @@ export function SuggestionsQueue({
       setShowRejectDialog(null);
       setRejectReason("");
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err, "Failed to reject suggestion")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to reject suggestion")),
   });
 
   const getMutationTypeBadge = (type: string) => {
