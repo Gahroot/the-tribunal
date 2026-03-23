@@ -60,8 +60,8 @@ export function SystemPromptStep({ form }: SystemPromptStepProps) {
                   <span
                     className={cn(
                       "text-xs",
-                      isOptimal && "text-green-600",
-                      isTooShort && "text-yellow-600"
+                      isOptimal && "text-success",
+                      isTooShort && "text-warning"
                     )}
                   >
                     {charCount} characters

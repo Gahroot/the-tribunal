@@ -35,13 +35,7 @@ async def list_message_templates(
     query = query.order_by(MessageTemplate.created_at.desc())
     result = await paginate(db, query, page=page, page_size=page_size)
 
-    return PaginatedMessageTemplates(
-        items=[MessageTemplateResponse.model_validate(t) for t in result.items],
-        total=result.total,
-        page=result.page,
-        page_size=result.page_size,
-        pages=result.pages,
-    )
+    return PaginatedMessageTemplates(**result.to_response(MessageTemplateResponse))
 
 
 @router.post("", response_model=MessageTemplateResponse, status_code=status.HTTP_201_CREATED)

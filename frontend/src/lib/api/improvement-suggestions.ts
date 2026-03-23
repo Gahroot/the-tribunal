@@ -1,4 +1,4 @@
-import api from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 import { createApiClient } from "@/lib/api/create-api-client";
 
 // Backend response types
@@ -62,10 +62,9 @@ export const improvementSuggestionsApi = {
   ...baseApiWithGet,
 
   getPendingCount: async (workspaceId: string): Promise<{ pending_count: number }> => {
-    const response = await api.get<{ pending_count: number }>(
+    return apiGet<{ pending_count: number }>(
       `/api/v1/workspaces/${workspaceId}/suggestions/pending-count`
     );
-    return response.data;
   },
 
   approve: async (
@@ -73,12 +72,11 @@ export const improvementSuggestionsApi = {
     suggestionId: string,
     activate: boolean = true
   ): Promise<ApproveResponse> => {
-    const response = await api.post<ApproveResponse>(
+    return apiPost<ApproveResponse>(
       `/api/v1/workspaces/${workspaceId}/suggestions/${suggestionId}/approve`,
       null,
       { params: { activate } }
     );
-    return response.data;
   },
 
   reject: async (
@@ -86,20 +84,18 @@ export const improvementSuggestionsApi = {
     suggestionId: string,
     reason?: string
   ): Promise<ImprovementSuggestionResponse> => {
-    const response = await api.post<ImprovementSuggestionResponse>(
+    return apiPost<ImprovementSuggestionResponse>(
       `/api/v1/workspaces/${workspaceId}/suggestions/${suggestionId}/reject`,
       { reason }
     );
-    return response.data;
   },
 
   getStats: async (
     workspaceId: string
   ): Promise<{ approved_count: number; rejected_count: number; auto_generated_count: number }> => {
-    const response = await api.get<{ approved_count: number; rejected_count: number; auto_generated_count: number }>(
+    return apiGet<{ approved_count: number; rejected_count: number; auto_generated_count: number }>(
       `/api/v1/workspaces/${workspaceId}/suggestions/stats`
     );
-    return response.data;
   },
 
   generateForAgent: async (
@@ -107,10 +103,9 @@ export const improvementSuggestionsApi = {
     agentId: string,
     numSuggestions: number = 3
   ): Promise<ImprovementSuggestionResponse[]> => {
-    const response = await api.post<ImprovementSuggestionResponse[]>(
+    return apiPost<ImprovementSuggestionResponse[]>(
       `/api/v1/workspaces/${workspaceId}/suggestions/agents/${agentId}/generate`,
       { num_suggestions: numSuggestions }
     );
-    return response.data;
   },
 };

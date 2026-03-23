@@ -57,7 +57,8 @@ import {
   type LeadSourceCreateRequest,
   type LeadSourceUpdateRequest,
 } from "@/lib/api/lead-sources";
-import { agentsApi, type AgentResponse } from "@/lib/api/agents";
+import { agentsApi } from "@/lib/api/agents";
+import type { Agent } from "@/types/agent";
 import { campaignsApi } from "@/lib/api/campaigns";
 import type { Campaign } from "@/types";
 
@@ -142,7 +143,7 @@ function LeadSourceDialog({
     enabled: form.action === "enroll_campaign",
   });
 
-  const agents: AgentResponse[] = agentsData?.items ?? [];
+  const agents: Agent[] = agentsData?.items ?? [];
   const campaigns: Campaign[] = campaignsData?.items ?? [];
 
   const createMutation = useMutation({

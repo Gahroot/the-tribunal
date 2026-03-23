@@ -57,42 +57,42 @@ const statusConfig: Record<
 > = {
   initiated: {
     label: "Connecting",
-    color: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+    color: "bg-info/10 text-info border-info/20",
     pulse: true,
   },
   ringing: {
     label: "Ringing",
-    color: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
+    color: "bg-warning/10 text-warning border-warning/20",
     pulse: true,
   },
   in_progress: {
     label: "In Progress",
-    color: "bg-green-500/10 text-green-500 border-green-500/20",
+    color: "bg-success/10 text-success border-success/20",
     pulse: true,
   },
   answered: {
     label: "Connected",
-    color: "bg-green-500/10 text-green-500 border-green-500/20",
+    color: "bg-success/10 text-success border-success/20",
     pulse: true,
   },
   completed: {
     label: "Completed",
-    color: "bg-gray-500/10 text-gray-500 border-gray-500/20",
+    color: "bg-muted text-muted-foreground border-border",
     pulse: false,
   },
   failed: {
     label: "Failed",
-    color: "bg-red-500/10 text-red-500 border-red-500/20",
+    color: "bg-destructive/10 text-destructive border-destructive/20",
     pulse: false,
   },
   busy: {
     label: "Busy",
-    color: "bg-orange-500/10 text-orange-500 border-orange-500/20",
+    color: "bg-warning/10 text-warning border-warning/20",
     pulse: false,
   },
   no_answer: {
     label: "No Answer",
-    color: "bg-gray-500/10 text-gray-500 border-gray-500/20",
+    color: "bg-muted text-muted-foreground border-border",
     pulse: false,
   },
 };
@@ -181,14 +181,14 @@ export function ActiveCall({
         <Button
           variant="default"
           size="lg"
-          className="h-14 w-14 rounded-full bg-green-600 hover:bg-green-700 shadow-lg"
+          className="h-14 w-14 rounded-full bg-success hover:bg-success/90 shadow-lg"
           onClick={() => setIsMinimized(false)}
         >
           <Phone className="size-6" />
           {status.pulse && (
             <span className="absolute -top-1 -right-1 flex h-4 w-4">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-4 w-4 bg-green-500"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success/80 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-4 w-4 bg-success"></span>
             </span>
           )}
         </Button>

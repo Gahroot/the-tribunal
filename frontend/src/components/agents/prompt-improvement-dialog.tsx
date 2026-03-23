@@ -147,8 +147,8 @@ export function PromptImprovementDialog({
           </div>
         ) : (
           <div className="space-y-4 py-4">
-            <div className="rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-950/20">
-              <p className="text-sm text-green-800 dark:text-green-200">
+            <div className="rounded-lg border border-success/20 bg-success/10 p-4">
+              <p className="text-sm text-success">
                 Suggestions generated! Review them below or from the Suggestions page.
               </p>
             </div>

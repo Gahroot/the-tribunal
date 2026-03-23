@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { getCurrentUser, login as loginApi, type User, type LoginCredentials } from "@/lib/api/auth";
+import { getToken, setToken, setRefreshToken, removeToken } from "@/lib/utils/storage";
 
 interface AuthContextType {
   user: User | null;
@@ -17,43 +18,6 @@ const AuthContext = React.createContext<AuthContextType | undefined>(undefined);
 
 const PUBLIC_PATHS = ["/login", "/register"];
 const PUBLIC_PATH_PREFIXES = ["/invite/", "/p/"];
-
-function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return localStorage.getItem("access_token");
-  } catch {
-    return null;
-  }
-}
-
-function setToken(token: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem("access_token", token);
-  } catch (error) {
-    console.error("Failed to save token:", error);
-  }
-}
-
-function setRefreshToken(token: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem("refresh_token", token);
-  } catch (error) {
-    console.error("Failed to save refresh token:", error);
-  }
-}
-
-function removeToken(): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-  } catch (error) {
-    console.error("Failed to remove token:", error);
-  }
-}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<User | null>(null);

@@ -179,7 +179,7 @@ export function FollowupSection() {
     return (
       <div className="space-y-3">
         <div className="flex items-center gap-2">
-          <RefreshCw className="h-4 w-4 text-blue-500" />
+          <RefreshCw className="h-4 w-4 text-info" />
           <h3 className="text-sm font-semibold">Follow-up</h3>
         </div>
         <p className="text-xs text-muted-foreground">
@@ -202,7 +202,7 @@ export function FollowupSection() {
     <div className="space-y-3">
       {/* Header */}
       <div className="flex items-center gap-2">
-        <RefreshCw className="h-4 w-4 text-blue-500" />
+        <RefreshCw className="h-4 w-4 text-info" />
         <h3 className="text-sm font-semibold">Follow-up</h3>
         {nextFollowupText && settings?.enabled && (
           <Badge variant="secondary" className="text-xs ml-auto">

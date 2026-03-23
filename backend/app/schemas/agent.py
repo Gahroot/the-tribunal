@@ -1,0 +1,219 @@
+"""Agent schemas."""
+
+import uuid
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict
+
+
+class AgentCreate(BaseModel):
+    """Schema for creating an agent."""
+
+    name: str
+    description: str | None = None
+    channel_mode: str = "both"  # voice, text, both
+    voice_provider: str = "openai"  # openai, elevenlabs
+    voice_id: str = "alloy"
+    language: str = "en-US"
+    system_prompt: str
+    temperature: float = 0.7
+    text_response_delay_ms: int = 2000
+    text_max_context_messages: int = 20
+    calcom_event_type_id: int | None = None
+    enabled_tools: list[str] = []
+    tool_settings: dict[str, list[str]] = {}
+    # IVR navigation settings
+    enable_ivr_navigation: bool = False
+    ivr_navigation_goal: str | None = None
+    ivr_loop_threshold: int = 2
+    # IVR timing configuration (milliseconds)
+    ivr_silence_duration_ms: int = 3000
+    ivr_post_dtmf_cooldown_ms: int = 3000
+    ivr_menu_buffer_silence_ms: int = 2000
+    # Call recording
+    enable_recording: bool = True
+    # Appointment reminder settings
+    reminder_enabled: bool = True
+    reminder_minutes_before: int = 30
+    reminder_offsets: list[int] = [1440, 120, 30]
+    reminder_template: str | None = None
+    # Experiment auto-evaluation
+    auto_evaluate: bool = False
+    # Greeting
+    initial_greeting: str | None = None
+    # No-show SMS template
+    noshow_template: str | None = None
+    # Post-meeting SMS
+    post_meeting_sms_enabled: bool = False
+    post_meeting_template: str | None = None
+    # Value-reinforcement follow-up
+    value_reinforcement_enabled: bool = False
+    value_reinforcement_offset_minutes: int = 120
+    value_reinforcement_template: str | None = None
+    # Never-booked re-engagement
+    never_booked_reengagement_enabled: bool = False
+    never_booked_delay_days: int = 7
+    never_booked_template: str | None = None
+    never_booked_max_attempts: int = 2
+    # No-show multi-day re-engagement
+    noshow_reengagement_enabled: bool = True
+    noshow_day3_template: str | None = None
+    noshow_day7_template: str | None = None
+
+
+class AgentUpdate(BaseModel):
+    """Schema for updating an agent."""
+
+    name: str | None = None
+    description: str | None = None
+    channel_mode: str | None = None
+    voice_provider: str | None = None
+    voice_id: str | None = None
+    language: str | None = None
+    system_prompt: str | None = None
+    temperature: float | None = None
+    text_response_delay_ms: int | None = None
+    text_max_context_messages: int | None = None
+    calcom_event_type_id: int | None = None
+    is_active: bool | None = None
+    enabled_tools: list[str] | None = None
+    tool_settings: dict[str, list[str]] | None = None
+    # IVR navigation settings
+    enable_ivr_navigation: bool | None = None
+    ivr_navigation_goal: str | None = None
+    ivr_loop_threshold: int | None = None
+    # IVR timing configuration (milliseconds)
+    ivr_silence_duration_ms: int | None = None
+    ivr_post_dtmf_cooldown_ms: int | None = None
+    ivr_menu_buffer_silence_ms: int | None = None
+    # Call recording
+    enable_recording: bool | None = None
+    # Appointment reminder settings
+    reminder_enabled: bool | None = None
+    reminder_minutes_before: int | None = None
+    reminder_offsets: list[int] | None = None
+    reminder_template: str | None = None
+    # Experiment auto-evaluation
+    auto_evaluate: bool | None = None
+    # Greeting
+    initial_greeting: str | None = None
+    # No-show SMS template
+    noshow_template: str | None = None
+    # Post-meeting SMS
+    post_meeting_sms_enabled: bool | None = None
+    post_meeting_template: str | None = None
+    # Value-reinforcement follow-up
+    value_reinforcement_enabled: bool | None = None
+    value_reinforcement_offset_minutes: int | None = None
+    value_reinforcement_template: str | None = None
+    # Never-booked re-engagement
+    never_booked_reengagement_enabled: bool | None = None
+    never_booked_delay_days: int | None = None
+    never_booked_template: str | None = None
+    never_booked_max_attempts: int | None = None
+    # No-show multi-day re-engagement
+    noshow_reengagement_enabled: bool | None = None
+    noshow_day3_template: str | None = None
+    noshow_day7_template: str | None = None
+
+
+class AgentResponse(BaseModel):
+    """Agent response schema."""
+
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    name: str
+    description: str | None
+    channel_mode: str
+    voice_provider: str
+    voice_id: str
+    language: str
+    system_prompt: str
+    temperature: float
+    text_response_delay_ms: int
+    text_max_context_messages: int
+    calcom_event_type_id: int | None
+    enabled_tools: list[str]
+    tool_settings: dict[str, list[str]]
+    is_active: bool
+    # IVR navigation settings
+    enable_ivr_navigation: bool
+    ivr_navigation_goal: str | None
+    ivr_loop_threshold: int
+    # IVR timing configuration (milliseconds)
+    ivr_silence_duration_ms: int
+    ivr_post_dtmf_cooldown_ms: int
+    ivr_menu_buffer_silence_ms: int
+    # Call recording
+    enable_recording: bool
+    # Appointment reminder settings
+    reminder_enabled: bool
+    reminder_minutes_before: int
+    reminder_offsets: list[int]
+    reminder_template: str | None
+    # Experiment auto-evaluation
+    auto_evaluate: bool
+    # Greeting
+    initial_greeting: str | None
+    # No-show SMS template
+    noshow_template: str | None = None
+    # Post-meeting SMS
+    post_meeting_sms_enabled: bool = False
+    post_meeting_template: str | None = None
+    # Value-reinforcement follow-up
+    value_reinforcement_enabled: bool = False
+    value_reinforcement_offset_minutes: int = 120
+    value_reinforcement_template: str | None = None
+    # Never-booked re-engagement
+    never_booked_reengagement_enabled: bool = False
+    never_booked_delay_days: int = 7
+    never_booked_template: str | None = None
+    never_booked_max_attempts: int = 2
+    # No-show multi-day re-engagement
+    noshow_reengagement_enabled: bool = True
+    noshow_day3_template: str | None = None
+    noshow_day7_template: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PaginatedAgents(BaseModel):
+    """Paginated agents response."""
+
+    items: list[AgentResponse]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+# Embed settings schemas
+class EmbedSettings(BaseModel):
+    """Embed widget settings."""
+
+    button_text: str = "Talk to AI"
+    theme: str = "auto"  # auto, light, dark
+    position: str = "bottom-right"  # bottom-right, bottom-left, top-right, top-left
+    primary_color: str = "#6366f1"
+    mode: str = "voice"  # voice, chat, both
+
+
+class EmbedSettingsResponse(BaseModel):
+    """Response for embed settings."""
+
+    public_id: str | None
+    embed_enabled: bool
+    allowed_domains: list[str]
+    embed_settings: EmbedSettings
+    embed_code: str | None
+
+
+class EmbedSettingsUpdate(BaseModel):
+    """Request to update embed settings."""
+
+    embed_enabled: bool | None = None
+    allowed_domains: list[str] | None = None
+    embed_settings: dict[str, Any] | None = None

@@ -366,7 +366,7 @@ function EmbedDialogContent({
                     onClick={() => copyToClipboard(scriptCode)}
                   >
                     {copied ? (
-                      <Check className="h-4 w-4 text-green-500" />
+                      <Check className="h-4 w-4 text-success" />
                     ) : (
                       <Copy className="h-4 w-4" />
                     )}
@@ -389,7 +389,7 @@ function EmbedDialogContent({
                     onClick={() => copyToClipboard(iframeCode)}
                   >
                     {copied ? (
-                      <Check className="h-4 w-4 text-green-500" />
+                      <Check className="h-4 w-4 text-success" />
                     ) : (
                       <Copy className="h-4 w-4" />
                     )}

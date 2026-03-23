@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   Card,
@@ -7,6 +8,30 @@ import {
   CardDescription,
   CardHeader,
 } from "@/components/ui/card";
+
+function AnimatedNumber({ value }: { value: number }) {
+  const [display, setDisplay] = useState(0);
+
+  useEffect(() => {
+    const end = value;
+    if (end === 0) return;
+    const duration = 1000;
+    const startTime = performance.now();
+
+    const step = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // Ease out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplay(Math.floor(eased * end));
+      if (progress < 1) requestAnimationFrame(step);
+    };
+
+    requestAnimationFrame(step);
+  }, [value]);
+
+  return <span>{display.toLocaleString()}</span>;
+}
 
 interface StatItem {
   label: string;
@@ -50,8 +75,8 @@ export function ResourceListStats({ stats, columns = 4, animated = true }: Resou
                 <CardDescription>{stat.label}</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">
-                  {typeof stat.value === "number" ? stat.value.toLocaleString() : stat.value}
+                <div className="text-2xl font-bold tabular-nums">
+                  {typeof stat.value === "number" ? <AnimatedNumber value={stat.value} /> : stat.value}
                 </div>
               </CardContent>
             </Card>
@@ -69,8 +94,8 @@ export function ResourceListStats({ stats, columns = 4, animated = true }: Resou
             <CardDescription>{stat.label}</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {typeof stat.value === "number" ? stat.value.toLocaleString() : stat.value}
+            <div className="text-2xl font-bold tabular-nums">
+              {typeof stat.value === "number" ? <AnimatedNumber value={stat.value} /> : stat.value}
             </div>
           </CardContent>
         </Card>

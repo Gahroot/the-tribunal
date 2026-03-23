@@ -73,9 +73,9 @@ import { automationsApi } from "@/lib/api/automations";
 import type { Automation, AutomationTriggerType, AutomationActionType } from "@/types";
 
 const triggerTypeConfig: Record<AutomationTriggerType, { label: string; icon: LucideIcon; color: string }> = {
-  event: { label: "Event", icon: Zap, color: "text-yellow-500" },
-  schedule: { label: "Schedule", icon: Clock, color: "text-blue-500" },
-  condition: { label: "Condition", icon: Settings2, color: "text-purple-500" },
+  event: { label: "Event", icon: Zap, color: "text-warning" },
+  schedule: { label: "Schedule", icon: Clock, color: "text-info" },
+  condition: { label: "Condition", icon: Settings2, color: "text-primary" },
 };
 
 const actionTypeConfig: Record<AutomationActionType, { label: string; icon: LucideIcon }> = {
@@ -310,19 +310,19 @@ export function AutomationsPage() {
                   <SelectContent>
                     <SelectItem value="event">
                       <div className="flex items-center gap-2">
-                        <Zap className="size-4 text-yellow-500" />
+                        <Zap className="size-4 text-warning" />
                         Event-based
                       </div>
                     </SelectItem>
                     <SelectItem value="schedule">
                       <div className="flex items-center gap-2">
-                        <Clock className="size-4 text-blue-500" />
+                        <Clock className="size-4 text-info" />
                         Scheduled
                       </div>
                     </SelectItem>
                     <SelectItem value="condition">
                       <div className="flex items-center gap-2">
-                        <Settings2 className="size-4 text-purple-500" />
+                        <Settings2 className="size-4 text-primary" />
                         Condition-based
                       </div>
                     </SelectItem>
@@ -393,7 +393,7 @@ export function AutomationsPage() {
             <CardDescription>Active</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-500">
+            <div className="text-2xl font-bold text-success">
               {isLoading ? <Skeleton className="h-8 w-8" /> : activeCount}
             </div>
           </CardContent>
@@ -477,7 +477,7 @@ export function AutomationsPage() {
                           <CardTitle className="text-lg flex items-center gap-2">
                             {automation.name}
                             {automation.is_active && (
-                              <span className="size-2 rounded-full bg-green-500" />
+                              <span className="size-2 rounded-full bg-success" />
                             )}
                           </CardTitle>
                           <CardDescription>{automation.description}</CardDescription>

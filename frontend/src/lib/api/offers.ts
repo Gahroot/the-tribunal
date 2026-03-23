@@ -1,4 +1,4 @@
-import api from "@/lib/api";
+import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 import type {
   Offer,
   DiscountType,
@@ -163,19 +163,17 @@ export const offersApi = {
     workspaceId: string,
     data: GenerateOfferRequest
   ): Promise<GeneratedOfferContent> => {
-    const response = await api.post<GeneratedOfferContent>(
+    return apiPost<GeneratedOfferContent>(
       `/api/v1/workspaces/${workspaceId}/offers/generate`,
       data
     );
-    return response.data;
   },
 
   // Get offer with attached lead magnets
   getWithLeadMagnets: async (workspaceId: string, offerId: string): Promise<Offer> => {
-    const response = await api.get<Offer>(
+    return apiGet<Offer>(
       `/api/v1/workspaces/${workspaceId}/offers/${offerId}/with-lead-magnets`
     );
-    return response.data;
   },
 
   // Attach lead magnets to an offer
@@ -184,11 +182,10 @@ export const offersApi = {
     offerId: string,
     leadMagnetIds: string[]
   ): Promise<Offer> => {
-    const response = await api.post<Offer>(
+    return apiPost<Offer>(
       `/api/v1/workspaces/${workspaceId}/offers/${offerId}/lead-magnets`,
       leadMagnetIds
     );
-    return response.data;
   },
 
   // Detach a lead magnet from an offer
@@ -197,7 +194,7 @@ export const offersApi = {
     offerId: string,
     leadMagnetId: string
   ): Promise<void> => {
-    await api.delete(
+    await apiDelete(
       `/api/v1/workspaces/${workspaceId}/offers/${offerId}/lead-magnets/${leadMagnetId}`
     );
   },
@@ -208,10 +205,9 @@ export const offersApi = {
     offerId: string,
     leadMagnetIds: string[]
   ): Promise<Offer> => {
-    const response = await api.put<Offer>(
+    return apiPut<Offer>(
       `/api/v1/workspaces/${workspaceId}/offers/${offerId}/lead-magnets/reorder`,
       leadMagnetIds
     );
-    return response.data;
   },
 };

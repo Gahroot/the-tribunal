@@ -6,8 +6,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-inter);
+  --font-heading: var(--font-manrope);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -37,6 +37,9 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -46,80 +49,232 @@
   --radius-4xl: calc(var(--radius) + 16px);
 }
 
+/* ── PRESTYJ Light Theme ─────────────────────────────────────── */
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* Background & Surface */
+  --background: #f5f4fe;
+  --foreground: #1a1a2e;
+  /* Card/Surface */
+  --card: rgba(255, 255, 255, 0.85);
+  --card-foreground: #1a1a2e;
+  /* Popover */
+  --popover: #ffffff;
+  --popover-foreground: #1a1a2e;
+  /* Primary - Purple */
+  --primary: #7058e3;
+  --primary-foreground: #ffffff;
+  /* Secondary */
+  --secondary: #ede9fb;
+  --secondary-foreground: #1a1a2e;
+  /* Muted */
+  --muted: #ede9fb;
+  --muted-foreground: #6b6b8a;
+  /* Accent */
+  --accent: #7058e3;
+  --accent-foreground: #ffffff;
+  /* Destructive */
+  --destructive: #f24d4d;
+  /* Success - Mint */
+  --success: #0fa66e;
+  /* Warning - Orange */
+  --warning: #d97706;
+  /* Info - Blue */
+  --info: #3b82f6;
+  /* Border & Input */
+  --border: rgba(112, 88, 227, 0.15);
+  --input: rgba(112, 88, 227, 0.1);
+  --ring: #7058e3;
+  /* Chart colors */
+  --chart-1: #7058e3;
+  --chart-2: #0fa66e;
+  --chart-3: #d97706;
+  --chart-4: #f24d4d;
+  --chart-5: #6b6b8a;
+  /* Sidebar */
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1a1a2e;
+  --sidebar-primary: #7058e3;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #ede9fb;
+  --sidebar-accent-foreground: #1a1a2e;
+  --sidebar-border: rgba(112, 88, 227, 0.15);
+  --sidebar-ring: #7058e3;
 }
 
+/* ── PRESTYJ Dark Theme ──────────────────────────────────────── */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --radius: 0.625rem;
+  /* Background & Surface */
+  --background: #08080f;
+  --foreground: #ececec;
+  /* Card/Surface */
+  --card: rgba(17, 17, 24, 0.85);
+  --card-foreground: #ececec;
+  /* Popover */
+  --popover: #111118;
+  --popover-foreground: #ececec;
+  /* Primary - Purple */
+  --primary: #7058e3;
+  --primary-foreground: #ffffff;
+  /* Secondary */
+  --secondary: #1a1a28;
+  --secondary-foreground: #ececec;
+  /* Muted */
+  --muted: #1a1a28;
+  --muted-foreground: #b0b0b0;
+  /* Accent */
+  --accent: #7058e3;
+  --accent-foreground: #ffffff;
+  /* Destructive - Error Red */
+  --destructive: #f24d4d;
+  /* Success - Mint */
+  --success: #5ee5b3;
+  /* Warning - Orange */
+  --warning: #f28d4d;
+  /* Info - Blue */
+  --info: #60a5fa;
+  /* Border & Input */
+  --border: rgba(112, 88, 227, 0.12);
+  --input: rgba(112, 88, 227, 0.1);
+  --ring: #7058e3;
+  /* Chart colors */
+  --chart-1: #7058e3;
+  --chart-2: #5ee5b3;
+  --chart-3: #f28d4d;
+  --chart-4: #f24d4d;
+  --chart-5: #b0b0b0;
+  /* Sidebar */
+  --sidebar: #0d0d15;
+  --sidebar-foreground: #ececec;
+  --sidebar-primary: #7058e3;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1a1a28;
+  --sidebar-accent-foreground: #ececec;
+  --sidebar-border: rgba(112, 88, 227, 0.12);
+  --sidebar-ring: #7058e3;
 }
 
+/* ── Animations ──────────────────────────────────────────────── */
+
+/* Spotlight fade-in */
+@keyframes spotlight-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Slow organic drift for spotlight blobs */
+@keyframes drift {
+  0% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(20px, -15px);
+  }
+  100% {
+    transform: translate(-10px, 10px);
+  }
+}
+
+/* Hero fade-up (starts at 0.7 so LCP element is always "visible") */
+@keyframes fade-up {
+  from {
+    opacity: 0.7;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Scroll-triggered animation */
+.scroll-animate {
+  opacity: 0;
+  transform: translateY(20px);
+  transition:
+    opacity 0.6s ease-out,
+    transform 0.6s ease-out;
+}
+.scroll-animate.in-view {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Shimmer skeleton loading effect */
+@keyframes shimmer {
+  from {
+    background-position: -200% center;
+  }
+  to {
+    background-position: 200% center;
+  }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--muted) 25%,
+    var(--accent) 50%,
+    var(--muted) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* ── Gradient border glow card ───────────────────────────────── */
+.card-glow {
+  position: relative;
+}
+.card-glow::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(112, 88, 227, 0.3), transparent 60%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ── Gradient heading text treatment ────────────────────────── */
+.gradient-heading {
+  background: linear-gradient(135deg, var(--foreground) 0%, var(--muted-foreground) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Interactive card lift ───────────────────────────────────── */
+.card-interactive {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.card-interactive:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 30px rgba(112, 88, 227, 0.12);
+}
+
+/* ── Base ────────────────────────────────────────────────────── */
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-manrope), sans-serif;
   }
 }

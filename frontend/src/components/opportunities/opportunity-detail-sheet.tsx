@@ -101,9 +101,9 @@ function ActivityItem({ activity }: ActivityItemProps) {
   const getActivityIcon = () => {
     switch (activity.activity_type) {
       case "stage_changed":
-        return <ArrowRight className="h-4 w-4 text-blue-500" />;
+        return <ArrowRight className="h-4 w-4 text-info" />;
       case "status_changed":
-        return <CircleDot className="h-4 w-4 text-purple-500" />;
+        return <CircleDot className="h-4 w-4 text-primary" />;
       default:
         return <Clock className="h-4 w-4 text-muted-foreground" />;
     }
@@ -287,21 +287,21 @@ export function OpportunityDetailSheet({
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
                   <DropdownMenuItem onClick={() => handleStatusChange("open")}>
-                    <CircleDot className="h-4 w-4 mr-2 text-blue-500" />
+                    <CircleDot className="h-4 w-4 mr-2 text-info" />
                     Open
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => handleStatusChange("won")}>
-                    <Trophy className="h-4 w-4 mr-2 text-green-500" />
+                    <Trophy className="h-4 w-4 mr-2 text-success" />
                     Won
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => handleStatusChange("lost")}>
-                    <XCircle className="h-4 w-4 mr-2 text-red-500" />
+                    <XCircle className="h-4 w-4 mr-2 text-destructive" />
                     Lost
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => handleStatusChange("abandoned")}
                   >
-                    <Archive className="h-4 w-4 mr-2 text-gray-500" />
+                    <Archive className="h-4 w-4 mr-2 text-muted-foreground" />
                     Abandoned
                   </DropdownMenuItem>
                 </DropdownMenuContent>

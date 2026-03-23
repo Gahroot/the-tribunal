@@ -12,7 +12,7 @@ export type { ResourceId };
 /**
  * Options for creating a generic API client.
  */
-export interface CreateApiClientOptions<T, CreateData, UpdateData> {
+export interface CreateApiClientOptions<T> {
   /**
    * The resource path (e.g., "tags", "segments").
    * Will be appended to `/api/v1/workspaces/{workspaceId}/` for workspace-scoped resources.
@@ -97,13 +97,13 @@ export interface FullApiClient<T, CreateData, UpdateData> {
  * ```
  */
 export function createApiClient<T, CreateData = Partial<T>, UpdateData = Partial<T>>(
-  options: CreateApiClientOptions<T, CreateData, UpdateData>
+  options: CreateApiClientOptions<T>
 ): ApiClient<T, CreateData, UpdateData>;
 export function createApiClient<T, CreateData = Partial<T>, UpdateData = Partial<T>>(
-  options: Omit<CreateApiClientOptions<T, CreateData, UpdateData>, "includeGet" | "includeCreate" | "includeUpdate" | "includeDelete">
+  options: Omit<CreateApiClientOptions<T>, "includeGet" | "includeCreate" | "includeUpdate" | "includeDelete">
 ): FullApiClient<T, CreateData, UpdateData>;
 export function createApiClient<T, CreateData = Partial<T>, UpdateData = Partial<T>>(
-  options: CreateApiClientOptions<T, CreateData, UpdateData>
+  options: CreateApiClientOptions<T>
 ): ApiClient<T, CreateData, UpdateData> | FullApiClient<T, CreateData, UpdateData> {
   const {
     resourcePath,
@@ -207,7 +207,7 @@ export function createApiClient<T, CreateData = Partial<T>, UpdateData = Partial
  * ```
  */
 export function createNonWorkspaceApiClient<T, CreateData = Partial<T>, UpdateData = Partial<T>>(
-  options: Omit<CreateApiClientOptions<T, CreateData, UpdateData>, "workspaceScoped">
+  options: Omit<CreateApiClientOptions<T>, "workspaceScoped">
 ): ApiClient<T, CreateData, UpdateData> {
   return createApiClient<T, CreateData, UpdateData>({
     ...options,

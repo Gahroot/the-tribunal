@@ -1,4 +1,4 @@
-import { api } from "@/lib/api";
+import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 
 export interface LeadSource {
   id: string;
@@ -31,28 +31,25 @@ export interface LeadSourceUpdateRequest {
 
 export const leadSourcesApi = {
   list: async (workspaceId: string): Promise<LeadSource[]> => {
-    const response = await api.get<LeadSource[]>(
+    return apiGet<LeadSource[]>(
       `/api/v1/workspaces/${workspaceId}/lead-sources`
     );
-    return response.data;
   },
 
   get: async (workspaceId: string, id: string): Promise<LeadSource> => {
-    const response = await api.get<LeadSource>(
+    return apiGet<LeadSource>(
       `/api/v1/workspaces/${workspaceId}/lead-sources/${id}`
     );
-    return response.data;
   },
 
   create: async (
     workspaceId: string,
     data: LeadSourceCreateRequest
   ): Promise<LeadSource> => {
-    const response = await api.post<LeadSource>(
+    return apiPost<LeadSource>(
       `/api/v1/workspaces/${workspaceId}/lead-sources`,
       data
     );
-    return response.data;
   },
 
   update: async (
@@ -60,14 +57,13 @@ export const leadSourcesApi = {
     id: string,
     data: LeadSourceUpdateRequest
   ): Promise<LeadSource> => {
-    const response = await api.put<LeadSource>(
+    return apiPut<LeadSource>(
       `/api/v1/workspaces/${workspaceId}/lead-sources/${id}`,
       data
     );
-    return response.data;
   },
 
   delete: async (workspaceId: string, id: string): Promise<void> => {
-    await api.delete(`/api/v1/workspaces/${workspaceId}/lead-sources/${id}`);
+    await apiDelete(`/api/v1/workspaces/${workspaceId}/lead-sources/${id}`);
   },
 };

@@ -1,4 +1,4 @@
-import api from "@/lib/api";
+import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api";
 import { createApiClient } from "@/lib/api/create-api-client";
 import type {
   Conversation,
@@ -51,10 +51,9 @@ export const conversationsApi = {
   ...baseConversationsApiWithGet,
 
   getMessages: async (workspaceId: string, conversationId: string): Promise<Message[]> => {
-    const response = await api.get<Message[]>(
+    return apiGet<Message[]>(
       `/api/v1/workspaces/${workspaceId}/conversations/${conversationId}/messages`
     );
-    return response.data;
   },
 
   sendMessage: async (
@@ -62,11 +61,10 @@ export const conversationsApi = {
     conversationId: string,
     body: string
   ): Promise<Message> => {
-    const response = await api.post<Message>(
+    return apiPost<Message>(
       `/api/v1/workspaces/${workspaceId}/conversations/${conversationId}/messages`,
       { body }
     );
-    return response.data;
   },
 
   toggleAI: async (
@@ -74,11 +72,10 @@ export const conversationsApi = {
     conversationId: string,
     enabled: boolean
   ): Promise<{ ai_enabled: boolean }> => {
-    const response = await api.post<{ ai_enabled: boolean }>(
+    return apiPost<{ ai_enabled: boolean }>(
       `/api/v1/workspaces/${workspaceId}/conversations/${conversationId}/ai/toggle`,
       { enabled }
     );
-    return response.data;
   },
 
   /**
@@ -91,11 +88,10 @@ export const conversationsApi = {
     body: string,
     fromNumber?: string
   ): Promise<Message> => {
-    const response = await api.post<Message>(
+    return apiPost<Message>(
       `/api/v1/workspaces/${workspaceId}/contacts/${contactId}/messages`,
       { body, from_number: fromNumber }
     );
-    return response.data;
   },
 
   assignAgent: async (
@@ -103,18 +99,17 @@ export const conversationsApi = {
     conversationId: string,
     agentId: string | null
   ): Promise<{ assigned_agent_id: string | null }> => {
-    const response = await api.post<{ assigned_agent_id: string | null }>(
+    return apiPost<{ assigned_agent_id: string | null }>(
       `/api/v1/workspaces/${workspaceId}/conversations/${conversationId}/assign`,
       { agent_id: agentId }
     );
-    return response.data;
   },
 
   clearHistory: async (
     workspaceId: string,
     conversationId: string
   ): Promise<void> => {
-    await api.delete(
+    await apiDelete(
       `/api/v1/workspaces/${workspaceId}/conversations/${conversationId}/messages`
     );
   },
@@ -124,10 +119,9 @@ export const conversationsApi = {
     workspaceId: string,
     conversationId: string
   ): Promise<FollowupSettings> => {
-    const response = await api.get<FollowupSettings>(
+    return apiGet<FollowupSettings>(
       `/api/v1/workspaces/${workspaceId}/conversations/${conversationId}/followup/status`
     );
-    return response.data;
   },
 
   updateFollowupSettings: async (
@@ -139,11 +133,10 @@ export const conversationsApi = {
       max_count: number;
     }>
   ): Promise<FollowupSettings> => {
-    const response = await api.patch<FollowupSettings>(
+    return apiPatch<FollowupSettings>(
       `/api/v1/workspaces/${workspaceId}/conversations/${conversationId}/followup/settings`,
       settings
     );
-    return response.data;
   },
 
   generateFollowup: async (
@@ -151,11 +144,10 @@ export const conversationsApi = {
     conversationId: string,
     customInstructions?: string
   ): Promise<FollowupGenerateResponse> => {
-    const response = await api.post<FollowupGenerateResponse>(
+    return apiPost<FollowupGenerateResponse>(
       `/api/v1/workspaces/${workspaceId}/conversations/${conversationId}/followup/generate`,
       { custom_instructions: customInstructions }
     );
-    return response.data;
   },
 
   sendFollowup: async (
@@ -164,20 +156,18 @@ export const conversationsApi = {
     message?: string,
     customInstructions?: string
   ): Promise<FollowupSendResponse> => {
-    const response = await api.post<FollowupSendResponse>(
+    return apiPost<FollowupSendResponse>(
       `/api/v1/workspaces/${workspaceId}/conversations/${conversationId}/followup/send`,
       { message, custom_instructions: customInstructions }
     );
-    return response.data;
   },
 
   resetFollowupCounter: async (
     workspaceId: string,
     conversationId: string
   ): Promise<{ count_sent: number }> => {
-    const response = await api.post<{ count_sent: number }>(
+    return apiPost<{ count_sent: number }>(
       `/api/v1/workspaces/${workspaceId}/conversations/${conversationId}/followup/reset`
     );
-    return response.data;
   },
 };

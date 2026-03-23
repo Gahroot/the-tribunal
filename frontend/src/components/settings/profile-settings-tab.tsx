@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTheme } from "next-themes";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Save, Check, Loader2 } from "lucide-react";
 
@@ -30,6 +31,8 @@ import { TIMEZONE_OPTIONS } from "@/lib/constants";
 export function ProfileSettingsTab() {
   const queryClient = useQueryClient();
   const [profileSaved, setProfileSaved] = useState(false);
+  const { theme, setTheme } = useTheme();
+  const isDark = theme === "dark";
 
   // Track local edits separate from server state
   const [localEdits, setLocalEdits] = useState<{
@@ -191,7 +194,12 @@ export function ProfileSettingsTab() {
                 Use dark theme across the application
               </p>
             </div>
-            <Switch defaultChecked />
+            <Switch
+                checked={isDark}
+                onCheckedChange={(checked) =>
+                  setTheme(checked ? "dark" : "light")
+                }
+              />
           </div>
           <Separator />
           <div className="flex items-center justify-between">

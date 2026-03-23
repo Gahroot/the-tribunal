@@ -83,13 +83,7 @@ async def list_offers(
     query = query.order_by(Offer.created_at.desc())
     result = await paginate(db, query, page=page, page_size=page_size)
 
-    return PaginatedOffers(
-        items=[OfferResponse.model_validate(o) for o in result.items],
-        total=result.total,
-        page=result.page,
-        page_size=result.page_size,
-        pages=result.pages,
-    )
+    return PaginatedOffers(**result.to_response(OfferResponse))
 
 
 @router.post("", response_model=OfferResponse, status_code=status.HTTP_201_CREATED)

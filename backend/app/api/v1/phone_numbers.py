@@ -4,7 +4,6 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser, get_workspace
@@ -12,67 +11,17 @@ from app.core.config import settings
 from app.db.pagination import paginate
 from app.models.phone_number import PhoneNumber
 from app.models.workspace import Workspace
+from app.schemas.phone_number import (
+    PaginatedPhoneNumbers,
+    PhoneNumberInfoResponse,
+    PhoneNumberResponse,
+    PhoneNumberUpdate,
+    PurchasePhoneNumberRequest,
+    SearchPhoneNumbersRequest,
+)
 from app.services.telephony.telnyx import TelnyxSMSService
 
 router = APIRouter()
-
-
-class PhoneNumberResponse(BaseModel):
-    """Phone number response schema."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    workspace_id: uuid.UUID
-    phone_number: str
-    friendly_name: str | None
-    sms_enabled: bool
-    voice_enabled: bool
-    mms_enabled: bool
-    assigned_agent_id: uuid.UUID | None
-    is_active: bool
-
-
-class PaginatedPhoneNumbers(BaseModel):
-    """Paginated phone numbers response."""
-
-    items: list[PhoneNumberResponse]
-    total: int
-    page: int
-    page_size: int
-    pages: int
-
-
-class PhoneNumberUpdate(BaseModel):
-    """Schema for updating a phone number."""
-
-    friendly_name: str | None = None
-    assigned_agent_id: uuid.UUID | None = None
-    is_active: bool | None = None
-
-
-class SearchPhoneNumbersRequest(BaseModel):
-    """Search phone numbers request."""
-
-    country: str = "US"
-    area_code: str | None = None
-    contains: str | None = None
-    limit: int = 10
-
-
-class PurchasePhoneNumberRequest(BaseModel):
-    """Purchase phone number request."""
-
-    phone_number: str
-
-
-class PhoneNumberInfoResponse(BaseModel):
-    """Phone number info from Telnyx."""
-
-    id: str
-    phone_number: str
-    friendly_name: str | None
-    capabilities: dict[str, bool] | None
 
 
 @router.get("", response_model=PaginatedPhoneNumbers)
@@ -99,13 +48,7 @@ async def list_phone_numbers(
     query = query.order_by(PhoneNumber.created_at.desc())
     result = await paginate(db, query, page=page, page_size=page_size)
 
-    return PaginatedPhoneNumbers(
-        items=[PhoneNumberResponse.model_validate(p) for p in result.items],
-        total=result.total,
-        page=result.page,
-        page_size=result.page_size,
-        pages=result.pages,
-    )
+    return PaginatedPhoneNumbers(**result.to_response(PhoneNumberResponse))
 
 
 @router.get("/{phone_number_id}", response_model=PhoneNumberResponse)

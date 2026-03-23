@@ -77,3 +77,49 @@ class PaginatedAppointments(BaseModel):
     page: int
     page_size: int
     pages: int
+
+
+# ---------------------------------------------------------------------------
+# Stats response schemas
+# ---------------------------------------------------------------------------
+
+
+class AppointmentOverallStats(BaseModel):
+    """Overall appointment statistics for the workspace."""
+
+    total: int
+    scheduled: int
+    completed: int
+    no_show: int
+    cancelled: int
+    show_up_rate: float
+
+
+class AppointmentAgentStat(BaseModel):
+    """Per-agent appointment statistics."""
+
+    agent_id: str
+    agent_name: str
+    total: int
+    completed: int
+    no_show: int
+    show_up_rate: float
+
+
+class AppointmentCampaignStat(BaseModel):
+    """Per-campaign appointment statistics."""
+
+    campaign_id: str
+    campaign_name: str
+    total: int
+    completed: int
+    no_show: int
+    show_up_rate: float
+
+
+class AppointmentStatsResponse(BaseModel):
+    """Full show-up rate analytics response."""
+
+    overall: AppointmentOverallStats
+    by_agent: list[AppointmentAgentStat]
+    by_campaign: list[AppointmentCampaignStat]

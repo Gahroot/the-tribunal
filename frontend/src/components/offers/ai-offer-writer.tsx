@@ -348,7 +348,7 @@ export function AIOfferWriter({ workspaceId, onApply }: AIOfferWriterProps) {
                     </p>
                   )}
                   {"value" in option && (
-                    <p className="text-sm font-medium text-green-600 mt-1">
+                    <p className="text-sm font-medium text-success mt-1">
                       ${(option as unknown as GeneratedValueStackItem).value.toLocaleString()} value
                     </p>
                   )}
@@ -409,7 +409,7 @@ export function AIOfferWriter({ workspaceId, onApply }: AIOfferWriterProps) {
               {selectedValueItems.map((item, i) => (
                 <li key={i} className="text-sm flex justify-between">
                   <span>{item.name}</span>
-                  <span className="text-green-600">${item.value.toLocaleString()}</span>
+                  <span className="text-success">${item.value.toLocaleString()}</span>
                 </li>
               ))}
             </ul>

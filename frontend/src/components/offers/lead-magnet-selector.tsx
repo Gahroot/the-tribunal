@@ -328,18 +328,18 @@ export function LeadMagnetSelector({
                     </div>
                   )}
 
-                  <div className="size-10 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/5 flex items-center justify-center text-blue-600">
+                  <div className="size-10 rounded-full bg-gradient-to-br from-info/20 to-primary/5 flex items-center justify-center text-info">
                     {magnetTypeIcons[magnet.magnet_type]}
                   </div>
 
                   <div className="flex-1 min-w-0 pr-6">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium">{magnet.name}</span>
-                      <Badge variant="secondary" className="bg-blue-500/10 text-blue-600">
+                      <Badge variant="secondary" className="bg-info/10 text-info">
                         {magnetTypeLabels[magnet.magnet_type]}
                       </Badge>
                       {magnet.estimated_value && magnet.estimated_value > 0 && (
-                        <Badge variant="outline" className="text-green-600 border-green-600/30">
+                        <Badge variant="outline" className="text-success border-success/20">
                           <DollarSign className="size-3 mr-0.5" />
                           {magnet.estimated_value} value
                         </Badge>
@@ -391,9 +391,9 @@ export function LeadMagnetSelector({
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="p-3 bg-blue-500/5 rounded-lg border border-blue-500/20 text-sm"
+          className="p-3 bg-info/10 rounded-lg border border-info/20 text-sm"
         >
-          <p className="text-blue-700 dark:text-blue-400">
+          <p className="text-info">
             {selectedIds.length} bonus{selectedIds.length > 1 ? "es" : ""} selected
           </p>
           <p className="text-xs text-muted-foreground mt-1">

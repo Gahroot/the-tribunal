@@ -8,11 +8,11 @@ export const INTEGRATIONS_WITH_TOOLS = AVAILABLE_INTEGRATIONS.filter(
 export function getRiskLevelBadge(level: ToolRiskLevel) {
   switch (level) {
     case "safe":
-      return { variant: "outline" as const, icon: Shield, color: "text-green-600" };
+      return { variant: "outline" as const, icon: Shield, color: "text-success" };
     case "moderate":
-      return { variant: "outline" as const, icon: AlertTriangle, color: "text-yellow-600" };
+      return { variant: "outline" as const, icon: AlertTriangle, color: "text-warning" };
     case "high":
-      return { variant: "outline" as const, icon: ShieldAlert, color: "text-red-600" };
+      return { variant: "outline" as const, icon: ShieldAlert, color: "text-destructive" };
   }
 }
 

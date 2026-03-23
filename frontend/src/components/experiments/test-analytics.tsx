@@ -208,12 +208,12 @@ export function TestAnalytics({ testId }: TestAnalyticsProps) {
 
       {/* Winner Banner */}
       {winnerVariant && (
-        <Card className="border-green-500 bg-green-500/5">
+        <Card className="border-success bg-success/10">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-green-500/10 rounded-full">
-                  <Trophy className="size-6 text-green-600" />
+                <div className="p-2 bg-success/10 rounded-full">
+                  <Trophy className="size-6 text-success" />
                 </div>
                 <div>
                   <h3 className="font-semibold">
@@ -235,10 +235,10 @@ export function TestAnalytics({ testId }: TestAnalyticsProps) {
 
       {/* Statistical Significance */}
       {analytics.statistical_significance && !winnerVariant && (
-        <Card className="border-blue-500 bg-blue-500/5">
+        <Card className="border-info bg-info/10">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <TrendingUp className="size-5 text-blue-600" />
+              <TrendingUp className="size-5 text-info" />
               <div>
                 <p className="font-medium">
                   Statistical significance reached
@@ -271,7 +271,7 @@ export function TestAnalytics({ testId }: TestAnalyticsProps) {
                 key={variant.variant_id}
                 className={`p-4 rounded-lg border ${
                   isWinner
-                    ? "border-green-500 bg-green-500/5"
+                    ? "border-success bg-success/10"
                     : isBest
                     ? "border-primary bg-primary/5"
                     : ""
@@ -287,7 +287,7 @@ export function TestAnalytics({ testId }: TestAnalyticsProps) {
                       </Badge>
                     )}
                     {isWinner && (
-                      <Badge className="bg-green-500">
+                      <Badge className="bg-success">
                         <Trophy className="size-3 mr-1" />
                         Winner
                       </Badge>

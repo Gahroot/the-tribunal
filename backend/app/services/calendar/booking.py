@@ -17,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
 
@@ -262,5 +262,5 @@ class BookingService:
         """Get ZoneInfo for configured timezone."""
         try:
             return ZoneInfo(self._timezone)
-        except Exception:
+        except ZoneInfoNotFoundError:
             return ZoneInfo("America/New_York")

@@ -1,207 +1,25 @@
 """Agent management endpoints."""
 
 import uuid
-from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, status
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select
 
-from app.api.crud import get_or_404
 from app.api.deps import DB, CurrentUser, get_workspace
-from app.db.pagination import paginate
-from app.models.agent import Agent, generate_public_id
 from app.models.workspace import Workspace
+from app.schemas.agent import (
+    AgentCreate,
+    AgentResponse,
+    AgentUpdate,
+    EmbedSettingsResponse,
+    EmbedSettingsUpdate,
+    PaginatedAgents,
+)
+from app.services.agents import AgentService
 
 router = APIRouter()
 
 
-# Schemas
-class AgentCreate(BaseModel):
-    """Schema for creating an agent."""
-
-    name: str
-    description: str | None = None
-    channel_mode: str = "both"  # voice, text, both
-    voice_provider: str = "openai"  # openai, elevenlabs
-    voice_id: str = "alloy"
-    language: str = "en-US"
-    system_prompt: str
-    temperature: float = 0.7
-    text_response_delay_ms: int = 2000
-    text_max_context_messages: int = 20
-    calcom_event_type_id: int | None = None
-    enabled_tools: list[str] = []
-    tool_settings: dict[str, list[str]] = {}
-    # IVR navigation settings
-    enable_ivr_navigation: bool = False
-    ivr_navigation_goal: str | None = None
-    ivr_loop_threshold: int = 2
-    # IVR timing configuration (milliseconds)
-    ivr_silence_duration_ms: int = 3000
-    ivr_post_dtmf_cooldown_ms: int = 3000
-    ivr_menu_buffer_silence_ms: int = 2000
-    # Call recording
-    enable_recording: bool = True
-    # Appointment reminder settings
-    reminder_enabled: bool = True
-    reminder_minutes_before: int = 30
-    reminder_offsets: list[int] = [1440, 120, 30]
-    reminder_template: str | None = None
-    # Experiment auto-evaluation
-    auto_evaluate: bool = False
-    # Greeting
-    initial_greeting: str | None = None
-    # No-show SMS template
-    noshow_template: str | None = None
-    # Post-meeting SMS
-    post_meeting_sms_enabled: bool = False
-    post_meeting_template: str | None = None
-    # Value-reinforcement follow-up
-    value_reinforcement_enabled: bool = False
-    value_reinforcement_offset_minutes: int = 120
-    value_reinforcement_template: str | None = None
-    # Never-booked re-engagement
-    never_booked_reengagement_enabled: bool = False
-    never_booked_delay_days: int = 7
-    never_booked_template: str | None = None
-    never_booked_max_attempts: int = 2
-    # No-show multi-day re-engagement
-    noshow_reengagement_enabled: bool = True
-    noshow_day3_template: str | None = None
-    noshow_day7_template: str | None = None
-
-
-class AgentUpdate(BaseModel):
-    """Schema for updating an agent."""
-
-    name: str | None = None
-    description: str | None = None
-    channel_mode: str | None = None
-    voice_provider: str | None = None
-    voice_id: str | None = None
-    language: str | None = None
-    system_prompt: str | None = None
-    temperature: float | None = None
-    text_response_delay_ms: int | None = None
-    text_max_context_messages: int | None = None
-    calcom_event_type_id: int | None = None
-    is_active: bool | None = None
-    enabled_tools: list[str] | None = None
-    tool_settings: dict[str, list[str]] | None = None
-    # IVR navigation settings
-    enable_ivr_navigation: bool | None = None
-    ivr_navigation_goal: str | None = None
-    ivr_loop_threshold: int | None = None
-    # IVR timing configuration (milliseconds)
-    ivr_silence_duration_ms: int | None = None
-    ivr_post_dtmf_cooldown_ms: int | None = None
-    ivr_menu_buffer_silence_ms: int | None = None
-    # Call recording
-    enable_recording: bool | None = None
-    # Appointment reminder settings
-    reminder_enabled: bool | None = None
-    reminder_minutes_before: int | None = None
-    reminder_offsets: list[int] | None = None
-    reminder_template: str | None = None
-    # Experiment auto-evaluation
-    auto_evaluate: bool | None = None
-    # Greeting
-    initial_greeting: str | None = None
-    # No-show SMS template
-    noshow_template: str | None = None
-    # Post-meeting SMS
-    post_meeting_sms_enabled: bool | None = None
-    post_meeting_template: str | None = None
-    # Value-reinforcement follow-up
-    value_reinforcement_enabled: bool | None = None
-    value_reinforcement_offset_minutes: int | None = None
-    value_reinforcement_template: str | None = None
-    # Never-booked re-engagement
-    never_booked_reengagement_enabled: bool | None = None
-    never_booked_delay_days: int | None = None
-    never_booked_template: str | None = None
-    never_booked_max_attempts: int | None = None
-    # No-show multi-day re-engagement
-    noshow_reengagement_enabled: bool | None = None
-    noshow_day3_template: str | None = None
-    noshow_day7_template: str | None = None
-
-
-class AgentResponse(BaseModel):
-    """Agent response schema."""
-
-    id: uuid.UUID
-    workspace_id: uuid.UUID
-    name: str
-    description: str | None
-    channel_mode: str
-    voice_provider: str
-    voice_id: str
-    language: str
-    system_prompt: str
-    temperature: float
-    text_response_delay_ms: int
-    text_max_context_messages: int
-    calcom_event_type_id: int | None
-    enabled_tools: list[str]
-    tool_settings: dict[str, list[str]]
-    is_active: bool
-    # IVR navigation settings
-    enable_ivr_navigation: bool
-    ivr_navigation_goal: str | None
-    ivr_loop_threshold: int
-    # IVR timing configuration (milliseconds)
-    ivr_silence_duration_ms: int
-    ivr_post_dtmf_cooldown_ms: int
-    ivr_menu_buffer_silence_ms: int
-    # Call recording
-    enable_recording: bool
-    # Appointment reminder settings
-    reminder_enabled: bool
-    reminder_minutes_before: int
-    reminder_offsets: list[int]
-    reminder_template: str | None
-    # Experiment auto-evaluation
-    auto_evaluate: bool
-    # Greeting
-    initial_greeting: str | None
-    # No-show SMS template
-    noshow_template: str | None = None
-    # Post-meeting SMS
-    post_meeting_sms_enabled: bool = False
-    post_meeting_template: str | None = None
-    # Value-reinforcement follow-up
-    value_reinforcement_enabled: bool = False
-    value_reinforcement_offset_minutes: int = 120
-    value_reinforcement_template: str | None = None
-    # Never-booked re-engagement
-    never_booked_reengagement_enabled: bool = False
-    never_booked_delay_days: int = 7
-    never_booked_template: str | None = None
-    never_booked_max_attempts: int = 2
-    # No-show multi-day re-engagement
-    noshow_reengagement_enabled: bool = True
-    noshow_day3_template: str | None = None
-    noshow_day7_template: str | None = None
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class PaginatedAgents(BaseModel):
-    """Paginated agents response."""
-
-    items: list[AgentResponse]
-    total: int
-    page: int
-    page_size: int
-    pages: int
-
-
-# Endpoints
 @router.get("", response_model=PaginatedAgents)
 async def list_agents(
     workspace_id: uuid.UUID,
@@ -213,20 +31,9 @@ async def list_agents(
     active_only: bool = True,
 ) -> PaginatedAgents:
     """List agents in a workspace."""
-    query = select(Agent).where(Agent.workspace_id == workspace_id)
-
-    if active_only:
-        query = query.where(Agent.is_active.is_(True))
-
-    query = query.order_by(Agent.created_at.desc())
-    result = await paginate(db, query, page=page, page_size=page_size)
-
-    return PaginatedAgents(
-        items=[AgentResponse.model_validate(a) for a in result.items],
-        total=result.total,
-        page=result.page,
-        page_size=result.page_size,
-        pages=result.pages,
+    service = AgentService(db)
+    return await service.list_agents(
+        workspace_id, page=page, page_size=page_size, active_only=active_only
     )
 
 
@@ -237,55 +44,10 @@ async def create_agent(
     current_user: CurrentUser,
     db: DB,
     workspace: Annotated[Workspace, Depends(get_workspace)],
-) -> Agent:
+) -> Any:
     """Create a new agent."""
-    agent = Agent(
-        workspace_id=workspace_id,
-        name=agent_in.name,
-        description=agent_in.description,
-        channel_mode=agent_in.channel_mode,
-        voice_provider=agent_in.voice_provider,
-        voice_id=agent_in.voice_id,
-        language=agent_in.language,
-        system_prompt=agent_in.system_prompt,
-        temperature=agent_in.temperature,
-        text_response_delay_ms=agent_in.text_response_delay_ms,
-        text_max_context_messages=agent_in.text_max_context_messages,
-        calcom_event_type_id=agent_in.calcom_event_type_id,
-        enabled_tools=agent_in.enabled_tools,
-        tool_settings=agent_in.tool_settings,
-        enable_ivr_navigation=agent_in.enable_ivr_navigation,
-        ivr_navigation_goal=agent_in.ivr_navigation_goal,
-        ivr_loop_threshold=agent_in.ivr_loop_threshold,
-        ivr_silence_duration_ms=agent_in.ivr_silence_duration_ms,
-        ivr_post_dtmf_cooldown_ms=agent_in.ivr_post_dtmf_cooldown_ms,
-        ivr_menu_buffer_silence_ms=agent_in.ivr_menu_buffer_silence_ms,
-        enable_recording=agent_in.enable_recording,
-        reminder_enabled=agent_in.reminder_enabled,
-        reminder_minutes_before=agent_in.reminder_minutes_before,
-        reminder_offsets=agent_in.reminder_offsets,
-        reminder_template=agent_in.reminder_template,
-        auto_evaluate=agent_in.auto_evaluate,
-        initial_greeting=agent_in.initial_greeting,
-        noshow_template=agent_in.noshow_template,
-        post_meeting_sms_enabled=agent_in.post_meeting_sms_enabled,
-        post_meeting_template=agent_in.post_meeting_template,
-        value_reinforcement_enabled=agent_in.value_reinforcement_enabled,
-        value_reinforcement_offset_minutes=agent_in.value_reinforcement_offset_minutes,
-        value_reinforcement_template=agent_in.value_reinforcement_template,
-        never_booked_reengagement_enabled=agent_in.never_booked_reengagement_enabled,
-        never_booked_delay_days=agent_in.never_booked_delay_days,
-        never_booked_template=agent_in.never_booked_template,
-        never_booked_max_attempts=agent_in.never_booked_max_attempts,
-        noshow_reengagement_enabled=agent_in.noshow_reengagement_enabled,
-        noshow_day3_template=agent_in.noshow_day3_template,
-        noshow_day7_template=agent_in.noshow_day7_template,
-    )
-    db.add(agent)
-    await db.commit()
-    await db.refresh(agent)
-
-    return agent
+    service = AgentService(db)
+    return await service.create_agent(workspace_id, agent_in)
 
 
 @router.get("/{agent_id}", response_model=AgentResponse)
@@ -295,9 +57,10 @@ async def get_agent(
     current_user: CurrentUser,
     db: DB,
     workspace: Annotated[Workspace, Depends(get_workspace)],
-) -> Agent:
+) -> Any:
     """Get an agent by ID."""
-    return await get_or_404(db, Agent, agent_id, workspace_id=workspace_id)
+    service = AgentService(db)
+    return await service.get_agent(workspace_id, agent_id)
 
 
 @router.put("/{agent_id}", response_model=AgentResponse)
@@ -308,19 +71,10 @@ async def update_agent(
     current_user: CurrentUser,
     db: DB,
     workspace: Annotated[Workspace, Depends(get_workspace)],
-) -> Agent:
+) -> Any:
     """Update an agent."""
-    agent = await get_or_404(db, Agent, agent_id, workspace_id=workspace_id)
-
-    # Update fields
-    update_data = agent_in.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(agent, field, value)
-
-    await db.commit()
-    await db.refresh(agent)
-
-    return agent
+    service = AgentService(db)
+    return await service.update_agent(workspace_id, agent_id, agent_in)
 
 
 @router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -332,38 +86,8 @@ async def delete_agent(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> None:
     """Delete an agent (soft delete by deactivating)."""
-    agent = await get_or_404(db, Agent, agent_id, workspace_id=workspace_id)
-    agent.is_active = False
-    await db.commit()
-
-
-# Embed settings schemas
-class EmbedSettings(BaseModel):
-    """Embed widget settings."""
-
-    button_text: str = "Talk to AI"
-    theme: str = "auto"  # auto, light, dark
-    position: str = "bottom-right"  # bottom-right, bottom-left, top-right, top-left
-    primary_color: str = "#6366f1"
-    mode: str = "voice"  # voice, chat, both
-
-
-class EmbedSettingsResponse(BaseModel):
-    """Response for embed settings."""
-
-    public_id: str | None
-    embed_enabled: bool
-    allowed_domains: list[str]
-    embed_settings: EmbedSettings
-    embed_code: str | None
-
-
-class EmbedSettingsUpdate(BaseModel):
-    """Request to update embed settings."""
-
-    embed_enabled: bool | None = None
-    allowed_domains: list[str] | None = None
-    embed_settings: dict[str, Any] | None = None
+    service = AgentService(db)
+    await service.delete_agent(workspace_id, agent_id)
 
 
 @router.get("/{agent_id}/embed", response_model=EmbedSettingsResponse)
@@ -375,37 +99,8 @@ async def get_embed_settings(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> EmbedSettingsResponse:
     """Get embed settings for an agent."""
-    agent = await get_or_404(db, Agent, agent_id, workspace_id=workspace_id)
-
-    # Generate public ID if not exists
-    if not agent.public_id:
-        agent.public_id = generate_public_id()
-        await db.commit()
-        await db.refresh(agent)
-
-    # Build embed code snippet
-    embed_settings = agent.embed_settings or {}
-    mode = embed_settings.get("mode", "voice")
-    embed_code = None
-
-    if agent.embed_enabled and agent.public_id:
-        # Use relative URL - frontend will determine the base URL
-        embed_code = f'''<script src="/widget/v1/widget.js" defer></script>
-<ai-agent agent-id="{agent.public_id}" mode="{mode}"></ai-agent>'''
-
-    return EmbedSettingsResponse(
-        public_id=agent.public_id,
-        embed_enabled=agent.embed_enabled,
-        allowed_domains=agent.allowed_domains or [],
-        embed_settings=EmbedSettings(**{
-            "button_text": embed_settings.get("button_text", "Talk to AI"),
-            "theme": embed_settings.get("theme", "auto"),
-            "position": embed_settings.get("position", "bottom-right"),
-            "primary_color": embed_settings.get("primary_color", "#6366f1"),
-            "mode": embed_settings.get("mode", "voice"),
-        }),
-        embed_code=embed_code,
-    )
+    service = AgentService(db)
+    return await service.get_embed_settings(workspace_id, agent_id)
 
 
 @router.put("/{agent_id}/embed", response_model=EmbedSettingsResponse)
@@ -418,47 +113,5 @@ async def update_embed_settings(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> EmbedSettingsResponse:
     """Update embed settings for an agent."""
-    agent = await get_or_404(db, Agent, agent_id, workspace_id=workspace_id)
-
-    # Generate public ID if enabling embed and none exists
-    if body.embed_enabled and not agent.public_id:
-        agent.public_id = generate_public_id()
-
-    # Update fields
-    if body.embed_enabled is not None:
-        agent.embed_enabled = body.embed_enabled
-
-    if body.allowed_domains is not None:
-        agent.allowed_domains = body.allowed_domains
-
-    if body.embed_settings is not None:
-        # Merge with existing settings
-        current_settings = agent.embed_settings or {}
-        current_settings.update(body.embed_settings)
-        agent.embed_settings = current_settings
-
-    await db.commit()
-    await db.refresh(agent)
-
-    # Build embed code snippet
-    embed_settings = agent.embed_settings or {}
-    mode = embed_settings.get("mode", "voice")
-    embed_code = None
-
-    if agent.embed_enabled and agent.public_id:
-        embed_code = f'''<script src="/widget/v1/widget.js" defer></script>
-<ai-agent agent-id="{agent.public_id}" mode="{mode}"></ai-agent>'''
-
-    return EmbedSettingsResponse(
-        public_id=agent.public_id,
-        embed_enabled=agent.embed_enabled,
-        allowed_domains=agent.allowed_domains or [],
-        embed_settings=EmbedSettings(**{
-            "button_text": embed_settings.get("button_text", "Talk to AI"),
-            "theme": embed_settings.get("theme", "auto"),
-            "position": embed_settings.get("position", "bottom-right"),
-            "primary_color": embed_settings.get("primary_color", "#6366f1"),
-            "mode": embed_settings.get("mode", "voice"),
-        }),
-        embed_code=embed_code,
-    )
+    service = AgentService(db)
+    return await service.update_embed_settings(workspace_id, agent_id, body)

@@ -1,6 +1,7 @@
 """Database models."""
 
 from app.models.agent import Agent
+from app.models.api_key import APIKey
 from app.models.appointment import Appointment
 from app.models.auth_rate_limit import AuthRateLimit
 from app.models.automation import Automation
@@ -41,6 +42,7 @@ from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceIntegration, WorkspaceMembership
 
 __all__ = [
+    "APIKey",
     "User",
     "Workspace",
     "WorkspaceMembership",

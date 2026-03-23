@@ -29,10 +29,10 @@ import { messageTestsApi } from "@/lib/api/message-tests";
 import type { MessageTestStatus, TestVariant } from "@/types";
 
 const statusColors: Record<MessageTestStatus, string> = {
-  draft: "bg-gray-500/10 text-gray-500 border-gray-500/20",
-  running: "bg-green-500/10 text-green-500 border-green-500/20",
-  paused: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
-  completed: "bg-purple-500/10 text-purple-500 border-purple-500/20",
+  draft: "bg-muted text-muted-foreground border-border",
+  running: "bg-success/10 text-success border-success/20",
+  paused: "bg-warning/10 text-warning border-warning/20",
+  completed: "bg-primary/10 text-primary border-primary/20",
 };
 
 interface ExperimentDetailPageProps {

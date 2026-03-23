@@ -96,7 +96,7 @@ function ReminderBadges({ reminderSentAt, remindersSent, reminderOffsets }: Remi
               key={offset}
               variant="outline"
               className={fired
-                ? "text-green-600 border-green-300 text-[10px] py-0"
+                ? "text-success border-success/20 text-[10px] py-0"
                 : "text-muted-foreground border-muted text-[10px] py-0"
               }
             >
@@ -116,7 +116,7 @@ function ReminderBadges({ reminderSentAt, remindersSent, reminderOffsets }: Remi
           <Badge
             key={offset}
             variant="outline"
-            className="text-green-600 border-green-300 text-[10px] py-0"
+            className="text-success border-success/20 text-[10px] py-0"
           >
             {offsetToLabel(offset)} ✓
           </Badge>
@@ -128,7 +128,7 @@ function ReminderBadges({ reminderSentAt, remindersSent, reminderOffsets }: Remi
   // Legacy fallback: just reminder_sent_at set
   if (reminderSentAt) {
     return (
-      <Badge variant="outline" className="text-green-600 border-green-300 text-[10px] py-0">
+      <Badge variant="outline" className="text-success border-success/20 text-[10px] py-0">
         Reminder sent
       </Badge>
     );
@@ -448,7 +448,7 @@ export function CalendarPage() {
                                     {format(new Date(apt.scheduled_at), "h:mm a")}
                                   </p>
                                   {apt.sync_status === "pending" && (
-                                    <Badge variant="outline" className="text-amber-600 border-amber-300 text-[10px] py-0 mt-0.5">
+                                    <Badge variant="outline" className="text-warning border-warning/20 text-[10px] py-0 mt-0.5">
                                       pending sync
                                     </Badge>
                                   )}
@@ -527,7 +527,7 @@ export function CalendarPage() {
                                       <span>{apt.duration_minutes} minutes</span>
                                     </div>
                                     {apt.sync_status === "pending" && (
-                                      <div className="flex items-center gap-2 text-amber-600">
+                                      <div className="flex items-center gap-2 text-warning">
                                         <span className="text-xs">Not synced to Cal.com</span>
                                       </div>
                                     )}
@@ -648,7 +648,7 @@ export function CalendarPage() {
                       </p>
                     </div>
                     {apt.sync_status === "pending" && (
-                      <Badge variant="outline" className="text-amber-600 border-amber-300 text-[10px] py-0 shrink-0">
+                      <Badge variant="outline" className="text-warning border-warning/20 text-[10px] py-0 shrink-0">
                         sync
                       </Badge>
                     )}
@@ -682,7 +682,7 @@ export function CalendarPage() {
                   </div>
                 </div>
                 <div className="p-3 rounded-lg bg-muted/50">
-                  <div className="text-2xl font-bold text-green-500">
+                  <div className="text-2xl font-bold text-success">
                     {appointmentsList.filter((a) => a.status === "scheduled").length}
                   </div>
                   <div className="text-xs text-muted-foreground">

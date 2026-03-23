@@ -1,5 +1,5 @@
 import { createResourceHooks } from "@/lib/api/create-resource-hooks";
-import { agentsApi, type AgentResponse, type CreateAgentRequest, type UpdateAgentRequest } from "@/lib/api/agents";
+import { agentsApi, type Agent, type CreateAgentRequest, type UpdateAgentRequest } from "@/lib/api/agents";
 import type { ApiClient } from "@/lib/api/create-api-client";
 
 const {
@@ -11,7 +11,7 @@ const {
   useDelete: useDeleteAgent,
 } = createResourceHooks({
   resourceKey: "agents",
-  apiClient: agentsApi as ApiClient<AgentResponse, CreateAgentRequest, UpdateAgentRequest>,
+  apiClient: agentsApi as ApiClient<Agent, CreateAgentRequest, UpdateAgentRequest>,
 });
 
 export { agentQueryKeys, useAgents, useAgent, useCreateAgent, useUpdateAgent, useDeleteAgent };

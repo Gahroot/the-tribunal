@@ -3,6 +3,7 @@
 import typing
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -58,3 +59,17 @@ class WorkspaceWithMembership(BaseModel):
     workspace: WorkspaceResponse
     role: str
     is_default: bool
+
+
+class UpdateMemberRoleRequest(BaseModel):
+    """Request to update a member's role."""
+
+    role: Literal["admin", "member"]
+
+
+class MemberResponse(BaseModel):
+    """Response for member operations."""
+
+    user_id: int
+    role: str
+    message: str

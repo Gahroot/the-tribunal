@@ -93,7 +93,7 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
         <Card className="max-w-md w-full">
           <CardContent className="pt-6 text-center">
-            <CheckCircle2 className="size-16 text-green-500 mx-auto mb-4" />
+            <CheckCircle2 className="size-16 text-success mx-auto mb-4" />
             <h1 className="text-2xl font-bold mb-2">You&apos;re In!</h1>
             <p className="text-muted-foreground mb-4">
               Thank you for signing up. Check your email for next steps.
@@ -141,7 +141,7 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
                       key={index}
                       className="flex items-start gap-3 p-3 rounded-lg bg-muted/50"
                     >
-                      <Check className="size-5 text-green-500 mt-0.5 flex-shrink-0" />
+                      <Check className="size-5 text-success mt-0.5 flex-shrink-0" />
                       <div className="flex-1">
                         <div className="flex items-center justify-between">
                           <span className="font-medium">{item.name}</span>
@@ -202,11 +202,11 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
 
             {/* Guarantee */}
             {offer.guarantee_type && (
-              <Card className="border-green-200 bg-green-50/50 dark:bg-green-950/20">
+              <Card className="border-success/20 bg-success/10">
                 <CardContent className="pt-6">
                   <div className="flex items-start gap-4">
-                    <div className="p-3 rounded-full bg-green-100 dark:bg-green-900/50">
-                      <Shield className="size-6 text-green-600" />
+                    <div className="p-3 rounded-full bg-success/10">
+                      <Shield className="size-6 text-success" />
                     </div>
                     <div>
                       <h3 className="font-semibold text-lg mb-1">
@@ -251,7 +251,7 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
                   </div>
                 )}
                 {offer.savings_amount && offer.savings_amount > 0 && (
-                  <Badge variant="secondary" className="text-green-600">
+                  <Badge variant="secondary" className="text-success">
                     Save ${offer.savings_amount.toLocaleString()}
                   </Badge>
                 )}
@@ -342,9 +342,9 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
 
             {/* Urgency Banner */}
             {offer.urgency_type && offer.urgency_text && (
-              <Alert className="border-orange-200 bg-orange-50/50 dark:bg-orange-950/20">
-                <Clock className="size-4 text-orange-600" />
-                <AlertDescription className="text-orange-800 dark:text-orange-200 font-medium">
+              <Alert className="border-warning/20 bg-warning/10">
+                <Clock className="size-4 text-warning" />
+                <AlertDescription className="text-warning font-medium">
                   {offer.urgency_text}
                   {offer.scarcity_count && offer.scarcity_count > 0 && (
                     <span className="block mt-1">

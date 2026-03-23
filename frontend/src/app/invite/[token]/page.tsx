@@ -108,8 +108,8 @@ export default function InviteAcceptPage({ params }: PageProps) {
       <div className="flex min-h-screen items-center justify-center px-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-yellow-500/10">
-              <Clock className="h-6 w-6 text-yellow-500" />
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-warning/10">
+              <Clock className="h-6 w-6 text-warning" />
             </div>
             <CardTitle>Invitation Expired</CardTitle>
             <CardDescription>
@@ -160,16 +160,16 @@ export default function InviteAcceptPage({ params }: PageProps) {
           </div>
 
           {!isAuthenticated && (
-            <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-3 text-center text-sm">
-              <p className="text-yellow-600 dark:text-yellow-400">
+            <div className="rounded-lg border border-warning/20 bg-warning/10 p-3 text-center text-sm">
+              <p className="text-warning">
                 You need to sign in to accept this invitation.
               </p>
             </div>
           )}
 
           {isAuthenticated && user?.email !== invitation.email && (
-            <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-3 text-center text-sm">
-              <p className="text-yellow-600 dark:text-yellow-400">
+            <div className="rounded-lg border border-warning/20 bg-warning/10 p-3 text-center text-sm">
+              <p className="text-warning">
                 This invitation was sent to {invitation.email}. You&apos;re
                 currently signed in as {user?.email}.
               </p>

@@ -51,19 +51,19 @@ export function GuaranteeProgress({ campaignId, campaignType }: GuaranteeProgres
       label: "In Progress",
       variant: "secondary" as const,
       icon: Shield,
-      color: "text-blue-600",
+      color: "text-info",
     },
     met: {
       label: "Guarantee Met",
       variant: "default" as const,
       icon: ShieldCheck,
-      color: "text-green-600",
+      color: "text-success",
     },
     missed: {
       label: "Guarantee Missed",
       variant: "destructive" as const,
       icon: ShieldAlert,
-      color: "text-red-600",
+      color: "text-destructive",
     },
   };
 

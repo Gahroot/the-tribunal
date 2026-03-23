@@ -31,9 +31,9 @@ import type {
 // ---------------------------------------------------------------------------
 
 function rateColor(rate: number): string {
-  if (rate >= 70) return "text-green-500";
-  if (rate >= 50) return "text-yellow-500";
-  return "text-red-500";
+  if (rate >= 70) return "text-success";
+  if (rate >= 50) return "text-warning";
+  return "text-destructive";
 }
 
 // ---------------------------------------------------------------------------
@@ -54,9 +54,9 @@ function HeadlineRate({ rate }: { rate: number }) {
 function OverallPills({ stats }: { stats: AppointmentStatsResponse["overall"] }) {
   const pills: { label: string; value: number; cls: string }[] = [
     { label: "Total", value: stats.total, cls: "text-foreground" },
-    { label: "Scheduled", value: stats.scheduled, cls: "text-blue-500" },
-    { label: "Completed", value: stats.completed, cls: "text-green-500" },
-    { label: "No-show", value: stats.no_show, cls: "text-red-500" },
+    { label: "Scheduled", value: stats.scheduled, cls: "text-info" },
+    { label: "Completed", value: stats.completed, cls: "text-success" },
+    { label: "No-show", value: stats.no_show, cls: "text-destructive" },
     { label: "Cancelled", value: stats.cancelled, cls: "text-muted-foreground" },
   ];
 
@@ -97,8 +97,8 @@ function AgentTable({ rows }: { rows: AppointmentAgentStat[] }) {
           <TableRow key={row.agent_id}>
             <TableCell className="font-medium">{row.agent_name}</TableCell>
             <TableCell className="text-right">{row.total}</TableCell>
-            <TableCell className="text-right text-green-600">{row.completed}</TableCell>
-            <TableCell className="text-right text-red-500">{row.no_show}</TableCell>
+            <TableCell className="text-right text-success">{row.completed}</TableCell>
+            <TableCell className="text-right text-destructive">{row.no_show}</TableCell>
             <TableCell className={`text-right font-semibold ${rateColor(row.show_up_rate)}`}>
               {row.show_up_rate.toFixed(1)}%
             </TableCell>
@@ -134,8 +134,8 @@ function CampaignTable({ rows }: { rows: AppointmentCampaignStat[] }) {
           <TableRow key={row.campaign_id}>
             <TableCell className="font-medium">{row.campaign_name}</TableCell>
             <TableCell className="text-right">{row.total}</TableCell>
-            <TableCell className="text-right text-green-600">{row.completed}</TableCell>
-            <TableCell className="text-right text-red-500">{row.no_show}</TableCell>
+            <TableCell className="text-right text-success">{row.completed}</TableCell>
+            <TableCell className="text-right text-destructive">{row.no_show}</TableCell>
             <TableCell className={`text-right font-semibold ${rateColor(row.show_up_rate)}`}>
               {row.show_up_rate.toFixed(1)}%
             </TableCell>

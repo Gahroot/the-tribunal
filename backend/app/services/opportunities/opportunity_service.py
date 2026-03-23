@@ -1,0 +1,440 @@
+"""Opportunity and pipeline business logic service."""
+
+import uuid
+from datetime import UTC, datetime
+
+import structlog
+from fastapi import HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.api.crud import get_nested_or_404, get_or_404
+from app.db.pagination import paginate
+from app.models.opportunity import Opportunity, OpportunityActivity, OpportunityLineItem
+from app.models.pipeline import Pipeline, PipelineStage
+from app.schemas.opportunity import (
+    OpportunityCreate,
+    OpportunityDetailResponse,
+    OpportunityLineItemCreate,
+    OpportunityLineItemUpdate,
+    OpportunityResponse,
+    OpportunityUpdate,
+    PaginatedOpportunities,
+    PipelineCreate,
+    PipelineResponse,
+    PipelineStageCreate,
+    PipelineStageResponse,
+    PipelineStageUpdate,
+    PipelineUpdate,
+)
+
+logger = structlog.get_logger()
+
+_DEFAULT_STAGES = [
+    {"name": "New", "order": 0, "probability": 0, "stage_type": "active"},
+    {"name": "Qualified", "order": 1, "probability": 25, "stage_type": "active"},
+    {"name": "Proposal", "order": 2, "probability": 50, "stage_type": "active"},
+    {"name": "Won", "order": 3, "probability": 100, "stage_type": "won"},
+    {"name": "Lost", "order": 4, "probability": 0, "stage_type": "lost"},
+]
+
+
+class OpportunityService:
+    """Service for pipeline and opportunity CRUD operations."""
+
+    def __init__(self, db: AsyncSession) -> None:
+        self.db = db
+        self.log = logger.bind(component="opportunity_service")
+
+    # ------------------------------------------------------------------
+    # Pipeline methods
+    # ------------------------------------------------------------------
+
+    async def list_pipelines(self, workspace_id: uuid.UUID) -> list[PipelineResponse]:
+        """List active pipelines with their stages."""
+        result = await self.db.execute(
+            select(Pipeline)
+            .where(Pipeline.workspace_id == workspace_id)
+            .where(Pipeline.is_active)
+            .options(selectinload(Pipeline.stages))
+        )
+        pipelines = result.unique().scalars().all()
+        return [PipelineResponse.model_validate(p) for p in pipelines]
+
+    async def create_pipeline(
+        self,
+        workspace_id: uuid.UUID,
+        pipeline_in: PipelineCreate,
+    ) -> PipelineResponse:
+        """Create a pipeline with default stages."""
+        pipeline = Pipeline(
+            workspace_id=workspace_id,
+            **pipeline_in.model_dump(),
+        )
+        self.db.add(pipeline)
+        await self.db.flush()
+
+        for stage_data in _DEFAULT_STAGES:
+            self.db.add(PipelineStage(pipeline_id=pipeline.id, **stage_data))
+
+        await self.db.commit()
+        await self.db.refresh(pipeline, ["stages"])
+
+        self.log.info("pipeline_created", pipeline_id=pipeline.id, workspace_id=str(workspace_id))
+        return PipelineResponse.model_validate(pipeline)
+
+    async def get_pipeline(
+        self,
+        workspace_id: uuid.UUID,
+        pipeline_id: uuid.UUID,
+    ) -> PipelineResponse:
+        """Get a pipeline by ID."""
+        pipeline = await get_or_404(
+            self.db,
+            Pipeline,
+            pipeline_id,
+            workspace_id=workspace_id,
+            options=[selectinload(Pipeline.stages)],
+        )
+        return PipelineResponse.model_validate(pipeline)
+
+    async def update_pipeline(
+        self,
+        workspace_id: uuid.UUID,
+        pipeline_id: uuid.UUID,
+        pipeline_in: PipelineUpdate,
+    ) -> PipelineResponse:
+        """Update a pipeline's fields."""
+        pipeline = await get_or_404(self.db, Pipeline, pipeline_id, workspace_id=workspace_id)
+
+        if pipeline_in.name is not None:
+            pipeline.name = pipeline_in.name
+        if pipeline_in.description is not None:
+            pipeline.description = pipeline_in.description
+        if pipeline_in.is_active is not None:
+            pipeline.is_active = pipeline_in.is_active
+
+        await self.db.commit()
+        await self.db.refresh(pipeline)
+
+        return PipelineResponse.model_validate(pipeline)
+
+    async def delete_pipeline(
+        self,
+        workspace_id: uuid.UUID,
+        pipeline_id: uuid.UUID,
+    ) -> None:
+        """Delete a pipeline."""
+        pipeline = await get_or_404(self.db, Pipeline, pipeline_id, workspace_id=workspace_id)
+        await self.db.delete(pipeline)
+        await self.db.commit()
+
+    # ------------------------------------------------------------------
+    # Pipeline stage methods
+    # ------------------------------------------------------------------
+
+    async def create_pipeline_stage(
+        self,
+        workspace_id: uuid.UUID,
+        pipeline_id: uuid.UUID,
+        stage_in: PipelineStageCreate,
+    ) -> PipelineStageResponse:
+        """Create a stage in an existing pipeline."""
+        await get_or_404(self.db, Pipeline, pipeline_id, workspace_id=workspace_id)
+
+        stage = PipelineStage(
+            pipeline_id=pipeline_id,
+            name=stage_in.name,
+            description=stage_in.description,
+            order=stage_in.order,
+            probability=stage_in.probability,
+            stage_type=stage_in.stage_type,
+        )
+        self.db.add(stage)
+        await self.db.commit()
+        await self.db.refresh(stage)
+
+        return PipelineStageResponse.model_validate(stage)
+
+    async def update_pipeline_stage(
+        self,
+        pipeline_id: uuid.UUID,
+        stage_id: uuid.UUID,
+        stage_in: PipelineStageUpdate,
+    ) -> PipelineStageResponse:
+        """Update a pipeline stage's fields."""
+        stage = await get_nested_or_404(
+            self.db,
+            PipelineStage,
+            stage_id,
+            parent_field="pipeline_id",
+            parent_id=pipeline_id,
+            detail="Stage not found",
+        )
+
+        if stage_in.name is not None:
+            stage.name = stage_in.name
+        if stage_in.description is not None:
+            stage.description = stage_in.description
+        if stage_in.order is not None:
+            stage.order = stage_in.order
+        if stage_in.probability is not None:
+            stage.probability = stage_in.probability
+        if stage_in.stage_type is not None:
+            stage.stage_type = stage_in.stage_type
+
+        await self.db.commit()
+        await self.db.refresh(stage)
+
+        return PipelineStageResponse.model_validate(stage)
+
+    # ------------------------------------------------------------------
+    # Opportunity methods
+    # ------------------------------------------------------------------
+
+    async def list_opportunities(
+        self,
+        workspace_id: uuid.UUID,
+        pipeline_id: uuid.UUID | None = None,
+        stage_id: uuid.UUID | None = None,
+        page: int = 1,
+        page_size: int = 50,
+        search: str | None = None,
+    ) -> PaginatedOpportunities:
+        """List opportunities with optional filters."""
+        query = select(Opportunity).where(Opportunity.workspace_id == workspace_id)
+
+        if pipeline_id:
+            query = query.where(Opportunity.pipeline_id == pipeline_id)
+        if stage_id:
+            query = query.where(Opportunity.stage_id == stage_id)
+        if search:
+            query = query.where(Opportunity.name.ilike(f"%{search}%"))
+
+        query = query.order_by(Opportunity.created_at.desc())
+        result = await paginate(self.db, query, page=page, page_size=page_size)
+
+        return PaginatedOpportunities(**result.to_response(OpportunityResponse))
+
+    async def create_opportunity(
+        self,
+        workspace_id: uuid.UUID,
+        opportunity_in: OpportunityCreate,
+    ) -> OpportunityResponse:
+        """Create an opportunity after validating pipeline and stage."""
+        pipeline_query = select(Pipeline).where(
+            (Pipeline.id == opportunity_in.pipeline_id)
+            & (Pipeline.workspace_id == workspace_id)
+        )
+        pipeline = (await self.db.execute(pipeline_query)).scalar_one_or_none()
+        if not pipeline:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Pipeline not found",
+            )
+
+        stage = None
+        if opportunity_in.stage_id:
+            stage_query = select(PipelineStage).where(
+                PipelineStage.id == opportunity_in.stage_id
+            )
+            stage = (await self.db.execute(stage_query)).scalar_one_or_none()
+            if not stage:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Stage not found",
+                )
+
+        opportunity = Opportunity(
+            workspace_id=workspace_id,
+            probability=stage.probability if stage else 0,
+            **opportunity_in.model_dump(),
+        )
+        self.db.add(opportunity)
+        await self.db.commit()
+        await self.db.refresh(opportunity)
+
+        return OpportunityResponse.model_validate(opportunity)
+
+    async def get_opportunity(
+        self,
+        workspace_id: uuid.UUID,
+        opportunity_id: uuid.UUID,
+    ) -> OpportunityDetailResponse:
+        """Get an opportunity by ID."""
+        opportunity = await get_or_404(
+            self.db, Opportunity, opportunity_id, workspace_id=workspace_id
+        )
+        return OpportunityDetailResponse.model_validate(opportunity)
+
+    async def update_opportunity(
+        self,
+        workspace_id: uuid.UUID,
+        opportunity_id: uuid.UUID,
+        opportunity_in: OpportunityUpdate,
+        user_id: int,
+    ) -> OpportunityResponse:
+        """Update an opportunity, logging stage/status changes as activities."""
+        opportunity = await get_or_404(
+            self.db, Opportunity, opportunity_id, workspace_id=workspace_id
+        )
+
+        # Stage change — update probability and log activity
+        if opportunity_in.stage_id and opportunity_in.stage_id != opportunity.stage_id:
+            stage_query = select(PipelineStage).where(
+                PipelineStage.id == opportunity_in.stage_id
+            )
+            stage = (await self.db.execute(stage_query)).scalar_one_or_none()
+            if not stage:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Stage not found",
+                )
+
+            old_stage_query = select(PipelineStage).where(
+                PipelineStage.id == opportunity.stage_id
+            )
+            old_stage = (await self.db.execute(old_stage_query)).scalar_one_or_none()
+
+            self.db.add(OpportunityActivity(
+                opportunity_id=opportunity_id,
+                user_id=user_id,
+                activity_type="stage_changed",
+                old_value=old_stage.name if old_stage else "None",
+                new_value=stage.name,
+                description=f"Moved from {old_stage.name if old_stage else 'None'} to {stage.name}",
+            ))
+
+            opportunity.stage_id = opportunity_in.stage_id
+            opportunity.probability = stage.probability
+            opportunity.stage_changed_at = datetime.now(UTC)
+
+        # Simple field updates
+        for field in [
+            "name", "description", "amount", "currency",
+            "expected_close_date", "assigned_user_id", "source", "lost_reason", "is_active",
+        ]:
+            value = getattr(opportunity_in, field, None)
+            if value is not None:
+                setattr(opportunity, field, value)
+
+        # Status change — log activity
+        if opportunity_in.status is not None and opportunity_in.status != opportunity.status:
+            self.db.add(OpportunityActivity(
+                opportunity_id=opportunity_id,
+                user_id=user_id,
+                activity_type="status_changed",
+                old_value=opportunity.status,
+                new_value=opportunity_in.status,
+                description=f"Status changed from {opportunity.status} to {opportunity_in.status}",
+            ))
+            opportunity.status = opportunity_in.status
+            is_closed = opportunity_in.status in ("won", "lost", "abandoned")
+            opportunity.closed_date = datetime.now(UTC).date() if is_closed else None
+            opportunity.closed_by_id = user_id if is_closed else None
+
+        await self.db.commit()
+        await self.db.refresh(opportunity)
+
+        return OpportunityResponse.model_validate(opportunity)
+
+    async def delete_opportunity(
+        self,
+        workspace_id: uuid.UUID,
+        opportunity_id: uuid.UUID,
+    ) -> None:
+        """Delete an opportunity."""
+        opportunity = await get_or_404(
+            self.db, Opportunity, opportunity_id, workspace_id=workspace_id
+        )
+        await self.db.delete(opportunity)
+        await self.db.commit()
+
+    # ------------------------------------------------------------------
+    # Line item methods
+    # ------------------------------------------------------------------
+
+    async def create_line_item(
+        self,
+        workspace_id: uuid.UUID,
+        opportunity_id: uuid.UUID,
+        item_in: OpportunityLineItemCreate,
+    ) -> dict[str, uuid.UUID | float]:
+        """Create a line item for an opportunity."""
+        await get_or_404(self.db, Opportunity, opportunity_id, workspace_id=workspace_id)
+
+        total = (item_in.quantity * item_in.unit_price) - item_in.discount
+        line_item = OpportunityLineItem(
+            opportunity_id=opportunity_id,
+            name=item_in.name,
+            description=item_in.description,
+            quantity=item_in.quantity,
+            unit_price=item_in.unit_price,
+            discount=item_in.discount,
+            total=total,
+        )
+        self.db.add(line_item)
+        await self.db.commit()
+        await self.db.refresh(line_item)
+
+        return {"id": line_item.id, "total": float(line_item.total)}
+
+    async def update_line_item(
+        self,
+        workspace_id: uuid.UUID,
+        opportunity_id: uuid.UUID,
+        item_id: uuid.UUID,
+        item_in: OpportunityLineItemUpdate,
+    ) -> dict[str, uuid.UUID | float]:
+        """Update a line item and recalculate its total."""
+        # Verify opportunity belongs to workspace
+        await get_or_404(self.db, Opportunity, opportunity_id, workspace_id=workspace_id)
+
+        line_item = await get_nested_or_404(
+            self.db,
+            OpportunityLineItem,
+            item_id,
+            parent_field="opportunity_id",
+            parent_id=opportunity_id,
+            detail="Line item not found",
+        )
+
+        if item_in.name is not None:
+            line_item.name = item_in.name
+        if item_in.description is not None:
+            line_item.description = item_in.description
+        if item_in.quantity is not None:
+            line_item.quantity = item_in.quantity
+        if item_in.unit_price is not None:
+            line_item.unit_price = item_in.unit_price
+        if item_in.discount is not None:
+            line_item.discount = item_in.discount
+
+        line_item.total = (line_item.quantity * line_item.unit_price) - line_item.discount
+
+        await self.db.commit()
+        await self.db.refresh(line_item)
+
+        return {"id": line_item.id, "total": float(line_item.total)}
+
+    async def delete_line_item(
+        self,
+        workspace_id: uuid.UUID,
+        opportunity_id: uuid.UUID,
+        item_id: uuid.UUID,
+    ) -> None:
+        """Delete a line item."""
+        # Verify opportunity belongs to workspace
+        await get_or_404(self.db, Opportunity, opportunity_id, workspace_id=workspace_id)
+
+        line_item = await get_nested_or_404(
+            self.db,
+            OpportunityLineItem,
+            item_id,
+            parent_field="opportunity_id",
+            parent_id=opportunity_id,
+            detail="Line item not found",
+        )
+        await self.db.delete(line_item)
+        await self.db.commit()

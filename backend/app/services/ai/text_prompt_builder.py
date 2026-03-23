@@ -22,7 +22,11 @@ Usage:
 """
 
 from datetime import UTC, datetime
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+import structlog
+
+logger = structlog.get_logger()
 
 # Language code to name mapping
 LANGUAGE_NAMES = {
@@ -66,7 +70,8 @@ def build_text_instructions(
         tz = ZoneInfo(timezone)
         now = datetime.now(tz)
         current_datetime = now.strftime("%A, %B %d, %Y at %I:%M %p")
-    except Exception:
+    except ZoneInfoNotFoundError:
+        logger.debug("invalid_timezone_fallback", timezone=timezone)
         current_datetime = datetime.now(UTC).strftime("%A, %B %d, %Y at %I:%M %p")
 
     phone_context = f"\nContact Phone: {contact_phone}" if contact_phone else ""
@@ -128,7 +133,8 @@ def build_booking_instructions(
         tz = ZoneInfo(timezone)
         now = datetime.now(tz)
         current_date = now.strftime("%Y-%m-%d")
-    except Exception:
+    except ZoneInfoNotFoundError:
+        logger.debug("invalid_timezone_fallback", timezone=timezone)
         current_date = datetime.now(UTC).strftime("%Y-%m-%d")
 
     # Email context if known

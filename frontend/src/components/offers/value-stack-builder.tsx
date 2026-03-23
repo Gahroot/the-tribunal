@@ -75,7 +75,7 @@ export function ValueStackBuilder({ items, onChange }: ValueStackBuilderProps) {
         </div>
         <div className="text-right">
           <p className="text-sm text-muted-foreground">Total Value</p>
-          <p className="text-2xl font-bold text-green-600">
+          <p className="text-2xl font-bold text-success">
             ${totalValue.toLocaleString()}
           </p>
         </div>
@@ -156,7 +156,7 @@ export function ValueStackBuilder({ items, onChange }: ValueStackBuilderProps) {
                         />
                         <span className="text-sm text-muted-foreground">
                           {item.included ? (
-                            <span className="flex items-center gap-1 text-green-600">
+                            <span className="flex items-center gap-1 text-success">
                               <CheckCircle className="size-3" />
                               Included in offer
                             </span>
@@ -201,11 +201,11 @@ export function ValueStackBuilder({ items, onChange }: ValueStackBuilderProps) {
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="p-4 bg-gradient-to-r from-green-500/10 to-emerald-500/10 rounded-lg border border-green-500/20"
+          className="p-4 bg-gradient-to-r from-success/10 to-success/5 rounded-lg border border-success/20"
         >
           <div className="flex items-center justify-between">
             <div>
-              <p className="font-medium text-green-700 dark:text-green-400">
+              <p className="font-medium text-success">
                 Total Stack Value
               </p>
               <p className="text-sm text-muted-foreground">
@@ -214,7 +214,7 @@ export function ValueStackBuilder({ items, onChange }: ValueStackBuilderProps) {
               </p>
             </div>
             <div className="text-right">
-              <p className="text-3xl font-bold text-green-600">
+              <p className="text-3xl font-bold text-success">
                 ${totalValue.toLocaleString()}
               </p>
               <p className="text-xs text-muted-foreground">perceived value</p>

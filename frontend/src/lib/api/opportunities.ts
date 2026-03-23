@@ -1,5 +1,5 @@
 import { createApiClient } from "./create-api-client";
-import api from "@/lib/api";
+import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 import type { Opportunity, Pipeline, PipelineStage } from "@/types";
 
 export interface OpportunitiesListParams {
@@ -83,28 +83,25 @@ const baseOpportunitiesApi = createApiClient<
 export const opportunitiesApi = {
   // Pipeline endpoints (custom)
   listPipelines: async (workspaceId: string): Promise<Pipeline[]> => {
-    const response = await api.get<Pipeline[]>(
+    return apiGet<Pipeline[]>(
       `/api/v1/workspaces/${workspaceId}/opportunities/pipelines`
     );
-    return response.data;
   },
 
   getPipeline: async (workspaceId: string, pipelineId: string): Promise<Pipeline> => {
-    const response = await api.get<Pipeline>(
+    return apiGet<Pipeline>(
       `/api/v1/workspaces/${workspaceId}/opportunities/pipelines/${pipelineId}`
     );
-    return response.data;
   },
 
   createPipeline: async (
     workspaceId: string,
     data: CreatePipelineRequest
   ): Promise<Pipeline> => {
-    const response = await api.post<Pipeline>(
+    return apiPost<Pipeline>(
       `/api/v1/workspaces/${workspaceId}/opportunities/pipelines`,
       data
     );
-    return response.data;
   },
 
   updatePipeline: async (
@@ -112,15 +109,14 @@ export const opportunitiesApi = {
     pipelineId: string,
     data: UpdatePipelineRequest
   ): Promise<Pipeline> => {
-    const response = await api.put<Pipeline>(
+    return apiPut<Pipeline>(
       `/api/v1/workspaces/${workspaceId}/opportunities/pipelines/${pipelineId}`,
       data
     );
-    return response.data;
   },
 
   deletePipeline: async (workspaceId: string, pipelineId: string): Promise<void> => {
-    await api.delete(`/api/v1/workspaces/${workspaceId}/opportunities/pipelines/${pipelineId}`);
+    await apiDelete(`/api/v1/workspaces/${workspaceId}/opportunities/pipelines/${pipelineId}`);
   },
 
   // Pipeline stage endpoints (custom)
@@ -129,11 +125,10 @@ export const opportunitiesApi = {
     pipelineId: string,
     data: CreatePipelineStageRequest
   ): Promise<PipelineStage> => {
-    const response = await api.post<PipelineStage>(
+    return apiPost<PipelineStage>(
       `/api/v1/workspaces/${workspaceId}/opportunities/pipelines/${pipelineId}/stages`,
       data
     );
-    return response.data;
   },
 
   updateStage: async (
@@ -142,11 +137,10 @@ export const opportunitiesApi = {
     stageId: string,
     data: UpdatePipelineStageRequest
   ): Promise<PipelineStage> => {
-    const response = await api.put<PipelineStage>(
+    return apiPut<PipelineStage>(
       `/api/v1/workspaces/${workspaceId}/opportunities/pipelines/${pipelineId}/stages/${stageId}`,
       data
     );
-    return response.data;
   },
 
   // Opportunity CRUD from factory
@@ -168,11 +162,10 @@ export const opportunitiesApi = {
       discount?: number;
     }
   ): Promise<{ id: string; total: number }> => {
-    const response = await api.post<{ id: string; total: number }>(
+    return apiPost<{ id: string; total: number }>(
       `/api/v1/workspaces/${workspaceId}/opportunities/${opportunityId}/line-items`,
       data
     );
-    return response.data;
   },
 
   updateLineItem: async (
@@ -187,11 +180,10 @@ export const opportunitiesApi = {
       discount?: number;
     }
   ): Promise<{ id: string; total: number }> => {
-    const response = await api.put<{ id: string; total: number }>(
+    return apiPut<{ id: string; total: number }>(
       `/api/v1/workspaces/${workspaceId}/opportunities/${opportunityId}/line-items/${itemId}`,
       data
     );
-    return response.data;
   },
 
   deleteLineItem: async (
@@ -199,7 +191,7 @@ export const opportunitiesApi = {
     opportunityId: string,
     itemId: string
   ): Promise<void> => {
-    await api.delete(
+    await apiDelete(
       `/api/v1/workspaces/${workspaceId}/opportunities/${opportunityId}/line-items/${itemId}`
     );
   },
@@ -209,7 +201,7 @@ export const opportunitiesApi = {
     pipelineId: string,
     stageId: string
   ): Promise<void> => {
-    await api.delete(
+    await apiDelete(
       `/api/v1/workspaces/${workspaceId}/opportunities/pipelines/${pipelineId}/stages/${stageId}`
     );
   },

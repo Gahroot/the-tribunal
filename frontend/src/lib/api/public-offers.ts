@@ -1,4 +1,4 @@
-import api from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 import type { ValueStackItem, LeadMagnet } from "@/types";
 
 // Public Offer Types
@@ -42,15 +42,13 @@ export interface OptInResponse {
 // Public Offers API (no auth required)
 export const publicOffersApi = {
   get: async (slug: string): Promise<PublicOffer> => {
-    const response = await api.get<PublicOffer>(`/api/v1/p/offers/${slug}`);
-    return response.data;
+    return apiGet<PublicOffer>(`/api/v1/p/offers/${slug}`);
   },
 
   optIn: async (slug: string, data: OptInRequest): Promise<OptInResponse> => {
-    const response = await api.post<OptInResponse>(
+    return apiPost<OptInResponse>(
       `/api/v1/p/offers/${slug}/opt-in`,
       data
     );
-    return response.data;
   },
 };

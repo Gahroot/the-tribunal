@@ -22,7 +22,7 @@ Usage:
 import json
 from datetime import UTC, datetime
 from typing import Any
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
 from openai.types.chat import ChatCompletionMessageToolCall
@@ -366,7 +366,7 @@ class TextToolExecutor(BaseToolExecutor):
         """Get ZoneInfo for configured timezone."""
         try:
             return ZoneInfo(self.timezone)
-        except Exception:
+        except ZoneInfoNotFoundError:
             return ZoneInfo("America/New_York")
 
     def _clean_phone_number(self, phone: str | None) -> str | None:

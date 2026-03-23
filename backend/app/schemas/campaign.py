@@ -329,6 +329,16 @@ class GuaranteeProgressResponse(BaseModel):
     started_at: str | None
 
 
+class PaginatedVoiceCampaigns(BaseModel):
+    """Paginated voice campaigns response."""
+
+    items: list[VoiceCampaignResponse]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
 class VoiceCampaignContactResponse(BaseModel):
     """Voice campaign contact response schema."""
 

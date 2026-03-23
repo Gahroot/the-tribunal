@@ -33,7 +33,8 @@ from app.services.contacts.contact_repository import (
 from app.services.contacts.contact_repository import (
     update_contact as repo_update_contact,
 )
-from app.services.telephony.telnyx import TelnyxSMSService, normalize_phone_number
+from app.services.telephony.telnyx import TelnyxSMSService
+from app.utils.phone import normalize_phone_safe
 
 logger = structlog.get_logger()
 
@@ -417,7 +418,9 @@ class ContactService:
             )
 
         # Normalize the contact phone number for matching
-        normalized_contact_phone = normalize_phone_number(contact.phone_number)
+        normalized_contact_phone = (
+            normalize_phone_safe(contact.phone_number) or contact.phone_number
+        )
 
         # Try to find existing conversation by contact_id first (get most recent)
         conv_result = await self.db.execute(

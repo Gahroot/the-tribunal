@@ -1,34 +1,26 @@
 """Workspace endpoints."""
 
 import uuid
-from typing import Literal
 
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
 from sqlalchemy import select
 
-from app.api.deps import DB, CurrentUser
+from app.api.deps import (
+    DB,
+    CurrentMembership,
+    CurrentUser,
+    WorkspaceAccess,
+    WorkspaceAdminAccess,
+)
 from app.models.workspace import Workspace, WorkspaceMembership
 from app.schemas.workspace import (
+    MemberResponse,
+    UpdateMemberRoleRequest,
     WorkspaceCreate,
     WorkspaceResponse,
     WorkspaceUpdate,
     WorkspaceWithMembership,
 )
-
-
-class UpdateMemberRoleRequest(BaseModel):
-    """Request to update a member's role."""
-
-    role: Literal["admin", "member"]
-
-
-class MemberResponse(BaseModel):
-    """Response for member operations."""
-
-    user_id: int
-    role: str
-    message: str
 
 router = APIRouter()
 
@@ -40,28 +32,22 @@ async def list_workspaces(
 ) -> list[WorkspaceWithMembership]:
     """List all workspaces the user is a member of."""
     result = await db.execute(
-        select(WorkspaceMembership)
+        select(WorkspaceMembership, Workspace)
+        .join(Workspace, WorkspaceMembership.workspace_id == Workspace.id)
         .where(WorkspaceMembership.user_id == current_user.id)
+        .where(Workspace.is_active.is_(True))
         .order_by(WorkspaceMembership.created_at)
     )
-    memberships = result.scalars().all()
+    rows = result.all()
 
-    workspaces_with_membership = []
-    for membership in memberships:
-        workspace_result = await db.execute(
-            select(Workspace).where(Workspace.id == membership.workspace_id)
+    return [
+        WorkspaceWithMembership(
+            workspace=WorkspaceResponse.model_validate(workspace),
+            role=membership.role,
+            is_default=membership.is_default,
         )
-        workspace = workspace_result.scalar_one_or_none()
-        if workspace and workspace.is_active:
-            workspaces_with_membership.append(
-                WorkspaceWithMembership(
-                    workspace=WorkspaceResponse.model_validate(workspace),
-                    role=membership.role,
-                    is_default=membership.is_default,
-                )
-            )
-
-    return workspaces_with_membership
+        for membership, workspace in rows
+    ]
 
 
 @router.post("", response_model=WorkspaceResponse, status_code=status.HTTP_201_CREATED)
@@ -106,70 +92,19 @@ async def create_workspace(
 
 @router.get("/{workspace_id}", response_model=WorkspaceResponse)
 async def get_workspace(
-    workspace_id: uuid.UUID,
-    current_user: CurrentUser,
-    db: DB,
+    workspace: WorkspaceAccess,
 ) -> WorkspaceResponse:
     """Get a specific workspace."""
-    # Verify membership
-    result = await db.execute(
-        select(WorkspaceMembership).where(
-            WorkspaceMembership.user_id == current_user.id,
-            WorkspaceMembership.workspace_id == workspace_id,
-        )
-    )
-    if result.scalar_one_or_none() is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Workspace not found or access denied",
-        )
-
-    # Get workspace
-    ws_result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
-    workspace: Workspace | None = ws_result.scalar_one_or_none()
-
-    if workspace is None or not workspace.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Workspace not found",
-        )
-
     return WorkspaceResponse.model_validate(workspace)
 
 
 @router.put("/{workspace_id}", response_model=WorkspaceResponse)
 async def update_workspace(
-    workspace_id: uuid.UUID,
     workspace_in: WorkspaceUpdate,
-    current_user: CurrentUser,
+    workspace: WorkspaceAdminAccess,
     db: DB,
 ) -> WorkspaceResponse:
     """Update a workspace (owner/admin only)."""
-    # Verify membership with admin+ role
-    result = await db.execute(
-        select(WorkspaceMembership).where(
-            WorkspaceMembership.user_id == current_user.id,
-            WorkspaceMembership.workspace_id == workspace_id,
-            WorkspaceMembership.role.in_(["owner", "admin"]),
-        )
-    )
-    if result.scalar_one_or_none() is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to update this workspace",
-        )
-
-    # Get workspace
-    ws_result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
-    workspace: Workspace | None = ws_result.scalar_one_or_none()
-
-    if workspace is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Workspace not found",
-        )
-
-    # Update fields
     update_data = workspace_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(workspace, field, value)
@@ -182,40 +117,17 @@ async def update_workspace(
 
 @router.post("/{workspace_id}/set-default", response_model=WorkspaceWithMembership)
 async def set_default_workspace(
-    workspace_id: uuid.UUID,
-    current_user: CurrentUser,
+    workspace: WorkspaceAccess,
+    membership: CurrentMembership,
     db: DB,
 ) -> WorkspaceWithMembership:
     """Set a workspace as the user's default workspace."""
-    # Verify membership
-    result = await db.execute(
-        select(WorkspaceMembership).where(
-            WorkspaceMembership.user_id == current_user.id,
-            WorkspaceMembership.workspace_id == workspace_id,
-        )
-    )
-    membership = result.scalar_one_or_none()
-    if membership is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Workspace not found or access denied",
-        )
-
-    # Get workspace
-    ws_result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
-    workspace: Workspace | None = ws_result.scalar_one_or_none()
-    if workspace is None or not workspace.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Workspace not found",
-        )
-
     # Clear is_default for all other memberships of this user
     all_memberships_result = await db.execute(
-        select(WorkspaceMembership).where(WorkspaceMembership.user_id == current_user.id)
+        select(WorkspaceMembership).where(WorkspaceMembership.user_id == membership.user_id)
     )
     for m in all_memberships_result.scalars().all():
-        m.is_default = m.workspace_id == workspace_id
+        m.is_default = m.workspace_id == workspace.id
 
     await db.commit()
     await db.refresh(membership)
@@ -229,32 +141,19 @@ async def set_default_workspace(
 
 @router.delete("/{workspace_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_workspace(
-    workspace_id: uuid.UUID,
-    current_user: CurrentUser,
+    workspace: WorkspaceAccess,
+    membership: CurrentMembership,
     db: DB,
 ) -> None:
     """Delete a workspace (owner only)."""
-    # Verify ownership
-    result = await db.execute(
-        select(WorkspaceMembership).where(
-            WorkspaceMembership.user_id == current_user.id,
-            WorkspaceMembership.workspace_id == workspace_id,
-            WorkspaceMembership.role == "owner",
-        )
-    )
-    if result.scalar_one_or_none() is None:
+    if membership.role != "owner":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the owner can delete a workspace",
         )
 
-    # Soft delete (deactivate)
-    ws_result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
-    workspace: Workspace | None = ws_result.scalar_one_or_none()
-
-    if workspace is not None:
-        workspace.is_active = False
-        await db.commit()
+    workspace.is_active = False
+    await db.commit()
 
 
 @router.put("/{workspace_id}/members/{user_id}/role", response_model=MemberResponse)
@@ -262,20 +161,11 @@ async def update_member_role(
     workspace_id: uuid.UUID,
     user_id: int,
     role_update: UpdateMemberRoleRequest,
-    current_user: CurrentUser,
+    membership: CurrentMembership,
     db: DB,
 ) -> MemberResponse:
     """Update a member's role (owner/admin only)."""
-    # Verify current user is owner or admin
-    auth_result = await db.execute(
-        select(WorkspaceMembership).where(
-            WorkspaceMembership.user_id == current_user.id,
-            WorkspaceMembership.workspace_id == workspace_id,
-            WorkspaceMembership.role.in_(["owner", "admin"]),
-        )
-    )
-    current_membership = auth_result.scalar_one_or_none()
-    if current_membership is None:
+    if membership.role not in ("owner", "admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to manage members",
@@ -303,7 +193,7 @@ async def update_member_role(
         )
 
     # Admins cannot promote/demote other admins
-    if current_membership.role == "admin" and target_membership.role == "admin":
+    if membership.role == "admin" and target_membership.role == "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admins cannot change other admins' roles",
@@ -327,20 +217,11 @@ async def update_member_role(
 async def remove_member(
     workspace_id: uuid.UUID,
     user_id: int,
-    current_user: CurrentUser,
+    membership: CurrentMembership,
     db: DB,
 ) -> None:
     """Remove a member from the workspace (owner/admin only)."""
-    # Verify current user is owner or admin
-    auth_result = await db.execute(
-        select(WorkspaceMembership).where(
-            WorkspaceMembership.user_id == current_user.id,
-            WorkspaceMembership.workspace_id == workspace_id,
-            WorkspaceMembership.role.in_(["owner", "admin"]),
-        )
-    )
-    current_membership = auth_result.scalar_one_or_none()
-    if current_membership is None:
+    if membership.role not in ("owner", "admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to manage members",
@@ -368,7 +249,7 @@ async def remove_member(
         )
 
     # Admins cannot remove other admins
-    if current_membership.role == "admin" and target_membership.role == "admin":
+    if membership.role == "admin" and target_membership.role == "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admins cannot remove other admins",

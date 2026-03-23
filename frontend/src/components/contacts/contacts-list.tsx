@@ -12,6 +12,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { contactStatusColors } from "@/lib/status-colors";
 import { useContactStore } from "@/lib/contact-store";
+import { useContactsPaginated } from "@/hooks/useContacts";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { CreateContactDialog } from "./create-contact-dialog";
 import type { Contact } from "@/types";
 
@@ -27,7 +29,6 @@ function getInitials(contact: Contact): string {
 
 function formatPhoneNumber(phone?: string): string {
   if (!phone) return "";
-  // Simple formatting for display
   const cleaned = phone.replace(/\D/g, "");
   if (cleaned.length === 10) {
     return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
@@ -90,10 +91,10 @@ function ContactItem({ contact, isSelected, onClick }: ContactItemProps) {
                   className={cn(
                     "text-[10px] font-bold px-1 py-0.5 rounded",
                     contact.lead_score >= 80
-                      ? "text-green-700 bg-green-100"
+                      ? "text-success bg-success/10"
                       : contact.lead_score >= 40
-                        ? "text-yellow-700 bg-yellow-100"
-                        : "text-gray-500 bg-gray-100"
+                        ? "text-warning bg-warning/10"
+                        : "text-muted-foreground bg-muted"
                   )}
                   title={`Lead Score: ${contact.lead_score}`}
                 >
@@ -102,7 +103,7 @@ function ContactItem({ contact, isSelected, onClick }: ContactItemProps) {
               )}
               {(contact.business_intel?.ad_pixels?.meta_pixel || contact.business_intel?.ad_pixels?.google_ads) && (
                 <span title="Running paid ads">
-                  <Sparkles className="h-3 w-3 text-purple-500" />
+                  <Sparkles className="h-3 w-3 text-primary" />
                 </span>
               )}
               <Badge variant="secondary" className={cn("text-xs", contactStatusColors[contact.status])}>
@@ -139,34 +140,16 @@ function ContactItem({ contact, isSelected, onClick }: ContactItemProps) {
 
 export function ContactsList({ className }: ContactsListProps) {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
-  const {
-    contacts,
-    selectedContact,
-    setSelectedContact,
-    searchQuery,
-    setSearchQuery,
-    isLoadingContacts,
-  } = useContactStore();
+  const { selectedContact, setSelectedContact, searchQuery, setSearchQuery } = useContactStore();
+  const workspaceId = useWorkspaceId();
 
-  // Filter contacts based on search query
-  const filteredContacts = React.useMemo(() => {
-    if (!searchQuery.trim()) return contacts;
-
-    const query = searchQuery.toLowerCase();
-    return contacts.filter((contact) => {
-      const fullName = `${contact.first_name} ${contact.last_name}`.toLowerCase();
-      const phone = contact.phone_number?.toLowerCase() ?? "";
-      const email = contact.email?.toLowerCase() ?? "";
-      const company = contact.company_name?.toLowerCase() ?? "";
-
-      return (
-        fullName.includes(query) ||
-        phone.includes(query) ||
-        email.includes(query) ||
-        company.includes(query)
-      );
-    });
-  }, [contacts, searchQuery]);
+  // Fetch contacts with server-side search filtering
+  const { data, isLoading } = useContactsPaginated(workspaceId ?? "", {
+    page: 1,
+    page_size: 50,
+    ...(searchQuery.trim() && { search: searchQuery.trim() }),
+  });
+  const contacts = data?.items ?? [];
 
   return (
     <div className={cn("flex flex-col h-full", className)}>
@@ -199,13 +182,13 @@ export function ContactsList({ className }: ContactsListProps) {
       {/* Contacts List */}
       <ScrollArea className="flex-1">
         <div className="p-2">
-          {isLoadingContacts ? (
+          {isLoading ? (
             <div className="space-y-1">
               {Array.from({ length: 8 }).map((_, i) => (
                 <ContactItemSkeleton key={i} />
               ))}
             </div>
-          ) : filteredContacts.length === 0 ? (
+          ) : contacts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <User className="h-12 w-12 text-muted-foreground/50 mb-3" />
               <p className="text-sm text-muted-foreground">
@@ -215,7 +198,7 @@ export function ContactsList({ className }: ContactsListProps) {
           ) : (
             <AnimatePresence mode="popLayout">
               <div className="space-y-1">
-                {filteredContacts.map((contact) => (
+                {contacts.map((contact) => (
                   <ContactItem
                     key={contact.id}
                     contact={contact}

@@ -234,7 +234,7 @@ export default function LeadMagnetsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-green-600">
+              <p className="text-2xl font-bold text-success">
                 {activeLeadMagnets.length}
               </p>
             </CardContent>
@@ -246,7 +246,7 @@ export default function LeadMagnetsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-blue-600">{totalDownloads}</p>
+              <p className="text-2xl font-bold text-info">{totalDownloads}</p>
             </CardContent>
           </Card>
         </div>
@@ -284,7 +284,7 @@ export default function LeadMagnetsPage() {
                   <CardContent className="p-6">
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-4">
-                        <div className="size-12 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/5 flex items-center justify-center text-blue-600">
+                        <div className="size-12 rounded-full bg-gradient-to-br from-info/20 to-primary/5 flex items-center justify-center text-info">
                           {magnetTypeIcons[magnet.magnet_type]}
                         </div>
                         <div>
@@ -292,7 +292,7 @@ export default function LeadMagnetsPage() {
                             <h3 className="font-semibold">{magnet.name}</h3>
                             <Badge
                               variant="secondary"
-                              className="bg-blue-500/10 text-blue-600"
+                              className="bg-info/10 text-info"
                             >
                               {magnetTypeLabels[magnet.magnet_type]}
                             </Badge>
@@ -313,7 +313,7 @@ export default function LeadMagnetsPage() {
                               </span>
                             </div>
                             {magnet.estimated_value && magnet.estimated_value > 0 && (
-                              <div className="flex items-center gap-1 text-green-600">
+                              <div className="flex items-center gap-1 text-success">
                                 <DollarSign className="size-3" />
                                 {magnet.estimated_value} value
                               </div>

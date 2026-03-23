@@ -23,6 +23,7 @@ from app.models.campaign import (
     CampaignStatus,
     CampaignType,
 )
+from app.services.ai.campaign_report_service import CampaignReportService
 from app.workers.base import BaseWorker
 
 
@@ -177,10 +178,6 @@ class BaseCampaignWorker(BaseWorker):
             campaign.completed_at = datetime.now(UTC)
 
             try:
-                from app.services.ai.campaign_report_service import (
-                    CampaignReportService,
-                )
-
                 service = CampaignReportService()
                 await service.generate_report(db, campaign.id)
                 log.info("Campaign post-mortem report generated")

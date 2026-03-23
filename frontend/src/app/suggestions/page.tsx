@@ -57,8 +57,8 @@ export default function SuggestionsPage() {
           </p>
         </div>
         {pendingCount && pendingCount.pending_count > 0 && (
-          <div className="flex items-center gap-2 rounded-lg border bg-amber-50 px-4 py-2 dark:bg-amber-950/20">
-            <Lightbulb className="h-5 w-5 text-amber-600" />
+          <div className="flex items-center gap-2 rounded-lg border bg-warning/10 px-4 py-2">
+            <Lightbulb className="h-5 w-5 text-warning" />
             <span className="text-sm font-medium">
               {pendingCount.pending_count} pending suggestion
               {pendingCount.pending_count !== 1 && "s"}
@@ -74,7 +74,7 @@ export default function SuggestionsPage() {
             <Wand2 className="h-4 w-4" />
             Prompt Suggestions
             {pendingCount && pendingCount.pending_count > 0 && (
-              <span className="ml-1 rounded-full bg-amber-500 px-1.5 py-0.5 text-xs text-white">
+              <span className="ml-1 rounded-full bg-warning px-1.5 py-0.5 text-xs text-white">
                 {pendingCount.pending_count}
               </span>
             )}
@@ -83,7 +83,7 @@ export default function SuggestionsPage() {
             <BarChart3 className="h-4 w-4" />
             Campaign Intelligence
             {reportCount && reportCount.report_count > 0 && (
-              <span className="ml-1 rounded-full bg-blue-500 px-1.5 py-0.5 text-xs text-white">
+              <span className="ml-1 rounded-full bg-info px-1.5 py-0.5 text-xs text-white">
                 {reportCount.report_count}
               </span>
             )}
@@ -110,7 +110,7 @@ export default function SuggestionsPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-sm font-medium">Approved</CardTitle>
-                <Check className="h-4 w-4 text-green-600" />
+                <Check className="h-4 w-4 text-success" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
@@ -158,7 +158,7 @@ export default function SuggestionsPage() {
                   <TabsTrigger value="pending">
                     Pending
                     {pendingCount && pendingCount.pending_count > 0 && (
-                      <span className="ml-1.5 rounded-full bg-amber-500 px-1.5 py-0.5 text-xs text-white">
+                      <span className="ml-1.5 rounded-full bg-warning px-1.5 py-0.5 text-xs text-white">
                         {pendingCount.pending_count}
                       </span>
                     )}

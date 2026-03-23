@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Contact, TimelineItem, Agent, Automation, ContactAgent, FilterDefinition } from "@/types";
+import type { Contact, ContactAgent, FilterDefinition } from "@/types";
 import type { ContactSortBy } from "@/lib/api/contacts";
 
 interface ContactStore {
@@ -7,30 +7,11 @@ interface ContactStore {
   selectedContact: Contact | null;
   setSelectedContact: (contact: Contact | null) => void;
 
-  // Contacts list
-  contacts: Contact[];
-  setContacts: (contacts: Contact[]) => void;
-
   // Pagination
   contactsPage: number;
   contactsPageSize: number;
-  contactsTotal: number;
-  contactsTotalPages: number;
   setContactsPage: (page: number) => void;
   setContactsPageSize: (size: number) => void;
-  setPaginationMeta: (meta: { total: number; pages: number }) => void;
-
-  // Timeline items for selected contact
-  timeline: TimelineItem[];
-  setTimeline: (items: TimelineItem[]) => void;
-  addTimelineItem: (item: TimelineItem) => void;
-  clearTimeline: () => void;
-
-  // Loading states
-  isLoadingContacts: boolean;
-  setIsLoadingContacts: (loading: boolean) => void;
-  isLoadingTimeline: boolean;
-  setIsLoadingTimeline: (loading: boolean) => void;
 
   // Search
   searchQuery: string;
@@ -48,16 +29,7 @@ interface ContactStore {
   filters: FilterDefinition | null;
   setFilters: (filters: FilterDefinition | null) => void;
 
-  // AI Agents
-  agents: Agent[];
-  setAgents: (agents: Agent[]) => void;
-
-  // Automations
-  automations: Automation[];
-  setAutomations: (automations: Automation[]) => void;
-  toggleAutomation: (automationId: string) => void;
-
-  // Contact-Agent assignments
+  // Contact-Agent assignments (local UI state)
   contactAgents: ContactAgent[];
   setContactAgents: (assignments: ContactAgent[]) => void;
   assignAgent: (contactId: number, agentId: string) => void;
@@ -69,34 +41,11 @@ export const useContactStore = create<ContactStore>((set) => ({
   selectedContact: null,
   setSelectedContact: (contact) => set({ selectedContact: contact }),
 
-  // Contacts list
-  contacts: [],
-  setContacts: (contacts) => set({ contacts }),
-
   // Pagination
   contactsPage: 1,
   contactsPageSize: 25,
-  contactsTotal: 0,
-  contactsTotalPages: 1,
   setContactsPage: (page) => set({ contactsPage: page }),
   setContactsPageSize: (size) => set({ contactsPageSize: size, contactsPage: 1 }),
-  setPaginationMeta: (meta) => set({ contactsTotal: meta.total, contactsTotalPages: meta.pages }),
-
-  // Timeline
-  timeline: [],
-  setTimeline: (items) => set({ timeline: items }),
-  addTimelineItem: (item) => set((state) => ({
-    timeline: [...state.timeline, item].sort(
-      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-    )
-  })),
-  clearTimeline: () => set({ timeline: [] }),
-
-  // Loading states
-  isLoadingContacts: false,
-  setIsLoadingContacts: (loading) => set({ isLoadingContacts: loading }),
-  isLoadingTimeline: false,
-  setIsLoadingTimeline: (loading) => set({ isLoadingTimeline: loading }),
 
   // Search
   searchQuery: "",
@@ -113,19 +62,6 @@ export const useContactStore = create<ContactStore>((set) => ({
   // Advanced filters
   filters: null,
   setFilters: (filters) => set({ filters, contactsPage: 1 }),
-
-  // AI Agents
-  agents: [],
-  setAgents: (agents) => set({ agents }),
-
-  // Automations
-  automations: [],
-  setAutomations: (automations) => set({ automations }),
-  toggleAutomation: (automationId) => set((state) => ({
-    automations: state.automations.map((a) =>
-      a.id === automationId ? { ...a, is_active: !a.is_active } : a
-    ),
-  })),
 
   // Contact-Agent assignments
   contactAgents: [],

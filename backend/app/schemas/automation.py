@@ -67,3 +67,11 @@ class PaginatedAutomations(BaseModel):
     page: int
     page_size: int
     pages: int
+
+
+class AutomationStatsResponse(BaseModel):
+    """Automation statistics response."""
+
+    total: int
+    active: int
+    triggered_today: int

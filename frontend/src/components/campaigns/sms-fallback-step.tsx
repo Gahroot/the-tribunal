@@ -162,11 +162,11 @@ export function SMSFallbackStep({
                 </p>
               </div>
 
-              <div className="p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg text-sm">
-                <p className="font-medium text-blue-700 dark:text-blue-300 mb-1">
+              <div className="p-3 bg-info/10 rounded-lg text-sm">
+                <p className="font-medium text-info mb-1">
                   Available Placeholders:
                 </p>
-                <ul className="text-blue-600 dark:text-blue-400 text-xs space-y-1">
+                <ul className="text-info text-xs space-y-1">
                   <li>
                     <code>{"{first_name}"}</code> - Contact&apos;s first name
                   </li>
@@ -192,12 +192,12 @@ export function SMSFallbackStep({
               animate={{ opacity: 1 }}
               className="space-y-4"
             >
-              <div className="p-3 bg-purple-50 dark:bg-purple-950/30 rounded-lg text-sm">
-                <p className="flex items-center gap-2 font-medium text-purple-700 dark:text-purple-300 mb-1">
+              <div className="p-3 bg-primary/10 rounded-lg text-sm">
+                <p className="flex items-center gap-2 font-medium text-primary mb-1">
                   <Bot className="size-4" />
                   AI Message Generation
                 </p>
-                <p className="text-purple-600 dark:text-purple-400 text-xs">
+                <p className="text-primary text-xs">
                   The AI will generate a personalized SMS based on the
                   contact&apos;s information, why the call failed, and the
                   agent&apos;s personality. Messages are optimized for SMS

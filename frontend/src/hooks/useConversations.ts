@@ -1,30 +1,25 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  conversationsApi,
-  type ConversationsListParams,
-} from "@/lib/api/conversations";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { createResourceHooks } from "@/lib/api/create-resource-hooks";
+import { conversationsApi } from "@/lib/api/conversations";
+import type { Conversation } from "@/types";
+import type { ApiClient } from "@/lib/api/create-api-client";
 
-/**
- * Fetch and manage a list of conversations for a workspace
- */
-export function useConversations(workspaceId: string, params: ConversationsListParams = {}) {
-  return useQuery({
-    queryKey: ["conversations", workspaceId, params],
-    queryFn: () => conversationsApi.list(workspaceId, params),
-    enabled: !!workspaceId,
-  });
-}
+export type { ConversationsListParams } from "@/lib/api/conversations";
 
-/**
- * Fetch a single conversation by ID with messages
- */
-export function useConversation(workspaceId: string, conversationId: string) {
-  return useQuery({
-    queryKey: ["conversation", workspaceId, conversationId],
-    queryFn: () => conversationsApi.get(workspaceId, conversationId),
-    enabled: !!workspaceId && !!conversationId,
-  });
-}
+// Standard list/get operations via the resource hooks factory
+const {
+  queryKeys: conversationQueryKeys,
+  useList: useConversations,
+  useGet: useConversation,
+} = createResourceHooks<Conversation, never, never>({
+  resourceKey: "conversations",
+  apiClient: conversationsApi as ApiClient<Conversation, never, never>,
+  includeCreate: false,
+  includeUpdate: false,
+  includeDelete: false,
+});
+
+export { conversationQueryKeys, useConversations, useConversation };
 
 /**
  * Send a message in a conversation
@@ -37,7 +32,6 @@ export function useSendMessage(workspaceId: string) {
       conversationsApi.sendMessage(workspaceId, data.conversationId, data.body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["conversations", workspaceId] });
-      queryClient.invalidateQueries({ queryKey: ["conversation"] });
     },
   });
 }
@@ -53,7 +47,6 @@ export function useToggleConversationAI(workspaceId: string) {
       conversationsApi.toggleAI(workspaceId, data.conversationId, data.enabled),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["conversations", workspaceId] });
-      queryClient.invalidateQueries({ queryKey: ["conversation"] });
     },
   });
 }
@@ -69,7 +62,6 @@ export function useAssignAgent(workspaceId: string) {
       conversationsApi.assignAgent(workspaceId, data.conversationId, data.agentId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["conversations", workspaceId] });
-      queryClient.invalidateQueries({ queryKey: ["conversation"] });
     },
   });
 }
@@ -85,7 +77,7 @@ export function useClearConversationHistory(workspaceId: string) {
       conversationsApi.clearHistory(workspaceId, conversationId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["conversations", workspaceId] });
-      queryClient.invalidateQueries({ queryKey: ["conversation"] });
     },
   });
 }
+

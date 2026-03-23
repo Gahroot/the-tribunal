@@ -284,7 +284,7 @@ export function CampaignsList() {
             </TableHeader>
             <TableBody>
               <AnimatePresence mode="popLayout">
-                {filteredCampaigns.map((campaign) => {
+                {filteredCampaigns.map((campaign, index) => {
                   const TypeIcon = typeIcons[campaign.campaign_type];
                   const progress =
                     campaign.total_contacts > 0
@@ -295,9 +295,15 @@ export function CampaignsList() {
                     <motion.tr
                       key={campaign.id}
                       layout
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0 }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 300,
+                        damping: 24,
+                        delay: index * 0.05,
+                      }}
                       className="group cursor-pointer hover:bg-muted/50"
                     >
                       <TableCell>

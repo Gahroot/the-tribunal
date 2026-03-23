@@ -12,36 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
+from app.utils.phone import normalize_phone_e164, normalize_phone_safe
 
 logger = structlog.get_logger()
-
-
-def normalize_phone_number(phone: str) -> str:
-    """Normalize phone number to E.164 format.
-
-    Handles common US number formats and ensures +1 prefix.
-
-    Args:
-        phone: Phone number in various formats
-
-    Returns:
-        Phone number in E.164 format (e.g., +12485551234)
-    """
-    # Remove all non-digit characters except leading +
-    digits = "".join(c for c in phone if c.isdigit())
-
-    # If already has + prefix, just return cleaned version
-    if phone.startswith("+"):
-        return f"+{digits}"
-
-    # US numbers: add +1 if 10 digits, or just + if 11 digits starting with 1
-    if len(digits) == 10:
-        return f"+1{digits}"
-    elif len(digits) == 11 and digits.startswith("1"):
-        return f"+{digits}"
-
-    # For other formats, assume it needs +
-    return f"+{digits}"
 
 
 @dataclass
@@ -123,8 +96,8 @@ class TelnyxSMSService:
             Created Message record
         """
         # Normalize phone numbers to E.164 format
-        to_number = normalize_phone_number(to_number)
-        from_number = normalize_phone_number(from_number)
+        to_number = normalize_phone_e164(to_number)
+        from_number = normalize_phone_e164(from_number)
 
         log = self.logger.bind(to=to_number, from_=from_number)
         log.info("sending_sms")
@@ -462,8 +435,8 @@ class TelnyxSMSService:
 
         for candidate in all_contacts:
             # Normalize both phone numbers and compare
-            candidate_normalized = normalize_phone_number(candidate.phone_number)
-            if candidate_normalized == contact_phone:
+            candidate_normalized = normalize_phone_safe(candidate.phone_number)
+            if candidate_normalized and candidate_normalized == contact_phone:
                 self.logger.info(
                     "contact_found_via_normalization",
                     original_phone=candidate.phone_number,

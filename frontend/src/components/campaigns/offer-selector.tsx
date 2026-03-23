@@ -299,18 +299,18 @@ export function OfferSelector({
                 )}
 
                 <div className="flex items-start gap-3">
-                  <div className="size-10 rounded-full bg-gradient-to-br from-green-500/20 to-green-500/5 flex items-center justify-center text-green-600">
+                  <div className="size-10 rounded-full bg-gradient-to-br from-success/20 to-success/5 flex items-center justify-center text-success">
                     {discountTypeIcons[offer.discount_type]}
                   </div>
 
                   <div className="flex-1 min-w-0 pr-6">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium">{offer.name}</span>
-                      <Badge variant="secondary" className="bg-green-500/10 text-green-600">
+                      <Badge variant="secondary" className="bg-success/10 text-success">
                         {formatDiscount(offer)}
                       </Badge>
                       {totalValue > 0 && (
-                        <Badge variant="outline" className="text-green-600 border-green-600/30">
+                        <Badge variant="outline" className="text-success border-success/20">
                           <DollarSign className="size-3 mr-0.5" />
                           {totalValue.toLocaleString()} value
                         </Badge>
@@ -322,7 +322,7 @@ export function OfferSelector({
                         </Badge>
                       )}
                       {leadMagnets.length > 0 && (
-                        <Badge variant="outline" className="gap-1 text-blue-600 border-blue-600/30">
+                        <Badge variant="outline" className="gap-1 text-info border-info/20">
                           <FileText className="size-3" />
                           {leadMagnets.length} bonus{leadMagnets.length > 1 ? "es" : ""}
                         </Badge>
@@ -409,9 +409,9 @@ export function OfferSelector({
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="p-3 bg-green-500/5 rounded-lg border border-green-500/20 text-sm"
+          className="p-3 bg-success/10 rounded-lg border border-success/20 text-sm"
         >
-          <p className="text-green-700 dark:text-green-400">
+          <p className="text-success">
             Use these placeholders in your message:
           </p>
           <code className="text-xs bg-muted px-1 py-0.5 rounded mt-1 inline-block">

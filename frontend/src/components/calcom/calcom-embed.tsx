@@ -149,7 +149,7 @@ export function CalcomInlineEmbed({
 
   if (error) {
     return (
-      <div className="flex items-center justify-center p-8 text-red-500">
+      <div className="flex items-center justify-center p-8 text-destructive">
         Failed to load booking calendar: {error}
       </div>
     );

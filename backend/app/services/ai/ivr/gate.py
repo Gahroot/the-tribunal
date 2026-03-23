@@ -324,7 +324,8 @@ class IVRGate:
                 })
                 try:
                     await websocket.send_text(msg)
-                except Exception:
+                except (RuntimeError, OSError):
+                    self._log.debug("keepalive_send_failed_connection_closed")
                     break
         except asyncio.CancelledError:
             return

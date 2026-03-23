@@ -18,12 +18,16 @@ import asyncio
 import base64
 import contextlib
 import time
+import uuid
 from typing import Any
 
 import structlog
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
+from sqlalchemy import update
 
 from app.core.config import settings
+from app.db.session import AsyncSessionLocal
+from app.models.conversation import Message
 from app.services.ai.call_context import lookup_call_context, save_call_transcript
 from app.services.ai.elevenlabs_voice_agent import ElevenLabsVoiceAgentSession
 from app.services.ai.grok import GrokVoiceAgentSession
@@ -75,15 +79,10 @@ async def _save_call_transcript_wrapper(
 
 async def _save_call_duration(call_id: str, duration_seconds: int, log: Any) -> None:
     """Save call duration from streaming session to message record."""
-    from sqlalchemy import update
-
-    from app.db.session import AsyncSessionLocal
-    from app.models.conversation import Message as MessageModel
-
     async with AsyncSessionLocal() as db:
         await db.execute(
-            update(MessageModel)
-            .where(MessageModel.provider_message_id == call_id)
+            update(Message)
+            .where(Message.provider_message_id == call_id)
             .values(duration_seconds=duration_seconds)
         )
         await db.commit()
@@ -94,13 +93,6 @@ async def _stamp_prompt_version_on_message(
     call_id: str, prompt_version_id: str, log: Any
 ) -> None:
     """Stamp prompt version ID on the message record for attribution."""
-    import uuid
-
-    from sqlalchemy import update
-
-    from app.db.session import AsyncSessionLocal
-    from app.models.conversation import Message
-
     try:
         async with AsyncSessionLocal() as db:
             result = await db.execute(

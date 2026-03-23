@@ -112,7 +112,7 @@ class VoiceAgentBase(ABC):
             return False
         try:
             return self.ws.state == State.OPEN
-        except Exception:
+        except AttributeError:
             return False
 
     def get_transcript_json(self) -> str | None:

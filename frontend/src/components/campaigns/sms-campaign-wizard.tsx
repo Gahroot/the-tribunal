@@ -9,7 +9,6 @@ import {
   Bot,
   Clock,
   Eye,
-  Send,
   Tag,
 } from "lucide-react";
 
@@ -39,7 +38,7 @@ import {
 } from "./steps";
 
 import { useWizard } from "@/hooks/useWizard";
-import { WizardContainer } from "@/components/wizard";
+import { BaseCampaignWizardLayout } from "./base-campaign-wizard-layout";
 import { insertPlaceholderAtCursor } from "@/lib/utils/placeholder";
 
 import type { Agent, Offer, PhoneNumber, SMSCampaign } from "@/types";
@@ -549,9 +548,9 @@ export function SMSCampaignWizard({
                 </div>
                 {selectedOffer && (
                   <div className="flex items-center gap-2">
-                    <Tag className="size-4 text-green-600" />
+                    <Tag className="size-4 text-success" />
                     <span className="text-sm">Attached offer:</span>
-                    <Badge variant="secondary" className="bg-green-500/10 text-green-600">
+                    <Badge variant="secondary" className="bg-success/10 text-success">
                       {selectedOffer.name}
                     </Badge>
                   </div>
@@ -629,22 +628,14 @@ export function SMSCampaignWizard({
   };
 
   return (
-    <WizardContainer
+    <BaseCampaignWizardLayout
       steps={STEPS}
-      currentStepId={wizard.currentStepId}
-      currentStepIndex={wizard.currentStepIndex}
-      onStepClick={wizard.goToStep}
-      isFirstStep={wizard.isFirstStep}
-      isLastStep={wizard.isLastStep}
-      onPrevious={wizard.goPrevious}
-      onNext={wizard.goNext}
+      wizard={wizard}
       onSubmit={handleSubmit}
       isSubmitting={isSubmitting}
       onCancel={onCancel}
-      submitLabel="Create Campaign"
-      submitIcon={Send}
     >
       {renderStepContent()}
-    </WizardContainer>
+    </BaseCampaignWizardLayout>
   );
 }

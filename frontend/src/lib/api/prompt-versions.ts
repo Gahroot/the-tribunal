@@ -1,4 +1,4 @@
-import api from "@/lib/api";
+import { apiGet, apiPost, apiPut } from "@/lib/api";
 
 // Backend response types
 export interface PromptVersionResponse {
@@ -115,21 +115,19 @@ export const promptVersionsApi = {
     agentId: string,
     params: PromptVersionListParams = {}
   ): Promise<PromptVersionListResponse> => {
-    const response = await api.get<PromptVersionListResponse>(
+    return apiGet<PromptVersionListResponse>(
       `/api/v1/workspaces/${workspaceId}/agents/${agentId}/prompts`,
       { params }
     );
-    return response.data;
   },
 
   getActive: async (
     workspaceId: string,
     agentId: string
   ): Promise<PromptVersionResponse[]> => {
-    const response = await api.get<PromptVersionResponse[]>(
+    return apiGet<PromptVersionResponse[]>(
       `/api/v1/workspaces/${workspaceId}/agents/${agentId}/prompts/active`
     );
-    return response.data;
   },
 
   get: async (
@@ -137,10 +135,9 @@ export const promptVersionsApi = {
     agentId: string,
     versionId: string
   ): Promise<PromptVersionResponse> => {
-    const response = await api.get<PromptVersionResponse>(
+    return apiGet<PromptVersionResponse>(
       `/api/v1/workspaces/${workspaceId}/agents/${agentId}/prompts/${versionId}`
     );
-    return response.data;
   },
 
   create: async (
@@ -148,11 +145,10 @@ export const promptVersionsApi = {
     agentId: string,
     data: CreatePromptVersionRequest
   ): Promise<PromptVersionResponse> => {
-    const response = await api.post<PromptVersionResponse>(
+    return apiPost<PromptVersionResponse>(
       `/api/v1/workspaces/${workspaceId}/agents/${agentId}/prompts`,
       data
     );
-    return response.data;
   },
 
   update: async (
@@ -161,11 +157,10 @@ export const promptVersionsApi = {
     versionId: string,
     data: UpdatePromptVersionRequest
   ): Promise<PromptVersionResponse> => {
-    const response = await api.put<PromptVersionResponse>(
+    return apiPut<PromptVersionResponse>(
       `/api/v1/workspaces/${workspaceId}/agents/${agentId}/prompts/${versionId}`,
       data
     );
-    return response.data;
   },
 
   activate: async (
@@ -173,13 +168,12 @@ export const promptVersionsApi = {
     agentId: string,
     versionId: string
   ): Promise<{ activated_version: PromptVersionResponse; deactivated_version_id: string | null }> => {
-    const response = await api.post<{
+    return apiPost<{
       activated_version: PromptVersionResponse;
       deactivated_version_id: string | null;
     }>(
       `/api/v1/workspaces/${workspaceId}/agents/${agentId}/prompts/${versionId}/activate`
     );
-    return response.data;
   },
 
   activateForTesting: async (
@@ -187,10 +181,9 @@ export const promptVersionsApi = {
     agentId: string,
     versionId: string
   ): Promise<PromptVersionResponse> => {
-    const response = await api.post<PromptVersionResponse>(
+    return apiPost<PromptVersionResponse>(
       `/api/v1/workspaces/${workspaceId}/agents/${agentId}/prompts/${versionId}/activate-for-testing`
     );
-    return response.data;
   },
 
   deactivate: async (
@@ -198,10 +191,9 @@ export const promptVersionsApi = {
     agentId: string,
     versionId: string
   ): Promise<PromptVersionResponse> => {
-    const response = await api.post<PromptVersionResponse>(
+    return apiPost<PromptVersionResponse>(
       `/api/v1/workspaces/${workspaceId}/agents/${agentId}/prompts/${versionId}/deactivate`
     );
-    return response.data;
   },
 
   pause: async (
@@ -209,10 +201,9 @@ export const promptVersionsApi = {
     agentId: string,
     versionId: string
   ): Promise<PromptVersionResponse> => {
-    const response = await api.post<PromptVersionResponse>(
+    return apiPost<PromptVersionResponse>(
       `/api/v1/workspaces/${workspaceId}/agents/${agentId}/prompts/${versionId}/pause`
     );
-    return response.data;
   },
 
   resume: async (
@@ -220,10 +211,9 @@ export const promptVersionsApi = {
     agentId: string,
     versionId: string
   ): Promise<PromptVersionResponse> => {
-    const response = await api.post<PromptVersionResponse>(
+    return apiPost<PromptVersionResponse>(
       `/api/v1/workspaces/${workspaceId}/agents/${agentId}/prompts/${versionId}/resume`
     );
-    return response.data;
   },
 
   eliminate: async (
@@ -231,10 +221,9 @@ export const promptVersionsApi = {
     agentId: string,
     versionId: string
   ): Promise<PromptVersionResponse> => {
-    const response = await api.post<PromptVersionResponse>(
+    return apiPost<PromptVersionResponse>(
       `/api/v1/workspaces/${workspaceId}/agents/${agentId}/prompts/${versionId}/eliminate`
     );
-    return response.data;
   },
 
   rollback: async (
@@ -242,13 +231,12 @@ export const promptVersionsApi = {
     agentId: string,
     versionId: string
   ): Promise<{ new_version: PromptVersionResponse; rolled_back_from: string }> => {
-    const response = await api.post<{
+    return apiPost<{
       new_version: PromptVersionResponse;
       rolled_back_from: string;
     }>(
       `/api/v1/workspaces/${workspaceId}/agents/${agentId}/prompts/${versionId}/rollback`
     );
-    return response.data;
   },
 
   getStats: async (
@@ -257,11 +245,10 @@ export const promptVersionsApi = {
     versionId: string,
     days: number = 30
   ): Promise<PromptVersionStatsResponse> => {
-    const response = await api.get<PromptVersionStatsResponse>(
+    return apiGet<PromptVersionStatsResponse>(
       `/api/v1/workspaces/${workspaceId}/agents/${agentId}/prompts/${versionId}/stats`,
       { params: { days } }
     );
-    return response.data;
   },
 
   compare: async (
@@ -269,11 +256,10 @@ export const promptVersionsApi = {
     agentId: string,
     winnerThreshold: number = 0.95
   ): Promise<VersionComparisonResponse> => {
-    const response = await api.get<VersionComparisonResponse>(
+    return apiGet<VersionComparisonResponse>(
       `/api/v1/workspaces/${workspaceId}/agents/${agentId}/prompts/compare`,
       { params: { winner_threshold: winnerThreshold } }
     );
-    return response.data;
   },
 
   detectWinner: async (
@@ -281,10 +267,9 @@ export const promptVersionsApi = {
     agentId: string,
     threshold: number = 0.95
   ): Promise<WinnerDetectionResponse> => {
-    const response = await api.get<WinnerDetectionResponse>(
+    return apiGet<WinnerDetectionResponse>(
       `/api/v1/workspaces/${workspaceId}/agents/${agentId}/prompts/winner`,
       { params: { threshold } }
     );
-    return response.data;
   },
 };

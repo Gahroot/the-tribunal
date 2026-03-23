@@ -1,4 +1,4 @@
-import api from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 
 export interface User {
   id: number;
@@ -31,28 +31,23 @@ export async function login(credentials: LoginCredentials): Promise<AuthResponse
   formData.append("username", credentials.email);
   formData.append("password", credentials.password);
 
-  const response = await api.post<AuthResponse>("/api/v1/auth/login", formData, {
+  return apiPost<AuthResponse>("/api/v1/auth/login", formData, {
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
     },
   });
-
-  return response.data;
 }
 
 export async function register(data: RegisterData): Promise<User> {
-  const response = await api.post<User>("/api/v1/auth/register", data);
-  return response.data;
+  return apiPost<User>("/api/v1/auth/register", data);
 }
 
 export async function getCurrentUser(): Promise<User> {
-  const response = await api.get<User>("/api/v1/auth/me");
-  return response.data;
+  return apiGet<User>("/api/v1/auth/me");
 }
 
 export async function refreshToken(refreshToken: string): Promise<AuthResponse> {
-  const response = await api.post<AuthResponse>("/api/v1/auth/refresh", {
+  return apiPost<AuthResponse>("/api/v1/auth/refresh", {
     refresh_token: refreshToken,
   });
-  return response.data;
 }

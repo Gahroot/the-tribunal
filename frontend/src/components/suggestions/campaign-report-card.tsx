@@ -64,7 +64,7 @@ export function CampaignReportCard({ report }: CampaignReportCardProps) {
   const statusBadge = (() => {
     switch (report.status) {
       case "completed":
-        return <Badge className="bg-green-600">Completed</Badge>;
+        return <Badge className="bg-success">Completed</Badge>;
       case "generating":
         return (
           <Badge variant="secondary" className="gap-1">
@@ -135,7 +135,7 @@ export function CampaignReportCard({ report }: CampaignReportCardProps) {
               count={report.what_worked.length}
               isOpen={expandedSection === "worked"}
               onToggle={() => toggleSection("worked")}
-              icon={<ThumbsUp className="h-4 w-4 text-green-600" />}
+              icon={<ThumbsUp className="h-4 w-4 text-success" />}
             >
               <div className="space-y-3">
                 {report.what_worked.map((item, i) => (
@@ -152,7 +152,7 @@ export function CampaignReportCard({ report }: CampaignReportCardProps) {
               count={report.what_didnt_work.length}
               isOpen={expandedSection === "didnt_work"}
               onToggle={() => toggleSection("didnt_work")}
-              icon={<ThumbsDown className="h-4 w-4 text-red-600" />}
+              icon={<ThumbsDown className="h-4 w-4 text-destructive" />}
             >
               <div className="space-y-3">
                 {report.what_didnt_work.map((item, i) => (
@@ -169,7 +169,7 @@ export function CampaignReportCard({ report }: CampaignReportCardProps) {
               count={report.recommendations.length}
               isOpen={expandedSection === "recommendations"}
               onToggle={() => toggleSection("recommendations")}
-              icon={<ArrowRight className="h-4 w-4 text-blue-600" />}
+              icon={<ArrowRight className="h-4 w-4 text-info" />}
             >
               <div className="space-y-3">
                 {report.recommendations.map((rec, i) => (
@@ -185,7 +185,7 @@ export function CampaignReportCard({ report }: CampaignReportCardProps) {
               title="Timing Analysis"
               isOpen={expandedSection === "timing"}
               onToggle={() => toggleSection("timing")}
-              icon={<Clock className="h-4 w-4 text-purple-600" />}
+              icon={<Clock className="h-4 w-4 text-primary" />}
             >
               <div className="rounded-md border bg-muted/30 p-3">
                 <p className="text-sm">{report.timing_analysis.recommendation}</p>
@@ -201,8 +201,8 @@ export function CampaignReportCard({ report }: CampaignReportCardProps) {
 
           {/* Generated Suggestions Link */}
           {report.generated_suggestion_ids && report.generated_suggestion_ids.length > 0 && (
-            <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
-              <AlertTriangle className="h-4 w-4 text-amber-600" />
+            <div className="flex items-center gap-2 rounded-md border border-warning/20 bg-warning/10 p-3">
+              <AlertTriangle className="h-4 w-4 text-warning" />
               <p className="text-sm">
                 This report spawned{" "}
                 <span className="font-medium">
@@ -218,8 +218,8 @@ export function CampaignReportCard({ report }: CampaignReportCardProps) {
 
       {report.status === "failed" && report.error_message && (
         <CardContent>
-          <div className="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950/30">
-            <p className="text-sm text-red-700 dark:text-red-300">{report.error_message}</p>
+          <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3">
+            <p className="text-sm text-destructive">{report.error_message}</p>
           </div>
         </CardContent>
       )}
@@ -317,9 +317,9 @@ function EvidenceItem({
 
 function RecommendationItem({ rec }: { rec: CampaignReportRecommendation }) {
   const priorityColor = {
-    high: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-    medium: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
-    low: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+    high: "bg-destructive/10 text-destructive",
+    medium: "bg-warning/10 text-warning",
+    low: "bg-info/10 text-info",
   };
 
   return (

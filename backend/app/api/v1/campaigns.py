@@ -50,13 +50,7 @@ async def list_campaigns(
     query = query.order_by(Campaign.created_at.desc())
     result = await paginate(db, query, page=page, page_size=page_size)
 
-    return PaginatedCampaigns(
-        items=[CampaignResponse.model_validate(c) for c in result.items],
-        total=result.total,
-        page=result.page,
-        page_size=result.page_size,
-        pages=result.pages,
-    )
+    return PaginatedCampaigns(**result.to_response(CampaignResponse))
 
 
 @router.post("", response_model=CampaignResponse, status_code=status.HTTP_201_CREATED)

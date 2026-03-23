@@ -138,7 +138,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
           </Button>
         </div>
         <div className="flex flex-col items-center gap-4 py-12">
-          <AlertCircle className="size-12 text-red-500" />
+          <AlertCircle className="size-12 text-destructive" />
           <h2 className="text-xl font-semibold">Campaign not found</h2>
           <p className="text-muted-foreground text-center">
             The campaign could not be loaded. It may have been deleted.
@@ -302,7 +302,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
               </div>
               {campaign.messages_failed > 0 && (
                 <div>
-                  <p className="text-2xl font-bold text-red-600">
+                  <p className="text-2xl font-bold text-destructive">
                     {campaign.messages_failed}
                   </p>
                   <p className="text-xs text-muted-foreground">Failed</p>
@@ -311,7 +311,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
               {campaign.appointments_booked > 0 && (
                 <div>
                   <p className="text-2xl font-bold flex items-center gap-1.5">
-                    <CalendarCheck className="size-5 text-green-600" />
+                    <CalendarCheck className="size-5 text-success" />
                     {campaign.appointments_booked}
                   </p>
                   <p className="text-xs text-muted-foreground">Booked</p>

@@ -12,7 +12,7 @@ from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
 from app.models.tag import ContactTag
 from app.services.contacts.contact_filters import apply_contact_filters
-from app.services.telephony.telnyx import normalize_phone_number
+from app.utils.phone import normalize_phone_safe
 
 logger = structlog.get_logger()
 
@@ -391,7 +391,7 @@ async def get_contact_timeline(
 
     # Normalize contact phone for matching
     normalized_contact_phone = (
-        normalize_phone_number(contact.phone_number) if contact.phone_number else None
+        normalize_phone_safe(contact.phone_number) if contact.phone_number else None
     )
 
     # Get conversations for this contact (by contact_id or phone number)
@@ -559,7 +559,7 @@ async def find_or_create_conversation(
 
     # If not found by contact_id, try finding by phone number
     if conversation is None:
-        normalized_contact_phone = normalize_phone_number(contact_phone)
+        normalized_contact_phone = normalize_phone_safe(contact_phone) or contact_phone
         conv_result = await db.execute(
             select(Conversation)
             .where(
@@ -584,7 +584,7 @@ async def find_or_create_conversation(
             workspace_id=workspace_id,
             contact_id=contact_id,
             workspace_phone=workspace_phone,
-            contact_phone=normalize_phone_number(contact_phone),
+            contact_phone=normalize_phone_safe(contact_phone) or contact_phone,
             channel="sms",
             ai_enabled=False,
         )

@@ -1,3 +1,4 @@
+import { apiGet, apiPost } from "@/lib/api";
 import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
 import type { Automation, AutomationActionType, AutomationTriggerType } from "@/types";
 
@@ -95,18 +96,15 @@ export const automationsApi = {
   ...baseAutomationsApi,
 
   getStats: async (workspaceId: string): Promise<AutomationStatsResponse> => {
-    const { default: api } = await import("@/lib/api");
-    const response = await api.get<AutomationStatsResponse>(
+    return apiGet<AutomationStatsResponse>(
       `/api/v1/workspaces/${workspaceId}/automations/stats`
     );
-    return response.data;
   },
 
   toggle: async (workspaceId: string, automationId: string): Promise<Automation> => {
-    const { default: api } = await import("@/lib/api");
-    const response = await api.post<AutomationResponse>(
+    const data = await apiPost<AutomationResponse>(
       `/api/v1/workspaces/${workspaceId}/automations/${automationId}/toggle`
     );
-    return transformAutomation(response.data);
+    return transformAutomation(data);
   },
 };

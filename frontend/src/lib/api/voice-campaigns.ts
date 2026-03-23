@@ -1,4 +1,4 @@
-import api from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 import type {
   VoiceCampaign,
   VoiceCampaignContact,
@@ -98,11 +98,10 @@ export const voiceCampaignsApi = {
     workspaceId: string,
     params: VoiceCampaignsListParams = {}
   ): Promise<VoiceCampaign[]> => {
-    const response = await api.get<VoiceCampaign[]>(
+    return apiGet<VoiceCampaign[]>(
       `/api/v1/workspaces/${workspaceId}/voice-campaigns`,
       { params }
     );
-    return response.data;
   },
 
   // Start a voice campaign
@@ -110,10 +109,9 @@ export const voiceCampaignsApi = {
     workspaceId: string,
     id: string
   ): Promise<{ status: string; message: string }> => {
-    const response = await api.post<{ status: string; message: string }>(
+    return apiPost<{ status: string; message: string }>(
       `/api/v1/workspaces/${workspaceId}/voice-campaigns/${id}/start`
     );
-    return response.data;
   },
 
   // Pause a voice campaign
@@ -121,10 +119,9 @@ export const voiceCampaignsApi = {
     workspaceId: string,
     id: string
   ): Promise<{ status: string }> => {
-    const response = await api.post<{ status: string }>(
+    return apiPost<{ status: string }>(
       `/api/v1/workspaces/${workspaceId}/voice-campaigns/${id}/pause`
     );
-    return response.data;
   },
 
   // Resume a voice campaign
@@ -132,10 +129,9 @@ export const voiceCampaignsApi = {
     workspaceId: string,
     id: string
   ): Promise<{ status: string }> => {
-    const response = await api.post<{ status: string }>(
+    return apiPost<{ status: string }>(
       `/api/v1/workspaces/${workspaceId}/voice-campaigns/${id}/resume`
     );
-    return response.data;
   },
 
   // Cancel a voice campaign
@@ -143,10 +139,9 @@ export const voiceCampaignsApi = {
     workspaceId: string,
     id: string
   ): Promise<{ status: string }> => {
-    const response = await api.post<{ status: string }>(
+    return apiPost<{ status: string }>(
       `/api/v1/workspaces/${workspaceId}/voice-campaigns/${id}/cancel`
     );
-    return response.data;
   },
 
   // Add contacts to a voice campaign
@@ -155,11 +150,10 @@ export const voiceCampaignsApi = {
     campaignId: string,
     data: AddContactsRequest
   ): Promise<{ added: number }> => {
-    const response = await api.post<{ added: number }>(
+    return apiPost<{ added: number }>(
       `/api/v1/workspaces/${workspaceId}/voice-campaigns/${campaignId}/contacts`,
       data
     );
-    return response.data;
   },
 
   // List contacts in a voice campaign
@@ -168,11 +162,10 @@ export const voiceCampaignsApi = {
     campaignId: string,
     params: VoiceCampaignContactsListParams = {}
   ): Promise<VoiceCampaignContact[]> => {
-    const response = await api.get<VoiceCampaignContact[]>(
+    return apiGet<VoiceCampaignContact[]>(
       `/api/v1/workspaces/${workspaceId}/voice-campaigns/${campaignId}/contacts`,
       { params }
     );
-    return response.data;
   },
 
   // Get voice campaign analytics
@@ -180,17 +173,15 @@ export const voiceCampaignsApi = {
     workspaceId: string,
     campaignId: string
   ): Promise<VoiceCampaignAnalytics> => {
-    const response = await api.get<VoiceCampaignAnalytics>(
+    return apiGet<VoiceCampaignAnalytics>(
       `/api/v1/workspaces/${workspaceId}/voice-campaigns/${campaignId}/analytics`
     );
-    return response.data;
   },
 
   // Get voice campaign guarantee progress
   getGuaranteeProgress: async (workspaceId: string, campaignId: string): Promise<GuaranteeProgress> => {
-    const response = await api.get<GuaranteeProgress>(
+    return apiGet<GuaranteeProgress>(
       `/api/v1/workspaces/${workspaceId}/voice-campaigns/${campaignId}/guarantee`
     );
-    return response.data;
   },
 };

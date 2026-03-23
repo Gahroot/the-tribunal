@@ -27,7 +27,7 @@ export function ConversationLayout({ className }: ConversationLayoutProps) {
         {/* Mobile Header with navigation */}
         <div className="flex items-center justify-between px-2 py-2 border-b">
           <div className="flex items-center gap-1">
-            <Link href="/">
+            <Link href="/contacts">
               <Button size="icon" variant="ghost" className="h-9 w-9">
                 <ArrowLeft className="h-4 w-4" />
               </Button>

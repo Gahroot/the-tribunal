@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DB, CurrentUser, get_workspace
+from app.db.pagination import paginate
 from app.models.agent import Agent
 from app.models.campaign import (
     Campaign,
@@ -23,6 +24,7 @@ from app.models.workspace import Workspace
 from app.schemas.campaign import (
     CampaignContactAdd,
     GuaranteeProgressResponse,
+    PaginatedVoiceCampaigns,
     VoiceCampaignAnalytics,
     VoiceCampaignContactResponse,
     VoiceCampaignCreate,
@@ -59,7 +61,7 @@ async def _get_voice_campaign(
     return campaign
 
 
-@router.get("", response_model=list[VoiceCampaignResponse])
+@router.get("", response_model=PaginatedVoiceCampaigns)
 async def list_voice_campaigns(
     workspace_id: uuid.UUID,
     current_user: CurrentUser,
@@ -68,7 +70,7 @@ async def list_voice_campaigns(
     status_filter: str | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
-) -> list[Campaign]:
+) -> PaginatedVoiceCampaigns:
     """List voice campaigns in a workspace."""
     query = select(Campaign).where(
         and_(
@@ -81,12 +83,9 @@ async def list_voice_campaigns(
         query = query.where(Campaign.status == status_filter)
 
     query = query.order_by(Campaign.created_at.desc())
-    query = query.offset((page - 1) * page_size).limit(page_size)
 
-    result = await db.execute(query)
-    campaigns = result.scalars().all()
-
-    return list(campaigns)
+    result = await paginate(db, query, page=page, page_size=page_size)
+    return PaginatedVoiceCampaigns(**result.to_response(VoiceCampaignResponse))
 
 
 @router.post("", response_model=VoiceCampaignResponse, status_code=status.HTTP_201_CREATED)

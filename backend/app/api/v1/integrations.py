@@ -1,6 +1,5 @@
 """Integration credential management endpoints."""
 
-import uuid
 from typing import Any
 
 import httpx
@@ -8,8 +7,8 @@ import structlog
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
-from app.api.deps import DB, CurrentUser
-from app.models.workspace import WorkspaceIntegration, WorkspaceMembership
+from app.api.deps import DB, CurrentUser, WorkspaceAccess, WorkspaceAdminAccess
+from app.models.workspace import WorkspaceIntegration
 from app.schemas.integration import (
     IntegrationCreate,
     IntegrationTestResult,
@@ -44,48 +43,15 @@ def mask_credentials(credentials: dict[str, Any]) -> dict[str, str]:
     return masked
 
 
-async def verify_workspace_access(
-    db: DB,
-    current_user: CurrentUser,
-    workspace_id: uuid.UUID,
-    require_admin: bool = False,
-) -> WorkspaceMembership:
-    """Verify user has access to workspace and optionally require admin role."""
-    result = await db.execute(
-        select(WorkspaceMembership).where(
-            WorkspaceMembership.user_id == current_user.id,
-            WorkspaceMembership.workspace_id == workspace_id,
-        )
-    )
-    membership = result.scalar_one_or_none()
-
-    if membership is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Workspace not found or access denied",
-        )
-
-    if require_admin and membership.role not in ("owner", "admin"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
-
-    return membership
-
-
 @router.get("", response_model=list[IntegrationWithMaskedCredentials])
 async def list_integrations(
-    workspace_id: uuid.UUID,
-    current_user: CurrentUser,
+    workspace: WorkspaceAccess,
     db: DB,
 ) -> list[IntegrationWithMaskedCredentials]:
     """List all integrations for a workspace with masked credentials."""
-    await verify_workspace_access(db, current_user, workspace_id)
-
     result = await db.execute(
         select(WorkspaceIntegration).where(
-            WorkspaceIntegration.workspace_id == workspace_id,
+            WorkspaceIntegration.workspace_id == workspace.id,
         )
     )
     integrations = result.scalars().all()
@@ -106,17 +72,14 @@ async def list_integrations(
 
 @router.get("/{integration_type}", response_model=IntegrationWithMaskedCredentials)
 async def get_integration(
-    workspace_id: uuid.UUID,
     integration_type: str,
-    current_user: CurrentUser,
+    workspace: WorkspaceAccess,
     db: DB,
 ) -> IntegrationWithMaskedCredentials:
     """Get a specific integration by type."""
-    await verify_workspace_access(db, current_user, workspace_id)
-
     result = await db.execute(
         select(WorkspaceIntegration).where(
-            WorkspaceIntegration.workspace_id == workspace_id,
+            WorkspaceIntegration.workspace_id == workspace.id,
             WorkspaceIntegration.integration_type == integration_type,
         )
     )
@@ -145,18 +108,16 @@ async def get_integration(
     status_code=status.HTTP_201_CREATED,
 )
 async def create_integration(
-    workspace_id: uuid.UUID,
     integration_data: IntegrationCreate,
+    workspace: WorkspaceAdminAccess,
     current_user: CurrentUser,
     db: DB,
 ) -> IntegrationWithMaskedCredentials:
     """Create a new integration for the workspace."""
-    await verify_workspace_access(db, current_user, workspace_id, require_admin=True)
-
     # Check if integration already exists
     result = await db.execute(
         select(WorkspaceIntegration).where(
-            WorkspaceIntegration.workspace_id == workspace_id,
+            WorkspaceIntegration.workspace_id == workspace.id,
             WorkspaceIntegration.integration_type == integration_data.integration_type,
         )
     )
@@ -170,7 +131,7 @@ async def create_integration(
         )
 
     integration = WorkspaceIntegration(
-        workspace_id=workspace_id,
+        workspace_id=workspace.id,
         integration_type=integration_data.integration_type,
         credentials=integration_data.credentials,
         is_active=integration_data.is_active,
@@ -181,7 +142,7 @@ async def create_integration(
 
     logger.info(
         "integration_created",
-        workspace_id=str(workspace_id),
+        workspace_id=str(workspace.id),
         integration_type=integration_data.integration_type,
         user_id=current_user.id,
     )
@@ -199,18 +160,16 @@ async def create_integration(
 
 @router.put("/{integration_type}", response_model=IntegrationWithMaskedCredentials)
 async def update_integration(
-    workspace_id: uuid.UUID,
     integration_type: str,
     integration_data: IntegrationUpdate,
+    workspace: WorkspaceAdminAccess,
     current_user: CurrentUser,
     db: DB,
 ) -> IntegrationWithMaskedCredentials:
     """Update an existing integration's credentials."""
-    await verify_workspace_access(db, current_user, workspace_id, require_admin=True)
-
     result = await db.execute(
         select(WorkspaceIntegration).where(
-            WorkspaceIntegration.workspace_id == workspace_id,
+            WorkspaceIntegration.workspace_id == workspace.id,
             WorkspaceIntegration.integration_type == integration_type,
         )
     )
@@ -232,7 +191,7 @@ async def update_integration(
 
     logger.info(
         "integration_updated",
-        workspace_id=str(workspace_id),
+        workspace_id=str(workspace.id),
         integration_type=integration_type,
         user_id=current_user.id,
     )
@@ -250,17 +209,15 @@ async def update_integration(
 
 @router.delete("/{integration_type}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_integration(
-    workspace_id: uuid.UUID,
     integration_type: str,
+    workspace: WorkspaceAdminAccess,
     current_user: CurrentUser,
     db: DB,
 ) -> None:
     """Delete an integration."""
-    await verify_workspace_access(db, current_user, workspace_id, require_admin=True)
-
     result = await db.execute(
         select(WorkspaceIntegration).where(
-            WorkspaceIntegration.workspace_id == workspace_id,
+            WorkspaceIntegration.workspace_id == workspace.id,
             WorkspaceIntegration.integration_type == integration_type,
         )
     )
@@ -277,7 +234,7 @@ async def delete_integration(
 
     logger.info(
         "integration_deleted",
-        workspace_id=str(workspace_id),
+        workspace_id=str(workspace.id),
         integration_type=integration_type,
         user_id=current_user.id,
     )
@@ -397,17 +354,14 @@ _INTEGRATION_TESTERS = {
 
 @router.post("/{integration_type}/test", response_model=IntegrationTestResult)
 async def test_integration(
-    workspace_id: uuid.UUID,
     integration_type: str,
-    current_user: CurrentUser,
+    workspace: WorkspaceAccess,
     db: DB,
 ) -> IntegrationTestResult:
     """Test an integration's connection using stored credentials."""
-    await verify_workspace_access(db, current_user, workspace_id)
-
     result = await db.execute(
         select(WorkspaceIntegration).where(
-            WorkspaceIntegration.workspace_id == workspace_id,
+            WorkspaceIntegration.workspace_id == workspace.id,
             WorkspaceIntegration.integration_type == integration_type,
         )
     )

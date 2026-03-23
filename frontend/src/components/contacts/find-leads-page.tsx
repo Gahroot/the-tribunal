@@ -235,10 +235,10 @@ export function FindLeadsPage() {
           <div className="flex flex-col h-full p-6 gap-4">
             {/* Import Result Banner */}
             {importResult && (
-              <Card className="border-green-500/50 bg-green-500/5">
+              <Card className="border-success/20 bg-success/10">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-4">
-                    <CheckCircle2 className="h-8 w-8 text-green-500" />
+                    <CheckCircle2 className="h-8 w-8 text-success" />
                     <div className="flex-1">
                       <p className="font-medium">
                         Successfully imported {importResult.imported} leads
@@ -253,7 +253,7 @@ export function FindLeadsPage() {
                       </div>
                     </div>
                     <Button variant="outline" size="sm" asChild>
-                      <Link href="/">View Contacts</Link>
+                      <Link href="/contacts">View Contacts</Link>
                     </Button>
                   </div>
                 </CardContent>
@@ -392,7 +392,7 @@ export function FindLeadsPage() {
                             </CardTitle>
                             {result.rating && (
                               <div className="flex items-center gap-1 mt-1">
-                                <Star className="h-3 w-3 fill-yellow-500 text-yellow-500" />
+                                <Star className="h-3 w-3 fill-warning text-warning" />
                                 <span className="text-sm">{result.rating}</span>
                                 {result.review_count > 0 && (
                                   <span className="text-xs text-muted-foreground">
@@ -415,7 +415,7 @@ export function FindLeadsPage() {
                           <div
                             className={cn(
                               "flex items-center gap-1",
-                              result.has_phone ? "text-green-600" : "text-muted-foreground"
+                              result.has_phone ? "text-success" : "text-muted-foreground"
                             )}
                           >
                             <Phone className="h-3 w-3" />
@@ -426,7 +426,7 @@ export function FindLeadsPage() {
                           <div
                             className={cn(
                               "flex items-center gap-1",
-                              result.has_website ? "text-blue-600" : "text-muted-foreground"
+                              result.has_website ? "text-info" : "text-muted-foreground"
                             )}
                           >
                             <Globe className="h-3 w-3" />

@@ -106,7 +106,7 @@ export function OfferPreview({ offer, leadMagnets = [] }: OfferPreviewProps) {
             leadMagnets.length > 0) && (
             <div className="space-y-3">
               <h3 className="font-semibold flex items-center gap-2">
-                <Sparkles className="size-4 text-yellow-500" />
+                <Sparkles className="size-4 text-warning" />
                 Here&apos;s Everything You Get:
               </h3>
 
@@ -123,7 +123,7 @@ export function OfferPreview({ offer, leadMagnets = [] }: OfferPreviewProps) {
                       className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
                     >
                       <div className="flex items-center gap-2">
-                        <CheckCircle className="size-5 text-green-500" />
+                        <CheckCircle className="size-5 text-success" />
                         <div>
                           <p className="font-medium">{item.name}</p>
                           {item.description && (
@@ -150,16 +150,16 @@ export function OfferPreview({ offer, leadMagnets = [] }: OfferPreviewProps) {
                     transition={{
                       delay: (offer.value_stack_items?.length || 0) * 0.1 + index * 0.1,
                     }}
-                    className="flex items-center justify-between p-3 bg-blue-500/5 rounded-lg border border-blue-500/20"
+                    className="flex items-center justify-between p-3 bg-info/10 rounded-lg border border-info/20"
                   >
                     <div className="flex items-center gap-2">
-                      <Gift className="size-5 text-blue-500" />
+                      <Gift className="size-5 text-info" />
                       <div>
                         <div className="flex items-center gap-2">
                           <p className="font-medium">{magnet.name}</p>
                           <Badge
                             variant="secondary"
-                            className="bg-blue-500/10 text-blue-600"
+                            className="bg-info/10 text-info"
                           >
                             BONUS
                           </Badge>
@@ -209,7 +209,7 @@ export function OfferPreview({ offer, leadMagnets = [] }: OfferPreviewProps) {
             <div className="py-2">
               <p className="text-sm text-muted-foreground">Your Price Today</p>
               <div className="flex items-center justify-center gap-3">
-                <p className="text-4xl font-bold text-green-600">
+                <p className="text-4xl font-bold text-success">
                   {offer.offer_price !== undefined && offer.offer_price !== null
                     ? `$${offer.offer_price.toLocaleString()}`
                     : offer.discount_type === "free_service"
@@ -217,7 +217,7 @@ export function OfferPreview({ offer, leadMagnets = [] }: OfferPreviewProps) {
                     : formatDiscount() || "Contact Us"}
                 </p>
                 {savings > 0 && (
-                  <Badge className="bg-red-500 text-white">
+                  <Badge className="bg-destructive text-white">
                     Save ${savings.toLocaleString()}
                   </Badge>
                 )}
@@ -230,11 +230,11 @@ export function OfferPreview({ offer, leadMagnets = [] }: OfferPreviewProps) {
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex items-start gap-3 p-4 bg-green-500/5 rounded-lg border border-green-500/20"
+              className="flex items-start gap-3 p-4 bg-success/10 rounded-lg border border-success/20"
             >
-              <Shield className="size-6 text-green-600 mt-0.5" />
+              <Shield className="size-6 text-success mt-0.5" />
               <div>
-                <p className="font-semibold text-green-700 dark:text-green-400">
+                <p className="font-semibold text-success">
                   {guaranteeLabels[offer.guarantee_type] || offer.guarantee_type}
                   {offer.guarantee_days && ` - ${offer.guarantee_days} Days`}
                 </p>
@@ -252,15 +252,15 @@ export function OfferPreview({ offer, leadMagnets = [] }: OfferPreviewProps) {
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex items-start gap-3 p-4 bg-amber-500/5 rounded-lg border border-amber-500/20"
+              className="flex items-start gap-3 p-4 bg-warning/10 rounded-lg border border-warning/20"
             >
               {offer.urgency_type === "limited_quantity" ? (
-                <AlertTriangle className="size-6 text-amber-600 mt-0.5" />
+                <AlertTriangle className="size-6 text-warning mt-0.5" />
               ) : (
-                <Clock className="size-6 text-amber-600 mt-0.5" />
+                <Clock className="size-6 text-warning mt-0.5" />
               )}
               <div>
-                <p className="font-semibold text-amber-700 dark:text-amber-400">
+                <p className="font-semibold text-warning">
                   {offer.urgency_type
                     ? urgencyLabels[offer.urgency_type]
                     : "Limited Availability"}
@@ -271,7 +271,7 @@ export function OfferPreview({ offer, leadMagnets = [] }: OfferPreviewProps) {
                   </p>
                 )}
                 {offer.scarcity_count && offer.scarcity_count > 0 && (
-                  <p className="text-sm font-medium text-amber-600 mt-1">
+                  <p className="text-sm font-medium text-warning mt-1">
                     Only {offer.scarcity_count} spots remaining!
                   </p>
                 )}

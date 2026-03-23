@@ -1,6 +1,7 @@
 "use client";
 
 import type React from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   Users,
@@ -31,6 +32,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { AppointmentPerformanceCard } from "@/components/dashboard/appointment-performance-card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -52,13 +59,17 @@ const containerVariants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: { staggerChildren: 0.1 },
+    transition: { staggerChildren: 0.07 },
   },
 };
 
 const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0 },
+  hidden: { opacity: 0, y: 16 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { type: "spring" as const, stiffness: 300, damping: 24 },
+  },
 };
 
 function formatNumber(num: number): string {
@@ -75,6 +86,30 @@ function isTrendUp(change: string): boolean {
   return change.startsWith("+") && change !== "+0" && change !== "+0%";
 }
 
+function AnimatedNumber({ value }: { value: number }) {
+  const [display, setDisplay] = useState(0);
+
+  useEffect(() => {
+    const end = value;
+    if (end === 0) return;
+    const duration = 1000;
+    const startTime = performance.now();
+
+    const step = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // Ease out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplay(Math.floor(eased * end));
+      if (progress < 1) requestAnimationFrame(step);
+    };
+
+    requestAnimationFrame(step);
+  }, [value]);
+
+  return <span>{formatNumber(display)}</span>;
+}
+
 interface StatCardProps {
   title: string;
   value: number;
@@ -88,17 +123,19 @@ function StatCard({ title, value, change, href, icon }: StatCardProps) {
 
   return (
     <Link href={href}>
-      <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
+      <Card className="card-glow card-interactive hover:bg-muted/50 transition-colors cursor-pointer">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardDescription>{title}</CardDescription>
-          {icon}
+          <div className="rounded-lg bg-primary/10 p-2 ring-1 ring-primary/20">
+            {icon}
+          </div>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-between">
-            <div className="text-2xl font-bold">{formatNumber(value)}</div>
+            <div className="text-2xl font-bold tabular-nums"><AnimatedNumber value={value} /></div>
             <div
               className={`flex items-center text-sm ${
-                trendUp ? "text-green-500" : "text-red-500"
+                trendUp ? "text-success" : "text-destructive"
               }`}
             >
               {trendUp ? (
@@ -162,8 +199,8 @@ function StatsGrid({ stats, isLoading }: StatsGridProps) {
           title="Total Contacts"
           value={stats.total_contacts}
           change={stats.contacts_change}
-          href="/"
-          icon={<Users className="size-4 text-muted-foreground" />}
+          href="/contacts"
+          icon={<Users className="size-4 text-primary" />}
         />
       </motion.div>
       <motion.div variants={itemVariants}>
@@ -172,7 +209,7 @@ function StatsGrid({ stats, isLoading }: StatsGridProps) {
           value={stats.active_campaigns}
           change={stats.campaigns_change}
           href="/campaigns"
-          icon={<Megaphone className="size-4 text-muted-foreground" />}
+          icon={<Megaphone className="size-4 text-primary" />}
         />
       </motion.div>
       <motion.div variants={itemVariants}>
@@ -181,7 +218,7 @@ function StatsGrid({ stats, isLoading }: StatsGridProps) {
           value={stats.calls_today}
           change={stats.calls_change}
           href="/calls"
-          icon={<Phone className="size-4 text-muted-foreground" />}
+          icon={<Phone className="size-4 text-primary" />}
         />
       </motion.div>
       <motion.div variants={itemVariants}>
@@ -190,7 +227,7 @@ function StatsGrid({ stats, isLoading }: StatsGridProps) {
           value={stats.messages_sent}
           change={stats.messages_change}
           href="/campaigns"
-          icon={<MessageSquare className="size-4 text-muted-foreground" />}
+          icon={<MessageSquare className="size-4 text-primary" />}
         />
       </motion.div>
     </motion.div>
@@ -207,7 +244,7 @@ function ActiveCampaignsCard({ campaigns, isLoading }: ActiveCampaignsCardProps)
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
-          <CardTitle>Active Campaigns</CardTitle>
+          <CardTitle className="gradient-heading">Active Campaigns</CardTitle>
           <CardDescription>
             Currently running and scheduled campaigns
           </CardDescription>
@@ -252,8 +289,8 @@ function ActiveCampaignsCard({ campaigns, isLoading }: ActiveCampaignsCardProps)
                       variant="outline"
                       className={
                         campaign.status === "running"
-                          ? "bg-green-500/10 text-green-500 border-green-500/20"
-                          : "bg-blue-500/10 text-blue-500 border-blue-500/20"
+                          ? "bg-success/10 text-success border-success/20"
+                          : "bg-info/10 text-info border-info/20"
                       }
                     >
                       {campaign.status}
@@ -282,7 +319,7 @@ function AgentsCard({ agents, isLoading }: AgentsCardProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle className="flex items-center gap-2 gradient-heading">
           <Bot className="size-5" />
           AI Agents
         </CardTitle>
@@ -326,7 +363,7 @@ function AgentsCard({ agents, isLoading }: AgentsCardProps) {
                 </div>
               </div>
               <div className="text-right">
-                <p className="font-medium text-green-500">
+                <p className="font-medium text-success">
                   {agent.success_rate}%
                 </p>
                 <p className="text-xs text-muted-foreground">success</p>
@@ -351,7 +388,7 @@ function RecentActivityCard({ activities, isLoading }: RecentActivityCardProps) 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Recent Activity</CardTitle>
+        <CardTitle className="gradient-heading">Recent Activity</CardTitle>
         <CardDescription>Latest interactions and updates</CardDescription>
       </CardHeader>
       <CardContent>
@@ -423,52 +460,81 @@ function TodayOverviewCard({ overview, isLoading }: TodayOverviewCardProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Today&apos;s Overview</CardTitle>
-        <CardDescription>Key metrics for today</CardDescription>
+        <CardTitle className="gradient-heading">Today&apos;s Overview</CardTitle>
+        <CardDescription className="flex items-center gap-1.5">
+          <Phone className="size-3" />
+          <MessageSquare className="size-3" />
+          Outbound call &amp; SMS delivery status
+        </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-3 gap-4 text-center">
-          {isLoading ? (
-            <>
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="space-y-1">
-                  <Skeleton className="h-8 w-12 mx-auto" />
-                  <Skeleton className="h-3 w-16 mx-auto" />
-                </div>
-              ))}
-            </>
-          ) : (
-            <>
-              <div className="space-y-1">
-                <div className="flex items-center justify-center gap-1 text-green-500">
-                  <CheckCircle className="size-4" />
-                  <span className="text-2xl font-bold">
-                    {overview?.completed ?? 0}
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground">Completed</p>
-              </div>
-              <div className="space-y-1">
-                <div className="flex items-center justify-center gap-1 text-yellow-500">
-                  <Clock className="size-4" />
-                  <span className="text-2xl font-bold">
-                    {overview?.pending ?? 0}
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground">Pending</p>
-              </div>
-              <div className="space-y-1">
-                <div className="flex items-center justify-center gap-1 text-red-500">
-                  <XCircle className="size-4" />
-                  <span className="text-2xl font-bold">
-                    {overview?.failed ?? 0}
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground">Failed</p>
-              </div>
-            </>
-          )}
-        </div>
+        <TooltipProvider>
+          <div className="grid grid-cols-3 gap-4 text-center">
+            {isLoading ? (
+              <>
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="space-y-1">
+                    <Skeleton className="h-8 w-12 mx-auto" />
+                    <Skeleton className="h-3 w-16 mx-auto" />
+                  </div>
+                ))}
+              </>
+            ) : (
+              <>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="space-y-1 cursor-default">
+                      <div className="flex items-center justify-center gap-1 text-success">
+                        <CheckCircle className="size-4" />
+                        <span className="text-2xl font-bold">
+                          {overview?.completed ?? 0}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Completed</p>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Calls answered &amp; SMS delivered or sent today</p>
+                  </TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="space-y-1 cursor-default">
+                      <div className="flex items-center justify-center gap-1 text-warning">
+                        <Clock className="size-4" />
+                        <span className="text-2xl font-bold">
+                          {overview?.pending ?? 0}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Pending</p>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Calls &amp; messages currently queued or in progress</p>
+                  </TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="space-y-1 cursor-default">
+                      <div className="flex items-center justify-center gap-1 text-destructive">
+                        <XCircle className="size-4" />
+                        <span className="text-2xl font-bold">
+                          {overview?.failed ?? 0}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Failed</p>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Calls &amp; messages that could not be delivered today</p>
+                  </TooltipContent>
+                </Tooltip>
+              </>
+            )}
+          </div>
+        </TooltipProvider>
       </CardContent>
     </Card>
   );
@@ -478,7 +544,7 @@ function QuickActionsCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Quick Actions</CardTitle>
+        <CardTitle className="gradient-heading">Quick Actions</CardTitle>
       </CardHeader>
       <CardContent className="grid grid-cols-2 gap-2">
         <Button variant="outline" className="justify-start" asChild>
@@ -488,7 +554,7 @@ function QuickActionsCard() {
           </Link>
         </Button>
         <Button variant="outline" className="justify-start" asChild>
-          <Link href="/">
+          <Link href="/?import=true">
             <Users className="mr-2 size-4" />
             Import Contacts
           </Link>
@@ -522,16 +588,16 @@ function AppointmentStatsCard({ appointmentStats, isLoading }: AppointmentStatsC
     showUpRate === null
       ? "text-muted-foreground"
       : showUpRate >= 70
-        ? "text-green-500"
+        ? "text-success"
         : showUpRate >= 50
-          ? "text-yellow-500"
-          : "text-red-500";
+          ? "text-warning"
+          : "text-destructive";
 
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 gradient-heading">
             <CalendarDays className="size-5" />
             Appointments
           </CardTitle>
@@ -559,7 +625,7 @@ function AppointmentStatsCard({ appointmentStats, isLoading }: AppointmentStatsC
           ) : (
             <>
               <div className="space-y-1 text-center">
-                <div className="flex items-center justify-center gap-1 text-blue-500">
+                <div className="flex items-center justify-center gap-1 text-info">
                   <Calendar className="size-4" />
                   <span className="text-2xl font-bold">
                     {appointmentStats?.appointments_today ?? 0}
@@ -570,7 +636,7 @@ function AppointmentStatsCard({ appointmentStats, isLoading }: AppointmentStatsC
               </div>
 
               <div className="space-y-1 text-center">
-                <div className="flex items-center justify-center gap-1 text-purple-500">
+                <div className="flex items-center justify-center gap-1 text-primary">
                   <CalendarCheck className="size-4" />
                   <span className="text-2xl font-bold">
                     {appointmentStats?.appointments_this_week ?? 0}
@@ -594,7 +660,7 @@ function AppointmentStatsCard({ appointmentStats, isLoading }: AppointmentStatsC
               </div>
 
               <div className="space-y-1 text-center">
-                <div className="flex items-center justify-center gap-1 text-red-500">
+                <div className="flex items-center justify-center gap-1 text-destructive">
                   <UserX className="size-4" />
                   <span className="text-2xl font-bold">
                     {appointmentStats?.no_shows_30d ?? 0}
@@ -649,7 +715,7 @@ export function DashboardPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">
+          <h1 className="text-2xl font-bold tracking-tight gradient-heading">
             Dashboard
             {isFetching && !isLoading && (
               <Loader2 className="ml-2 inline size-4 animate-spin text-muted-foreground" />
@@ -664,7 +730,7 @@ export function DashboardPage() {
             <Link href="/campaigns/new">New Campaign</Link>
           </Button>
           <Button asChild>
-            <Link href="/">
+            <Link href="/contacts">
               <Users className="mr-2 size-4" />
               View Contacts
             </Link>

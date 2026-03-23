@@ -1,10 +1,9 @@
 """Campaign post-mortem intelligence report endpoints."""
 
 import uuid
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
 
 from app.api.deps import DB, CurrentUser, get_workspace
@@ -12,74 +11,14 @@ from app.db.pagination import paginate
 from app.models.campaign import Campaign
 from app.models.campaign_report import CampaignReport
 from app.models.workspace import Workspace
+from app.schemas.campaign_report import (
+    CampaignReportListResponse,
+    CampaignReportResponse,
+    CampaignReportSummary,
+)
 from app.services.ai.campaign_report_service import CampaignReportService
 
 router = APIRouter()
-
-
-# =============================================================================
-# Schemas
-# =============================================================================
-
-
-class CampaignReportResponse(BaseModel):
-    """Full campaign report response."""
-
-    id: uuid.UUID
-    campaign_id: uuid.UUID
-    workspace_id: uuid.UUID
-    campaign_name: str | None = None
-    campaign_type: str | None = None
-
-    status: str
-    error_message: str | None = None
-
-    metrics_snapshot: dict[str, Any] | None = None
-    executive_summary: str | None = None
-    key_findings: list[dict[str, Any]] | None = None
-    what_worked: list[dict[str, Any]] | None = None
-    what_didnt_work: list[dict[str, Any]] | None = None
-    recommendations: list[dict[str, Any]] | None = None
-    segment_analysis: list[dict[str, Any]] | None = None
-    timing_analysis: dict[str, Any] | None = None
-    prompt_performance: list[dict[str, Any]] | None = None
-
-    generated_suggestion_ids: list[str] | None = None
-
-    generated_at: str | None = None
-    created_at: str
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class CampaignReportSummary(BaseModel):
-    """Lighter summary for list views."""
-
-    id: uuid.UUID
-    campaign_id: uuid.UUID
-    campaign_name: str | None = None
-    campaign_type: str | None = None
-    status: str
-    executive_summary: str | None = None
-    generated_at: str | None = None
-    created_at: str
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class CampaignReportListResponse(BaseModel):
-    """Paginated report list."""
-
-    items: list[CampaignReportSummary]
-    total: int
-    page: int
-    page_size: int
-    pages: int
-
-
-# =============================================================================
-# Endpoints
-# =============================================================================
 
 
 @router.get("", response_model=CampaignReportListResponse)

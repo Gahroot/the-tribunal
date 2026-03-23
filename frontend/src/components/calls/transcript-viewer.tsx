@@ -106,8 +106,8 @@ function TranscriptContent({
             )}
           >
             {entry.role === "agent" && (
-              <div className="flex-shrink-0 size-6 rounded-full bg-purple-500/10 flex items-center justify-center">
-                <Bot className="size-3.5 text-purple-500" />
+              <div className="flex-shrink-0 size-6 rounded-full bg-primary/10 flex items-center justify-center">
+                <Bot className="size-3.5 text-primary" />
               </div>
             )}
             <div
@@ -121,8 +121,8 @@ function TranscriptContent({
               {entry.text}
             </div>
             {entry.role === "user" && (
-              <div className="flex-shrink-0 size-6 rounded-full bg-blue-500/10 flex items-center justify-center">
-                <User className="size-3.5 text-blue-500" />
+              <div className="flex-shrink-0 size-6 rounded-full bg-info/10 flex items-center justify-center">
+                <User className="size-3.5 text-info" />
               </div>
             )}
           </div>

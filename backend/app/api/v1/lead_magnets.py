@@ -102,13 +102,7 @@ async def list_lead_magnets(
     query = query.order_by(LeadMagnet.created_at.desc())
     result = await paginate(db, query, page=page, page_size=page_size)
 
-    return PaginatedLeadMagnets(
-        items=[LeadMagnetResponse.model_validate(lm) for lm in result.items],
-        total=result.total,
-        page=result.page,
-        page_size=result.page_size,
-        pages=result.pages,
-    )
+    return PaginatedLeadMagnets(**result.to_response(LeadMagnetResponse))
 
 
 @router.post("", response_model=LeadMagnetResponse, status_code=status.HTTP_201_CREATED)

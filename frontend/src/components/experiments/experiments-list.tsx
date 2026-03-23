@@ -281,7 +281,7 @@ export function ExperimentsList() {
                       </TableCell>
                       <TableCell>
                         {test.winning_variant_id ? (
-                          <Badge variant="secondary" className="bg-green-500/10 text-green-600">
+                          <Badge variant="secondary" className="bg-success/10 text-success">
                             <Trophy className="mr-1 size-3" />
                             Winner selected
                           </Badge>

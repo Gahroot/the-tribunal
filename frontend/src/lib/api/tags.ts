@@ -1,4 +1,4 @@
-import api from "@/lib/api";
+import { apiPost } from "@/lib/api";
 import type { Tag } from "@/types";
 import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
 
@@ -36,10 +36,9 @@ export const tagsApi = {
   ...baseApi,
 
   bulkTag: async (workspaceId: string, data: BulkTagRequest): Promise<BulkTagResponse> => {
-    const response = await api.post<BulkTagResponse>(
+    return apiPost<BulkTagResponse>(
       `/api/v1/workspaces/${workspaceId}/tags/bulk-tag`,
       data
     );
-    return response.data;
   },
 };

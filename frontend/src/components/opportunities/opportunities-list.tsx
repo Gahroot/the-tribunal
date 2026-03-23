@@ -22,10 +22,10 @@ function formatCurrency(amount: number | undefined, currency: string) {
 }
 
 function getStageColor(probability: number): string {
-  if (probability === 0) return "bg-red-100 text-red-800";
-  if (probability < 50) return "bg-yellow-100 text-yellow-800";
-  if (probability < 100) return "bg-blue-100 text-blue-800";
-  return "bg-green-100 text-green-800";
+  if (probability === 0) return "bg-destructive/10 text-destructive";
+  if (probability < 50) return "bg-warning/10 text-warning";
+  if (probability < 100) return "bg-info/10 text-info";
+  return "bg-success/10 text-success";
 }
 
 
@@ -99,7 +99,7 @@ export function OpportunitiesList({ workspaceId }: OpportunitiesListProps) {
               <TableRow key={opportunity.id} className="hover:bg-muted/50">
                 <TableCell className="font-medium">{opportunity.name}</TableCell>
                 <TableCell>
-                  <Badge className={opportunityStatusColors[opportunity.status as OpportunityStatus] ?? "bg-blue-500/10 text-blue-600 border-blue-500/20"}>
+                  <Badge className={opportunityStatusColors[opportunity.status as OpportunityStatus] ?? "bg-info/10 text-info border-info/20"}>
                     {opportunity.status}
                   </Badge>
                 </TableCell>

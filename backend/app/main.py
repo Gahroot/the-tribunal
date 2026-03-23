@@ -17,46 +17,7 @@ from app.core.config import settings
 from app.db.redis import close_redis
 from app.websockets.voice_bridge import router as voice_bridge_router
 from app.websockets.voice_test import router as voice_test_router
-from app.workers.automation_worker import (
-    start_automation_worker,
-    stop_automation_worker,
-)
-from app.workers.campaign_worker import start_campaign_worker, stop_campaign_worker
-from app.workers.enrichment_worker import (
-    start_enrichment_worker,
-    stop_enrichment_worker,
-)
-from app.workers.experiment_evaluation_worker import (
-    start_experiment_evaluation_worker,
-    stop_experiment_evaluation_worker,
-)
-from app.workers.followup_worker import start_followup_worker, stop_followup_worker
-from app.workers.message_test_worker import (
-    start_message_test_worker,
-    stop_message_test_worker,
-)
-from app.workers.never_booked_worker import (
-    start_never_booked_worker,
-    stop_never_booked_worker,
-)
-from app.workers.noshow_reengagement_worker import (
-    start_noshow_reengagement_worker,
-    stop_noshow_reengagement_worker,
-)
-from app.workers.prompt_improvement_worker import (
-    start_prompt_improvement_worker,
-    stop_prompt_improvement_worker,
-)
-from app.workers.prompt_stats_worker import (
-    start_prompt_stats_worker,
-    stop_prompt_stats_worker,
-)
-from app.workers.reminder_worker import start_reminder_worker, stop_reminder_worker
-from app.workers.reputation_worker import reputation_worker
-from app.workers.voice_campaign_worker import (
-    start_voice_campaign_worker,
-    stop_voice_campaign_worker,
-)
+from app.workers import start_all_workers, stop_all_workers
 
 logger = structlog.get_logger()
 
@@ -144,7 +105,7 @@ def _validate_startup_config() -> None:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: PLR0915
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application lifespan handler."""
     log = logger.bind(context="app_lifespan")
     log.info("Starting AI CRM backend...")
@@ -152,64 +113,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: PLR0915
     # Validate configuration at startup
     _validate_startup_config()
 
-    # Start background workers
-    await start_campaign_worker()
-    log.info("Campaign worker started")
-    await start_voice_campaign_worker()
-    log.info("Voice campaign worker started")
-    await start_followup_worker()
-    log.info("Follow-up worker started")
-    await start_reminder_worker()
-    log.info("Reminder worker started")
-    await start_message_test_worker()
-    log.info("Message test worker started")
-    await reputation_worker.start()
-    log.info("Reputation worker started")
-    await start_enrichment_worker()
-    log.info("Enrichment worker started")
-    await start_prompt_stats_worker()
-    log.info("Prompt stats worker started")
-    await start_prompt_improvement_worker()
-    log.info("Prompt improvement worker started")
-    await start_experiment_evaluation_worker()
-    log.info("Experiment evaluation worker started")
-    await start_automation_worker()
-    log.info("Automation worker started")
-    await start_noshow_reengagement_worker()
-    log.info("No-show re-engagement worker started")
-    await start_never_booked_worker()
-    log.info("Never-booked re-engagement worker started")
+    # Start all background workers
+    await start_all_workers()
 
     yield
 
     log.info("Shutting down AI CRM backend...")
-    # Stop background workers
-    await stop_campaign_worker()
-    log.info("Campaign worker stopped")
-    await stop_voice_campaign_worker()
-    log.info("Voice campaign worker stopped")
-    await stop_followup_worker()
-    log.info("Follow-up worker stopped")
-    await stop_reminder_worker()
-    log.info("Reminder worker stopped")
-    await stop_message_test_worker()
-    log.info("Message test worker stopped")
-    await reputation_worker.stop()
-    log.info("Reputation worker stopped")
-    await stop_enrichment_worker()
-    log.info("Enrichment worker stopped")
-    await stop_prompt_stats_worker()
-    log.info("Prompt stats worker stopped")
-    await stop_prompt_improvement_worker()
-    log.info("Prompt improvement worker stopped")
-    await stop_experiment_evaluation_worker()
-    log.info("Experiment evaluation worker stopped")
-    await stop_automation_worker()
-    log.info("Automation worker stopped")
-    await stop_noshow_reengagement_worker()
-    log.info("No-show re-engagement worker stopped")
-    await stop_never_booked_worker()
-    log.info("Never-booked re-engagement worker stopped")
+    await stop_all_workers()
     await close_redis()
 
 

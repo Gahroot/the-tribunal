@@ -1,13 +1,11 @@
 """Settings endpoints for user profile, notifications, and workspace integrations."""
 
-import uuid
-
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import DB, CurrentUser
-from app.models.workspace import Workspace, WorkspaceIntegration, WorkspaceMembership
+from app.api.deps import DB, CurrentUser, WorkspaceAccess
+from app.models.workspace import WorkspaceIntegration, WorkspaceMembership
 from app.schemas.user import (
     BusinessHoursSettings,
     BusinessHoursUpdate,
@@ -138,30 +136,13 @@ async def update_notifications(
 
 @router.get("/workspaces/{workspace_id}/integrations", response_model=IntegrationsResponse)
 async def get_integrations(
-    workspace_id: uuid.UUID,
-    current_user: CurrentUser,
+    workspace: WorkspaceAccess,
     db: DB,
 ) -> IntegrationsResponse:
     """Get workspace integration statuses."""
-    # Verify workspace access
-    result = await db.execute(
-        select(WorkspaceMembership).where(
-            WorkspaceMembership.user_id == current_user.id,
-            WorkspaceMembership.workspace_id == workspace_id,
-        )
-    )
-    membership = result.scalar_one_or_none()
-
-    if membership is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Workspace not found or access denied",
-        )
-
-    # Get existing integrations
     integrations_result = await db.execute(
         select(WorkspaceIntegration).where(
-            WorkspaceIntegration.workspace_id == workspace_id,
+            WorkspaceIntegration.workspace_id == workspace.id,
             WorkspaceIntegration.is_active.is_(True),
         )
     )
@@ -186,31 +167,14 @@ async def get_integrations(
 
 @router.get("/workspaces/{workspace_id}/team", response_model=list[TeamMemberResponse])
 async def get_team_members(
-    workspace_id: uuid.UUID,
-    current_user: CurrentUser,
+    workspace: WorkspaceAccess,
     db: DB,
 ) -> list[TeamMemberResponse]:
     """Get workspace team members."""
-    # Verify workspace access
-    result = await db.execute(
-        select(WorkspaceMembership).where(
-            WorkspaceMembership.user_id == current_user.id,
-            WorkspaceMembership.workspace_id == workspace_id,
-        )
-    )
-    membership = result.scalar_one_or_none()
-
-    if membership is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Workspace not found or access denied",
-        )
-
-    # Get all members with user data
     result = await db.execute(
         select(WorkspaceMembership)
         .options(selectinload(WorkspaceMembership.user))
-        .where(WorkspaceMembership.workspace_id == workspace_id)
+        .where(WorkspaceMembership.workspace_id == workspace.id)
     )
     memberships = result.scalars().all()
 
@@ -228,66 +192,20 @@ async def get_team_members(
 
 @router.get("/workspaces/{workspace_id}/business-hours", response_model=BusinessHoursSettings)
 async def get_business_hours(
-    workspace_id: uuid.UUID,
-    current_user: CurrentUser,
-    db: DB,
+    workspace: WorkspaceAccess,
 ) -> BusinessHoursSettings:
     """Get workspace business hours settings."""
-    # Verify workspace access
-    result = await db.execute(
-        select(WorkspaceMembership).where(
-            WorkspaceMembership.user_id == current_user.id,
-            WorkspaceMembership.workspace_id == workspace_id,
-        )
-    )
-    membership = result.scalar_one_or_none()
-
-    if membership is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Workspace not found or access denied",
-        )
-
-    # Get workspace settings
-    ws_result = await db.execute(
-        select(Workspace).where(Workspace.id == workspace_id)
-    )
-    workspace: Workspace = ws_result.scalar_one()
-
     business_hours = workspace.settings.get("business_hours", {})
     return BusinessHoursSettings(**business_hours)
 
 
 @router.put("/workspaces/{workspace_id}/business-hours", response_model=BusinessHoursSettings)
 async def update_business_hours(
-    workspace_id: uuid.UUID,
     update: BusinessHoursUpdate,
-    current_user: CurrentUser,
+    workspace: WorkspaceAccess,
     db: DB,
 ) -> BusinessHoursSettings:
     """Update workspace business hours settings."""
-    # Verify workspace access
-    result = await db.execute(
-        select(WorkspaceMembership).where(
-            WorkspaceMembership.user_id == current_user.id,
-            WorkspaceMembership.workspace_id == workspace_id,
-        )
-    )
-    membership = result.scalar_one_or_none()
-
-    if membership is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Workspace not found or access denied",
-        )
-
-    # Get workspace
-    ws_result2 = await db.execute(
-        select(Workspace).where(Workspace.id == workspace_id)
-    )
-    workspace: Workspace = ws_result2.scalar_one()
-
-    # Merge update into settings
     current_settings = dict(workspace.settings)
     business_hours = current_settings.get("business_hours", {})
 
@@ -309,66 +227,20 @@ async def update_business_hours(
 
 @router.get("/workspaces/{workspace_id}/call-forwarding", response_model=CallForwardingSettings)
 async def get_call_forwarding(
-    workspace_id: uuid.UUID,
-    current_user: CurrentUser,
-    db: DB,
+    workspace: WorkspaceAccess,
 ) -> CallForwardingSettings:
     """Get workspace call forwarding settings."""
-    # Verify workspace access
-    result = await db.execute(
-        select(WorkspaceMembership).where(
-            WorkspaceMembership.user_id == current_user.id,
-            WorkspaceMembership.workspace_id == workspace_id,
-        )
-    )
-    membership = result.scalar_one_or_none()
-
-    if membership is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Workspace not found or access denied",
-        )
-
-    # Get workspace settings
-    ws_result3 = await db.execute(
-        select(Workspace).where(Workspace.id == workspace_id)
-    )
-    workspace: Workspace = ws_result3.scalar_one()
-
     call_forwarding = workspace.settings.get("call_forwarding", {})
     return CallForwardingSettings(**call_forwarding)
 
 
 @router.put("/workspaces/{workspace_id}/call-forwarding", response_model=CallForwardingSettings)
 async def update_call_forwarding(
-    workspace_id: uuid.UUID,
     update: CallForwardingUpdate,
-    current_user: CurrentUser,
+    workspace: WorkspaceAccess,
     db: DB,
 ) -> CallForwardingSettings:
     """Update workspace call forwarding settings."""
-    # Verify workspace access
-    result = await db.execute(
-        select(WorkspaceMembership).where(
-            WorkspaceMembership.user_id == current_user.id,
-            WorkspaceMembership.workspace_id == workspace_id,
-        )
-    )
-    membership = result.scalar_one_or_none()
-
-    if membership is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Workspace not found or access denied",
-        )
-
-    # Get workspace
-    ws_result4 = await db.execute(
-        select(Workspace).where(Workspace.id == workspace_id)
-    )
-    workspace: Workspace = ws_result4.scalar_one()
-
-    # Merge update into settings
     current_settings = dict(workspace.settings)
     call_forwarding = current_settings.get("call_forwarding", {})
 

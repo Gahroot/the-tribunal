@@ -16,19 +16,6 @@ interface AgentSelectorProps {
   allowNone?: boolean;
 }
 
-const pricingTierColors: Record<string, string> = {
-  budget: "bg-slate-500/10 text-slate-500",
-  balanced: "bg-blue-500/10 text-blue-500",
-  "premium-mini": "bg-purple-500/10 text-purple-500",
-  premium: "bg-amber-500/10 text-amber-500",
-};
-
-const pricingTierLabels: Record<string, string> = {
-  budget: "Budget",
-  balanced: "Balanced",
-  "premium-mini": "Premium Mini",
-  premium: "Premium",
-};
 
 export function AgentSelector({
   agents,
@@ -143,14 +130,6 @@ export function AgentSelector({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium">{agent.name}</span>
-                      {agent.pricing_tier && (
-                        <Badge
-                          variant="secondary"
-                          className={pricingTierColors[agent.pricing_tier]}
-                        >
-                          {pricingTierLabels[agent.pricing_tier]}
-                        </Badge>
-                      )}
                       <Badge variant="outline" className="flex items-center gap-1">
                         {getChannelIcon(agent.channel_mode)}
                         <span className="capitalize">{agent.channel_mode}</span>

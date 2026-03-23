@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from app.api.v1 import (
     agents,
+    api_keys,
     appointments,
     auth,
     automations,
@@ -46,6 +47,11 @@ api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 api_router.include_router(settings.router, prefix="/settings", tags=["Settings"])
 api_router.include_router(device_tokens.router, prefix="/settings", tags=["Settings"])
 api_router.include_router(workspaces.router, prefix="/workspaces", tags=["Workspaces"])
+api_router.include_router(
+    api_keys.router,
+    prefix="/workspaces/{workspace_id}/api-keys",
+    tags=["API Keys"],
+)
 api_router.include_router(
     contacts.router,
     prefix="/workspaces/{workspace_id}/contacts",

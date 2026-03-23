@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from app.api.deps import DB, CurrentUser, get_workspace
@@ -15,19 +14,12 @@ from app.models.workspace import Workspace
 from app.schemas.automation import (
     AutomationCreate,
     AutomationResponse,
+    AutomationStatsResponse,
     AutomationUpdate,
     PaginatedAutomations,
 )
 
 router = APIRouter()
-
-
-class AutomationStatsResponse(BaseModel):
-    """Automation statistics response."""
-
-    total: int
-    active: int
-    triggered_today: int
 
 
 @router.get("/stats", response_model=AutomationStatsResponse)
@@ -91,13 +83,7 @@ async def list_automations(
     query = query.order_by(Automation.created_at.desc())
     result = await paginate(db, query, page=page, page_size=page_size)
 
-    return PaginatedAutomations(
-        items=[AutomationResponse.model_validate(a) for a in result.items],
-        total=result.total,
-        page=result.page,
-        page_size=result.page_size,
-        pages=result.pages,
-    )
+    return PaginatedAutomations(**result.to_response(AutomationResponse))
 
 
 @router.post("", response_model=AutomationResponse, status_code=status.HTTP_201_CREATED)
@@ -109,17 +95,9 @@ async def create_automation(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> Automation:
     """Create a new automation."""
-    # Convert actions from pydantic models to dicts
-    actions_data = [action.model_dump() for action in automation_in.actions]
-
     automation = Automation(
         workspace_id=workspace_id,
-        name=automation_in.name,
-        description=automation_in.description,
-        trigger_type=automation_in.trigger_type,
-        trigger_config=automation_in.trigger_config,
-        actions=actions_data,
-        is_active=automation_in.is_active,
+        **automation_in.model_dump(),
     )
     db.add(automation)
     await db.commit()

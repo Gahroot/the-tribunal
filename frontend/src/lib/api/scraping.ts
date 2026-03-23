@@ -1,4 +1,4 @@
-import api from "@/lib/api";
+import { apiPost } from "@/lib/api";
 
 export interface BusinessResult {
   place_id: string;
@@ -40,21 +40,19 @@ export const scrapingApi = {
     query: string,
     maxResults: number = 20
   ): Promise<BusinessSearchResponse> => {
-    const response = await api.post<BusinessSearchResponse>(
+    return apiPost<BusinessSearchResponse>(
       `/api/v1/workspaces/${workspaceId}/scraping/search`,
       { query, max_results: maxResults }
     );
-    return response.data;
   },
 
   importLeads: async (
     workspaceId: string,
     request: ImportLeadsRequest
   ): Promise<ImportLeadsResponse> => {
-    const response = await api.post<ImportLeadsResponse>(
+    return apiPost<ImportLeadsResponse>(
       `/api/v1/workspaces/${workspaceId}/scraping/import`,
       request
     );
-    return response.data;
   },
 };

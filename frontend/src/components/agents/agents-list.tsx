@@ -358,7 +358,7 @@ export function AgentsList() {
         animate="visible"
         variants={{
           hidden: { opacity: 0 },
-          visible: { opacity: 1, transition: { staggerChildren: 0.1 } },
+          visible: { opacity: 1, transition: { staggerChildren: 0.07 } },
         }}
       >
         <AnimatePresence mode="popLayout">
@@ -370,17 +370,19 @@ export function AgentsList() {
                 key={agent.id}
                 layout
                 variants={{
-                  hidden: { opacity: 0, y: 20 },
-                  visible: { opacity: 1, y: 0 },
+                  hidden: { opacity: 0, y: 16 },
+                  visible: {
+                    opacity: 1,
+                    y: 0,
+                    transition: { type: "spring", stiffness: 300, damping: 24 },
+                  },
                 }}
-                initial="hidden"
-                animate="visible"
                 exit={{ opacity: 0, scale: 0.9 }}
               >
                 <Card className="group relative overflow-hidden">
                   <div
                     className={`absolute top-0 left-0 right-0 h-1 ${
-                      agent.is_active ? "bg-green-500" : "bg-gray-400"
+                      agent.is_active ? "bg-success" : "bg-muted-foreground"
                     }`}
                   />
                   <CardHeader className="pb-3">
@@ -394,7 +396,7 @@ export function AgentsList() {
                           <div className="flex items-center gap-2 mt-1">
                             <Badge
                               variant="outline"
-                              className="bg-blue-500/10 text-blue-500 border-blue-500/20"
+                              className="bg-info/10 text-info border-info/20"
                             >
                               {agent.voice_provider}
                             </Badge>
@@ -484,7 +486,7 @@ export function AgentsList() {
                       <div className="flex items-center gap-2">
                         <div
                           className={`size-2 rounded-full ${
-                            agent.is_active ? "bg-green-500" : "bg-gray-400"
+                            agent.is_active ? "bg-success" : "bg-muted-foreground"
                           }`}
                         />
                         <span className="text-sm text-muted-foreground">

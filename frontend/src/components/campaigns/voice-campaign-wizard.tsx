@@ -8,7 +8,6 @@ import {
   MessageSquare,
   Clock,
   Eye,
-  Send,
   AlertCircle,
 } from "lucide-react";
 
@@ -37,7 +36,7 @@ import {
 } from "./steps";
 
 import { useWizard } from "@/hooks/useWizard";
-import { WizardContainer } from "@/components/wizard";
+import { BaseCampaignWizardLayout } from "./base-campaign-wizard-layout";
 
 import type { Agent, PhoneNumber, VoiceCampaign } from "@/types";
 import type { CreateVoiceCampaignRequest } from "@/lib/api/voice-campaigns";
@@ -456,7 +455,7 @@ export function VoiceCampaignWizard({
                   <div className="space-y-2">
                     <Badge
                       variant="secondary"
-                      className="bg-green-500/10 text-green-600"
+                      className="bg-success/10 text-success"
                     >
                       {formData.sms_fallback_mode === "ai"
                         ? "AI-Generated"
@@ -500,22 +499,14 @@ export function VoiceCampaignWizard({
   };
 
   return (
-    <WizardContainer
+    <BaseCampaignWizardLayout
       steps={STEPS}
-      currentStepId={wizard.currentStepId}
-      currentStepIndex={wizard.currentStepIndex}
-      onStepClick={wizard.goToStep}
-      isFirstStep={wizard.isFirstStep}
-      isLastStep={wizard.isLastStep}
-      onPrevious={wizard.goPrevious}
-      onNext={wizard.goNext}
+      wizard={wizard}
       onSubmit={handleSubmit}
       isSubmitting={isSubmitting}
       onCancel={onCancel}
-      submitLabel="Create Campaign"
-      submitIcon={Send}
     >
       {renderStepContent()}
-    </WizardContainer>
+    </BaseCampaignWizardLayout>
   );
 }

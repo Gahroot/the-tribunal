@@ -76,10 +76,10 @@ async def _action_auto_text(
         )
         # Assign agent to the conversation so replies get AI responses
         if agent_id:
-            from app.services.telephony.telnyx import normalize_phone_number
+            from app.utils.phone import normalize_phone_safe
 
-            norm_from = normalize_phone_number(from_number)
-            norm_to = normalize_phone_number(contact.phone_number)
+            norm_from = normalize_phone_safe(from_number) or from_number
+            norm_to = normalize_phone_safe(contact.phone_number) or contact.phone_number
             conv_result = await db.execute(
                 select(Conversation).where(
                     Conversation.workspace_id == lead_source.workspace_id,

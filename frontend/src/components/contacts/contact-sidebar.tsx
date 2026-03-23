@@ -41,7 +41,7 @@ import { cn } from "@/lib/utils";
 import { useContactStore } from "@/lib/contact-store";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { appointmentsApi } from "@/lib/api/appointments";
-import { useToggleContactAI, useDeleteContact } from "@/hooks/useContacts";
+import { useToggleContactAI, useDeleteContact, useContactTimeline } from "@/hooks/useContacts";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { callsApi, type InitiateCallRequest } from "@/lib/api/calls";
 import { conversationsApi } from "@/lib/api/conversations";
@@ -130,9 +130,16 @@ function QuickAction({
 
 export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
   const router = useRouter();
-  const { selectedContact, setSelectedContact, timeline } = useContactStore();
+  const { selectedContact, setSelectedContact } = useContactStore();
   const isMobile = useIsMobile();
   const workspaceId = useWorkspaceId();
+
+  // Fetch timeline for activity stats (hooks must be called before any early returns)
+  const { data: timelineData } = useContactTimeline(
+    workspaceId ?? "",
+    selectedContact?.id ?? 0,
+  );
+  const timeline = timelineData ?? [];
   const queryClient = useQueryClient();
 
   // Dialog states
@@ -482,7 +489,7 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
                 <p className="text-xs text-muted-foreground">Messages</p>
               </div>
               <div className="bg-muted/50 rounded-lg p-3 text-center">
-                <p className="text-2xl font-semibold text-green-600">{bookingCount}</p>
+                <p className="text-2xl font-semibold text-success">{bookingCount}</p>
                 <p className="text-xs text-muted-foreground">Booked</p>
               </div>
             </div>
@@ -497,7 +504,7 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
             {(!!selectedContact.noshow_count || selectedContact.last_appointment_status) && (
               <div className="flex items-center gap-2 px-2 flex-wrap">
                 {!!selectedContact.noshow_count && selectedContact.noshow_count > 0 && (
-                  <div className="flex items-center gap-1.5 text-xs text-amber-600">
+                  <div className="flex items-center gap-1.5 text-xs text-warning">
                     <AlertTriangle className="h-3 w-3" />
                     <span>
                       {selectedContact.noshow_count} no-show{selectedContact.noshow_count !== 1 ? "s" : ""}

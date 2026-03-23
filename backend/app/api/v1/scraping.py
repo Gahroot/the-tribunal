@@ -15,7 +15,7 @@ from app.schemas.scraping import (
     ImportLeadsResponse,
 )
 from app.services.scraping.google_places import GooglePlacesError, GooglePlacesService
-from app.services.telephony.telnyx import normalize_phone_number
+from app.utils.phone import normalize_phone_safe
 
 router = APIRouter()
 
@@ -106,7 +106,9 @@ async def import_leads(
     existing_phones: set[str] = set()
     for row in phone_result:
         if row[0]:
-            existing_phones.add(normalize_phone_number(row[0]))
+            normalized = normalize_phone_safe(row[0])
+            if normalized:
+                existing_phones.add(normalized)
 
     imported = 0
     skipped_duplicates = 0
@@ -120,7 +122,10 @@ async def import_leads(
             continue
 
         # Normalize and check for duplicates
-        normalized_phone = normalize_phone_number(lead.phone_number)
+        normalized_phone = normalize_phone_safe(lead.phone_number)
+        if not normalized_phone:
+            skipped_no_phone += 1
+            continue
         if normalized_phone in existing_phones:
             skipped_duplicates += 1
             continue

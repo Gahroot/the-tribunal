@@ -317,8 +317,8 @@ export function CallsList() {
                             <DirectionIcon
                               className={`size-4 ${
                                 call.direction === "inbound"
-                                  ? "text-blue-500"
-                                  : "text-green-500"
+                                  ? "text-info"
+                                  : "text-success"
                               }`}
                             />
                             <span className="capitalize">{call.direction}</span>
@@ -330,7 +330,7 @@ export function CallsList() {
                               {status.label}
                             </Badge>
                             {call.booking_outcome === "success" && (
-                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                              <Badge variant="outline" className="bg-success/10 text-success border-success/20">
                                 <CalendarCheck className="size-3 mr-1" />
                                 Booked
                               </Badge>
@@ -434,7 +434,7 @@ export function CallsList() {
                                         <span className="text-muted-foreground">
                                           Booking:
                                         </span>{" "}
-                                        <Badge variant="outline" className={call.booking_outcome === "success" ? "bg-green-50 text-green-700 border-green-200" : ""}>
+                                        <Badge variant="outline" className={call.booking_outcome === "success" ? "bg-success/10 text-success border-success/20" : ""}>
                                           {call.booking_outcome === "success" ? "Booked" : call.booking_outcome}
                                         </Badge>
                                       </div>

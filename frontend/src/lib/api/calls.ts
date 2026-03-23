@@ -1,4 +1,4 @@
-import api from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 import type { CallRecord } from "@/types";
 
 export interface CallsListParams {
@@ -49,35 +49,31 @@ export interface CallStatsResponse {
 
 export const callsApi = {
   list: async (workspaceId: string, params: CallsListParams = {}): Promise<CallsListResponse> => {
-    const response = await api.get<CallsListResponse>(
+    return apiGet<CallsListResponse>(
       `/api/v1/workspaces/${workspaceId}/calls`,
       { params }
     );
-    return response.data;
   },
 
   get: async (workspaceId: string, id: string): Promise<CallRecord> => {
-    const response = await api.get<CallRecord>(
+    return apiGet<CallRecord>(
       `/api/v1/workspaces/${workspaceId}/calls/${id}`
     );
-    return response.data;
   },
 
   initiate: async (
     workspaceId: string,
     data: InitiateCallRequest
   ): Promise<InitiateCallResponse> => {
-    const response = await api.post<InitiateCallResponse>(
+    return apiPost<InitiateCallResponse>(
       `/api/v1/workspaces/${workspaceId}/calls`,
       data
     );
-    return response.data;
   },
 
   hangup: async (workspaceId: string, callId: string): Promise<{ success: boolean }> => {
-    const response = await api.post<{ success: boolean }>(
+    return apiPost<{ success: boolean }>(
       `/api/v1/workspaces/${workspaceId}/calls/${callId}/hangup`
     );
-    return response.data;
   },
 };

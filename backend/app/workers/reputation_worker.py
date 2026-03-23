@@ -7,7 +7,7 @@ from app.db.session import AsyncSessionLocal
 from app.models.phone_number import PhoneNumber
 from app.services.rate_limiting.reputation_tracker import ReputationTracker
 from app.services.rate_limiting.warming_scheduler import WarmingScheduler
-from app.workers.base import BaseWorker
+from app.workers.base import BaseWorker, WorkerRegistry
 
 
 class ReputationWorker(BaseWorker):
@@ -86,7 +86,8 @@ class ReputationWorker(BaseWorker):
             )
 
 
-# Global worker instance (kept for backward compatibility with main.py)
-# main.py uses: from app.workers.reputation_worker import reputation_worker
-# main.py calls: await reputation_worker.start()
-reputation_worker = ReputationWorker()
+# Singleton registry (consistent with all other workers)
+_registry = WorkerRegistry(ReputationWorker)
+start_reputation_worker = _registry.start
+stop_reputation_worker = _registry.stop
+get_reputation_worker = _registry.get

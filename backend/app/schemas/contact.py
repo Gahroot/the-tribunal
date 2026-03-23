@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.schemas.tag import TagResponse
 
@@ -125,3 +125,126 @@ class ContactListResponse(BaseModel):
     page: int
     page_size: int
     pages: int
+
+
+class BulkDeleteRequest(BaseModel):
+    """Request schema for bulk contact deletion."""
+
+    ids: list[int]
+
+
+class BulkDeleteResponse(BaseModel):
+    """Response schema for bulk contact deletion."""
+
+    deleted: int
+    failed: int
+    errors: list[str]
+
+
+class SendMessageToContactRequest(BaseModel):
+    """Request schema for sending a message to a contact."""
+
+    body: str
+    from_number: str | None = None  # Optional: specific phone number to send from
+
+
+class MessageResponse(BaseModel):
+    """Response schema for a message."""
+
+    id: uuid.UUID
+    conversation_id: uuid.UUID
+    direction: str
+    channel: str
+    body: str
+    status: str
+    is_ai: bool
+    agent_id: uuid.UUID | None
+    sent_at: datetime | None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ContactIdsResponse(BaseModel):
+    """Response schema for contact IDs."""
+
+    ids: list[int]
+    total: int
+
+
+class AIToggleRequest(BaseModel):
+    """Request schema for toggling AI on a contact's conversation."""
+
+    enabled: bool
+
+
+class AIToggleResponse(BaseModel):
+    """Response schema for AI toggle."""
+
+    ai_enabled: bool
+    conversation_id: uuid.UUID
+
+
+class TimelineItem(BaseModel):
+    """A unified timeline item."""
+
+    id: uuid.UUID
+    type: str  # "sms", "call", "appointment", "note"
+    timestamp: datetime
+    direction: str | None = None
+    is_ai: bool = False
+    content: str
+    duration_seconds: int | None = None
+    recording_url: str | None = None
+    transcript: str | None = None
+    status: str | None = None
+    booking_outcome: str | None = None
+    original_id: uuid.UUID
+    original_type: str  # "sms_message", "call_record", "appointment", "note"
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ImportResult(BaseModel):
+    """Result of a CSV import operation."""
+
+    total_rows: int
+    successful: int
+    failed: int
+    skipped_duplicates: int
+    errors: list[Any]
+    created_contacts: list[ContactResponse]
+
+
+class CSVPreviewResponse(BaseModel):
+    """Response from previewing a CSV file for import."""
+
+    headers: list[str]
+    sample_rows: list[dict[str, str]]
+    suggested_mapping: dict[str, str | None]
+    contact_fields: list[dict[str, Any]]
+
+
+class QualifyContactResponse(BaseModel):
+    """Response from analyzing and qualifying a contact."""
+
+    success: bool
+    contact_id: int | None = None
+    lead_score: int = 0
+    is_qualified: bool = False
+    qualification_signals: QualificationSignals | None = None
+    has_appointment: bool = False
+    response_rate: float = 0.0
+    message: str | None = None
+    error: str | None = None
+
+
+class BatchQualifyResponse(BaseModel):
+    """Response from batch qualification analysis."""
+
+    success: bool
+    analyzed: int = 0
+    qualified: int = 0
+    errors: int = 0
+    contacts: list[dict[str, Any]] = []
+    error: str | None = None

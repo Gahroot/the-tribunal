@@ -1,4 +1,4 @@
-import api from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 import type { Segment, FilterDefinition } from "@/types";
 import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
 
@@ -34,16 +34,14 @@ export const segmentsApi = {
   ...baseApi,
 
   getContacts: async (workspaceId: string, segmentId: string): Promise<SegmentContactsResponse> => {
-    const response = await api.get<SegmentContactsResponse>(
+    return apiGet<SegmentContactsResponse>(
       `/api/v1/workspaces/${workspaceId}/segments/${segmentId}/contacts`
     );
-    return response.data;
   },
 
   refresh: async (workspaceId: string, segmentId: string): Promise<Segment> => {
-    const response = await api.post<Segment>(
+    return apiPost<Segment>(
       `/api/v1/workspaces/${workspaceId}/segments/${segmentId}/refresh`
     );
-    return response.data;
   },
 };

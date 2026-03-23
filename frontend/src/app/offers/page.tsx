@@ -159,7 +159,7 @@ export default function OffersPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-green-600">
+              <p className="text-2xl font-bold text-success">
                 {activeOffers.length}
               </p>
             </CardContent>
@@ -171,7 +171,7 @@ export default function OffersPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-blue-600">
+              <p className="text-2xl font-bold text-info">
                 {offers.filter((o) => o.lead_magnets && o.lead_magnets.length > 0).length}
               </p>
             </CardContent>
@@ -211,7 +211,7 @@ export default function OffersPage() {
                   <CardContent className="p-6">
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-4">
-                        <div className="size-12 rounded-full bg-gradient-to-br from-green-500/20 to-green-500/5 flex items-center justify-center text-green-600">
+                        <div className="size-12 rounded-full bg-gradient-to-br from-success/20 to-success/5 flex items-center justify-center text-success">
                           {discountTypeIcons[offer.discount_type]}
                         </div>
                         <div>
@@ -219,7 +219,7 @@ export default function OffersPage() {
                             <h3 className="font-semibold text-lg">{offer.name}</h3>
                             <Badge
                               variant="secondary"
-                              className="bg-green-500/10 text-green-600"
+                              className="bg-success/10 text-success"
                             >
                               {formatDiscount(offer)}
                             </Badge>
@@ -233,7 +233,7 @@ export default function OffersPage() {
                               </Badge>
                             )}
                             {offer.lead_magnets && offer.lead_magnets.length > 0 && (
-                              <Badge variant="outline" className="gap-1 text-blue-600 border-blue-600/30">
+                              <Badge variant="outline" className="gap-1 text-info border-info/20">
                                 <Gift className="size-3" />
                                 {offer.lead_magnets.length} bonuses
                               </Badge>
@@ -250,7 +250,7 @@ export default function OffersPage() {
                             </p>
                           )}
                           {offer.total_value && offer.total_value > 0 && (
-                            <p className="text-sm text-green-600 mt-2">
+                            <p className="text-sm text-success mt-2">
                               Total Value: ${offer.total_value.toLocaleString()}
                               {offer.offer_price && (
                                 <span className="text-muted-foreground">

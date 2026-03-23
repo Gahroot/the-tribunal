@@ -19,14 +19,14 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { ChevronDown, Phone } from "lucide-react";
-import type { AgentResponse } from "@/lib/api/agents";
+import type { Agent } from "@/types/agent";
 import type { EditAgentFormValues } from "@/components/agents/agent-edit-schema";
 import { ReminderOffsetsInput } from "@/components/agents/reminder-offsets-input";
 
 interface AdvancedTabProps {
   form: UseFormReturn<EditAgentFormValues>;
   voiceProvider: string;
-  agent: AgentResponse;
+  agent: Agent;
 }
 
 const DEFAULT_REMINDER_TEMPLATE_PLACEHOLDER =

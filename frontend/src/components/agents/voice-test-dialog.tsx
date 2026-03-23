@@ -306,10 +306,10 @@ export function VoiceTestDialog({
             <div
               className={cn(
                 "h-3 w-3 rounded-full",
-                connectionStatus === "connected" && "bg-green-500",
-                connectionStatus === "connecting" && "bg-yellow-500 animate-pulse",
-                connectionStatus === "disconnected" && "bg-gray-400",
-                connectionStatus === "error" && "bg-red-500"
+                connectionStatus === "connected" && "bg-success",
+                connectionStatus === "connecting" && "bg-warning animate-pulse",
+                connectionStatus === "disconnected" && "bg-muted-foreground",
+                connectionStatus === "error" && "bg-destructive"
               )}
             />
             <span className="text-sm text-muted-foreground capitalize">

@@ -166,7 +166,7 @@ export function QuickActionsSection() {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
-        <MousePointerClick className="h-4 w-4 text-green-500" />
+        <MousePointerClick className="h-4 w-4 text-success" />
         <h3 className="text-sm font-semibold">Quick Actions</h3>
       </div>
 

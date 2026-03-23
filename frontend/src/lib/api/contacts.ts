@@ -1,4 +1,4 @@
-import api from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 import type { Contact, ContactStatus, TimelineItem } from "@/types";
 import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
 
@@ -138,27 +138,24 @@ export const contactsApi = {
   ...baseApi,
 
   listIds: async (workspaceId: string, params: ContactIdsParams = {}): Promise<ContactIdsResponse> => {
-    const response = await api.get<ContactIdsResponse>(
+    return apiGet<ContactIdsResponse>(
       `/api/v1/workspaces/${workspaceId}/contacts/ids`,
       { params }
     );
-    return response.data;
   },
 
   bulkDelete: async (workspaceId: string, ids: number[]): Promise<BulkDeleteResponse> => {
-    const response = await api.post<BulkDeleteResponse>(
+    return apiPost<BulkDeleteResponse>(
       `/api/v1/workspaces/${workspaceId}/contacts/bulk-delete`,
       { ids }
     );
-    return response.data;
   },
 
   bulkUpdateStatus: async (workspaceId: string, ids: number[], status: ContactStatus): Promise<BulkUpdateStatusResponse> => {
-    const response = await api.post<BulkUpdateStatusResponse>(
+    return apiPost<BulkUpdateStatusResponse>(
       `/api/v1/workspaces/${workspaceId}/contacts/bulk-update-status`,
       { ids, status }
     );
-    return response.data;
   },
 
   getTimeline: async (
@@ -166,11 +163,10 @@ export const contactsApi = {
     contactId: number,
     limit: number = 100
   ): Promise<TimelineItem[]> => {
-    const response = await api.get<TimelineItem[]>(
+    return apiGet<TimelineItem[]>(
       `/api/v1/workspaces/${workspaceId}/contacts/${contactId}/timeline`,
       { params: { limit } }
     );
-    return response.data;
   },
 
   toggleAI: async (
@@ -178,11 +174,10 @@ export const contactsApi = {
     contactId: number,
     enabled: boolean
   ): Promise<{ ai_enabled: boolean; conversation_id: string }> => {
-    const response = await api.post<{ ai_enabled: boolean; conversation_id: string }>(
+    return apiPost<{ ai_enabled: boolean; conversation_id: string }>(
       `/api/v1/workspaces/${workspaceId}/contacts/${contactId}/ai/toggle`,
       { enabled }
     );
-    return response.data;
   },
 
   previewCSV: async (
@@ -192,7 +187,7 @@ export const contactsApi = {
     const formData = new FormData();
     formData.append("file", file);
 
-    const response = await api.post<CSVPreviewResult>(
+    return apiPost<CSVPreviewResult>(
       `/api/v1/workspaces/${workspaceId}/contacts/import/preview`,
       formData,
       {
@@ -201,7 +196,6 @@ export const contactsApi = {
         },
       }
     );
-    return response.data;
   },
 
   importCSV: async (
@@ -224,7 +218,7 @@ export const contactsApi = {
       formData.append("column_mapping", JSON.stringify(options.column_mapping));
     }
 
-    const response = await api.post<ImportResult>(
+    return apiPost<ImportResult>(
       `/api/v1/workspaces/${workspaceId}/contacts/import`,
       formData,
       {
@@ -233,6 +227,5 @@ export const contactsApi = {
         },
       }
     );
-    return response.data;
   },
 };

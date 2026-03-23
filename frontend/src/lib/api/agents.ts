@@ -1,56 +1,8 @@
-import api from "@/lib/api";
+import { apiGet, apiPut } from "@/lib/api";
 import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
+import type { Agent } from "@/types/agent";
 
-// Backend response types
-export interface AgentResponse {
-  id: string;
-  workspace_id: string;
-  name: string;
-  description: string | null;
-  channel_mode: string;
-  voice_provider: string;
-  voice_id: string;
-  language: string;
-  system_prompt: string;
-  temperature: number;
-  text_response_delay_ms: number;
-  text_max_context_messages: number;
-  calcom_event_type_id: number | null;
-  enabled_tools: string[];
-  tool_settings: Record<string, string[]>;
-  is_active: boolean;
-  // IVR navigation settings
-  enable_ivr_navigation: boolean;
-  ivr_navigation_goal: string | null;
-  ivr_loop_threshold: number;
-  ivr_silence_duration_ms: number;
-  ivr_post_dtmf_cooldown_ms: number;
-  ivr_menu_buffer_silence_ms: number;
-  enable_recording: boolean;
-  reminder_enabled: boolean;
-  reminder_minutes_before: number;
-  reminder_offsets: number[];
-  reminder_template: string | null;
-  noshow_sms_enabled: boolean;
-  // No-show multi-day re-engagement sequence
-  noshow_reengagement_enabled: boolean;
-  noshow_day3_template: string | null;
-  noshow_day7_template: string | null;
-  // Never-booked re-engagement
-  never_booked_reengagement_enabled: boolean;
-  never_booked_delay_days: number;
-  never_booked_max_attempts: number;
-  never_booked_template: string | null;
-  value_reinforcement_enabled: boolean;
-  value_reinforcement_offset_minutes: number;
-  value_reinforcement_template: string | null;
-  // Post-meeting SMS
-  post_meeting_sms_enabled: boolean;
-  post_meeting_template: string | null;
-  auto_evaluate: boolean;
-  created_at: string;
-  updated_at: string;
-}
+export type { Agent };
 
 export interface AgentsListParams {
   page?: number;
@@ -59,7 +11,7 @@ export interface AgentsListParams {
 }
 
 export interface AgentsListResponse {
-  items: AgentResponse[];
+  items: Agent[];
   total: number;
   page: number;
   page_size: number;
@@ -165,9 +117,9 @@ export interface EmbedSettingsUpdate {
 }
 
 // Agents API
-const baseApi = createApiClient<AgentResponse, CreateAgentRequest, UpdateAgentRequest>({
+const baseApi = createApiClient<Agent, CreateAgentRequest, UpdateAgentRequest>({
   resourcePath: "agents",
-}) as FullApiClient<AgentResponse, CreateAgentRequest, UpdateAgentRequest>;
+}) as FullApiClient<Agent, CreateAgentRequest, UpdateAgentRequest>;
 
 export const agentsApi = {
   ...baseApi,
@@ -176,10 +128,9 @@ export const agentsApi = {
     workspaceId: string,
     agentId: string
   ): Promise<EmbedSettingsResponse> => {
-    const response = await api.get<EmbedSettingsResponse>(
+    return apiGet<EmbedSettingsResponse>(
       `/api/v1/workspaces/${workspaceId}/agents/${agentId}/embed`
     );
-    return response.data;
   },
 
   updateEmbedSettings: async (
@@ -187,10 +138,9 @@ export const agentsApi = {
     agentId: string,
     data: EmbedSettingsUpdate
   ): Promise<EmbedSettingsResponse> => {
-    const response = await api.put<EmbedSettingsResponse>(
+    return apiPut<EmbedSettingsResponse>(
       `/api/v1/workspaces/${workspaceId}/agents/${agentId}/embed`,
       data
     );
-    return response.data;
   },
 };

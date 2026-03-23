@@ -1,4 +1,5 @@
-import axios from "axios";
+import axios, { type AxiosRequestConfig } from "axios";
+import { safeGetItem, safeSetItem, safeRemoveItem } from "./utils/storage";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -10,35 +11,6 @@ export const api = axios.create({
   withCredentials: true,
   timeout: 30000,
 });
-
-// Safely get/set localStorage with error handling
-function safeGetItem(key: string): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return localStorage.getItem(key);
-  } catch (error) {
-    console.warn(`Failed to access localStorage for key "${key}":`, error);
-    return null;
-  }
-}
-
-function safeSetItem(key: string, value: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(key, value);
-  } catch (error) {
-    console.warn(`Failed to set localStorage key "${key}":`, error);
-  }
-}
-
-function safeRemoveItem(key: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.removeItem(key);
-  } catch (error) {
-    console.warn(`Failed to remove localStorage key "${key}":`, error);
-  }
-}
 
 // Logout function
 export function logout(): void {
@@ -150,5 +122,21 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+// Typed wrapper helpers — return response.data directly, eliminating boilerplate
+export const apiGet = <T>(url: string, config?: AxiosRequestConfig): Promise<T> =>
+  api.get<T>(url, config).then((r) => r.data);
+
+export const apiPost = <T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> =>
+  api.post<T>(url, data, config).then((r) => r.data);
+
+export const apiPut = <T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> =>
+  api.put<T>(url, data, config).then((r) => r.data);
+
+export const apiPatch = <T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> =>
+  api.patch<T>(url, data, config).then((r) => r.data);
+
+export const apiDelete = <T = void>(url: string, config?: AxiosRequestConfig): Promise<T> =>
+  api.delete<T>(url, config).then((r) => r.data);
 
 export default api;

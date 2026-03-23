@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.contact import Contact
-from app.services.telephony.telnyx import normalize_phone_number
+from app.utils.phone import normalize_phone_safe
 
 logger = structlog.get_logger()
 
@@ -113,7 +113,7 @@ def clean_phone_number(phone: str) -> str | None:
     cleaned = "".join(c for c in phone if c.isdigit() or c == "+")
     if len(cleaned) < 10:
         return None
-    return normalize_phone_number(cleaned)
+    return normalize_phone_safe(cleaned)
 
 
 def _get_csv_field(
@@ -399,7 +399,9 @@ class ContactImportService:
         existing_phones: set[str] = set()
         for db_row in phone_result:
             if db_row[0]:
-                existing_phones.add(normalize_phone_number(db_row[0]))
+                normalized = normalize_phone_safe(db_row[0])
+                if normalized:
+                    existing_phones.add(normalized)
         return existing_phones
 
     async def _process_rows(

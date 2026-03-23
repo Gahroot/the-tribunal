@@ -295,13 +295,13 @@ export function FindLeadsAIPage() {
           <div className="flex flex-col h-full p-6 gap-4">
             {/* Import Result Banner */}
             {importResult && (
-              <Card className={importResult.imported > 0 ? "border-green-500/50 bg-green-500/5" : "border-yellow-500/50 bg-yellow-500/5"}>
+              <Card className={importResult.imported > 0 ? "border-success/20 bg-success/10" : "border-warning/20 bg-warning/10"}>
                 <CardContent className="p-4">
                   <div className="flex items-center gap-4">
                     {importResult.imported > 0 ? (
-                      <CheckCircle2 className="h-8 w-8 text-green-500" />
+                      <CheckCircle2 className="h-8 w-8 text-success" />
                     ) : (
-                      <AlertCircle className="h-8 w-8 text-yellow-500" />
+                      <AlertCircle className="h-8 w-8 text-warning" />
                     )}
                     <div className="flex-1">
                       <p className="font-medium">
@@ -329,7 +329,7 @@ export function FindLeadsAIPage() {
                     </div>
                     {importResult.imported > 0 && (
                       <Button variant="outline" size="sm" asChild>
-                        <Link href="/">View Contacts</Link>
+                        <Link href="/contacts">View Contacts</Link>
                       </Button>
                     )}
                   </div>
@@ -351,11 +351,11 @@ export function FindLeadsAIPage() {
                             key={i}
                             className={cn(
                               "flex items-center justify-between text-xs px-2 py-1.5 rounded",
-                              detail.status === "imported" && "bg-green-50 text-green-800",
-                              detail.status === "rejected_low_score" && "bg-yellow-50 text-yellow-800",
-                              detail.status === "enrichment_failed" && "bg-red-50 text-red-800",
-                              detail.status === "skipped_duplicate" && "bg-gray-50 text-gray-600",
-                              detail.status === "skipped_no_phone" && "bg-gray-50 text-gray-600",
+                              detail.status === "imported" && "bg-success/10 text-success",
+                              detail.status === "rejected_low_score" && "bg-warning/10 text-warning",
+                              detail.status === "enrichment_failed" && "bg-destructive/10 text-destructive",
+                              detail.status === "skipped_duplicate" && "bg-muted text-muted-foreground",
+                              detail.status === "skipped_no_phone" && "bg-muted text-muted-foreground",
                             )}
                           >
                             <div className="flex items-center gap-2 min-w-0">
@@ -381,10 +381,10 @@ export function FindLeadsAIPage() {
                                   className={cn(
                                     "text-[10px] px-1 py-0 font-semibold",
                                     detail.lead_score >= 100
-                                      ? "text-green-700 bg-green-100 border-green-300"
+                                      ? "text-success bg-success/10 border-success/20"
                                       : detail.lead_score >= 80
-                                        ? "text-blue-700 bg-blue-100 border-blue-300"
-                                        : "text-yellow-700 bg-yellow-100 border-yellow-300"
+                                        ? "text-info bg-info/10 border-info/20"
+                                        : "text-warning bg-warning/10 border-warning/20"
                                   )}
                                 >
                                   Score: {detail.lead_score}
@@ -566,7 +566,7 @@ export function FindLeadsAIPage() {
                             </CardTitle>
                             {result.rating && (
                               <div className="flex items-center gap-1 mt-1">
-                                <Star className="h-3 w-3 fill-yellow-500 text-yellow-500" />
+                                <Star className="h-3 w-3 fill-warning text-warning" />
                                 <span className="text-sm">{result.rating}</span>
                                 {result.review_count > 0 && (
                                   <span className="text-xs text-muted-foreground">
@@ -596,7 +596,7 @@ export function FindLeadsAIPage() {
                           <div
                             className={cn(
                               "flex items-center gap-1",
-                              result.has_phone ? "text-green-600" : "text-muted-foreground"
+                              result.has_phone ? "text-success" : "text-muted-foreground"
                             )}
                           >
                             <Phone className="h-3 w-3" />
@@ -607,7 +607,7 @@ export function FindLeadsAIPage() {
                           <div
                             className={cn(
                               "flex items-center gap-1",
-                              result.has_website ? "text-blue-600" : "text-muted-foreground"
+                              result.has_website ? "text-info" : "text-muted-foreground"
                             )}
                           >
                             <Globe className="h-3 w-3" />
@@ -641,9 +641,9 @@ export function EnrichmentStatusBadge({ status }: { status: string | null | unde
   if (!status) return null;
 
   const statusConfig = {
-    pending: { icon: Clock, label: "Enriching...", className: "text-yellow-600 bg-yellow-50" },
-    enriched: { icon: CheckCircle2, label: "Enriched", className: "text-green-600 bg-green-50" },
-    failed: { icon: XCircle, label: "Failed", className: "text-red-600 bg-red-50" },
+    pending: { icon: Clock, label: "Enriching...", className: "text-warning bg-warning/10" },
+    enriched: { icon: CheckCircle2, label: "Enriched", className: "text-success bg-success/10" },
+    failed: { icon: XCircle, label: "Failed", className: "text-destructive bg-destructive/10" },
     skipped: { icon: null, label: "No website", className: "text-muted-foreground bg-muted" },
   };
 
@@ -665,10 +665,10 @@ export function LeadScoreBadge({ score }: { score: number | null | undefined }) 
 
   const color =
     score >= 80
-      ? "text-green-700 bg-green-100 border-green-300"
+      ? "text-success bg-success/10 border-success/20"
       : score >= 40
-        ? "text-yellow-700 bg-yellow-100 border-yellow-300"
-        : "text-gray-600 bg-gray-100 border-gray-300";
+        ? "text-warning bg-warning/10 border-warning/20"
+        : "text-muted-foreground bg-muted border-border";
 
   return (
     <Badge variant="outline" className={cn("gap-1 text-xs font-semibold", color)}>
@@ -693,7 +693,7 @@ export function AdPixelBadges({ adPixels }: { adPixels?: { meta_pixel?: boolean;
         <Badge
           key={badge.label}
           variant="outline"
-          className="text-xs text-purple-700 bg-purple-50 border-purple-300 gap-1"
+          className="text-xs text-primary bg-primary/10 border-primary/20 gap-1"
         >
           <Megaphone className="h-3 w-3" />
           {badge.label}

@@ -139,10 +139,10 @@ export function ABTestDashboard({ agentId }: ABTestDashboardProps) {
     if (recommended_action === "declare_winner" && winner_id && winner_probability) {
       const winnerVersion = comparison.versions.find((v) => v.version_id === winner_id);
       return (
-        <Card className="border-green-500 bg-green-50 dark:bg-green-950/20">
+        <Card className="border-success bg-success/10">
           <CardContent className="flex items-center justify-between p-4">
             <div className="flex items-center gap-3">
-              <Trophy className="h-6 w-6 text-green-600" />
+              <Trophy className="h-6 w-6 text-success" />
               <div>
                 <p className="font-medium">Winner Detected!</p>
                 <p className="text-sm text-muted-foreground">
@@ -153,7 +153,7 @@ export function ABTestDashboard({ agentId }: ABTestDashboardProps) {
             </div>
             <Button
               onClick={() => setDeclareWinnerVersion(winner_id)}
-              className="bg-green-600 hover:bg-green-700"
+              className="bg-success hover:bg-success/90"
             >
               Declare Winner
             </Button>
@@ -165,10 +165,10 @@ export function ABTestDashboard({ agentId }: ABTestDashboardProps) {
     if (recommended_action === "eliminate_worst") {
       const worstVersion = comparison.versions[comparison.versions.length - 1];
       return (
-        <Card className="border-yellow-500 bg-yellow-50 dark:bg-yellow-950/20">
+        <Card className="border-warning bg-warning/10">
           <CardContent className="flex items-center justify-between p-4">
             <div className="flex items-center gap-3">
-              <AlertCircle className="h-6 w-6 text-yellow-600" />
+              <AlertCircle className="h-6 w-6 text-warning" />
               <div>
                 <p className="font-medium">Consider Eliminating Underperformer</p>
                 <p className="text-sm text-muted-foreground">
@@ -179,7 +179,7 @@ export function ABTestDashboard({ agentId }: ABTestDashboardProps) {
             <Button
               variant="outline"
               onClick={() => setEliminateVersion(worstVersion.version_id)}
-              className="border-yellow-500 text-yellow-700 hover:bg-yellow-100"
+              className="border-warning text-warning hover:bg-warning/10"
             >
               Eliminate
             </Button>
@@ -190,9 +190,9 @@ export function ABTestDashboard({ agentId }: ABTestDashboardProps) {
 
     if (min_samples_needed > 0) {
       return (
-        <Card className="border-blue-500 bg-blue-50 dark:bg-blue-950/20">
+        <Card className="border-info bg-info/10">
           <CardContent className="flex items-center gap-3 p-4">
-            <TrendingUp className="h-6 w-6 text-blue-600" />
+            <TrendingUp className="h-6 w-6 text-info" />
             <div>
               <p className="font-medium">Collecting Data</p>
               <p className="text-sm text-muted-foreground">
@@ -312,7 +312,7 @@ function VersionCard({
   return (
     <Card
       className={cn(
-        isWinner && "border-green-500 ring-1 ring-green-500",
+        isWinner && "border-success ring-1 ring-success",
         isPaused && "opacity-60"
       )}
     >
@@ -326,7 +326,7 @@ function VersionCard({
               </Badge>
             )}
             {isWinner && (
-              <Badge className="bg-green-600 text-xs">
+              <Badge className="bg-success text-xs">
                 <Trophy className="mr-1 h-3 w-3" />
                 Leader
               </Badge>
@@ -372,8 +372,8 @@ function VersionCard({
             value={probabilityPercent}
             className={cn(
               "h-3",
-              probabilityPercent > 80 && "[&>div]:bg-green-500",
-              probabilityPercent < 20 && "[&>div]:bg-red-500"
+              probabilityPercent > 80 && "[&>div]:bg-success",
+              probabilityPercent < 20 && "[&>div]:bg-destructive"
             )}
           />
         </div>

@@ -1,18 +1,12 @@
 """Opportunity management endpoints."""
 
 import uuid
-from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from fastapi import APIRouter, Depends, Query, status
 
-from app.api.crud import get_nested_or_404, get_or_404
 from app.api.deps import DB, CurrentUser, get_workspace
-from app.db.pagination import paginate
-from app.models.opportunity import Opportunity, OpportunityActivity, OpportunityLineItem
-from app.models.pipeline import Pipeline, PipelineStage
+from app.models.workspace import Workspace
 from app.schemas.opportunity import (
     OpportunityCreate,
     OpportunityDetailResponse,
@@ -28,6 +22,7 @@ from app.schemas.opportunity import (
     PipelineStageUpdate,
     PipelineUpdate,
 )
+from app.services.opportunities import OpportunityService
 
 router = APIRouter()
 
@@ -38,20 +33,11 @@ async def list_pipelines(
     workspace_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> list[PipelineResponse]:
     """List all pipelines in a workspace."""
-    await get_workspace(workspace_id, current_user, db)
-
-    query = (
-        select(Pipeline)
-        .where(Pipeline.workspace_id == workspace_id)
-        .where(Pipeline.is_active)
-        .options(selectinload(Pipeline.stages))
-    )
-    result = await db.execute(query)
-    pipelines = result.unique().scalars().all()
-
-    return [PipelineResponse.model_validate(p) for p in pipelines]
+    service = OpportunityService(db)
+    return await service.list_pipelines(workspace_id)
 
 
 @router.post("/pipelines", response_model=PipelineResponse, status_code=status.HTTP_201_CREATED)
@@ -60,63 +46,11 @@ async def create_pipeline(
     pipeline_in: PipelineCreate,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> PipelineResponse:
     """Create a new pipeline."""
-    await get_workspace(workspace_id, current_user, db)
-
-    pipeline = Pipeline(
-        workspace_id=workspace_id,
-        name=pipeline_in.name,
-        description=pipeline_in.description,
-    )
-    db.add(pipeline)
-    await db.flush()
-
-    # Create default stages
-    default_stages = [
-        PipelineStage(
-            pipeline_id=pipeline.id,
-            name="New",
-            order=0,
-            probability=0,
-            stage_type="active",
-        ),
-        PipelineStage(
-            pipeline_id=pipeline.id,
-            name="Qualified",
-            order=1,
-            probability=25,
-            stage_type="active",
-        ),
-        PipelineStage(
-            pipeline_id=pipeline.id,
-            name="Proposal",
-            order=2,
-            probability=50,
-            stage_type="active",
-        ),
-        PipelineStage(
-            pipeline_id=pipeline.id,
-            name="Won",
-            order=3,
-            probability=100,
-            stage_type="won",
-        ),
-        PipelineStage(
-            pipeline_id=pipeline.id,
-            name="Lost",
-            order=4,
-            probability=0,
-            stage_type="lost",
-        ),
-    ]
-    for stage in default_stages:
-        db.add(stage)
-
-    await db.commit()
-    await db.refresh(pipeline, ["stages"])
-
-    return PipelineResponse.model_validate(pipeline)
+    service = OpportunityService(db)
+    return await service.create_pipeline(workspace_id, pipeline_in)
 
 
 @router.get("/pipelines/{pipeline_id}", response_model=PipelineResponse)
@@ -125,19 +59,11 @@ async def get_pipeline(
     pipeline_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> PipelineResponse:
     """Get a specific pipeline."""
-    await get_workspace(workspace_id, current_user, db)
-
-    pipeline = await get_or_404(
-        db,
-        Pipeline,
-        pipeline_id,
-        workspace_id=workspace_id,
-        options=[selectinload(Pipeline.stages)],
-    )
-
-    return PipelineResponse.model_validate(pipeline)
+    service = OpportunityService(db)
+    return await service.get_pipeline(workspace_id, pipeline_id)
 
 
 @router.put("/pipelines/{pipeline_id}", response_model=PipelineResponse)
@@ -147,23 +73,11 @@ async def update_pipeline(
     pipeline_in: PipelineUpdate,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> PipelineResponse:
     """Update a pipeline."""
-    await get_workspace(workspace_id, current_user, db)
-
-    pipeline = await get_or_404(db, Pipeline, pipeline_id, workspace_id=workspace_id)
-
-    if pipeline_in.name is not None:
-        pipeline.name = pipeline_in.name
-    if pipeline_in.description is not None:
-        pipeline.description = pipeline_in.description
-    if pipeline_in.is_active is not None:
-        pipeline.is_active = pipeline_in.is_active
-
-    await db.commit()
-    await db.refresh(pipeline)
-
-    return PipelineResponse.model_validate(pipeline)
+    service = OpportunityService(db)
+    return await service.update_pipeline(workspace_id, pipeline_id, pipeline_in)
 
 
 @router.delete("/pipelines/{pipeline_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -172,14 +86,11 @@ async def delete_pipeline(
     pipeline_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> None:
     """Delete a pipeline."""
-    await get_workspace(workspace_id, current_user, db)
-
-    pipeline = await get_or_404(db, Pipeline, pipeline_id, workspace_id=workspace_id)
-
-    await db.delete(pipeline)
-    await db.commit()
+    service = OpportunityService(db)
+    await service.delete_pipeline(workspace_id, pipeline_id)
 
 
 # Pipeline stage endpoints
@@ -194,26 +105,11 @@ async def create_pipeline_stage(
     stage_in: PipelineStageCreate,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> PipelineStageResponse:
     """Create a new pipeline stage."""
-    await get_workspace(workspace_id, current_user, db)
-
-    # Verify pipeline exists
-    await get_or_404(db, Pipeline, pipeline_id, workspace_id=workspace_id)
-
-    stage = PipelineStage(
-        pipeline_id=pipeline_id,
-        name=stage_in.name,
-        description=stage_in.description,
-        order=stage_in.order,
-        probability=stage_in.probability,
-        stage_type=stage_in.stage_type,
-    )
-    db.add(stage)
-    await db.commit()
-    await db.refresh(stage)
-
-    return PipelineStageResponse.model_validate(stage)
+    service = OpportunityService(db)
+    return await service.create_pipeline_stage(workspace_id, pipeline_id, stage_in)
 
 
 @router.put("/pipelines/{pipeline_id}/stages/{stage_id}", response_model=PipelineStageResponse)
@@ -224,34 +120,11 @@ async def update_pipeline_stage(
     stage_in: PipelineStageUpdate,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> PipelineStageResponse:
     """Update a pipeline stage."""
-    await get_workspace(workspace_id, current_user, db)
-
-    stage = await get_nested_or_404(
-        db,
-        PipelineStage,
-        stage_id,
-        parent_field="pipeline_id",
-        parent_id=pipeline_id,
-        detail="Stage not found",
-    )
-
-    if stage_in.name is not None:
-        stage.name = stage_in.name
-    if stage_in.description is not None:
-        stage.description = stage_in.description
-    if stage_in.order is not None:
-        stage.order = stage_in.order
-    if stage_in.probability is not None:
-        stage.probability = stage_in.probability
-    if stage_in.stage_type is not None:
-        stage.stage_type = stage_in.stage_type
-
-    await db.commit()
-    await db.refresh(stage)
-
-    return PipelineStageResponse.model_validate(stage)
+    service = OpportunityService(db)
+    return await service.update_pipeline_stage(pipeline_id, stage_id, stage_in)
 
 
 # Opportunity endpoints
@@ -260,6 +133,7 @@ async def list_opportunities(
     workspace_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
     pipeline_id: Annotated[uuid.UUID | None, Query()] = None,
     stage_id: Annotated[uuid.UUID | None, Query()] = None,
     page: Annotated[int, Query(ge=1)] = 1,
@@ -267,29 +141,14 @@ async def list_opportunities(
     search: str | None = None,
 ) -> PaginatedOpportunities:
     """List opportunities in a workspace."""
-    await get_workspace(workspace_id, current_user, db)
-
-    query = select(Opportunity).where(Opportunity.workspace_id == workspace_id)
-
-    if pipeline_id:
-        query = query.where(Opportunity.pipeline_id == pipeline_id)
-
-    if stage_id:
-        query = query.where(Opportunity.stage_id == stage_id)
-
-    if search:
-        search_term = f"%{search}%"
-        query = query.where(Opportunity.name.ilike(search_term))
-
-    query = query.order_by(Opportunity.created_at.desc())
-    result = await paginate(db, query, page=page, page_size=page_size)
-
-    return PaginatedOpportunities(
-        items=[OpportunityResponse.model_validate(o) for o in result.items],
-        total=result.total,
-        page=result.page,
-        page_size=result.page_size,
-        pages=result.pages,
+    service = OpportunityService(db)
+    return await service.list_opportunities(
+        workspace_id,
+        pipeline_id=pipeline_id,
+        stage_id=stage_id,
+        page=page,
+        page_size=page_size,
+        search=search,
     )
 
 
@@ -299,44 +158,11 @@ async def create_opportunity(
     opportunity_in: OpportunityCreate,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> OpportunityResponse:
     """Create a new opportunity."""
-    await get_workspace(workspace_id, current_user, db)
-
-    # Verify pipeline exists
-    pipeline_query = select(Pipeline).where(
-        (Pipeline.id == opportunity_in.pipeline_id) & (Pipeline.workspace_id == workspace_id)
-    )
-    pipeline = (await db.execute(pipeline_query)).scalar_one_or_none()
-    if not pipeline:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pipeline not found")
-
-    # Verify stage if provided
-    stage = None
-    if opportunity_in.stage_id:
-        stage_query = select(PipelineStage).where(PipelineStage.id == opportunity_in.stage_id)
-        stage = (await db.execute(stage_query)).scalar_one_or_none()
-        if not stage:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stage not found")
-
-    opportunity = Opportunity(
-        workspace_id=workspace_id,
-        pipeline_id=opportunity_in.pipeline_id,
-        stage_id=opportunity_in.stage_id,
-        primary_contact_id=opportunity_in.primary_contact_id,
-        name=opportunity_in.name,
-        description=opportunity_in.description,
-        amount=opportunity_in.amount,
-        currency=opportunity_in.currency,
-        expected_close_date=opportunity_in.expected_close_date,
-        source=opportunity_in.source,
-        probability=stage.probability if stage else 0,
-    )
-    db.add(opportunity)
-    await db.commit()
-    await db.refresh(opportunity)
-
-    return OpportunityResponse.model_validate(opportunity)
+    service = OpportunityService(db)
+    return await service.create_opportunity(workspace_id, opportunity_in)
 
 
 @router.get("/{opportunity_id}", response_model=OpportunityDetailResponse)
@@ -345,15 +171,11 @@ async def get_opportunity(
     opportunity_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> OpportunityDetailResponse:
     """Get a specific opportunity."""
-    await get_workspace(workspace_id, current_user, db)
-
-    opportunity = await get_or_404(
-        db, Opportunity, opportunity_id, workspace_id=workspace_id
-    )
-
-    return OpportunityDetailResponse.model_validate(opportunity)
+    service = OpportunityService(db)
+    return await service.get_opportunity(workspace_id, opportunity_id)
 
 
 @router.put("/{opportunity_id}", response_model=OpportunityResponse)
@@ -363,70 +185,13 @@ async def update_opportunity(
     opportunity_in: OpportunityUpdate,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> OpportunityResponse:
     """Update an opportunity."""
-    await get_workspace(workspace_id, current_user, db)
-
-    opportunity = await get_or_404(
-        db, Opportunity, opportunity_id, workspace_id=workspace_id
+    service = OpportunityService(db)
+    return await service.update_opportunity(
+        workspace_id, opportunity_id, opportunity_in, current_user.id
     )
-
-    # If stage is being updated, update probability and log activity
-    if opportunity_in.stage_id and opportunity_in.stage_id != opportunity.stage_id:
-        stage_query = select(PipelineStage).where(PipelineStage.id == opportunity_in.stage_id)
-        stage = (await db.execute(stage_query)).scalar_one_or_none()
-        if not stage:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stage not found")
-
-        # Log activity
-        old_stage_query = select(PipelineStage).where(PipelineStage.id == opportunity.stage_id)
-        old_stage = (await db.execute(old_stage_query)).scalar_one_or_none()
-
-        activity = OpportunityActivity(
-            opportunity_id=opportunity_id,
-            user_id=current_user.id,
-            activity_type="stage_changed",
-            old_value=old_stage.name if old_stage else "None",
-            new_value=stage.name,
-            description=f"Moved from {old_stage.name if old_stage else 'None'} to {stage.name}",
-        )
-        db.add(activity)
-
-        opportunity.stage_id = opportunity_in.stage_id
-        opportunity.probability = stage.probability
-        opportunity.stage_changed_at = datetime.now(UTC)
-
-    # Apply simple field updates
-    simple_fields = [
-        "name", "description", "amount", "currency",
-        "expected_close_date", "assigned_user_id", "source", "lost_reason", "is_active"
-    ]
-    for field in simple_fields:
-        value = getattr(opportunity_in, field, None)
-        if value is not None:
-            setattr(opportunity, field, value)
-
-    # Handle status change with activity logging
-    if opportunity_in.status is not None and opportunity_in.status != opportunity.status:
-        activity = OpportunityActivity(
-            opportunity_id=opportunity_id,
-            user_id=current_user.id,
-            activity_type="status_changed",
-            old_value=opportunity.status,
-            new_value=opportunity_in.status,
-            description=f"Status changed from {opportunity.status} to {opportunity_in.status}",
-        )
-        db.add(activity)
-        opportunity.status = opportunity_in.status
-        # Set closed_date when moving to terminal status
-        is_closed = opportunity_in.status in ("won", "lost", "abandoned")
-        opportunity.closed_date = datetime.now(UTC).date() if is_closed else None
-        opportunity.closed_by_id = current_user.id if is_closed else None
-
-    await db.commit()
-    await db.refresh(opportunity)
-
-    return OpportunityResponse.model_validate(opportunity)
 
 
 @router.delete("/{opportunity_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -435,16 +200,11 @@ async def delete_opportunity(
     opportunity_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> None:
     """Delete an opportunity."""
-    await get_workspace(workspace_id, current_user, db)
-
-    opportunity = await get_or_404(
-        db, Opportunity, opportunity_id, workspace_id=workspace_id
-    )
-
-    await db.delete(opportunity)
-    await db.commit()
+    service = OpportunityService(db)
+    await service.delete_opportunity(workspace_id, opportunity_id)
 
 
 # Line items endpoints
@@ -459,29 +219,11 @@ async def create_line_item(
     item_in: OpportunityLineItemCreate,
     current_user: CurrentUser,
     db: DB,
-) -> dict[str, uuid.UUID | float]:
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> dict[str, Any]:
     """Create a line item for an opportunity."""
-    await get_workspace(workspace_id, current_user, db)
-
-    # Verify opportunity exists
-    await get_or_404(db, Opportunity, opportunity_id, workspace_id=workspace_id)
-
-    total = (item_in.quantity * item_in.unit_price) - item_in.discount
-
-    line_item = OpportunityLineItem(
-        opportunity_id=opportunity_id,
-        name=item_in.name,
-        description=item_in.description,
-        quantity=item_in.quantity,
-        unit_price=item_in.unit_price,
-        discount=item_in.discount,
-        total=total,
-    )
-    db.add(line_item)
-    await db.commit()
-    await db.refresh(line_item)
-
-    return {"id": line_item.id, "total": float(line_item.total)}
+    service = OpportunityService(db)
+    return await service.create_line_item(workspace_id, opportunity_id, item_in)
 
 
 @router.put(
@@ -495,37 +237,11 @@ async def update_line_item(
     item_in: OpportunityLineItemUpdate,
     current_user: CurrentUser,
     db: DB,
-) -> dict[str, uuid.UUID | float]:
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> dict[str, Any]:
     """Update a line item."""
-    await get_workspace(workspace_id, current_user, db)
-
-    line_item = await get_nested_or_404(
-        db,
-        OpportunityLineItem,
-        item_id,
-        parent_field="opportunity_id",
-        parent_id=opportunity_id,
-        detail="Line item not found",
-    )
-
-    if item_in.name is not None:
-        line_item.name = item_in.name
-    if item_in.description is not None:
-        line_item.description = item_in.description
-    if item_in.quantity is not None:
-        line_item.quantity = item_in.quantity
-    if item_in.unit_price is not None:
-        line_item.unit_price = item_in.unit_price
-    if item_in.discount is not None:
-        line_item.discount = item_in.discount
-
-    # Recalculate total
-    line_item.total = (line_item.quantity * line_item.unit_price) - line_item.discount
-
-    await db.commit()
-    await db.refresh(line_item)
-
-    return {"id": line_item.id, "total": float(line_item.total)}
+    service = OpportunityService(db)
+    return await service.update_line_item(workspace_id, opportunity_id, item_id, item_in)
 
 
 @router.delete("/{opportunity_id}/line-items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -535,18 +251,8 @@ async def delete_line_item(
     item_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> None:
     """Delete a line item."""
-    await get_workspace(workspace_id, current_user, db)
-
-    line_item = await get_nested_or_404(
-        db,
-        OpportunityLineItem,
-        item_id,
-        parent_field="opportunity_id",
-        parent_id=opportunity_id,
-        detail="Line item not found",
-    )
-
-    await db.delete(line_item)
-    await db.commit()
+    service = OpportunityService(db)
+    await service.delete_line_item(workspace_id, opportunity_id, item_id)

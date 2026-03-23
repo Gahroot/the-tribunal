@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useMemo, useEffect } from "react";
+import { useRef, useMemo, useEffect, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import * as THREE from "three";
@@ -8,7 +8,7 @@ import type { NeuralNetworkProps } from "./types";
 
 // Default colors matching Prestyj/AICRM theme
 const DEFAULT_PRIMARY = "#7058e3";
-const DEFAULT_ACCENT = "#5ee5b3";
+const DEFAULT_ACCENT = "#0fa66e";
 
 // Seeded random for deterministic results
 function seededRandom(seed: number): () => number {
@@ -513,20 +513,52 @@ function Scene({
 export function NeuralNetwork({
   className,
   backgroundColor = "transparent",
-  primaryColor = DEFAULT_PRIMARY,
-  accentColor = DEFAULT_ACCENT,
+  primaryColor,
+  accentColor,
   nodeCount = 20,
   speed = 1,
   enableGlow = true,
   systemActivity = 0.7,
 }: NeuralNetworkProps) {
+  // Read CSS variables when no explicit colors are provided so the component
+  // responds to theme switches automatically.
+  const [resolvedPrimary, setResolvedPrimary] = useState(
+    primaryColor ?? DEFAULT_PRIMARY
+  );
+  const [resolvedAccent, setResolvedAccent] = useState(
+    accentColor ?? DEFAULT_ACCENT
+  );
+
+  useEffect(() => {
+    if (primaryColor !== undefined && accentColor !== undefined) return;
+    const update = () => {
+      const style = getComputedStyle(document.documentElement);
+      if (!primaryColor) {
+        const p = style.getPropertyValue("--primary").trim();
+        setResolvedPrimary(p || DEFAULT_PRIMARY);
+      }
+      if (!accentColor) {
+        const a = style.getPropertyValue("--success").trim();
+        setResolvedAccent(a || DEFAULT_ACCENT);
+      }
+    };
+    update();
+    // Re-run when the .dark class is toggled on <html>
+    const observer = new MutationObserver(update);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    return () => observer.disconnect();
+  }, [primaryColor, accentColor]);
+
   const primaryColorObj = useMemo(
-    () => new THREE.Color(primaryColor),
-    [primaryColor]
+    () => new THREE.Color(primaryColor ?? resolvedPrimary),
+    [primaryColor, resolvedPrimary]
   );
   const accentColorObj = useMemo(
-    () => new THREE.Color(accentColor),
-    [accentColor]
+    () => new THREE.Color(accentColor ?? resolvedAccent),
+    [accentColor, resolvedAccent]
   );
 
   return (

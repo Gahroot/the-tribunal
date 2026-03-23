@@ -91,7 +91,7 @@ export function PromptPerformanceChart({ agentId }: PromptPerformanceChartProps)
                   <div className="flex items-center gap-2">
                     <span className="font-mono">v{version.version_number}</span>
                     {version.is_active && (
-                      <span className="h-2 w-2 rounded-full bg-green-500" />
+                      <span className="h-2 w-2 rounded-full bg-success" />
                     )}
                   </div>
                   <div className="flex items-center gap-4 text-muted-foreground">
@@ -126,7 +126,7 @@ export function PromptPerformanceChart({ agentId }: PromptPerformanceChartProps)
             <span>Call Volume (relative)</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="h-2 w-2 rounded-full bg-green-500" />
+            <div className="h-2 w-2 rounded-full bg-success" />
             <span>Active</span>
           </div>
         </div>

@@ -374,13 +374,13 @@ export function IntegrationConfigDialog({
                     <div className="flex items-center gap-1 text-sm">
                       {effectiveTestResult.success ? (
                         <>
-                          <CheckCircle2 className="h-4 w-4 text-green-500" />
-                          <span className="text-green-600">{effectiveTestResult.message}</span>
+                          <CheckCircle2 className="h-4 w-4 text-success" />
+                          <span className="text-success">{effectiveTestResult.message}</span>
                         </>
                       ) : (
                         <>
-                          <XCircle className="h-4 w-4 text-red-500" />
-                          <span className="text-red-600">{effectiveTestResult.message}</span>
+                          <XCircle className="h-4 w-4 text-destructive" />
+                          <span className="text-destructive">{effectiveTestResult.message}</span>
                         </>
                       )}
                     </div>

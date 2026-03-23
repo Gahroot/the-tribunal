@@ -55,13 +55,7 @@ async def list_prompt_versions(
 
     result = await paginate(db, query, page=page, page_size=page_size)
 
-    return PromptVersionListResponse(
-        items=[PromptVersionResponse.model_validate(v) for v in result.items],
-        total=result.total,
-        page=result.page,
-        page_size=result.page_size,
-        pages=result.pages,
-    )
+    return PromptVersionListResponse(**result.to_response(PromptVersionResponse))
 
 
 @router.get("/active", response_model=list[PromptVersionResponse])

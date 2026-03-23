@@ -101,7 +101,7 @@ function SortableOpportunityCard({
               <p className="text-sm font-medium line-clamp-2">{opportunity.name}</p>
               <Badge
                 variant="outline"
-                className={cn("text-xs flex-shrink-0", opportunityStatusColors[opportunity.status as OpportunityStatus] ?? "bg-blue-500/10 text-blue-600 border-blue-500/20")}
+                className={cn("text-xs flex-shrink-0", opportunityStatusColors[opportunity.status as OpportunityStatus] ?? "bg-info/10 text-info border-info/20")}
               >
                 {opportunity.status}
               </Badge>
@@ -176,9 +176,9 @@ function StageColumn({
           <CircleDot
             className={cn(
               "h-3 w-3",
-              stage.stage_type === "won" && "text-green-500",
-              stage.stage_type === "lost" && "text-red-500",
-              stage.stage_type === "active" && "text-blue-500"
+              stage.stage_type === "won" && "text-success",
+              stage.stage_type === "lost" && "text-destructive",
+              stage.stage_type === "active" && "text-info"
             )}
           />
           <h3 className="text-sm font-medium">{stage.name}</h3>

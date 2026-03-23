@@ -43,11 +43,11 @@ function getIntegrationColor(type: string) {
     case "calcom":
       return "text-primary bg-primary/10";
     case "telnyx":
-      return "text-red-500 bg-red-500/10";
+      return "text-destructive bg-destructive/10";
     case "sendgrid":
-      return "text-blue-500 bg-blue-500/10";
+      return "text-info bg-info/10";
     default:
-      return "text-purple-500 bg-purple-500/10";
+      return "text-primary bg-primary/10";
   }
 }
 
@@ -121,7 +121,7 @@ export function IntegrationsSettingsTab() {
                       </div>
                     </div>
                     {integration.is_connected ? (
-                      <Badge className="bg-green-500/10 text-green-500 border-green-500/20">
+                      <Badge className="bg-success/10 text-success border-success/20">
                         Connected
                       </Badge>
                     ) : (

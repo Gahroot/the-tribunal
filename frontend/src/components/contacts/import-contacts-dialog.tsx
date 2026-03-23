@@ -310,7 +310,7 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
 
                 {/* Required fields warning */}
                 {!isMappingValid() && (
-                  <div className="flex items-center gap-2 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-sm text-yellow-600">
+                  <div className="flex items-center gap-2 p-3 bg-warning/10 border border-warning/20 rounded-lg text-sm text-warning">
                     <AlertCircle className="h-4 w-4 shrink-0" />
                     <span>
                       Map both <strong>First Name</strong> and <strong>Phone Number</strong> to continue.
@@ -462,9 +462,9 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
         {step === "results" && result && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 bg-green-500/10 rounded-lg text-center">
-                <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-green-500" />
-                <p className="text-2xl font-bold text-green-500">{result.successful}</p>
+              <div className="p-4 bg-success/10 rounded-lg text-center">
+                <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-success" />
+                <p className="text-2xl font-bold text-success">{result.successful}</p>
                 <p className="text-xs text-muted-foreground">Imported</p>
               </div>
               <div className="p-4 bg-muted/50 rounded-lg text-center">
@@ -476,13 +476,13 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
             {(result.skipped_duplicates > 0 || result.failed > 0) && (
               <div className="flex gap-4 text-sm">
                 {result.skipped_duplicates > 0 && (
-                  <div className="flex items-center gap-2 text-yellow-600">
+                  <div className="flex items-center gap-2 text-warning">
                     <AlertCircle className="h-4 w-4" />
                     <span>{result.skipped_duplicates} duplicates skipped</span>
                   </div>
                 )}
                 {result.failed > 0 && (
-                  <div className="flex items-center gap-2 text-red-500">
+                  <div className="flex items-center gap-2 text-destructive">
                     <AlertCircle className="h-4 w-4" />
                     <span>{result.failed} failed</span>
                   </div>
@@ -498,9 +498,9 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
                     {result.errors.map((error, idx) => (
                       <div
                         key={idx}
-                        className="text-xs p-2 bg-red-500/10 rounded flex gap-2"
+                        className="text-xs p-2 bg-destructive/10 rounded flex gap-2"
                       >
-                        <span className="font-mono text-red-500">Row {error.row}</span>
+                        <span className="font-mono text-destructive">Row {error.row}</span>
                         <span className="text-muted-foreground">{error.error}</span>
                       </div>
                     ))}

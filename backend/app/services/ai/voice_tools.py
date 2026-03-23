@@ -16,7 +16,11 @@ Usage:
 
 from datetime import datetime
 from typing import Any
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+import structlog
+
+logger = structlog.get_logger()
 
 # Grok built-in tools - these execute automatically on the provider side
 GROK_BUILTIN_TOOLS: dict[str, dict[str, str]] = {
@@ -143,7 +147,8 @@ def get_booking_tools(timezone: str = "America/New_York") -> list[dict[str, Any]
     """
     try:
         tz = ZoneInfo(timezone)
-    except Exception:
+    except ZoneInfoNotFoundError:
+        logger.debug("invalid_timezone_fallback", timezone=timezone)
         tz = ZoneInfo("America/New_York")
 
     now = datetime.now(tz)
@@ -351,7 +356,8 @@ def get_text_booking_tools(timezone: str = "America/New_York") -> list[dict[str,
     """
     try:
         tz = ZoneInfo(timezone)
-    except Exception:
+    except ZoneInfoNotFoundError:
+        logger.debug("invalid_timezone_fallback", timezone=timezone)
         tz = ZoneInfo("America/New_York")
 
     now = datetime.now(tz)

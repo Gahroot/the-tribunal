@@ -205,9 +205,9 @@ function AgentExperimentSection({ agentId, agentName }: { agentId: string; agent
       <CardContent className="space-y-4">
         {/* Recommendation Banner */}
         {recommended_action === "declare_winner" && winner_id && winner_probability ? (
-          <div className="flex items-center justify-between rounded-lg border border-green-500 bg-green-50 p-3 dark:bg-green-950/20">
+          <div className="flex items-center justify-between rounded-lg border border-success/20 bg-success/10 p-3">
             <div className="flex items-center gap-3">
-              <Trophy className="h-5 w-5 text-green-600" />
+              <Trophy className="h-5 w-5 text-success" />
               <div>
                 <p className="text-sm font-medium">Winner Detected</p>
                 <p className="text-xs text-muted-foreground">
@@ -215,14 +215,14 @@ function AgentExperimentSection({ agentId, agentName }: { agentId: string; agent
                 </p>
               </div>
             </div>
-            <Button size="sm" onClick={() => setDeclareWinnerVersion(winner_id)} className="bg-green-600 hover:bg-green-700">
+            <Button size="sm" onClick={() => setDeclareWinnerVersion(winner_id)} className="bg-success hover:bg-success/90">
               Declare Winner
             </Button>
           </div>
         ) : recommended_action === "eliminate_worst" ? (
-          <div className="flex items-center justify-between rounded-lg border border-yellow-500 bg-yellow-50 p-3 dark:bg-yellow-950/20">
+          <div className="flex items-center justify-between rounded-lg border border-warning/20 bg-warning/10 p-3">
             <div className="flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-yellow-600" />
+              <AlertCircle className="h-5 w-5 text-warning" />
               <div>
                 <p className="text-sm font-medium">Eliminate Underperformer</p>
                 <p className="text-xs text-muted-foreground">
@@ -230,13 +230,13 @@ function AgentExperimentSection({ agentId, agentName }: { agentId: string; agent
                 </p>
               </div>
             </div>
-            <Button size="sm" variant="outline" onClick={() => setEliminateVersion(comparison.versions[comparison.versions.length - 1].version_id)} className="border-yellow-500 text-yellow-700 hover:bg-yellow-100">
+            <Button size="sm" variant="outline" onClick={() => setEliminateVersion(comparison.versions[comparison.versions.length - 1].version_id)} className="border-warning/20 text-warning hover:bg-warning/10">
               Eliminate
             </Button>
           </div>
         ) : min_samples_needed > 0 ? (
-          <div className="flex items-center gap-3 rounded-lg border border-blue-500 bg-blue-50 p-3 dark:bg-blue-950/20">
-            <TrendingUp className="h-5 w-5 text-blue-600" />
+          <div className="flex items-center gap-3 rounded-lg border border-info/20 bg-info/10 p-3">
+            <TrendingUp className="h-5 w-5 text-info" />
             <div>
               <p className="text-sm font-medium">Collecting Data</p>
               <p className="text-xs text-muted-foreground">
@@ -268,7 +268,7 @@ function AgentExperimentSection({ agentId, agentName }: { agentId: string; agent
                 key={version.version_id}
                 className={cn(
                   "rounded-lg border p-4 space-y-3",
-                  isWinner && "border-green-500 ring-1 ring-green-500",
+                  isWinner && "border-success ring-1 ring-success",
                   isPaused && "opacity-60"
                 )}
               >
@@ -282,7 +282,7 @@ function AgentExperimentSection({ agentId, agentName }: { agentId: string; agent
                       <Badge variant="secondary" className="text-[10px]">Paused</Badge>
                     )}
                     {isWinner && (
-                      <Badge className="bg-green-600 text-[10px]">
+                      <Badge className="bg-success text-[10px]">
                         <Trophy className="mr-0.5 h-2.5 w-2.5" />
                         Leader
                       </Badge>
@@ -313,8 +313,8 @@ function AgentExperimentSection({ agentId, agentName }: { agentId: string; agent
                     value={probabilityPercent}
                     className={cn(
                       "h-2",
-                      probabilityPercent > 80 && "[&>div]:bg-green-500",
-                      probabilityPercent < 20 && "[&>div]:bg-red-500"
+                      probabilityPercent > 80 && "[&>div]:bg-success",
+                      probabilityPercent < 20 && "[&>div]:bg-destructive"
                     )}
                   />
                 </div>

@@ -1,27 +1,23 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Fraunces } from "next/font/google";
+import { Inter, Manrope } from "next/font/google";
 import { Providers } from "@/providers/providers";
+import { Spotlight } from "@/components/effects/spotlight";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const manrope = Manrope({
+  variable: "--font-manrope",
   subsets: ["latin"],
-});
-
-const fraunces = Fraunces({
-  variable: "--font-serif",
-  subsets: ["latin"],
-  display: "swap",
 });
 
 export const metadata: Metadata = {
   title: "AI CRM - Unified Customer Communications",
-  description: "AI-powered CRM for managing customer relationships through voice, SMS, and email",
+  description:
+    "AI-powered CRM for managing customer relationships through voice, SMS, and email",
 };
 
 export default function RootLayout({
@@ -30,12 +26,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} antialiased`}
+        className={`${inter.variable} ${manrope.variable} font-sans antialiased relative min-h-screen`}
       >
         <Providers>
-          {children}
+          <Spotlight className="fixed" />
+          <div className="relative z-10">{children}</div>
         </Providers>
       </body>
     </html>

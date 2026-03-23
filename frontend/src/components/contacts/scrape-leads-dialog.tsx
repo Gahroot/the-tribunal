@@ -333,7 +333,7 @@ export function ScrapeLeadsDialog({ open, onOpenChange }: ScrapeLeadsDialogProps
                             <span className="font-medium truncate">{result.name}</span>
                             {result.rating && (
                               <Badge variant="secondary" className="gap-1 shrink-0">
-                                <Star className="h-3 w-3 fill-yellow-500 text-yellow-500" />
+                                <Star className="h-3 w-3 fill-warning text-warning" />
                                 {result.rating}
                                 {result.review_count > 0 && (
                                   <span className="text-muted-foreground">
@@ -353,7 +353,7 @@ export function ScrapeLeadsDialog({ open, onOpenChange }: ScrapeLeadsDialogProps
                             <div
                               className={cn(
                                 "flex items-center gap-1",
-                                result.has_phone ? "text-green-600" : "text-muted-foreground"
+                                result.has_phone ? "text-success" : "text-muted-foreground"
                               )}
                             >
                               <Phone className="h-3 w-3" />
@@ -362,7 +362,7 @@ export function ScrapeLeadsDialog({ open, onOpenChange }: ScrapeLeadsDialogProps
                             <div
                               className={cn(
                                 "flex items-center gap-1",
-                                result.has_website ? "text-blue-600" : "text-muted-foreground"
+                                result.has_website ? "text-info" : "text-muted-foreground"
                               )}
                             >
                               <Globe className="h-3 w-3" />
@@ -402,9 +402,9 @@ export function ScrapeLeadsDialog({ open, onOpenChange }: ScrapeLeadsDialogProps
         {step === "done" && importResult && (
           <div className="space-y-4 py-4">
             <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 bg-green-500/10 rounded-lg text-center">
-                <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-green-500" />
-                <p className="text-2xl font-bold text-green-500">{importResult.imported}</p>
+              <div className="p-4 bg-success/10 rounded-lg text-center">
+                <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-success" />
+                <p className="text-2xl font-bold text-success">{importResult.imported}</p>
                 <p className="text-xs text-muted-foreground">Imported</p>
               </div>
               <div className="p-4 bg-muted/50 rounded-lg text-center">
@@ -416,13 +416,13 @@ export function ScrapeLeadsDialog({ open, onOpenChange }: ScrapeLeadsDialogProps
             {(importResult.skipped_duplicates > 0 || importResult.skipped_no_phone > 0) && (
               <div className="flex flex-wrap gap-4 text-sm">
                 {importResult.skipped_duplicates > 0 && (
-                  <div className="flex items-center gap-2 text-yellow-600">
+                  <div className="flex items-center gap-2 text-warning">
                     <AlertCircle className="h-4 w-4" />
                     <span>{importResult.skipped_duplicates} duplicates skipped</span>
                   </div>
                 )}
                 {importResult.skipped_no_phone > 0 && (
-                  <div className="flex items-center gap-2 text-yellow-600">
+                  <div className="flex items-center gap-2 text-warning">
                     <AlertCircle className="h-4 w-4" />
                     <span>{importResult.skipped_no_phone} skipped (no phone)</span>
                   </div>
@@ -438,7 +438,7 @@ export function ScrapeLeadsDialog({ open, onOpenChange }: ScrapeLeadsDialogProps
                     {importResult.errors.map((error, idx) => (
                       <div
                         key={idx}
-                        className="text-xs p-2 bg-red-500/10 rounded text-red-600"
+                        className="text-xs p-2 bg-destructive/10 rounded text-destructive"
                       >
                         {error}
                       </div>

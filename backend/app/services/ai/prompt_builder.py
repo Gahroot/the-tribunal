@@ -22,7 +22,7 @@ Usage:
 
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.models.agent import Agent
 
@@ -72,7 +72,7 @@ class VoicePromptBuilder:
         """
         try:
             return ZoneInfo(self.timezone)
-        except Exception:
+        except ZoneInfoNotFoundError:
             return ZoneInfo("America/New_York")
 
     def get_date_context(self) -> str:

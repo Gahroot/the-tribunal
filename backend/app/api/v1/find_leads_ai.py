@@ -3,14 +3,15 @@
 import asyncio
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.core.config import settings
 from app.models.contact import Contact
+from app.models.workspace import Workspace
 from app.schemas.find_leads_ai import (
     AIImportLeadsRequest,
     AIImportLeadsResponse,
@@ -23,7 +24,7 @@ from app.schemas.scraping import (
 )
 from app.services.scraping.enrichment_service import enrich_contact_data
 from app.services.scraping.google_places import GooglePlacesError, GooglePlacesService
-from app.services.telephony.telnyx import normalize_phone_number
+from app.utils.phone import normalize_phone_safe
 
 router = APIRouter()
 
@@ -34,14 +35,13 @@ async def search_businesses_ai(
     request: BusinessSearchRequest,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> BusinessSearchResponse:
     """Search for businesses using Google Places API.
 
     Same as regular Find Leads, but available at the /find-leads-ai endpoint.
     Returns a list of businesses matching the search query with their details.
     """
-    # Verify workspace access
-    await get_workspace(workspace_id, current_user, db)
 
     service = GooglePlacesService()
     try:
@@ -99,6 +99,7 @@ async def import_leads_ai(  # noqa: PLR0912, PLR0915
     request: AIImportLeadsRequest,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> AIImportLeadsResponse:
     """Import selected leads as contacts with parallel AI enrichment.
 
@@ -108,7 +109,6 @@ async def import_leads_ai(  # noqa: PLR0912, PLR0915
     - Leads below the threshold are rejected immediately
     - No background processing for new imports
     """
-    workspace = await get_workspace(workspace_id, current_user, db)
 
     # Get existing phone numbers for duplicate detection
     phone_result = await db.execute(
@@ -117,7 +117,9 @@ async def import_leads_ai(  # noqa: PLR0912, PLR0915
     existing_phones: set[str] = set()
     for row in phone_result:
         if row[0]:
-            existing_phones.add(normalize_phone_number(row[0]))
+            normalized = normalize_phone_safe(row[0])
+            if normalized:
+                existing_phones.add(normalized)
 
     imported = 0
     rejected_low_score = 0
@@ -136,7 +138,11 @@ async def import_leads_ai(  # noqa: PLR0912, PLR0915
             lead_details.append(LeadImportDetail(name=lead.name, status="skipped_no_phone"))
             continue
 
-        normalized_phone = normalize_phone_number(lead.phone_number)
+        normalized_phone = normalize_phone_safe(lead.phone_number)
+        if not normalized_phone:
+            skipped_no_phone += 1
+            lead_details.append(LeadImportDetail(name=lead.name, status="skipped_no_phone"))
+            continue
         if normalized_phone in existing_phones:
             skipped_duplicates += 1
             lead_details.append(LeadImportDetail(name=lead.name, status="skipped_duplicate"))

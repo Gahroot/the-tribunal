@@ -9,21 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { useContactStore } from "@/lib/contact-store";
+import { useAgents } from "@/hooks/useAgents";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import type { Agent } from "@/types";
-
-const tierColors: Record<string, string> = {
-  budget: "bg-gray-500/10 text-gray-500",
-  balanced: "bg-blue-500/10 text-blue-500",
-  "premium-mini": "bg-purple-500/10 text-purple-500",
-  premium: "bg-amber-500/10 text-amber-500",
-};
-
-const tierLabels: Record<string, string> = {
-  budget: "Budget",
-  balanced: "Balanced",
-  "premium-mini": "Premium Mini",
-  premium: "Premium",
-};
 
 const channelIcons: Record<string, string> = {
   voice: "Voice",
@@ -73,11 +61,6 @@ function AgentCard({ agent, isAssigned, isActive, onAssign, onToggle }: AgentCar
             {agent.description}
           </p>
           <div className="flex items-center gap-2 mt-2">
-            {agent.pricing_tier && (
-              <Badge variant="outline" className={cn("text-xs", tierColors[agent.pricing_tier])}>
-                {tierLabels[agent.pricing_tier]}
-              </Badge>
-            )}
             <span className="text-xs text-muted-foreground">
               {channelIcons[agent.channel_mode]}
             </span>
@@ -120,7 +103,10 @@ function AgentCard({ agent, isAssigned, isActive, onAssign, onToggle }: AgentCar
 }
 
 export function AIAgentsSection() {
-  const { selectedContact, agents, contactAgents, assignAgent, toggleContactAgent } = useContactStore();
+  const { selectedContact, contactAgents, assignAgent, toggleContactAgent } = useContactStore();
+  const workspaceId = useWorkspaceId();
+  const { data: agentsData } = useAgents(workspaceId ?? "");
+  const agents = React.useMemo(() => agentsData?.items ?? [], [agentsData?.items]);
 
   // Find the current assignment for this contact
   const currentAssignment = React.useMemo(() => {

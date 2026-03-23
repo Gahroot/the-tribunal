@@ -3,53 +3,40 @@
 import json
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Form, HTTPException, Query, UploadFile, status
-from pydantic import BaseModel, ConfigDict
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.core.config import settings
 from app.models.contact import Contact
+from app.models.workspace import Workspace
 from app.schemas.contact import (
+    AIToggleRequest,
+    AIToggleResponse,
+    BatchQualifyResponse,
+    BulkDeleteRequest,
+    BulkDeleteResponse,
     BulkStatusUpdateRequest,
     BulkStatusUpdateResponse,
     ContactCreate,
+    ContactIdsResponse,
     ContactListResponse,
     ContactResponse,
     ContactUpdate,
+    CSVPreviewResponse,
+    ImportResult,
+    MessageResponse,
     QualificationSignals,
+    QualifyContactResponse,
+    SendMessageToContactRequest,
+    TimelineItem,
 )
 from app.services.contacts import ContactImportService, ContactService
-from app.services.contacts.contact_import import CONTACT_FIELDS, ImportErrorDetail
+from app.services.contacts.contact_import import CONTACT_FIELDS
 
 router = APIRouter()
-
-
-# Schema for sending a message to a contact
-class SendMessageToContactRequest(BaseModel):
-    """Request schema for sending a message to a contact."""
-
-    body: str
-    from_number: str | None = None  # Optional: specific phone number to send from
-
-
-class MessageResponse(BaseModel):
-    """Response schema for a message."""
-
-    id: uuid.UUID
-    conversation_id: uuid.UUID
-    direction: str
-    channel: str
-    body: str
-    status: str
-    is_ai: bool
-    agent_id: uuid.UUID | None
-    sent_at: datetime | None
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 @router.get("", response_model=ContactListResponse)
@@ -57,6 +44,7 @@ async def list_contacts(
     workspace_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     status_filter: str | None = Query(None, alias="status"),
@@ -78,8 +66,6 @@ async def list_contacts(
     filters: str | None = Query(None, description="JSON FilterDefinition"),
 ) -> ContactListResponse:
     """List contacts in a workspace."""
-    workspace = await get_workspace(workspace_id, current_user, db)
-
     # Parse tag UUIDs
     tag_uuids: list[uuid.UUID] | None = None
     if tags:
@@ -124,18 +110,12 @@ async def list_contacts(
     return ContactListResponse(**result)
 
 
-class ContactIdsResponse(BaseModel):
-    """Response schema for contact IDs."""
-
-    ids: list[int]
-    total: int
-
-
 @router.get("/ids", response_model=ContactIdsResponse)
 async def list_contact_ids(
     workspace_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
     status_filter: str | None = Query(None, alias="status"),
     search: str | None = None,
     # Advanced filters
@@ -152,8 +132,6 @@ async def list_contact_ids(
     filters: str | None = Query(None, description="JSON FilterDefinition"),
 ) -> ContactIdsResponse:
     """List all contact IDs matching filters."""
-    workspace = await get_workspace(workspace_id, current_user, db)
-
     # Parse tag UUIDs
     tag_uuids: list[uuid.UUID] | None = None
     if tags:
@@ -201,11 +179,9 @@ async def create_contact(
     contact_in: ContactCreate,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> Contact:
     """Create a new contact."""
-    # Verify workspace access
-    workspace = await get_workspace(workspace_id, current_user, db)
-
     service = ContactService(db)
     return await service.create_contact(
         workspace_id=workspace.id,
@@ -227,11 +203,9 @@ async def get_contact(
     contact_id: int,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> Contact:
     """Get a specific contact."""
-    # Verify workspace access
-    workspace = await get_workspace(workspace_id, current_user, db)
-
     service = ContactService(db)
     return await service.get_contact(contact_id, workspace.id)
 
@@ -243,11 +217,9 @@ async def update_contact(
     contact_in: ContactUpdate,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> Contact:
     """Update a contact."""
-    # Verify workspace access
-    workspace = await get_workspace(workspace_id, current_user, db)
-
     service = ContactService(db)
     update_data = contact_in.model_dump(exclude_unset=True)
     return await service.update_contact(contact_id, workspace.id, update_data)
@@ -259,27 +231,11 @@ async def delete_contact(
     contact_id: int,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> None:
     """Delete a contact."""
-    # Verify workspace access
-    workspace = await get_workspace(workspace_id, current_user, db)
-
     service = ContactService(db)
     await service.delete_contact(contact_id, workspace.id)
-
-
-class BulkDeleteRequest(BaseModel):
-    """Request schema for bulk deleting contacts."""
-
-    ids: list[int]
-
-
-class BulkDeleteResponse(BaseModel):
-    """Response schema for bulk delete operation."""
-
-    deleted: int
-    failed: int
-    errors: list[str]
 
 
 @router.post("/bulk-delete", response_model=BulkDeleteResponse)
@@ -288,11 +244,9 @@ async def bulk_delete_contacts(
     request: BulkDeleteRequest,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> BulkDeleteResponse:
     """Delete multiple contacts at once."""
-    # Verify workspace access
-    workspace = await get_workspace(workspace_id, current_user, db)
-
     service = ContactService(db)
     result = await service.bulk_delete_contacts(request.ids, workspace.id)
 
@@ -305,11 +259,9 @@ async def bulk_update_status(
     request: BulkStatusUpdateRequest,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> BulkStatusUpdateResponse:
     """Update the status of multiple contacts at once."""
-    # Verify workspace access
-    workspace = await get_workspace(workspace_id, current_user, db)
-
     service = ContactService(db)
     result = await service.bulk_update_status(
         request.ids, workspace.id, request.status
@@ -325,14 +277,12 @@ async def send_message_to_contact(
     message_in: SendMessageToContactRequest,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> Any:
     """Send an SMS message to a contact.
 
     This endpoint finds or creates a conversation for the contact and sends the message.
     """
-    # Verify workspace access
-    workspace = await get_workspace(workspace_id, current_user, db)
-
     service = ContactService(db)
     return await service.send_message(
         contact_id=contact_id,
@@ -343,19 +293,6 @@ async def send_message_to_contact(
     )
 
 
-class AIToggleRequest(BaseModel):
-    """Request schema for toggling AI on a contact's conversation."""
-
-    enabled: bool
-
-
-class AIToggleResponse(BaseModel):
-    """Response schema for AI toggle."""
-
-    ai_enabled: bool
-    conversation_id: uuid.UUID
-
-
 @router.post("/{contact_id}/ai/toggle", response_model=AIToggleResponse)
 async def toggle_contact_ai(
     workspace_id: uuid.UUID,
@@ -363,14 +300,12 @@ async def toggle_contact_ai(
     toggle_in: AIToggleRequest,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> AIToggleResponse:
     """Toggle AI for a contact's conversation.
 
     Finds an existing conversation for the contact or creates one if needed.
     """
-    # Verify workspace access
-    workspace = await get_workspace(workspace_id, current_user, db)
-
     service = ContactService(db)
     result = await service.toggle_ai(
         contact_id=contact_id,
@@ -381,41 +316,19 @@ async def toggle_contact_ai(
     return AIToggleResponse(**result)
 
 
-class TimelineItem(BaseModel):
-    """A unified timeline item."""
-
-    id: uuid.UUID
-    type: str  # "sms", "call", "appointment", "note"
-    timestamp: datetime
-    direction: str | None = None
-    is_ai: bool = False
-    content: str
-    duration_seconds: int | None = None
-    recording_url: str | None = None
-    transcript: str | None = None
-    status: str | None = None
-    booking_outcome: str | None = None
-    original_id: uuid.UUID
-    original_type: str  # "sms_message", "call_record", "appointment", "note"
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 @router.get("/{contact_id}/timeline", response_model=list[TimelineItem])
 async def get_contact_timeline(
     workspace_id: uuid.UUID,
     contact_id: int,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
     limit: int = Query(100, ge=1, le=500),
 ) -> list[TimelineItem]:
     """Get the conversation timeline for a contact.
 
     Returns a unified timeline of SMS messages, calls, appointments, etc.
     """
-    # Verify workspace access
-    workspace = await get_workspace(workspace_id, current_user, db)
-
     service = ContactService(db)
     timeline_items_data = await service.get_contact_timeline(
         contact_id=contact_id,
@@ -432,39 +345,18 @@ async def get_contact_timeline(
 # ============================================================================
 
 
-class ImportResult(BaseModel):
-    """Result of a CSV import operation."""
-
-    total_rows: int
-    successful: int
-    failed: int
-    skipped_duplicates: int
-    errors: list[ImportErrorDetail]
-    created_contacts: list[ContactResponse]
-
-
-class CSVPreviewResponse(BaseModel):
-    """Response from previewing a CSV file for import."""
-
-    headers: list[str]
-    sample_rows: list[dict[str, str]]
-    suggested_mapping: dict[str, str | None]
-    contact_fields: list[dict[str, Any]]
-
-
 @router.post("/import/preview", response_model=CSVPreviewResponse)
 async def preview_import_csv(
     workspace_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
     file: UploadFile,
 ) -> CSVPreviewResponse:
     """Preview a CSV file before importing.
 
     Returns the headers, sample rows, and suggested field mappings.
     """
-    await get_workspace(workspace_id, current_user, db)
-
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -500,6 +392,7 @@ async def import_contacts_csv(
     workspace_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
     file: UploadFile,
     skip_duplicates: bool = Form(default=True),
     default_status: str = Form(default="new"),
@@ -521,8 +414,6 @@ async def import_contacts_csv(
     Column names are case-insensitive and support common variations.
     """
     from app.services.contacts.contact_import import VALID_STATUSES
-
-    workspace = await get_workspace(workspace_id, current_user, db)
 
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(
@@ -590,10 +481,9 @@ async def get_import_template(
     workspace_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> dict[str, Any]:
     """Get CSV import template information."""
-    await get_workspace(workspace_id, current_user, db)
-
     return ContactImportService.get_template_info()
 
 
@@ -602,37 +492,13 @@ async def get_import_template(
 # ============================================================================
 
 
-class QualifyContactResponse(BaseModel):
-    """Response from analyzing and qualifying a contact."""
-
-    success: bool
-    contact_id: int | None = None
-    lead_score: int = 0
-    is_qualified: bool = False
-    qualification_signals: QualificationSignals | None = None
-    has_appointment: bool = False
-    response_rate: float = 0.0
-    message: str | None = None
-    error: str | None = None
-
-
-class BatchQualifyResponse(BaseModel):
-    """Response from batch qualification analysis."""
-
-    success: bool
-    analyzed: int = 0
-    qualified: int = 0
-    errors: int = 0
-    contacts: list[dict[str, Any]] = []
-    error: str | None = None
-
-
 @router.post("/{contact_id}/qualify", response_model=QualifyContactResponse)
 async def qualify_contact(
     workspace_id: uuid.UUID,
     contact_id: int,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> QualifyContactResponse:
     """Analyze a contact's conversations and update their qualification status.
 
@@ -643,9 +509,6 @@ async def qualify_contact(
     exceeds the qualification threshold (60).
     """
     from app.services.ai.qualification import analyze_and_qualify_contact
-
-    # Verify workspace access
-    workspace = await get_workspace(workspace_id, current_user, db)
 
     # Verify contact exists in workspace
     result = await db.execute(
@@ -694,11 +557,9 @@ async def get_contact_qualification(
     contact_id: int,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> QualifyContactResponse:
     """Get the current qualification status of a contact without re-analyzing."""
-    # Verify workspace access
-    workspace = await get_workspace(workspace_id, current_user, db)
-
     # Get contact
     result = await db.execute(
         select(Contact).where(
@@ -733,6 +594,7 @@ async def batch_qualify_contacts(
     workspace_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
     limit: int = Query(50, ge=1, le=100),
 ) -> BatchQualifyResponse:
     """Analyze and qualify multiple contacts in the workspace.
@@ -744,9 +606,6 @@ async def batch_qualify_contacts(
     This is useful for batch processing leads that need qualification.
     """
     from app.services.ai.qualification import batch_analyze_contacts
-
-    # Verify workspace access
-    workspace = await get_workspace(workspace_id, current_user, db)
 
     # Run batch analysis
     result = await batch_analyze_contacts(str(workspace.id), db, limit)

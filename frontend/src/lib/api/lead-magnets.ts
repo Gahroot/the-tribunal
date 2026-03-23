@@ -1,4 +1,4 @@
-import api from "@/lib/api";
+import { apiPost } from "@/lib/api";
 import type {
   LeadMagnet,
   LeadMagnetType,
@@ -88,31 +88,28 @@ export const leadMagnetsApi = {
     workspaceId: string,
     data: GenerateQuizRequest
   ): Promise<GeneratedQuizContent> => {
-    const response = await api.post<GeneratedQuizContent>(
+    return apiPost<GeneratedQuizContent>(
       `/api/v1/workspaces/${workspaceId}/lead-magnets/generate-quiz`,
       data
     );
-    return response.data;
   },
 
   generateCalculator: async (
     workspaceId: string,
     data: GenerateCalculatorRequest
   ): Promise<GeneratedCalculatorContent> => {
-    const response = await api.post<GeneratedCalculatorContent>(
+    return apiPost<GeneratedCalculatorContent>(
       `/api/v1/workspaces/${workspaceId}/lead-magnets/generate-calculator`,
       data
     );
-    return response.data;
   },
 
   incrementDownload: async (
     workspaceId: string,
     leadMagnetId: string
   ): Promise<LeadMagnet> => {
-    const response = await api.post<LeadMagnet>(
+    return apiPost<LeadMagnet>(
       `/api/v1/workspaces/${workspaceId}/lead-magnets/${leadMagnetId}/increment-download`
     );
-    return response.data;
   },
 };

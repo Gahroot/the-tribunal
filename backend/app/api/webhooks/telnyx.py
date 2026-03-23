@@ -68,7 +68,7 @@ async def telnyx_sms_webhook(request: Request) -> dict[str, str]:
 
 async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:  # noqa: PLR0915
     """Handle inbound SMS message."""
-    from app.services.telephony.telnyx import normalize_phone_number
+    from app.utils.phone import normalize_phone_safe
 
     # Extract message details
     from_number = payload.get("from", {}).get("phone_number", "")
@@ -78,8 +78,8 @@ async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:  # 
     message_id = payload.get("id", "")
 
     # Normalize phone numbers to E.164 format for consistent lookups
-    from_number = normalize_phone_number(from_number)
-    to_number = normalize_phone_number(to_number)
+    from_number = normalize_phone_safe(from_number) or from_number
+    to_number = normalize_phone_safe(to_number) or to_number
 
     log = log.bind(from_number=from_number, to_number=to_number, message_id=message_id)
     log.info("processing_inbound_sms")
@@ -326,7 +326,7 @@ async def telnyx_voice_webhook(request: Request) -> dict[str, str]:
 
 def _extract_phone_numbers(payload: dict[Any, Any]) -> tuple[str, str]:
     """Extract and normalize phone numbers from Telnyx payload."""
-    from app.services.telephony.telnyx import normalize_phone_number
+    from app.utils.phone import normalize_phone_safe
 
     # Telnyx voice webhooks send "from" and "to" as strings or nested objects
     from_raw = payload.get("from", "")
@@ -343,7 +343,9 @@ def _extract_phone_numbers(payload: dict[Any, Any]) -> tuple[str, str]:
     else:
         to_number = str(to_raw) if to_raw else ""
 
-    return normalize_phone_number(from_number), normalize_phone_number(to_number)
+    norm_from = normalize_phone_safe(from_number) or from_number
+    norm_to = normalize_phone_safe(to_number) or to_number
+    return norm_from, norm_to
 
 
 async def handle_call_initiated(payload: dict[Any, Any], log: Any) -> None:
