@@ -173,12 +173,13 @@
       this.baseUrl = "";
       this.primaryColor = "#6366f1";
       this.mode = "voice";
+      this.display = "floating";
       this.currentState = "idle";
       this.messageHandler = null;
     }
 
     static get observedAttributes() {
-      return ["agent-id", "position", "theme", "button-text", "base-url", "primary-color", "mode"];
+      return ["agent-id", "position", "theme", "button-text", "base-url", "primary-color", "mode", "display"];
     }
 
     attributeChangedCallback(name, oldValue, newValue) {
@@ -190,6 +191,7 @@
         case "base-url": this.baseUrl = newValue || ""; break;
         case "primary-color": this.primaryColor = newValue || "#6366f1"; break;
         case "mode": this.mode = newValue || "voice"; break;
+        case "display": this.display = newValue || "floating"; break;
       }
       if (this.isConnected) this.render();
     }
@@ -202,6 +204,7 @@
       this.baseUrl = this.getAttribute("base-url") || this.detectBaseUrl();
       this.primaryColor = this.getAttribute("primary-color") || "#6366f1";
       this.mode = this.getAttribute("mode") || "voice";
+      this.display = this.getAttribute("display") || "floating";
 
       this.render();
 
@@ -266,7 +269,33 @@
         .replace(/var\(--ai-primary-60, #6366f188\)/g, primary60)
         .replace(/var\(--ai-primary-30, #6366f144\)/g, primary30);
 
-      const embedPath = this.mode === "chat" ? "/embed/" + this.agentId + "/chat" : "/embed/" + this.agentId;
+      var embedPath;
+      if (this.mode === "chat") {
+        embedPath = "/embed/" + this.agentId + "/chat";
+      } else if (this.mode === "both") {
+        embedPath = "/embed/" + this.agentId + "/both";
+      } else {
+        embedPath = "/embed/" + this.agentId;
+      }
+
+      // Inline mode: render directly in page flow, no floating button
+      if (this.display === "inline") {
+        this.shadow.innerHTML = '\
+          <style>\
+            :host { display: block; width: 100%; height: 100%; }\
+            .ai-widget-inline { width: 100%; height: 100%; min-height: 400px; }\
+            .ai-widget-inline iframe { width: 100%; height: 100%; border: none; border-radius: 16px; }\
+          </style>\
+          <div class="ai-widget-inline">\
+            <iframe\
+              src="' + this.baseUrl + embedPath + '?theme=' + this.theme + '&autostart=true"\
+              allow="microphone"\
+              title="AI Agent"\
+            ></iframe>\
+          </div>\
+        ';
+        return;
+      }
 
       this.shadow.innerHTML = '\
         <style>\
@@ -298,7 +327,7 @@
         </div>\
       ';
 
-      const toggle = this.shadow.getElementById("toggle");
+      var toggle = this.shadow.getElementById("toggle");
       if (toggle) {
         toggle.addEventListener("click", () => this.toggle());
       }

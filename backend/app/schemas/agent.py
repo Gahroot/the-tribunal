@@ -199,6 +199,7 @@ class EmbedSettings(BaseModel):
     position: str = "bottom-right"  # bottom-right, bottom-left, top-right, top-left
     primary_color: str = "#6366f1"
     mode: str = "voice"  # voice, chat, both
+    display: str = "floating"  # floating, inline, fullpage
 
 
 class EmbedSettingsResponse(BaseModel):

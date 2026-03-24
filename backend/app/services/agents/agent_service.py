@@ -44,6 +44,7 @@ def _build_embed_response(agent: Agent) -> EmbedSettingsResponse:
             position=embed_settings.get("position", "bottom-right"),
             primary_color=embed_settings.get("primary_color", "#6366f1"),
             mode=mode,
+            display=embed_settings.get("display", "floating"),
         ),
         embed_code=embed_code,
     )

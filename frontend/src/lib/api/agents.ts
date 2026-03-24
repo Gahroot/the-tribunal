@@ -100,6 +100,7 @@ export interface EmbedSettings {
   position: string;
   primary_color: string;
   mode: string;
+  display: string;
 }
 
 export interface EmbedSettingsResponse {
