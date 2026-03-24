@@ -235,16 +235,16 @@ async def get_ephemeral_token(
     }
     voice = agent.voice_id if agent.voice_id in OPENAI_REALTIME_VOICES else "ash"
 
-    # Create ephemeral token from OpenAI
+    # Create ephemeral client secret from OpenAI (GA Realtime API)
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            "https://api.openai.com/v1/realtime/sessions",
+            "https://api.openai.com/v1/realtime/client_secrets",
             headers={
                 "Authorization": f"Bearer {settings.openai_api_key}",
                 "Content-Type": "application/json",
             },
             json={
-                "model": "gpt-realtime",
+                "model": "gpt-4o-realtime-preview",
                 "voice": voice,
             },
             timeout=30.0,
