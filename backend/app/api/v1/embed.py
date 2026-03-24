@@ -228,6 +228,13 @@ async def get_ephemeral_token(
             detail="Voice service not configured",
         )
 
+    # Map voice to OpenAI Realtime-compatible voices
+    OPENAI_REALTIME_VOICES = {
+        "alloy", "ash", "ballad", "coral", "echo",
+        "sage", "shimmer", "verse", "marin", "cedar",
+    }
+    voice = agent.voice_id if agent.voice_id in OPENAI_REALTIME_VOICES else "ash"
+
     # Create ephemeral token from OpenAI
     async with httpx.AsyncClient() as client:
         response = await client.post(
@@ -238,7 +245,7 @@ async def get_ephemeral_token(
             },
             json={
                 "model": "gpt-realtime",
-                "voice": agent.voice_id,
+                "voice": voice,
             },
             timeout=30.0,
         )
@@ -340,7 +347,7 @@ async def send_chat_message(
                 "model": "gpt-5.4-nano",
                 "messages": messages,
                 "temperature": agent.temperature,
-                "max_tokens": agent.max_tokens,
+                "max_completion_tokens": agent.max_tokens,
             },
             timeout=60.0,
         )
