@@ -5,7 +5,6 @@ from math import ceil
 from typing import Any
 
 import structlog
-from fastapi import HTTPException, status
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,6 +31,11 @@ from app.services.contacts.contact_repository import (
 )
 from app.services.contacts.contact_repository import (
     update_contact as repo_update_contact,
+)
+from app.services.contacts.exceptions import (
+    ContactNotFoundError,
+    ContactPhoneNotConfiguredError,
+    ContactValidationError,
 )
 from app.services.telephony.telnyx import TelnyxSMSService
 from app.utils.phone import normalize_phone_safe
@@ -134,15 +138,12 @@ class ContactService:
             Contact object
 
         Raises:
-            HTTPException: If contact not found
+            ContactNotFoundError: If contact not found
         """
         contact = await get_contact_by_id(contact_id, workspace_id, self.db)
 
         if contact is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Contact not found",
-            )
+            raise ContactNotFoundError()
 
         return contact
 
@@ -207,7 +208,7 @@ class ContactService:
             Updated contact
 
         Raises:
-            HTTPException: If contact not found
+            ContactNotFoundError: If contact not found
         """
         contact = await self.get_contact(contact_id, workspace_id)
         return await repo_update_contact(contact, self.db, update_data)
@@ -224,7 +225,7 @@ class ContactService:
             workspace_id: The workspace UUID
 
         Raises:
-            HTTPException: If contact not found
+            ContactNotFoundError: If contact not found
         """
         contact = await self.get_contact(contact_id, workspace_id)
         await repo_delete_contact(contact, self.db)
@@ -244,13 +245,10 @@ class ContactService:
             Dict with deleted, failed, errors counts
 
         Raises:
-            HTTPException: If no contact IDs provided
+            ContactValidationError: If no contact IDs provided
         """
         if not contact_ids:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No contact IDs provided",
-            )
+            raise ContactValidationError("No contact IDs provided")
 
         deleted, errors = await bulk_delete_contacts(
             contact_ids=contact_ids,
@@ -281,13 +279,10 @@ class ContactService:
             Dict with updated, failed, errors counts
 
         Raises:
-            HTTPException: If no contact IDs provided
+            ContactValidationError: If no contact IDs provided
         """
         if not contact_ids:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No contact IDs provided",
-            )
+            raise ContactValidationError("No contact IDs provided")
 
         updated, errors = await bulk_update_status(
             contact_ids=contact_ids,
@@ -319,7 +314,7 @@ class ContactService:
             List of timeline items
 
         Raises:
-            HTTPException: If contact not found
+            ContactNotFoundError: If contact not found
         """
         # Verify contact exists
         await self.get_contact(contact_id, workspace_id)
@@ -352,26 +347,22 @@ class ContactService:
             Created message object
 
         Raises:
-            HTTPException: If contact not found, no phone, or SMS not configured
+            ContactNotFoundError: If contact not found
+            ContactValidationError: If contact has no phone number
+            ContactPhoneNotConfiguredError: If SMS service not configured
         """
         # Get contact
         contact = await self.get_contact(contact_id, workspace_id)
 
         if not contact.phone_number:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Contact does not have a phone number",
-            )
+            raise ContactValidationError("Contact does not have a phone number")
 
         # Get workspace phone number for sending
         workspace_phone = await self._get_workspace_phone(workspace_id, from_number)
 
         # Check for Telnyx API key
         if not telnyx_api_key:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="SMS service not configured",
-            )
+            raise ContactPhoneNotConfiguredError("SMS service not configured")
 
         # Send message via Telnyx (this creates/gets conversation automatically)
         sms_service = TelnyxSMSService(telnyx_api_key)
@@ -406,16 +397,14 @@ class ContactService:
             Dict with ai_enabled and conversation_id
 
         Raises:
-            HTTPException: If contact not found or no phone number
+            ContactNotFoundError: If contact not found
+            ContactValidationError: If contact has no phone number
         """
         # Get contact
         contact = await self.get_contact(contact_id, workspace_id)
 
         if not contact.phone_number:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Contact does not have a phone number",
-            )
+            raise ContactValidationError("Contact does not have a phone number")
 
         # Normalize the contact phone number for matching
         normalized_contact_phone = (
@@ -496,7 +485,8 @@ class ContactService:
             PhoneNumber object
 
         Raises:
-            HTTPException: If no suitable phone number found
+            ContactValidationError: If specified phone number not found
+            ContactPhoneNotConfiguredError: If no SMS-enabled phone number available
         """
         if from_number:
             # Use the specified phone number
@@ -510,9 +500,8 @@ class ContactService:
             )
             workspace_phone = phone_result.scalar_one_or_none()
             if workspace_phone is None:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Specified phone number not found or not SMS-enabled",
+                raise ContactValidationError(
+                    "Specified phone number not found or not SMS-enabled"
                 )
         else:
             # Use the first available SMS-enabled phone number
@@ -525,9 +514,8 @@ class ContactService:
             )
             workspace_phone = phone_result.scalar_one_or_none()
             if workspace_phone is None:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="No SMS-enabled phone number configured for this workspace",
+                raise ContactPhoneNotConfiguredError(
+                    "No SMS-enabled phone number configured for this workspace"
                 )
 
         return workspace_phone

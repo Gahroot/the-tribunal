@@ -3,7 +3,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.models.message_test import MessageTest, TestVariant
@@ -23,6 +23,7 @@ from app.schemas.message_test import (
     TestVariantResponse,
     TestVariantUpdate,
 )
+from app.services.exceptions import NotFoundError, ValidationError
 from app.services.message_tests import MessageTestService
 
 router = APIRouter()
@@ -58,7 +59,10 @@ async def create_message_test(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> MessageTest:
     """Create a new message test."""
-    return await MessageTestService(db).create_test(workspace_id, test_in)
+    try:
+        return await MessageTestService(db).create_test(workspace_id, test_in)
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
 
 
 @router.get("/{test_id}", response_model=MessageTestWithVariantsResponse)
@@ -70,7 +74,10 @@ async def get_message_test(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> MessageTest:
     """Get a message test by ID with variants."""
-    return await MessageTestService(db).get_test(test_id, workspace_id)
+    try:
+        return await MessageTestService(db).get_test(test_id, workspace_id)
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
 
 
 @router.put("/{test_id}", response_model=MessageTestResponse)
@@ -83,7 +90,12 @@ async def update_message_test(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> MessageTest:
     """Update a message test."""
-    return await MessageTestService(db).update_test(test_id, workspace_id, test_in)
+    try:
+        return await MessageTestService(db).update_test(test_id, workspace_id, test_in)
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
 @router.delete("/{test_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -95,7 +107,12 @@ async def delete_message_test(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> None:
     """Delete a message test."""
-    await MessageTestService(db).delete_test(test_id, workspace_id)
+    try:
+        await MessageTestService(db).delete_test(test_id, workspace_id)
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
 # === Variant Management ===
@@ -110,7 +127,10 @@ async def list_variants(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> list[TestVariantResponse]:
     """List variants for a message test."""
-    return await MessageTestService(db).list_variants(test_id, workspace_id)
+    try:
+        return await MessageTestService(db).list_variants(test_id, workspace_id)
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
 
 
 @router.post(
@@ -127,7 +147,12 @@ async def create_variant(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> TestVariant:
     """Create a new variant for a message test."""
-    return await MessageTestService(db).create_variant(test_id, workspace_id, variant_in)
+    try:
+        return await MessageTestService(db).create_variant(test_id, workspace_id, variant_in)
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
 @router.put("/{test_id}/variants/{variant_id}", response_model=TestVariantResponse)
@@ -141,9 +166,14 @@ async def update_variant(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> TestVariant:
     """Update a variant."""
-    return await MessageTestService(db).update_variant(
-        test_id, variant_id, workspace_id, variant_in
-    )
+    try:
+        return await MessageTestService(db).update_variant(
+            test_id, variant_id, workspace_id, variant_in
+        )
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
 @router.delete("/{test_id}/variants/{variant_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -156,7 +186,12 @@ async def delete_variant(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> None:
     """Delete a variant."""
-    await MessageTestService(db).delete_variant(test_id, variant_id, workspace_id)
+    try:
+        await MessageTestService(db).delete_variant(test_id, variant_id, workspace_id)
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
 # === Contact Management ===
@@ -172,7 +207,12 @@ async def add_contacts(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> dict[str, int]:
     """Add contacts to a message test."""
-    return await MessageTestService(db).add_contacts(test_id, workspace_id, contacts_in)
+    try:
+        return await MessageTestService(db).add_contacts(test_id, workspace_id, contacts_in)
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
 @router.get("/{test_id}/contacts", response_model=list[TestContactResponse])
@@ -203,7 +243,12 @@ async def start_test(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> dict[str, str]:
     """Start a message test."""
-    return await MessageTestService(db).start_test(test_id, workspace_id)
+    try:
+        return await MessageTestService(db).start_test(test_id, workspace_id)
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
 @router.post("/{test_id}/pause")
@@ -215,7 +260,12 @@ async def pause_test(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> dict[str, str]:
     """Pause a message test."""
-    return await MessageTestService(db).pause_test(test_id, workspace_id)
+    try:
+        return await MessageTestService(db).pause_test(test_id, workspace_id)
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
 @router.post("/{test_id}/complete")
@@ -227,7 +277,12 @@ async def complete_test(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> dict[str, str]:
     """Mark a message test as completed."""
-    return await MessageTestService(db).complete_test(test_id, workspace_id)
+    try:
+        return await MessageTestService(db).complete_test(test_id, workspace_id)
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
 # === Analytics ===
@@ -242,7 +297,10 @@ async def get_analytics(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> MessageTestAnalytics:
     """Get message test analytics."""
-    return await MessageTestService(db).get_analytics(test_id, workspace_id)
+    try:
+        return await MessageTestService(db).get_analytics(test_id, workspace_id)
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
 
 
 # === Winner Selection & Campaign Conversion ===
@@ -258,9 +316,12 @@ async def select_winner(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> MessageTest:
     """Select a winning variant for the test."""
-    return await MessageTestService(db).select_winner(
-        test_id, workspace_id, request.variant_id
-    )
+    try:
+        return await MessageTestService(db).select_winner(
+            test_id, workspace_id, request.variant_id
+        )
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
 
 
 @router.post("/{test_id}/convert-to-campaign", response_model=dict[str, str])
@@ -273,6 +334,11 @@ async def convert_to_campaign(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> dict[str, str]:
     """Convert a message test to a full campaign."""
-    return await MessageTestService(db).convert_to_campaign(
-        test_id, workspace_id, request
-    )
+    try:
+        return await MessageTestService(db).convert_to_campaign(
+            test_id, workspace_id, request
+        )
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e

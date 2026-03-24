@@ -35,6 +35,10 @@ from app.schemas.contact import (
 )
 from app.services.contacts import ContactImportService, ContactService
 from app.services.contacts.contact_import import CONTACT_FIELDS
+from app.services.contacts.exceptions import (
+    ContactNotFoundError,
+)
+from app.services.exceptions import NotFoundError, ServiceUnavailableError, ValidationError
 
 router = APIRouter()
 
@@ -207,7 +211,10 @@ async def get_contact(
 ) -> Contact:
     """Get a specific contact."""
     service = ContactService(db)
-    return await service.get_contact(contact_id, workspace.id)
+    try:
+        return await service.get_contact(contact_id, workspace.id)
+    except ContactNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
 
 
 @router.put("/{contact_id}", response_model=ContactResponse)
@@ -222,7 +229,10 @@ async def update_contact(
     """Update a contact."""
     service = ContactService(db)
     update_data = contact_in.model_dump(exclude_unset=True)
-    return await service.update_contact(contact_id, workspace.id, update_data)
+    try:
+        return await service.update_contact(contact_id, workspace.id, update_data)
+    except ContactNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
 
 
 @router.delete("/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -235,7 +245,10 @@ async def delete_contact(
 ) -> None:
     """Delete a contact."""
     service = ContactService(db)
-    await service.delete_contact(contact_id, workspace.id)
+    try:
+        await service.delete_contact(contact_id, workspace.id)
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
 
 
 @router.post("/bulk-delete", response_model=BulkDeleteResponse)
@@ -248,7 +261,10 @@ async def bulk_delete_contacts(
 ) -> BulkDeleteResponse:
     """Delete multiple contacts at once."""
     service = ContactService(db)
-    result = await service.bulk_delete_contacts(request.ids, workspace.id)
+    try:
+        result = await service.bulk_delete_contacts(request.ids, workspace.id)
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
     return BulkDeleteResponse(**result)
 
@@ -263,9 +279,12 @@ async def bulk_update_status(
 ) -> BulkStatusUpdateResponse:
     """Update the status of multiple contacts at once."""
     service = ContactService(db)
-    result = await service.bulk_update_status(
-        request.ids, workspace.id, request.status
-    )
+    try:
+        result = await service.bulk_update_status(
+            request.ids, workspace.id, request.status
+        )
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
     return BulkStatusUpdateResponse(**result)
 
@@ -284,13 +303,22 @@ async def send_message_to_contact(
     This endpoint finds or creates a conversation for the contact and sends the message.
     """
     service = ContactService(db)
-    return await service.send_message(
-        contact_id=contact_id,
-        workspace_id=workspace.id,
-        message_body=message_in.body,
-        from_number=message_in.from_number,
-        telnyx_api_key=settings.telnyx_api_key,
-    )
+    try:
+        return await service.send_message(
+            contact_id=contact_id,
+            workspace_id=workspace.id,
+            message_body=message_in.body,
+            from_number=message_in.from_number,
+            telnyx_api_key=settings.telnyx_api_key,
+        )
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except ServiceUnavailableError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
+        ) from e
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
 @router.post("/{contact_id}/ai/toggle", response_model=AIToggleResponse)
@@ -307,11 +335,16 @@ async def toggle_contact_ai(
     Finds an existing conversation for the contact or creates one if needed.
     """
     service = ContactService(db)
-    result = await service.toggle_ai(
-        contact_id=contact_id,
-        workspace_id=workspace.id,
-        enabled=toggle_in.enabled,
-    )
+    try:
+        result = await service.toggle_ai(
+            contact_id=contact_id,
+            workspace_id=workspace.id,
+            enabled=toggle_in.enabled,
+        )
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
     return AIToggleResponse(**result)
 

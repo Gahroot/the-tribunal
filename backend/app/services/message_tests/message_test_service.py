@@ -4,7 +4,6 @@ import uuid
 from datetime import UTC, datetime
 
 import structlog
-from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -34,6 +33,12 @@ from app.schemas.message_test import (
     TestVariantUpdate,
     VariantAnalytics,
 )
+from app.services.message_tests.exceptions import (
+    AgentNotFoundError,
+    MessageTestNotFoundError,
+    MessageTestValidationError,
+    VariantNotFoundError,
+)
 from app.utils.datetime import parse_time_string
 
 logger = structlog.get_logger()
@@ -62,10 +67,7 @@ class MessageTestService:
         )
         message_test = result.scalar_one_or_none()
         if not message_test:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Message test not found",
-            )
+            raise MessageTestNotFoundError()
         return message_test
 
     async def _get_test_with_variants(
@@ -84,19 +86,13 @@ class MessageTestService:
         )
         message_test = result.scalar_one_or_none()
         if not message_test:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Message test not found",
-            )
+            raise MessageTestNotFoundError()
         return message_test
 
     def _require_draft_or_paused(self, test: MessageTest, action: str = "modify") -> None:
-        """Raise 400 if test is not in draft or paused status."""
+        """Raise if test is not in draft or paused status."""
         if test.status not in ("draft", "paused"):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Can only {action} draft or paused tests",
-            )
+            raise MessageTestValidationError(f"Can only {action} draft or paused tests")
 
     # === Message Test CRUD ===
 
@@ -139,10 +135,7 @@ class MessageTestService:
                 )
             )
             if not agent_result.scalar_one_or_none():
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Agent not found",
-                )
+                raise AgentNotFoundError()
 
         # Convert time strings to datetime.time objects
         data = test_data.model_dump(exclude={"variants"})
@@ -226,9 +219,8 @@ class MessageTestService:
         message_test = await self._get_test(test_id, workspace_id)
 
         if message_test.status == "running":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot delete running test. Pause it first.",
+            raise MessageTestValidationError(
+                "Cannot delete running test. Pause it first."
             )
 
         await self.db.delete(message_test)
@@ -295,10 +287,7 @@ class MessageTestService:
         variant = result.scalar_one_or_none()
 
         if not variant:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Variant not found",
-            )
+            raise VariantNotFoundError()
 
         update_data = data.model_dump(exclude_unset=True)
         for field, value in update_data.items():
@@ -328,10 +317,7 @@ class MessageTestService:
         variant = result.scalar_one_or_none()
 
         if not variant:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Variant not found",
-            )
+            raise VariantNotFoundError()
 
         await self.db.delete(variant)
         message_test.total_variants -= 1
@@ -417,9 +403,8 @@ class MessageTestService:
         message_test = await self._get_test(test_id, workspace_id)
 
         if message_test.status not in ("draft", "paused"):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot start test with status: {message_test.status}",
+            raise MessageTestValidationError(
+                f"Cannot start test with status: {message_test.status}"
             )
 
         # Check if test has contacts
@@ -431,10 +416,7 @@ class MessageTestService:
         contact_count = contact_count_result.scalar() or 0
 
         if contact_count == 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Test has no contacts",
-            )
+            raise MessageTestValidationError("Test has no contacts")
 
         # Check if test has at least 2 variants
         variant_count_result = await self.db.execute(
@@ -445,10 +427,7 @@ class MessageTestService:
         variant_count = variant_count_result.scalar() or 0
 
         if variant_count < 2:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Test needs at least 2 variants",
-            )
+            raise MessageTestValidationError("Test needs at least 2 variants")
 
         message_test.status = MessageTestStatus.RUNNING.value
         message_test.started_at = message_test.started_at or datetime.now(UTC)
@@ -468,10 +447,7 @@ class MessageTestService:
         message_test = await self._get_test(test_id, workspace_id)
 
         if message_test.status != "running":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Can only pause running tests",
-            )
+            raise MessageTestValidationError("Can only pause running tests")
 
         message_test.status = MessageTestStatus.PAUSED.value
         await self.db.commit()
@@ -487,9 +463,8 @@ class MessageTestService:
         message_test = await self._get_test(test_id, workspace_id)
 
         if message_test.status not in ("running", "paused"):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Can only complete running or paused tests",
+            raise MessageTestValidationError(
+                "Can only complete running or paused tests"
             )
 
         message_test.status = MessageTestStatus.COMPLETED.value
@@ -580,10 +555,7 @@ class MessageTestService:
             )
         )
         if not variant_result.scalar_one_or_none():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Variant not found in this test",
-            )
+            raise VariantNotFoundError("Variant not found in this test")
 
         message_test.winning_variant_id = variant_id
         await self.db.commit()
@@ -612,9 +584,8 @@ class MessageTestService:
             initial_message = best_variant.message_template
 
         if not initial_message:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No message template available for campaign",
+            raise MessageTestValidationError(
+                "No message template available for campaign"
             )
 
         # Create the campaign
