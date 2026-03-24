@@ -183,7 +183,7 @@ Generate 3 options for each element. Return JSON with this exact structure:
 
     try:
         response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5.4-nano",
             messages=[
                 {"role": "system", "content": OFFER_GENERATION_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},

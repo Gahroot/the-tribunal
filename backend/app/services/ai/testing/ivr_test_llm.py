@@ -6,7 +6,7 @@ during IVR test simulations. Supports multiple providers:
 - GrokTestClient: Uses xAI Grok models
 
 Example usage:
-    client = OpenAITestClient(api_key="sk-...", model="gpt-4o-mini")
+    client = OpenAITestClient(api_key="sk-...", model="gpt-5.4-nano")
     response = await client.generate_response(
         system_prompt="You are an AI voice agent...",
         ivr_transcript="Press 1 for sales, press 2 for support.",
@@ -60,7 +60,7 @@ class OpenAITestClient:
 
     Attributes:
         api_key: OpenAI API key
-        model: Model to use (default: gpt-4o-mini)
+        model: Model to use (default: gpt-5.4-nano)
         temperature: Sampling temperature (default: 0.3)
         timeout: Request timeout in seconds (default: 30)
     """
@@ -68,7 +68,7 @@ class OpenAITestClient:
     def __init__(
         self,
         api_key: str,
-        model: str = "gpt-4o-mini",
+        model: str = "gpt-5.4-nano",
         temperature: float = 0.3,
         timeout: float = 30.0,
     ) -> None:

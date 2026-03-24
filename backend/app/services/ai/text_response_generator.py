@@ -217,7 +217,7 @@ async def generate_text_response(  # noqa: PLR0915, PLR0912
 
         # Prepare API call parameters
         api_params: dict[str, Any] = {
-            "model": "gpt-4o-mini",
+            "model": "gpt-5.4-nano",
             "messages": api_messages,
             "temperature": agent.temperature,
             "max_completion_tokens": 500,
@@ -303,7 +303,7 @@ async def generate_text_response(  # noqa: PLR0915, PLR0912
             # Make follow-up call to get final response
             follow_up_response = await asyncio.wait_for(
                 client.chat.completions.create(
-                    model="gpt-4o-mini",
+                    model="gpt-5.4-nano",
                     messages=api_messages,  # type: ignore[arg-type]
                     temperature=agent.temperature,
                     max_completion_tokens=500,
@@ -414,7 +414,7 @@ Recent conversation:
     try:
         response = await asyncio.wait_for(
             client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-5.4-nano",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},

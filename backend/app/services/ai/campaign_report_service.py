@@ -1,7 +1,7 @@
 """Campaign post-mortem intelligence service.
 
 Analyzes completed campaign results and generates structured
-intelligence reports using GPT-4o.
+intelligence reports using GPT-5.4-mini.
 """
 
 import json
@@ -402,7 +402,7 @@ class CampaignReportService:
         )
 
         response = await client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-5.4-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},

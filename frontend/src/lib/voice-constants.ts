@@ -14,9 +14,6 @@ export const REALTIME_VOICES: VoiceOption[] = [
   { id: "ballad", name: "Ballad", description: "Melodic and smooth" },
   { id: "coral", name: "Coral", description: "Warm and friendly" },
   { id: "echo", name: "Echo", description: "Warm and engaging" },
-  { id: "fable", name: "Fable", description: "Expressive and dramatic" },
-  { id: "nova", name: "Nova", description: "Friendly and upbeat" },
-  { id: "onyx", name: "Onyx", description: "Deep and authoritative" },
   { id: "sage", name: "Sage", description: "Calm and thoughtful" },
   { id: "shimmer", name: "Shimmer", description: "Energetic and expressive" },
   { id: "verse", name: "Verse", description: "Versatile and expressive" },
@@ -37,11 +34,11 @@ export const HUME_VOICES: VoiceOption[] = [
 
 // Grok (xAI) voices - supports realism cues like [whisper], [sigh], [laugh]
 export const GROK_VOICES: VoiceOption[] = [
-  { id: "ara", name: "Ara", description: "Warm & friendly female (Recommended)", recommended: true },
+  { id: "ara", name: "Ara", description: "Default voice, balanced for general use (Recommended)", recommended: true },
   { id: "rex", name: "Rex", description: "Confident & clear male" },
   { id: "sal", name: "Sal", description: "Smooth & balanced neutral" },
-  { id: "eve", name: "Eve", description: "Energetic & upbeat female" },
-  { id: "leo", name: "Leo", description: "Authoritative & strong male" },
+  { id: "eve", name: "Eve", description: "Professional, ideal for business use cases" },
+  { id: "leo", name: "Leo", description: "Great for engaging, dynamic interactions" },
 ];
 
 // ElevenLabs voices - premium TTS with 100+ expressive voices

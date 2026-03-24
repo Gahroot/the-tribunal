@@ -141,7 +141,7 @@ class PromptImprovementService:
         # Call LLM for analysis
         client = self._get_client()
         response = await client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-5.4-mini",
             messages=[
                 {
                     "role": "system",
@@ -256,7 +256,7 @@ Return JSON with:
 
         client = self._get_client()
         response = await client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-5.4-mini",
             messages=[
                 {
                     "role": "system",

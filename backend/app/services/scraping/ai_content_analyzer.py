@@ -129,7 +129,7 @@ class AIContentAnalyzerService:
             try:
                 response = await asyncio.wait_for(
                     self._openai.chat.completions.create(
-                        model="gpt-4o-mini",
+                        model="gpt-5.4-nano",
                         messages=[
                             {"role": "system", "content": WEBSITE_ANALYSIS_PROMPT},
                             {"role": "user", "content": context + text_content},

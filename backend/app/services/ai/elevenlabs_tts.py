@@ -75,16 +75,24 @@ class ElevenLabsTTSSession:
 
     BASE_URL = "wss://api.elevenlabs.io/v1/text-to-speech"
     MODEL_ID = "eleven_flash_v2_5"  # Fast, low-latency model for telephony
+    V3_CONVERSATIONAL_MODEL_ID = "eleven_v3_conversational"  # Most expressive, higher latency
 
-    def __init__(self, api_key: str, voice_id: str = "21m00Tcm4TlvDq8ikWAM") -> None:
+    def __init__(
+        self,
+        api_key: str,
+        voice_id: str = "21m00Tcm4TlvDq8ikWAM",
+        model_id: str | None = None,
+    ) -> None:
         """Initialize ElevenLabs TTS session.
 
         Args:
             api_key: ElevenLabs API key
             voice_id: Voice ID (default: Rachel)
+            model_id: Model ID (default: eleven_flash_v2_5)
         """
         self.api_key = api_key
         self.voice_id = voice_id
+        self.model_id = model_id or self.MODEL_ID
         self.ws: ClientConnection | None = None
         self.logger = logger.bind(service="elevenlabs_tts")
         self._audio_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
@@ -110,7 +118,7 @@ class ElevenLabsTTSSession:
             # Build WebSocket URL with parameters
             url = (
                 f"{self.BASE_URL}/{self.voice_id}/stream-input"
-                f"?model_id={self.MODEL_ID}"
+                f"?model_id={self.model_id}"
                 f"&output_format={output_format}"
             )
 

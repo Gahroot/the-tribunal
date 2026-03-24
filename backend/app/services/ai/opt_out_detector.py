@@ -102,7 +102,7 @@ async def classify_opt_out_intent(
 ) -> bool:
     """Use AI to determine if a message is a genuine opt-out request.
 
-    This function uses GPT-4o-mini to understand the semantic intent
+    This function uses GPT-5.4-nano to understand the semantic intent
     of a message, distinguishing between actual opt-out requests and
     messages that happen to contain opt-out keywords in other contexts.
 
@@ -142,7 +142,7 @@ Is this a genuine opt-out request (user wants to stop receiving SMS/text message
     try:
         response = await asyncio.wait_for(
             client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-5.4-nano",
                 messages=[
                     {"role": "system", "content": OPT_OUT_CLASSIFIER_PROMPT},
                     {"role": "user", "content": user_message},

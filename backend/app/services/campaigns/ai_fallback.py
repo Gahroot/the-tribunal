@@ -107,7 +107,7 @@ Rules:
     try:
         client = AsyncOpenAI(api_key=api_key)
         response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5.4-nano",
             messages=[{"role": "system", "content": system_prompt}],
             max_tokens=100,
             temperature=0.7,

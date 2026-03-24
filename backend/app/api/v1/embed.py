@@ -23,6 +23,10 @@ from app.models.demo_request import DemoRequest
 from app.services.telephony.telnyx import TelnyxSMSService
 from app.services.telephony.telnyx_voice import TelnyxVoiceService
 
+# Latest OpenAI audio models (for standalone TTS/transcription, not Realtime API):
+# - TTS: gpt-4o-mini-tts-2025-12-15 (lower word error rates)
+# - Transcription: gpt-4o-mini-transcribe-2025-12-15 (~90% fewer hallucinations)
+
 # Database dependency type alias
 DB = Annotated[AsyncSession, Depends(get_db)]
 
@@ -233,7 +237,7 @@ async def get_ephemeral_token(
                 "Content-Type": "application/json",
             },
             json={
-                "model": "gpt-4o-realtime-preview",
+                "model": "gpt-realtime",
                 "voice": agent.voice_id,
             },
             timeout=30.0,
@@ -284,7 +288,7 @@ async def get_ephemeral_token(
             "language": agent.language,
             "initial_greeting": agent.initial_greeting,
         },
-        model="gpt-4o-realtime-preview",
+        model="gpt-realtime",
         tools=tools,
     )
 
@@ -333,7 +337,7 @@ async def send_chat_message(
                 "Content-Type": "application/json",
             },
             json={
-                "model": "gpt-4o-mini",
+                "model": "gpt-5.4-nano",
                 "messages": messages,
                 "temperature": agent.temperature,
                 "max_tokens": agent.max_tokens,

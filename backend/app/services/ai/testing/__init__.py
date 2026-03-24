@@ -22,7 +22,7 @@ For integration testing with agents:
     from app.services.ai.testing import IVRTestHarness, ScenarioLoader
     from app.services.ai.testing.ivr_test_llm import OpenAITestClient
 
-    client = OpenAITestClient(api_key="sk-...", model="gpt-4o-mini")
+    client = OpenAITestClient(api_key="sk-...", model="gpt-5.4-nano")
     harness = IVRTestHarness(llm_client=client)
 
     async with async_session() as db:

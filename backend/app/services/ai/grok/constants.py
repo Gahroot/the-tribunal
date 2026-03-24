@@ -15,11 +15,11 @@ from typing import Any
 
 # Grok available voices
 GROK_VOICES: dict[str, str] = {
-    "ara": "Ara - Warm & friendly (female, default)",
+    "ara": "Ara - Default voice, balanced for general use (female, default)",
     "rex": "Rex - Confident & clear (male)",
     "sal": "Sal - Smooth & balanced (neutral)",
-    "eve": "Eve - Energetic & upbeat (female)",
-    "leo": "Leo - Authoritative & strong (male)",
+    "eve": "Eve - Professional, ideal for business use cases (female)",
+    "leo": "Leo - Great for engaging, dynamic interactions (male)",
 }
 
 # Default voice for Grok (capitalized as Grok expects)

@@ -151,7 +151,7 @@ async def extract_qualification_signals(
 
     try:
         response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5.4-nano",
             messages=[
                 {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
                 {

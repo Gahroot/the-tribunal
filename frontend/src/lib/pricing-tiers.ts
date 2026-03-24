@@ -55,7 +55,7 @@ export const PRICING_TIERS: PricingTier[] = [
   {
     id: "elevenlabs",
     name: "ElevenLabs",
-    description: "Grok AI + ElevenLabs' most expressive TTS with 100+ voices",
+    description: "Grok AI + ElevenLabs TTS (v2.5 low-latency or v3 most expressive) with 100+ voices",
     costPerHour: 2.5,
     costPerMinute: 0.042,
     features: [
@@ -83,11 +83,11 @@ export const PRICING_TIERS: PricingTier[] = [
   {
     id: "openai-hume",
     name: "OpenAI + Hume",
-    description: "OpenAI GPT-4 intelligence with Hume's expressive voices",
+    description: "OpenAI GPT-5.4 intelligence with Hume's expressive voices",
     costPerHour: 1.68,
     costPerMinute: 0.028,
     features: [
-      "OpenAI GPT-4 reasoning",
+      "OpenAI GPT-5.4 reasoning",
       "Hume Octave TTS (~100ms)",
       "100+ custom voices",
       "Voice cloning support",
@@ -95,7 +95,7 @@ export const PRICING_TIERS: PricingTier[] = [
     ],
     config: {
       llmProvider: "openai",
-      llmModel: "gpt-4o",
+      llmModel: "gpt-5.4-mini",
       sttProvider: "deepgram",
       sttModel: "nova-3",
       ttsProvider: "hume",
@@ -148,11 +148,11 @@ export const PRICING_TIERS: PricingTier[] = [
       "Most natural & expressive voice",
       "Best instruction following",
       "New voices: marin, cedar",
-      "Production-ready (Aug 2025)",
+      "Production-ready (latest snapshot)",
     ],
     config: {
       llmProvider: "openai-realtime",
-      llmModel: "gpt-realtime-2025-08-28",
+      llmModel: "gpt-realtime",
       sttProvider: "openai",
       sttModel: "built-in",
       ttsProvider: "openai",
@@ -180,7 +180,7 @@ export const PRICING_TIERS: PricingTier[] = [
     ],
     config: {
       llmProvider: "openai-realtime",
-      llmModel: "gpt-4o-mini-realtime",
+      llmModel: "gpt-realtime-mini",
       sttProvider: "openai",
       sttModel: "built-in",
       ttsProvider: "openai",

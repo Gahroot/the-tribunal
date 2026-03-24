@@ -157,7 +157,7 @@ For scale type, score = selected value * weight (include "weight" field)"""
 
     try:
         response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5.4-nano",
             messages=[
                 {"role": "system", "content": QUIZ_GENERATION_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
@@ -299,7 +299,7 @@ Output formats: currency, percentage, number, text"""
 
     try:
         response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5.4-nano",
             messages=[
                 {"role": "system", "content": CALCULATOR_GENERATION_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
