@@ -82,6 +82,7 @@ class Settings(BaseSettings):
     demo_from_phone_number: str = ""  # Phone number to send demo calls/texts from
     demo_ip_rate_limit: int = 15  # Max requests per IP per hour
     demo_phone_rate_limit: int = 9  # Max requests per phone per day
+    demo_rate_limit_bypass_phones: list[str] = ["+12482259677"]  # Dev phones that skip rate limits
 
     # Lead form
     lead_form_ip_rate_limit: int = 20  # Max submissions per IP per hour

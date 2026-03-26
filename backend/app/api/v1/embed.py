@@ -117,6 +117,10 @@ async def _check_embed_rate_limits(
     db: AsyncSession, client_ip: str, phone_number: str
 ) -> None:
     """Check rate limits for embed call/text requests."""
+    # Bypass rate limits for dev/test phone numbers
+    if phone_number in settings.demo_rate_limit_bypass_phones:
+        return
+
     now = datetime.now(UTC)
     hour_ago = now - timedelta(hours=1)
     day_ago = now - timedelta(days=1)

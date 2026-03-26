@@ -43,6 +43,10 @@ async def check_rate_limits(
     Raises:
         HTTPException: If rate limit exceeded
     """
+    # Bypass rate limits for dev/test phone numbers
+    if phone_number in settings.demo_rate_limit_bypass_phones:
+        return
+
     now = datetime.now(UTC)
     hour_ago = now - timedelta(hours=1)
     day_ago = now - timedelta(days=1)
