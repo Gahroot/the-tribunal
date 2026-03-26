@@ -314,16 +314,19 @@ class GrokVoiceAgentSession(VoiceAgentBase):
 
         if is_outbound:
             self.logger.info(
-                "grok_outbound_call_pattern_interrupt",
+                "grok_outbound_call_opener",
                 is_outbound=True,
                 has_call_context=bool(self._call_context),
             )
-            # Use prompt builder with Grok realism cues
             base_prompt = self._prompt_builder.get_outbound_opener_prompt()
-            prompt_text = base_prompt.replace(
-                "Sound a bit disappointed on 'hang up'.",
-                "Sigh right before 'hang up' - sound disappointed.",
-            ) + " Little laugh at the end."
+            # Only add pattern interrupt realism cues for the default sales opener
+            if "pattern interrupt" in base_prompt:
+                prompt_text = base_prompt.replace(
+                    "Sound a bit disappointed on 'hang up'.",
+                    "Sigh right before 'hang up' - sound disappointed.",
+                ) + " Little laugh at the end."
+            else:
+                prompt_text = base_prompt
         else:
             message = greeting
             if not message and hasattr(self, "_pending_greeting"):

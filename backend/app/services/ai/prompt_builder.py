@@ -513,7 +513,11 @@ AVAILABILITY ACCURACY RULES:
         return "".join(parts)
 
     def get_outbound_opener_prompt(self) -> str:
-        """Get the pattern interrupt opener prompt for outbound calls.
+        """Get the opener prompt for outbound calls.
+
+        If the agent's system prompt contains an 'Opening the Call' section,
+        the AI is instructed to follow those custom opener instructions.
+        Otherwise, falls back to a generic pattern interrupt opener.
 
         Returns:
             Prompt text for triggering outbound call opener
@@ -521,6 +525,18 @@ AVAILABILITY ACCURACY RULES:
         # Extract just the first name
         full_name = self.agent.name if self.agent else "Alex"
         agent_name = full_name.split("|")[0].split("-")[0].strip().split()[0]
+
+        # Check if system prompt has custom opener instructions
+        system_prompt = (
+            self.agent.system_prompt if self.agent else ""
+        ) or ""
+        if "Opening the Call" in system_prompt:
+            return (
+                f"You just called someone and they answered. "
+                f"Follow your 'Opening the Call' instructions from your system prompt. "
+                f"Reference the lead intake notes to personalize your opener. "
+                f"Keep it natural and conversational. Wait for their response."
+            )
 
         return (
             f"You just called someone. Open with a pattern interrupt. "
