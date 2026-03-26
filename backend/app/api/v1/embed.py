@@ -487,8 +487,7 @@ async def trigger_embed_call(
                 if len(parts) > 1:
                     contact.last_name = parts[1]
             if body.notes:
-                existing = contact.notes or ""
-                contact.notes = f"{existing}\n---\n{body.notes}".strip()
+                contact.notes = body.notes
         else:
             first_name = "Demo Visitor"
             last_name = None
