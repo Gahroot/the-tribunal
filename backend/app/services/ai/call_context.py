@@ -196,6 +196,7 @@ async def lookup_call_context(
                     "email": contact.email,
                     "company": contact.company_name,
                     "status": contact.status,
+                    "notes": contact.notes,
                 }
                 log.info("found_contact_for_call", contact_id=str(contact.id))
 

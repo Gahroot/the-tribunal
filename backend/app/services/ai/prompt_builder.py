@@ -413,6 +413,8 @@ AVAILABILITY ACCURACY RULES:
             parts.append(f"- Name: {contact_info['name']}")
         if contact_info.get("company"):
             parts.append(f"- Company: {contact_info['company']}")
+        if contact_info.get("notes"):
+            parts.append(f"\n### Lead Intake Notes (use this to personalize the conversation):\n{contact_info['notes']}")
         return parts
 
     def _build_offer_section(

@@ -99,6 +99,8 @@ class EmbedPhoneRequest(BaseModel):
     """Request for embed call/text endpoints."""
 
     phone_number: str
+    caller_name: str | None = None
+    notes: str | None = None
 
     @field_validator("phone_number")
     @classmethod
@@ -233,11 +235,11 @@ async def get_ephemeral_token(
         )
 
     # Map voice to OpenAI Realtime-compatible voices
-    OPENAI_REALTIME_VOICES = {
+    openai_realtime_voices = {
         "alloy", "ash", "ballad", "coral", "echo",
         "sage", "shimmer", "verse", "marin", "cedar",
     }
-    voice = agent.voice_id if agent.voice_id in OPENAI_REALTIME_VOICES else "ash"
+    voice = agent.voice_id if agent.voice_id in openai_realtime_voices else "ash"
 
     # Create ephemeral client secret from OpenAI (GA Realtime API)
     async with httpx.AsyncClient() as client:
@@ -465,6 +467,47 @@ async def trigger_embed_call(
 
     client_ip = get_client_ip(request, settings.trusted_proxies)
     await _check_embed_rate_limits(db, client_ip, body.phone_number)
+
+    # Create or update contact with form data
+    if body.caller_name or body.notes:
+        from app.models.contact import Contact
+
+        contact_result = await db.execute(
+            select(Contact).where(
+                Contact.workspace_id == agent.workspace_id,
+                Contact.phone_number == body.phone_number,
+            )
+        )
+        contact = contact_result.scalar_one_or_none()
+
+        if contact:
+            if body.caller_name:
+                parts = body.caller_name.strip().split(" ", 1)
+                contact.first_name = parts[0]
+                if len(parts) > 1:
+                    contact.last_name = parts[1]
+            if body.notes:
+                existing = contact.notes or ""
+                contact.notes = f"{existing}\n---\n{body.notes}".strip()
+        else:
+            first_name = "Demo Visitor"
+            last_name = None
+            if body.caller_name:
+                parts = body.caller_name.strip().split(" ", 1)
+                first_name = parts[0]
+                last_name = parts[1] if len(parts) > 1 else None
+
+            contact = Contact(
+                workspace_id=agent.workspace_id,
+                first_name=first_name,
+                last_name=last_name,
+                phone_number=body.phone_number,
+                notes=body.notes,
+                source="embed_demo",
+            )
+            db.add(contact)
+
+        await db.flush()
 
     # Record the request
     demo_record = DemoRequest(

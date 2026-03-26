@@ -10,48 +10,45 @@ frontend/                           # Next.js 16 React frontend
     app/                            # App Router pages
       agents/, campaigns/, contacts/, calls/, dashboard/, settings/
       offers/, experiments/, suggestions/, lead-magnets/, opportunities/
-    components/                     # React components by feature
-      ui/                           # Base UI (Radix/shadcn)
+      automations/, calendar/, find-leads/, phone-numbers/, voice-test/
+    components/                     # React components (one per file, grouped by feature)
+      ui/                           # shadcn/ui primitives (Radix-based)
       agents/, campaigns/, contacts/, calls/, conversation/, settings/
-      filters/, segments/, tags/, offers/, suggestions/, wizard/
+      opportunities/, automations/, calcom/, layout/, auth/, wizard/
     lib/
       api/                          # API client functions (one per resource)
-      services/                     # Service implementations
-    hooks/                          # Custom React hooks (useWizard, etc.)
-    types/                          # TypeScript types
+      api.ts                        # Axios fetch wrapper
+      utils/                        # Utility functions
+      contact-store.ts              # Zustand store
+    hooks/                          # Custom React hooks (useContacts, useWizard, etc.)
+    providers/                      # Auth, workspace, combined providers
+    types/                          # TypeScript type definitions
+    widget/                         # Embeddable chat widget
 
 backend/                            # FastAPI Python backend
   app/
-    api/v1/                         # API endpoints (one per resource)
-    models/                         # SQLAlchemy ORM models
-    schemas/                        # Pydantic schemas
-    services/                       # Business logic
-      ai/                           # Voice agents, IVR, qualification
-        grok/                       # Grok session, DTMF, audio
-        ivr/                        # IVR detection, classification, DTMF
-        testing/                    # IVR test harness
-      telephony/                    # Telnyx VoIP/SMS
-      calendar/                     # Cal.com integration & booking
-      campaigns/                    # Campaign services
-      contacts/                     # Contact management & filters
-      conversations/                # Conversation management
-      message_tests/                # Message/call testing
-      segments/                     # Dynamic segment resolution
-      tags/                         # Tag management
-      tools/                        # Tool executors (Cal.com, etc.)
-    core/                           # Config, security, logging
-    db/                             # Database utilities
-    workers/                        # Background jobs (campaign, enrichment, followup)
+    main.py                         # FastAPI app entrypoint
+    api/v1/                         # Versioned API routes (one per resource)
+    api/webhooks/                   # Incoming webhook handlers
+    models/                         # SQLAlchemy ORM models (38 files)
+    schemas/                        # Pydantic schemas (34 files)
+    services/                       # Business logic by domain
+      ai/, telephony/, calendar/, campaigns/, contacts/
+      conversations/, opportunities/, segments/, tags/, tools/
+    core/                           # Config, security, logging, encryption
+    db/                             # Session factory, Redis, pagination
+    utils/                          # Calendar, phone, datetime helpers
+    workers/                        # Background jobs (15 worker types)
     websockets/                     # Voice bridge, real-time handlers
   alembic/versions/                 # Database migrations
-  tests/                            # Pytest test suite
+  tests/                            # Pytest test suite (api/, schemas/, services/, workers/)
 ```
 
 ## Tech Stack
 
-**Frontend:** Next.js 16, React 19, TypeScript, TailwindCSS 4, shadcn/ui, React Query, Zustand
-**Backend:** FastAPI, Python 3.12+, SQLAlchemy 2, PostgreSQL 17, Redis 7, Alembic
-**Integrations:** OpenAI Realtime API, Telnyx (VoIP/SMS), Cal.com, ElevenLabs
+**Frontend:** Next.js 16, React 19, TypeScript 5 (strict), TailwindCSS 4, shadcn/ui, React Query 5, Zustand 5, Zod 4, Framer Motion, Three.js/R3F
+**Backend:** FastAPI, Python 3.12+, SQLAlchemy 2 (async), PostgreSQL 17, Redis 7, Alembic, uv
+**Integrations:** OpenAI Realtime API, Telnyx (VoIP/SMS), Cal.com, ElevenLabs, SendGrid
 
 ## Organization Rules
 
@@ -59,7 +56,7 @@ backend/                            # FastAPI Python backend
 - Pages → `src/app/` (Next.js App Router)
 - Components → `src/components/`, one per file, grouped by feature
 - API clients → `src/lib/api/`, one file per resource
-- Utilities → `src/lib/`, grouped by functionality
+- Utilities → `src/lib/utils/`, grouped by functionality
 - Types → `src/types/` or co-located
 
 **Backend:**
@@ -84,24 +81,15 @@ cd backend && uv run ruff check app && uv run mypy app
 
 Fix ALL errors/warnings before continuing.
 
-## Development Servers
+## Development
 
-**Frontend:**
 ```bash
-cd frontend && npm run dev
+cd backend && docker compose up -d                              # PostgreSQL + Redis
+cd frontend && npm run dev                                      # Frontend :3000
+cd backend && uv run uvicorn app.main:app --reload --port 8000  # Backend :8000
+cd backend && uv run alembic upgrade head                       # Migrations
+cd backend && uv run pytest                                     # Tests
 ```
-
-**Backend:**
-```bash
-cd backend && uv run uvicorn app.main:app --reload --port 8000
-```
-
-**Database migrations:**
-```bash
-cd backend && uv run alembic upgrade head
-```
-
-If changes require server restart, read server output and fix ALL warnings/errors.
 
 ## Production
 

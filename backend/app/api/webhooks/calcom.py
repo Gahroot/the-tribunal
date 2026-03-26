@@ -577,7 +577,10 @@ async def handle_booking_created(data: dict[str, Any], log: Any) -> None:  # noq
 
         # Push notification for new appointment
         try:
-            contact_name = " ".join(filter(None, [contact.first_name, contact.last_name])) or "Unknown"
+            contact_name = (
+                " ".join(filter(None, [contact.first_name, contact.last_name]))
+                or "Unknown"
+            )
             await push_notification_service.send_to_workspace_members(
                 db=db,
                 workspace_id=str(workspace_id),
@@ -646,7 +649,7 @@ async def handle_booking_created(data: dict[str, Any], log: Any) -> None:  # noq
             log.exception("double_booking_detection_failed")
 
 
-async def handle_booking_rescheduled(data: dict[str, Any], log: Any) -> None:
+async def handle_booking_rescheduled(data: dict[str, Any], log: Any) -> None:  # noqa: PLR0915
     """Handle Cal.com booking reschedule.
 
     Args:
@@ -765,12 +768,16 @@ async def handle_booking_rescheduled(data: dict[str, Any], log: Any) -> None:
             )
             push_contact = contact_result_push.scalar_one_or_none()
             if push_contact:
-                contact_name = " ".join(filter(None, [push_contact.first_name, push_contact.last_name])) or "Unknown"
+                contact_name = (
+                    " ".join(filter(None, [push_contact.first_name, push_contact.last_name]))
+                    or "Unknown"
+                )
+                rescheduled_time = scheduled_at.strftime('%b %d at %I:%M %p')
                 await push_notification_service.send_to_workspace_members(
                     db=db,
                     workspace_id=str(appointment.workspace_id),
                     title="Appointment Rescheduled",
-                    body=f"{contact_name} rescheduled to {scheduled_at.strftime('%b %d at %I:%M %p')}",
+                    body=f"{contact_name} rescheduled to {rescheduled_time}",
                     data={
                         "type": "appointment_rescheduled",
                         "appointmentId": str(appointment.id),
@@ -784,7 +791,7 @@ async def handle_booking_rescheduled(data: dict[str, Any], log: Any) -> None:
             log.exception("reschedule_push_notification_failed")
 
 
-async def handle_booking_cancelled(data: dict[str, Any], log: Any) -> None:  # noqa: PLR0915
+async def handle_booking_cancelled(data: dict[str, Any], log: Any) -> None:  # noqa: PLR0912, PLR0915
     """Handle Cal.com booking cancellation.
 
     Args:
@@ -935,7 +942,10 @@ async def handle_booking_cancelled(data: dict[str, Any], log: Any) -> None:  # n
             )
             push_contact = contact_result_push.scalar_one_or_none()
             if push_contact:
-                contact_name = " ".join(filter(None, [push_contact.first_name, push_contact.last_name])) or "Unknown"
+                contact_name = (
+                    " ".join(filter(None, [push_contact.first_name, push_contact.last_name]))
+                    or "Unknown"
+                )
                 cancelled_by = "by host" if is_host_initiated else "by client"
                 await push_notification_service.send_to_workspace_members(
                     db=db,
