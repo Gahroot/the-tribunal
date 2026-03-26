@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser, WorkspaceAccess, WorkspaceAdminAccess
+from app.core.encryption import encrypt_json
 from app.models.workspace import WorkspaceIntegration
 from app.schemas.integration import (
     IntegrationCreate,
@@ -133,7 +134,7 @@ async def create_integration(
     integration = WorkspaceIntegration(
         workspace_id=workspace.id,
         integration_type=integration_data.integration_type,
-        credentials=integration_data.credentials,
+        encrypted_credentials=encrypt_json(integration_data.credentials),
         is_active=integration_data.is_active,
     )
     db.add(integration)

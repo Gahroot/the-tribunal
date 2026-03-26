@@ -143,7 +143,7 @@ class AIContentAnalyzerService:
                             },
                         },
                         temperature=0.3,
-                        max_tokens=800,
+                        max_completion_tokens=800,
                     ),
                     timeout=30.0,
                 )

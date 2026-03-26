@@ -1,12 +1,18 @@
 "use client";
 
+import { useEffect } from "react";
+
 export default function GlobalError({
   error,
-  reset,
+  unstable_retry,
 }: {
   error: Error & { digest?: string };
-  reset: () => void;
+  unstable_retry: () => void;
 }) {
+  useEffect(() => {
+    console.error(error);
+  }, [error]);
+
   return (
     <html>
       <body className="flex min-h-screen items-center justify-center bg-background">
@@ -19,7 +25,7 @@ export default function GlobalError({
             <p className="text-xs text-muted-foreground">Error ID: {error.digest}</p>
           )}
           <button
-            onClick={reset}
+            onClick={unstable_retry}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           >
             Try again

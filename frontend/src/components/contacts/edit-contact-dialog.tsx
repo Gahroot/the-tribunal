@@ -41,10 +41,10 @@ import {
 import type { Contact, ContactStatus } from "@/types";
 
 const contactFormSchema = z.object({
-  first_name: z.string().min(1, "First name is required"),
+  first_name: z.string().min(1, { error: "First name is required" }),
   last_name: z.string().optional(),
-  email: z.string().email("Invalid email").optional().or(z.literal("")),
-  phone_number: z.string().min(10, "Phone number must be at least 10 digits"),
+  email: z.email({ error: "Invalid email" }).optional().or(z.literal("")),
+  phone_number: z.string().min(10, { error: "Phone number must be at least 10 digits" }),
   company_name: z.string().optional(),
   status: z.enum(["new", "contacted", "qualified", "converted", "lost"]),
   tags: z.string().optional(),

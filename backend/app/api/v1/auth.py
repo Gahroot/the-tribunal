@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +15,10 @@ from app.core.security import (
     create_refresh_token,
     decode_refresh_token,
     get_password_hash,
+    revoke_all_user_refresh_tokens,
+    revoke_refresh_token,
+    store_refresh_token,
+    validate_refresh_token,
     verify_password,
 )
 from app.core.utils import get_client_ip
@@ -24,7 +28,6 @@ from app.models.user import User
 from app.models.workspace import WorkspaceMembership
 from app.schemas.user import (
     ChangePasswordRequest,
-    RefreshTokenRequest,
     Token,
     UserCreate,
     UserResponse,
@@ -36,6 +39,30 @@ router = APIRouter()
 # Max auth attempts per IP per 15-minute window
 _AUTH_RATE_LIMIT = 10
 _AUTH_RATE_WINDOW_MINUTES = 15
+
+_REFRESH_COOKIE_PATH = "/api/v1/auth"
+_REFRESH_COOKIE_MAX_AGE = 7 * 24 * 3600  # 7 days
+
+
+def _set_refresh_cookie(response: Response, token: str) -> None:
+    """Set the refresh token as an httpOnly cookie on the response."""
+    response.set_cookie(
+        "refresh_token",
+        token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=_REFRESH_COOKIE_MAX_AGE,
+        path=_REFRESH_COOKIE_PATH,
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    """Clear the refresh token cookie."""
+    response.delete_cookie(
+        "refresh_token",
+        path=_REFRESH_COOKIE_PATH,
+    )
 
 
 async def _check_auth_rate_limit(db: AsyncSession, client_ip: str, endpoint: str) -> None:
@@ -107,9 +134,14 @@ async def register(
 async def login(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     request: Request,
+    response: Response,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Token:
-    """Login and get access token."""
+    """Login and get access token.
+
+    The access_token is returned in the JSON body (short-lived, stored in memory).
+    The refresh_token is set as an httpOnly cookie (not exposed to JS).
+    """
     client_ip = get_client_ip(request, settings.trusted_proxies)
     await _check_auth_rate_limit(db, client_ip, "login")
 
@@ -138,29 +170,52 @@ async def login(
     )
 
     refresh_token_expires = timedelta(days=settings.refresh_token_expire_days)
-    refresh_token = create_refresh_token(
+    refresh_tok = create_refresh_token(
         data={"sub": str(user.id)},
         expires_delta=refresh_token_expires,
     )
 
+    # Store refresh token hash in DB for server-side tracking
+    refresh_payload = decode_refresh_token(refresh_tok)
+    if refresh_payload and refresh_payload.get("jti"):
+        await store_refresh_token(
+            db,
+            user_id=user.id,
+            jti=refresh_payload["jti"],
+            expires_at=datetime.fromtimestamp(refresh_payload["exp"], tz=UTC),
+        )
+
     await db.commit()
 
-    return Token(access_token=access_token, refresh_token=refresh_token)
+    # Set refresh token as httpOnly cookie
+    _set_refresh_cookie(response, refresh_tok)
+
+    return Token(access_token=access_token)
 
 
 @router.post("/refresh", response_model=Token)
 async def refresh_token(
-    refresh_request: RefreshTokenRequest,
     request: Request,
+    response: Response,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Token:
-    """Refresh access token using refresh token."""
+    """Refresh access token using the refresh_token httpOnly cookie."""
     client_ip = get_client_ip(request, settings.trusted_proxies)
     await _check_auth_rate_limit(db, client_ip, "refresh")
 
+    # Read refresh token from httpOnly cookie
+    refresh_token_value = request.cookies.get("refresh_token")
+    if not refresh_token_value:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     # Decode and validate refresh token
-    payload = decode_refresh_token(refresh_request.refresh_token)
+    payload = decode_refresh_token(refresh_token_value)
     if payload is None:
+        _clear_refresh_cookie(response)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token",
@@ -183,6 +238,17 @@ async def refresh_token(
             detail="Invalid token payload",
         ) from exc
 
+    # Validate refresh token against DB (checks revocation + reuse detection)
+    old_jti = payload.get("jti")
+    if not old_jti or not await validate_refresh_token(db, old_jti, user_id):
+        _clear_refresh_cookie(response)
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     # Verify user exists and is active
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
@@ -199,6 +265,9 @@ async def refresh_token(
             detail="Inactive user",
         )
 
+    # Revoke the old refresh token (rotation)
+    await revoke_refresh_token(db, old_jti)
+
     # Create new access and refresh tokens
     access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
     access_token = create_access_token(
@@ -207,23 +276,59 @@ async def refresh_token(
     )
 
     refresh_token_expires = timedelta(days=settings.refresh_token_expire_days)
-    new_refresh_token = create_refresh_token(
+    new_refresh_tok = create_refresh_token(
         data={"sub": str(user.id)},
         expires_delta=refresh_token_expires,
     )
 
+    # Store new refresh token hash in DB
+    new_payload = decode_refresh_token(new_refresh_tok)
+    if new_payload and new_payload.get("jti"):
+        await store_refresh_token(
+            db,
+            user_id=user.id,
+            jti=new_payload["jti"],
+            expires_at=datetime.fromtimestamp(new_payload["exp"], tz=UTC),
+        )
+
     await db.commit()
 
-    return Token(access_token=access_token, refresh_token=new_refresh_token)
+    # Rotate refresh token cookie
+    _set_refresh_cookie(response, new_refresh_tok)
+
+    return Token(access_token=access_token)
+
+
+@router.post("/logout", status_code=status.HTTP_200_OK)
+async def logout(
+    request: Request,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict[str, str]:
+    """Logout by revoking the refresh token and clearing the cookie."""
+    refresh_token_value = request.cookies.get("refresh_token")
+    if refresh_token_value:
+        payload = decode_refresh_token(refresh_token_value)
+        if payload and payload.get("jti"):
+            await revoke_refresh_token(db, payload["jti"])
+            await db.commit()
+
+    _clear_refresh_cookie(response)
+    return {"message": "Logged out successfully"}
 
 
 @router.post("/change-password", status_code=status.HTTP_200_OK)
 async def change_password(
     body: ChangePasswordRequest,
+    response: Response,
     current_user: CurrentUser,
     db: DB,
 ) -> dict[str, str]:
-    """Change current user's password."""
+    """Change current user's password.
+
+    Revokes all existing refresh tokens to force re-authentication
+    on all devices.
+    """
     # Verify current password
     if not verify_password(body.current_password, current_user.hashed_password):
         raise HTTPException(
@@ -233,7 +338,14 @@ async def change_password(
 
     # Update password
     current_user.hashed_password = get_password_hash(body.new_password)
+
+    # Revoke all refresh tokens for this user
+    await revoke_all_user_refresh_tokens(db, current_user.id)
+
     await db.commit()
+
+    # Clear the current session's refresh cookie
+    _clear_refresh_cookie(response)
 
     return {"message": "Password updated successfully"}
 

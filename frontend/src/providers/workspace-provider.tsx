@@ -93,7 +93,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     [workspaces, currentWorkspace, currentWorkspaceId, isLoading, setCurrentWorkspace]
   );
 
-  return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
+  return <WorkspaceContext value={value}>{children}</WorkspaceContext>;
 }
 
 export function useWorkspace() {

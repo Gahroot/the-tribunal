@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -91,7 +91,7 @@ class GeneratedOfferContent(BaseModel):
     bonus_ideas: list[GeneratedBonusIdea] = []
 
 
-class DiscountType(str, Enum):
+class DiscountType(StrEnum):
     """Discount type options."""
 
     PERCENTAGE = "percentage"
@@ -99,7 +99,7 @@ class DiscountType(str, Enum):
     FREE_SERVICE = "free_service"
 
 
-class GuaranteeType(str, Enum):
+class GuaranteeType(StrEnum):
     """Guarantee type options."""
 
     MONEY_BACK = "money_back"
@@ -107,7 +107,7 @@ class GuaranteeType(str, Enum):
     RESULTS = "results"
 
 
-class UrgencyType(str, Enum):
+class UrgencyType(StrEnum):
     """Urgency type options."""
 
     LIMITED_TIME = "limited_time"

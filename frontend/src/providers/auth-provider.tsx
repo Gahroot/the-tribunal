@@ -2,8 +2,9 @@
 
 import * as React from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { api } from "@/lib/api";
 import { getCurrentUser, login as loginApi, type User, type LoginCredentials } from "@/lib/api/auth";
-import { getToken, setToken, setRefreshToken, removeToken } from "@/lib/utils/storage";
+import { getToken, setToken, removeToken } from "@/lib/utils/storage";
 
 interface AuthContextType {
   user: User | null;
@@ -66,8 +67,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = React.useCallback(async (credentials: LoginCredentials) => {
     const response = await loginApi(credentials);
+    // Only access_token is in the response body; refresh_token is set as httpOnly cookie by backend
     setToken(response.access_token);
-    setRefreshToken(response.refresh_token);
     const userData = await getCurrentUser();
     setUser(userData);
     router.replace("/");
@@ -75,6 +76,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = React.useCallback(() => {
     removeToken();
+    // Clear the httpOnly refresh cookie on the backend
+    api.post("/api/v1/auth/logout").catch(() => {});
     setUser(null);
     router.replace("/login");
   }, [router]);
@@ -91,7 +94,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [user, isLoading, isAuthenticated, login, logout]
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return <AuthContext value={value}>{children}</AuthContext>;
 }
 
 export function useAuth() {

@@ -44,6 +44,13 @@ from app.services.audio import (
 router = APIRouter()
 logger = structlog.get_logger()
 
+_SENSITIVE_HEADERS = {"authorization", "cookie", "x-api-key", "proxy-authorization"}
+
+
+def _safe_headers(headers: dict[str, str]) -> dict[str, str]:
+    """Redact sensitive header values to prevent leaking secrets in logs."""
+    return {k: "***" if k.lower() in _SENSITIVE_HEADERS else v for k, v in headers.items()}
+
 
 async def _lookup_call_context_wrapper(
     call_id: str,
@@ -268,7 +275,7 @@ async def voice_stream_bridge(  # noqa: PLR0912, PLR0915
         "voice_bridge_connection_received",
         client_host=websocket.client.host if websocket.client else "unknown",
         client_port=websocket.client.port if websocket.client else "unknown",
-        headers=dict(websocket.headers) if hasattr(websocket, "headers") else {},
+        headers=_safe_headers(dict(websocket.headers)) if hasattr(websocket, "headers") else {},
     )
 
     await websocket.accept()

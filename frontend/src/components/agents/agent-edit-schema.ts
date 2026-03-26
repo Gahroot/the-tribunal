@@ -1,13 +1,13 @@
 import * as z from "zod";
 
 export const editAgentFormSchema = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters"),
+  name: z.string().min(2, { error: "Name must be at least 2 characters" }),
   description: z.string().optional(),
-  language: z.string().min(1, "Please select a language"),
+  language: z.string().min(1, { error: "Please select a language" }),
   channelMode: z.enum(["voice", "text", "both"]),
   voiceProvider: z.string(),
   voiceId: z.string(),
-  systemPrompt: z.string().min(10, "System prompt is required"),
+  systemPrompt: z.string().min(10, { error: "System prompt is required" }),
   temperature: z.number().min(0).max(2),
   textResponseDelayMs: z.number().min(0).max(5000),
   textMaxContextMessages: z.number().min(1).max(50),

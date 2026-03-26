@@ -148,7 +148,7 @@ Is this a genuine opt-out request (user wants to stop receiving SMS/text message
                     {"role": "user", "content": user_message},
                 ],
                 temperature=0,  # Deterministic for classification
-                max_tokens=10,  # Only need "true" or "false"
+                max_completion_tokens=10,  # Only need "true" or "false"
             ),
             timeout=5.0,  # Fast timeout for classification
         )

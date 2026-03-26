@@ -14,10 +14,14 @@ Conversion Pipelines:
     Grok -> Telnyx: PCM16 24kHz -> PCM16 8kHz -> mulaw 8kHz
 """
 
-import audioop
 from collections.abc import Callable
 from enum import Enum
 from typing import Any
+
+try:
+    import audioop
+except ModuleNotFoundError:
+    import audioop_lts as audioop  # type: ignore[no-redef]
 
 import numpy as np
 import soxr

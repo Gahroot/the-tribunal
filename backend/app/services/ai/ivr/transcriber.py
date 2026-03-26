@@ -1,6 +1,5 @@
 """Cheap batch transcription for Phase 1 IVR gate using OpenAI Whisper."""
 
-from __future__ import annotations
 
 import io
 import wave

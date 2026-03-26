@@ -34,29 +34,32 @@ export interface ToggleProps
   onPressedChange?: (pressed: boolean) => void;
 }
 
-const Toggle = React.forwardRef<HTMLButtonElement, ToggleProps>(
-  (
-    { className, variant, size, pressed = false, onPressedChange, ...props },
-    ref
-  ) => {
-    const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
-      onPressedChange?.(!pressed);
-      props.onClick?.(e);
-    };
+function Toggle({
+  ref,
+  className,
+  variant,
+  size,
+  pressed = false,
+  onPressedChange,
+  ...props
+}: ToggleProps & { ref?: React.Ref<HTMLButtonElement> }) {
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    onPressedChange?.(!pressed);
+    props.onClick?.(e);
+  };
 
-    return (
-      <button
-        ref={ref}
-        type="button"
-        aria-pressed={pressed}
-        data-state={pressed ? "on" : "off"}
-        className={cn(toggleVariants({ variant, size, className }))}
-        onClick={handleClick}
-        {...props}
-      />
-    );
-  }
-);
+  return (
+    <button
+      ref={ref}
+      type="button"
+      aria-pressed={pressed}
+      data-state={pressed ? "on" : "off"}
+      className={cn(toggleVariants({ variant, size, className }))}
+      onClick={handleClick}
+      {...props}
+    />
+  );
+}
 Toggle.displayName = "Toggle";
 
 export { Toggle, toggleVariants };

@@ -1,6 +1,5 @@
 """Rule-based IVR, human, and voicemail classifier."""
 
-from __future__ import annotations
 
 import re
 

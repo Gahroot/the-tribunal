@@ -1,17 +1,25 @@
 """Voice test WebSocket endpoint for browser-based agent testing."""
 
 import asyncio
-import audioop
 import base64
 import contextlib
 import json
 from typing import Any
 
+try:
+    import audioop
+except ModuleNotFoundError:
+    import audioop_lts as audioop  # type: ignore[no-redef]
+
 import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
+from sqlalchemy import select
 
 from app.core.config import settings
+from app.core.security import decode_access_token
 from app.db.session import AsyncSessionLocal
+from app.models.user import User
+from app.models.workspace import WorkspaceMembership
 from app.services.ai.elevenlabs_voice_agent import ElevenLabsVoiceAgentSession
 from app.services.ai.grok import GrokVoiceAgentSession
 from app.services.ai.voice_agent import VoiceAgentSession
@@ -21,6 +29,80 @@ logger = structlog.get_logger()
 
 # Type alias for voice sessions
 VoiceSessionType = VoiceAgentSession | GrokVoiceAgentSession | ElevenLabsVoiceAgentSession
+
+
+async def _authenticate_websocket(  # noqa: PLR0911
+    websocket: WebSocket,
+    workspace_id: str,
+    log: Any,
+) -> bool:
+    """Authenticate WebSocket connection via JWT token in query params.
+
+    Validates the token and checks the user has access to the workspace.
+    Must be called BEFORE websocket.accept().
+
+    Args:
+        websocket: WebSocket connection (not yet accepted)
+        workspace_id: Workspace UUID the user is trying to access
+        log: Logger instance
+
+    Returns:
+        True if authenticated and authorized, False otherwise
+    """
+    token = websocket.query_params.get("token")
+    if not token:
+        log.warning("ws_auth_failed", reason="no_token")
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return False
+
+    payload = decode_access_token(token)
+    if payload is None:
+        log.warning("ws_auth_failed", reason="invalid_token")
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return False
+
+    user_id_str: str | None = payload.get("sub")
+    if user_id_str is None:
+        log.warning("ws_auth_failed", reason="no_subject_in_token")
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return False
+
+    try:
+        user_id = int(user_id_str)
+    except (ValueError, TypeError):
+        log.warning("ws_auth_failed", reason="invalid_user_id")
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return False
+
+    async with AsyncSessionLocal() as db:
+        # Verify user exists and is active
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if user is None or not user.is_active:
+            log.warning("ws_auth_failed", reason="user_not_found_or_inactive", user_id=user_id)
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return False
+
+        # Verify user has access to the workspace
+        membership_result = await db.execute(
+            select(WorkspaceMembership).where(
+                WorkspaceMembership.user_id == user_id,
+                WorkspaceMembership.workspace_id == workspace_id,
+            )
+        )
+        membership = membership_result.scalar_one_or_none()
+        if membership is None:
+            log.warning(
+                "ws_auth_failed",
+                reason="no_workspace_access",
+                user_id=user_id,
+                workspace_id=workspace_id,
+            )
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return False
+
+    log.info("ws_auth_success", user_id=user_id)
+    return True
 
 
 async def _get_agent_by_id(agent_id: str, workspace_id: str, log: Any) -> Any:
@@ -235,6 +317,11 @@ async def voice_test_endpoint(
 ) -> None:
     """WebSocket endpoint for browser-based voice agent testing.
 
+    Authentication:
+    - Requires a JWT token as a query parameter: ?token=<jwt>
+    - The token is validated and the user must have access to the workspace
+    - Connection is closed with 1008 (Policy Violation) if auth fails
+
     Protocol:
     - Client sends JSON messages with type field
     - Server sends JSON messages with type field
@@ -262,6 +349,10 @@ async def voice_test_endpoint(
         agent_id=agent_id,
     )
     log.info("voice_test_connection_received")
+
+    # Authenticate via JWT token in query params before accepting
+    if not await _authenticate_websocket(websocket, workspace_id, log):
+        return
 
     await websocket.accept()
 

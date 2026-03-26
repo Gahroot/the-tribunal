@@ -31,11 +31,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
 const workspaceFormSchema = z.object({
-  name: z.string().min(1, "Name is required").max(200, "Name must be 200 characters or less"),
+  name: z.string().min(1, { error: "Name is required" }).max(200, { error: "Name must be 200 characters or less" }),
   slug: z
     .string()
-    .min(1, "Slug is required")
-    .max(100, "Slug must be 100 characters or less")
+    .min(1, { error: "Slug is required" })
+    .max(100, { error: "Slug must be 100 characters or less" })
     .regex(/^[a-z0-9-]+$/, "Slug must contain only lowercase letters, numbers, and hyphens"),
   description: z.string().optional(),
 });

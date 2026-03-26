@@ -8,6 +8,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, Uni
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.encryption import decrypt_json, encrypt_json
 from app.db.base import Base
 
 if TYPE_CHECKING:
@@ -160,7 +161,9 @@ class WorkspaceIntegration(Base):
     integration_type: Mapped[str] = mapped_column(
         String(50), nullable=False
     )  # calcom, telnyx, openai, elevenlabs
-    credentials: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)  # api_key, etc.
+    encrypted_credentials: Mapped[str] = mapped_column(
+        "credentials", Text, nullable=False
+    )  # Fernet-encrypted JSON
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
@@ -174,6 +177,16 @@ class WorkspaceIntegration(Base):
 
     # Relationships
     workspace: Mapped["Workspace"] = relationship("Workspace", back_populates="integrations")
+
+    @property
+    def credentials(self) -> dict[str, Any]:
+        """Decrypt and return credentials dict."""
+        return decrypt_json(self.encrypted_credentials)
+
+    @credentials.setter
+    def credentials(self, value: dict[str, Any]) -> None:
+        """Encrypt and store credentials dict."""
+        self.encrypted_credentials = encrypt_json(value)
 
     def __repr__(self) -> str:
         return (

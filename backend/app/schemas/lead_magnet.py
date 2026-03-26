@@ -2,13 +2,13 @@
 
 import uuid
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class LeadMagnetType(str, Enum):
+class LeadMagnetType(StrEnum):
     """Types of lead magnets."""
 
     PDF = "pdf"
@@ -27,7 +27,7 @@ class LeadMagnetType(str, Enum):
     VIDEO_COURSE = "video_course"
 
 
-class DeliveryMethod(str, Enum):
+class DeliveryMethod(StrEnum):
     """How the lead magnet is delivered."""
 
     EMAIL = "email"

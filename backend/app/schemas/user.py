@@ -30,17 +30,13 @@ class UserWithWorkspace(UserResponse):
 
 
 class Token(BaseModel):
-    """Schema for JWT token response."""
+    """Schema for JWT token response.
+
+    The refresh_token is delivered via httpOnly cookie, not in the response body.
+    """
 
     access_token: str
-    refresh_token: str
     token_type: str = "bearer"
-
-
-class RefreshTokenRequest(BaseModel):
-    """Schema for refresh token request."""
-
-    refresh_token: str
 
 
 class TokenPayload(BaseModel):
@@ -78,6 +74,7 @@ class NotificationSettings(BaseModel):
     notification_push_calls: bool
     notification_push_messages: bool
     notification_push_voicemail: bool
+    notification_push_appointments: bool
 
 
 class NotificationSettingsUpdate(BaseModel):
@@ -89,6 +86,7 @@ class NotificationSettingsUpdate(BaseModel):
     notification_push_calls: bool | None = None
     notification_push_messages: bool | None = None
     notification_push_voicemail: bool | None = None
+    notification_push_appointments: bool | None = None
 
 
 class IntegrationStatus(BaseModel):

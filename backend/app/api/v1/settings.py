@@ -98,6 +98,7 @@ async def get_notifications(current_user: CurrentUser) -> NotificationSettings:
         notification_push_calls=current_user.notification_push_calls,
         notification_push_messages=current_user.notification_push_messages,
         notification_push_voicemail=current_user.notification_push_voicemail,
+        notification_push_appointments=current_user.notification_push_appointments,
     )
 
 
@@ -120,6 +121,10 @@ async def update_notifications(
         current_user.notification_push_messages = notification_update.notification_push_messages
     if notification_update.notification_push_voicemail is not None:
         current_user.notification_push_voicemail = notification_update.notification_push_voicemail
+    if notification_update.notification_push_appointments is not None:
+        current_user.notification_push_appointments = (
+            notification_update.notification_push_appointments
+        )
 
     await db.commit()
     await db.refresh(current_user)
@@ -131,6 +136,7 @@ async def update_notifications(
         notification_push_calls=current_user.notification_push_calls,
         notification_push_messages=current_user.notification_push_messages,
         notification_push_voicemail=current_user.notification_push_voicemail,
+        notification_push_appointments=current_user.notification_push_appointments,
     )
 
 

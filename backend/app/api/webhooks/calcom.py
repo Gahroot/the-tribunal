@@ -22,6 +22,7 @@ from app.models.conversation import Conversation, Message
 from app.models.phone_number import PhoneNumber
 from app.models.workspace import Workspace
 from app.services.campaigns.guarantee_tracker import increment_completed_and_check_guarantee
+from app.services.push_notifications import push_notification_service
 from app.services.rate_limiting.opt_out_manager import OptOutManager
 from app.services.telephony.telnyx import TelnyxSMSService
 
@@ -574,6 +575,76 @@ async def handle_booking_created(data: dict[str, Any], log: Any) -> None:  # noq
                 body_text=confirmation_body,
             )
 
+        # Push notification for new appointment
+        try:
+            contact_name = " ".join(filter(None, [contact.first_name, contact.last_name])) or "Unknown"
+            await push_notification_service.send_to_workspace_members(
+                db=db,
+                workspace_id=str(workspace_id),
+                title="New Appointment Booked",
+                body=f"{contact_name} booked for {scheduled_at.strftime('%b %d at %I:%M %p')}",
+                data={
+                    "type": "appointment_booked",
+                    "appointmentId": str(appointment.id),
+                    "contactId": str(contact.id),
+                    "screen": f"/(tabs)/appointments/{appointment.id}",
+                },
+                notification_type="message",
+                channel_id="appointments",
+            )
+        except Exception:
+            log.exception("appointment_push_notification_failed")
+
+        # Double-booking detection — alert if contact has multiple scheduled appointments
+        try:
+            existing_scheduled = await db.execute(
+                select(Appointment).where(
+                    Appointment.contact_id == contact.id,
+                    Appointment.status == "scheduled",
+                    Appointment.id != appointment.id,
+                ).order_by(Appointment.created_at.asc())
+            )
+            other_appointments = existing_scheduled.scalars().all()
+
+            if other_appointments:
+                parts = filter(None, [contact.first_name, contact.last_name])
+                contact_name = " ".join(parts) or "Unknown"
+                # The oldest existing appointment was booked first
+                first_appt = other_appointments[0]
+                first_time = first_appt.scheduled_at.strftime("%b %d at %I:%M %p")
+                new_time = appointment.scheduled_at.strftime("%b %d at %I:%M %p")
+                total = len(other_appointments) + 1
+                body_msg = (
+                    f"{contact_name} has {total} appointments. "
+                    f"First: {first_time}, New: {new_time}"
+                )
+
+                await push_notification_service.send_to_workspace_members(
+                    db=db,
+                    workspace_id=str(workspace_id),
+                    title="⚠️ Double Booking Detected",
+                    body=body_msg,
+                    data={
+                        "type": "double_booking",
+                        "contactId": str(contact.id),
+                        "newAppointmentId": str(appointment.id),
+                        "existingAppointmentId": str(first_appt.id),
+                        "screen": f"/(tabs)/contacts/{contact.id}",
+                    },
+                    notification_type="message",
+                    channel_id="appointments",
+                )
+                log.warning(
+                    "double_booking_detected",
+                    contact_id=contact.id,
+                    contact_name=contact_name,
+                    total_scheduled=len(other_appointments) + 1,
+                    existing_appointment_ids=[a.id for a in other_appointments],
+                    new_appointment_id=appointment.id,
+                )
+        except Exception:
+            log.exception("double_booking_detection_failed")
+
 
 async def handle_booking_rescheduled(data: dict[str, Any], log: Any) -> None:
     """Handle Cal.com booking reschedule.
@@ -686,6 +757,31 @@ async def handle_booking_rescheduled(data: dict[str, Any], log: Any) -> None:
                 )
         except Exception as e:
             log.warning("rescheduled_sms_setup_failed", error=str(e))
+
+        # Push notification for rescheduled appointment
+        try:
+            contact_result_push = await db.execute(
+                select(Contact).where(Contact.id == appointment.contact_id)
+            )
+            push_contact = contact_result_push.scalar_one_or_none()
+            if push_contact:
+                contact_name = " ".join(filter(None, [push_contact.first_name, push_contact.last_name])) or "Unknown"
+                await push_notification_service.send_to_workspace_members(
+                    db=db,
+                    workspace_id=str(appointment.workspace_id),
+                    title="Appointment Rescheduled",
+                    body=f"{contact_name} rescheduled to {scheduled_at.strftime('%b %d at %I:%M %p')}",
+                    data={
+                        "type": "appointment_rescheduled",
+                        "appointmentId": str(appointment.id),
+                        "contactId": str(push_contact.id),
+                        "screen": f"/(tabs)/appointments/{appointment.id}",
+                    },
+                    notification_type="message",
+                    channel_id="appointments",
+                )
+        except Exception:
+            log.exception("reschedule_push_notification_failed")
 
 
 async def handle_booking_cancelled(data: dict[str, Any], log: Any) -> None:  # noqa: PLR0915
@@ -831,6 +927,32 @@ async def handle_booking_cancelled(data: dict[str, Any], log: Any) -> None:  # n
                     )
             except Exception as e:
                 log.warning("cancellation_sms_setup_failed", error=str(e))
+
+        # Push notification for cancelled appointment
+        try:
+            contact_result_push = await db.execute(
+                select(Contact).where(Contact.id == appointment.contact_id)
+            )
+            push_contact = contact_result_push.scalar_one_or_none()
+            if push_contact:
+                contact_name = " ".join(filter(None, [push_contact.first_name, push_contact.last_name])) or "Unknown"
+                cancelled_by = "by host" if is_host_initiated else "by client"
+                await push_notification_service.send_to_workspace_members(
+                    db=db,
+                    workspace_id=str(appointment.workspace_id),
+                    title="Appointment Cancelled",
+                    body=f"{contact_name} cancelled {cancelled_by}",
+                    data={
+                        "type": "appointment_cancelled",
+                        "appointmentId": str(appointment.id),
+                        "contactId": str(push_contact.id),
+                        "screen": f"/(tabs)/appointments/{appointment.id}",
+                    },
+                    notification_type="message",
+                    channel_id="appointments",
+                )
+        except Exception:
+            log.exception("cancellation_push_notification_failed")
 
 
 async def handle_meeting_ended(data: dict[str, Any], log: Any) -> None:  # noqa: PLR0912, PLR0915

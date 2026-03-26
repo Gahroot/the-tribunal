@@ -42,9 +42,9 @@ import {
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 
 const inviteFormSchema = z.object({
-  email: z.string().email("Please enter a valid email address"),
+  email: z.email({ error: "Please enter a valid email address" }),
   role: z.enum(["admin", "member"]),
-  message: z.string().max(500, "Message must be 500 characters or less").optional(),
+  message: z.string().max(500, { error: "Message must be 500 characters or less" }).optional(),
 });
 
 type InviteFormValues = z.infer<typeof inviteFormSchema>;

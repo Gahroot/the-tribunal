@@ -1,6 +1,5 @@
 """Scripted IVR navigator - extracts menu options and selects DTMF digits without AI."""
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field

@@ -24,6 +24,7 @@ class Settings(BaseSettings):
 
     # Security
     secret_key: str = "change-me-in-production"
+    encryption_key: str = "change-me-in-production"  # Used for Fernet encryption of credentials
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30  # 30 minutes (short-lived)
     refresh_token_expire_days: int = 7  # 7 days (long-lived)
@@ -79,8 +80,8 @@ class Settings(BaseSettings):
     demo_workspace_id: str = ""  # Workspace ID for demo requests
     demo_agent_id: str = ""  # Agent ID for demo requests
     demo_from_phone_number: str = ""  # Phone number to send demo calls/texts from
-    demo_ip_rate_limit: int = 5  # Max requests per IP per hour
-    demo_phone_rate_limit: int = 3  # Max requests per phone per day
+    demo_ip_rate_limit: int = 15  # Max requests per IP per hour
+    demo_phone_rate_limit: int = 9  # Max requests per phone per day
 
     # Lead form
     lead_form_ip_rate_limit: int = 20  # Max submissions per IP per hour

@@ -1,6 +1,5 @@
 """IVR loop detection using TF-IDF transcript similarity."""
 
-from __future__ import annotations
 
 from typing import Any
 

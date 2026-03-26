@@ -30,8 +30,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
 const pipelineFormSchema = z.object({
-  name: z.string().min(1, "Pipeline name is required").max(255, "Name must be 255 characters or less"),
-  description: z.string().max(500, "Description must be 500 characters or less").optional().or(z.literal("")),
+  name: z.string().min(1, { error: "Pipeline name is required" }).max(255, { error: "Name must be 255 characters or less" }),
+  description: z.string().max(500, { error: "Description must be 500 characters or less" }).optional().or(z.literal("")),
 });
 
 type PipelineFormValues = z.infer<typeof pipelineFormSchema>;

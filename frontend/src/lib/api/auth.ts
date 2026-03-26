@@ -22,7 +22,6 @@ export interface RegisterData {
 
 export interface AuthResponse {
   access_token: string;
-  refresh_token: string;
   token_type: string;
 }
 
@@ -46,8 +45,7 @@ export async function getCurrentUser(): Promise<User> {
   return apiGet<User>("/api/v1/auth/me");
 }
 
-export async function refreshToken(refreshToken: string): Promise<AuthResponse> {
-  return apiPost<AuthResponse>("/api/v1/auth/refresh", {
-    refresh_token: refreshToken,
-  });
+export async function refreshToken(): Promise<AuthResponse> {
+  // Refresh token is sent automatically via httpOnly cookie
+  return apiPost<AuthResponse>("/api/v1/auth/refresh");
 }

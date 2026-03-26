@@ -12,10 +12,11 @@ export const api = axios.create({
   timeout: 30000,
 });
 
-// Logout function
+// Logout function — clears access token and tells backend to clear refresh cookie
 export function logout(): void {
   safeRemoveItem("access_token");
-  safeRemoveItem("refresh_token");
+  // Fire-and-forget: ask backend to clear the httpOnly refresh cookie
+  api.post("/api/v1/auth/logout").catch(() => {});
   try {
     window.location.href = "/login";
   } catch (navError) {
@@ -79,26 +80,14 @@ api.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
 
-      const refreshTokenValue = safeGetItem("refresh_token");
-
-      if (!refreshTokenValue) {
-        // No refresh token, logout
-        console.error("No refresh token available - redirecting to login");
-        logout();
-        return Promise.reject(error);
-      }
-
       try {
-        // Attempt to refresh the token
-        const response = await api.post("/api/v1/auth/refresh", {
-          refresh_token: refreshTokenValue,
-        });
+        // Attempt to refresh — refresh token is sent automatically via httpOnly cookie
+        const response = await api.post("/api/v1/auth/refresh");
 
-        const { access_token, refresh_token } = response.data;
+        const { access_token } = response.data;
 
-        // Store new tokens
+        // Store new access token
         safeSetItem("access_token", access_token);
-        safeSetItem("refresh_token", refresh_token);
 
         // Update authorization header
         originalRequest.headers.Authorization = `Bearer ${access_token}`;

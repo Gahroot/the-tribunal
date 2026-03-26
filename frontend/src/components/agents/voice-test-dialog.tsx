@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { getToken } from "@/lib/utils/storage";
 
 interface VoiceTestDialogProps {
   open: boolean;
@@ -164,7 +165,14 @@ export function VoiceTestDialog({
       // Connect WebSocket
       const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const wsHost = process.env.NEXT_PUBLIC_API_URL?.replace(/^https?:\/\//, "") || "localhost:8000";
-      const wsUrl = `${wsProtocol}//${wsHost}/voice/test/${workspaceId}/${agentId}`;
+      const token = getToken();
+      if (!token) {
+        setError("Not authenticated. Please log in again.");
+        setConnectionStatus("error");
+        disconnect();
+        return;
+      }
+      const wsUrl = `${wsProtocol}//${wsHost}/voice/test/${workspaceId}/${agentId}?token=${encodeURIComponent(token)}`;
 
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;

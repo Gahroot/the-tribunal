@@ -50,7 +50,7 @@ import type { Contact } from "@/types";
 
 const appointmentFormSchema = z.object({
   date: z.date({ message: "Please select a date" }),
-  time: z.string().min(1, "Please select a time"),
+  time: z.string().min(1, { error: "Please select a time" }),
   duration_minutes: z.number().min(15).max(480),
   service_type: z.string().optional(),
   notes: z.string().optional(),

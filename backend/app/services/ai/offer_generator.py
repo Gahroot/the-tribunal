@@ -189,7 +189,7 @@ Generate 3 options for each element. Return JSON with this exact structure:
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.8,
-            max_tokens=2500,
+            max_completion_tokens=2500,
             response_format={"type": "json_object"},
         )
 

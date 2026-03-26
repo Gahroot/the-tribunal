@@ -23,7 +23,6 @@ Example YAML format:
         is_terminal: true
 """
 
-from __future__ import annotations
 
 from pathlib import Path
 from typing import Any

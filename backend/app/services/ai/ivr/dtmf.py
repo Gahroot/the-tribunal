@@ -1,6 +1,5 @@
 """DTMF parsing and validation for IVR navigation."""
 
-from __future__ import annotations
 
 import re
 

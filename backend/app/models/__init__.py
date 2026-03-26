@@ -36,6 +36,7 @@ from app.models.phone_number_stats import PhoneNumberDailyStats
 from app.models.pipeline import Pipeline, PipelineStage
 from app.models.prompt_version import PromptVersion
 from app.models.prompt_version_stats import PromptVersionStats
+from app.models.refresh_token import RefreshToken
 from app.models.segment import Segment
 from app.models.tag import ContactTag, Tag
 from app.models.user import User
@@ -89,4 +90,5 @@ __all__ = [
     "Segment",
     "DeviceToken",
     "AuthRateLimit",
+    "RefreshToken",
 ]

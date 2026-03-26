@@ -20,8 +20,8 @@ import { useAuth } from "@/providers/auth-provider";
 import { cn } from "@/lib/utils";
 
 const loginSchema = z.object({
-  email: z.string().email("Please enter a valid email address"),
-  password: z.string().min(1, "Password is required"),
+  email: z.email({ error: "Please enter a valid email address" }),
+  password: z.string().min(1, { error: "Password is required" }),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;

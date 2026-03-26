@@ -21,6 +21,7 @@ NOTIFICATION_TYPE_PREFS = {
     "call": "notification_push_calls",
     "message": "notification_push_messages",
     "voicemail": "notification_push_voicemail",
+    "appointment": "notification_push_appointments",
 }
 
 

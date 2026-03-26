@@ -49,9 +49,9 @@ import {
 import { cn } from "@/lib/utils";
 
 const appointmentFormSchema = z.object({
-  contact_id: z.string().min(1, "Please select a contact"),
+  contact_id: z.string().min(1, { error: "Please select a contact" }),
   date: z.date({ message: "Please select a date" }),
-  time: z.string().min(1, "Please select a time"),
+  time: z.string().min(1, { error: "Please select a time" }),
   duration_minutes: z.number().min(15).max(480),
   service_type: z.string().optional(),
   notes: z.string().optional(),

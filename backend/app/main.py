@@ -4,11 +4,12 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.datastructures import MutableHeaders
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.api.v1.router import api_router
 from app.api.webhooks.calcom import router as calcom_webhook_router
@@ -22,19 +23,45 @@ from app.workers import start_all_workers, stop_all_workers
 logger = structlog.get_logger()
 
 
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Middleware to add security headers to all responses."""
+class SecurityHeadersMiddleware:
+    """Pure ASGI middleware to add security headers to all responses."""
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
-        response: Response = await call_next(request)
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
-        return response
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+        connect_sources = ["'self'", "wss:", "https://api.openai.com", "https://api.telnyx.com", "https://api.elevenlabs.io"]
+        for origin in settings.cors_origins:
+            if origin not in connect_sources:
+                connect_sources.append(origin)
+        self._csp = "; ".join([
+            "default-src 'self'",
+            "script-src 'self'",
+            "style-src 'self' 'unsafe-inline'",
+            "img-src 'self' data: https:",
+            "font-src 'self'",
+            f"connect-src {' '.join(connect_sources)}",
+            "frame-ancestors 'none'",
+            "base-uri 'self'",
+            "form-action 'self'",
+        ])
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_headers(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                message.setdefault("headers", [])
+                headers = MutableHeaders(scope=message)
+                headers["X-Frame-Options"] = "DENY"
+                headers["X-Content-Type-Options"] = "nosniff"
+                headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+                headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+                headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+                headers["Content-Security-Policy"] = self._csp
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
 
 
 def _validate_startup_config() -> None:

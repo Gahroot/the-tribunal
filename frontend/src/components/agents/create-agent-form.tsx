@@ -52,12 +52,12 @@ const WIZARD_STEPS = [
 
 const agentFormSchema = z.object({
   pricingTier: z.enum(["budget", "balanced", "premium-mini", "premium", "hume-evi", "openai-hume", "grok", "elevenlabs"]),
-  name: z.string().min(2, "Name must be at least 2 characters"),
+  name: z.string().min(2, { error: "Name must be at least 2 characters" }),
   description: z.string().optional(),
   language: z.string(),
   voice: z.string(),
   channelMode: z.enum(["voice", "text", "both"]),
-  systemPrompt: z.string().min(10, "System prompt is required"),
+  systemPrompt: z.string().min(10, { error: "System prompt is required" }),
   initialGreeting: z.string().optional(),
   temperature: z.number().min(0).max(2),
   maxTokens: z.number().min(100).max(16000),

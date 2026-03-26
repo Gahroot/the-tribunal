@@ -33,6 +33,9 @@ class User(Base):
     notification_push_calls: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     notification_push_messages: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     notification_push_voicemail: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    notification_push_appointments: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False

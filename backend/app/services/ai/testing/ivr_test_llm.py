@@ -17,7 +17,6 @@ Example usage:
     )
 """
 
-from __future__ import annotations
 
 from typing import Protocol
 
@@ -133,7 +132,7 @@ class OpenAITestClient:
                     "model": self.model,
                     "messages": messages,
                     "temperature": self.temperature,
-                    "max_tokens": 500,
+                    "max_completion_tokens": 500,
                 },
             )
             response.raise_for_status()

@@ -6,7 +6,6 @@ transcription + regex classification + scripted DTMF navigation.
 Returns when a human is detected, voicemail is found, or timeout.
 """
 
-from __future__ import annotations
 
 import asyncio
 import base64
