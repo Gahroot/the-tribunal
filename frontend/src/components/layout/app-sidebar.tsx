@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Bell,
   LayoutDashboard,
   Users,
   Megaphone,
@@ -81,6 +82,11 @@ const mainNavItems = [
     icon: LayoutDashboard,
   },
   {
+    title: "Nudges",
+    url: "/nudges",
+    icon: Bell,
+  },
+  {
     title: "Contacts",
     url: "/contacts",
     icon: Users,
@@ -155,6 +161,7 @@ const settingsNavItems = [
 ];
 
 const segmentLabelMap: Record<string, string> = {
+  nudges: "Nudges",
   contacts: "Contacts",
   contact: "Contact",
   campaigns: "Campaigns",
