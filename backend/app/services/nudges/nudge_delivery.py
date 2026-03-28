@@ -1,0 +1,256 @@
+"""Service for delivering human nudges via SMS and push notifications."""
+
+import logging
+import uuid
+from datetime import UTC, datetime
+
+import httpx
+from sqlalchemy import and_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.core.config import settings
+from app.models.human_nudge import HumanNudge
+from app.models.phone_number import PhoneNumber
+from app.models.user import User
+from app.models.workspace import Workspace, WorkspaceMembership
+from app.services.push_notifications import push_notification_service
+
+logger = logging.getLogger(__name__)
+
+# Default quiet hours (22:00 – 08:00)
+DEFAULT_QUIET_START = "22:00"
+DEFAULT_QUIET_END = "08:00"
+
+
+class NudgeDeliveryService:
+    """Delivers pending nudges to workspace members via SMS and push."""
+
+    async def deliver_nudge(self, db: AsyncSession, nudge: HumanNudge) -> bool:
+        """Deliver a single nudge. Returns True if delivered."""
+        # Load workspace for settings
+        result = await db.execute(
+            select(Workspace).where(Workspace.id == nudge.workspace_id)
+        )
+        workspace = result.scalar_one_or_none()
+        if workspace is None:
+            logger.warning("Workspace %s not found for nudge %s", nudge.workspace_id, nudge.id)
+            return False
+
+        nudge_settings: dict[str, object] = workspace.settings.get(
+            "nudge_settings", {}
+        )
+        delivery_channels: list[str] = nudge_settings.get("delivery_channels", ["sms", "push"])  # type: ignore[assignment]
+
+        # Resolve target users
+        users = await self._resolve_target_users(db, nudge)
+        if not users:
+            logger.info("No target users for nudge %s", nudge.id)
+            return False
+
+        delivered_via: list[str] = []
+
+        # Push notifications
+        if "push" in delivery_channels:
+            try:
+                if nudge.assigned_to_user_id is not None:
+                    await push_notification_service.send_to_user(
+                        db,
+                        user_id=nudge.assigned_to_user_id,
+                        title=nudge.title,
+                        body=nudge.message,
+                        data={"type": "nudge", "nudge_id": str(nudge.id)},
+                    )
+                else:
+                    await push_notification_service.send_to_workspace_members(
+                        db,
+                        workspace_id=str(nudge.workspace_id),
+                        title=nudge.title,
+                        body=nudge.message,
+                        data={"type": "nudge", "nudge_id": str(nudge.id)},
+                    )
+                delivered_via.append("push")
+            except Exception:
+                logger.exception("Failed to send push for nudge %s", nudge.id)
+
+        # SMS delivery
+        if "sms" in delivery_channels and not self._is_quiet_hours(workspace):
+            sms_ok = await self._deliver_sms(db, nudge, users)
+            if sms_ok:
+                delivered_via.append("sms")
+
+        if not delivered_via:
+            return False
+
+        # Mark as sent
+        nudge.status = "sent"
+        nudge.delivered_at = datetime.now(UTC)
+        nudge.delivered_via = (
+            ",".join(delivered_via) if len(delivered_via) > 1 else delivered_via[0]
+        )
+        await db.commit()
+        return True
+
+    async def deliver_pending_nudges(
+        self, db: AsyncSession, workspace_id: uuid.UUID
+    ) -> int:
+        """Deliver all pending nudges for a workspace. Returns count delivered."""
+        result = await db.execute(
+            select(HumanNudge).where(
+                HumanNudge.workspace_id == workspace_id,
+                HumanNudge.status == "pending",
+                HumanNudge.due_date <= datetime.now(UTC),
+            )
+        )
+        nudges = result.scalars().all()
+
+        count = 0
+        for nudge in nudges:
+            try:
+                if await self.deliver_nudge(db, nudge):
+                    count += 1
+            except Exception:
+                logger.exception("Failed to deliver nudge %s", nudge.id)
+
+        if count > 0:
+            logger.info(
+                "Delivered %d nudges for workspace %s", count, workspace_id
+            )
+        return count
+
+    async def _deliver_sms(
+        self,
+        db: AsyncSession,
+        nudge: HumanNudge,
+        users: list[User],
+    ) -> bool:
+        """Send SMS to eligible users. Returns True if at least one sent."""
+        from_number = await self._resolve_from_number(db, nudge.workspace_id)
+        if not from_number or not settings.telnyx_api_key:
+            return False
+
+        sms_sent = False
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            for user in users:
+                if not user.notification_sms or not user.phone_number:
+                    continue
+                try:
+                    await client.post(
+                        "https://api.telnyx.com/v2/messages",
+                        headers={
+                            "Authorization": f"Bearer {settings.telnyx_api_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "from": from_number,
+                            "to": user.phone_number,
+                            "text": nudge.message,
+                            "type": "SMS",
+                        },
+                    )
+                    sms_sent = True
+                except Exception:
+                    logger.exception(
+                        "Failed to send nudge SMS to user %s", user.id
+                    )
+        return sms_sent
+
+    async def _resolve_target_users(
+        self, db: AsyncSession, nudge: HumanNudge
+    ) -> list[User]:
+        """Get the user(s) who should receive this nudge."""
+        if nudge.assigned_to_user_id is not None:
+            result = await db.execute(
+                select(User).where(User.id == nudge.assigned_to_user_id)
+            )
+            user = result.scalar_one_or_none()
+            return [user] if user and user.is_active else []
+
+        # All workspace members
+        membership_result = await db.execute(
+            select(WorkspaceMembership)
+            .options(selectinload(WorkspaceMembership.user))
+            .where(WorkspaceMembership.workspace_id == nudge.workspace_id)
+        )
+        memberships: list[WorkspaceMembership] = list(
+            membership_result.scalars().all()
+        )
+        return [
+            m.user
+            for m in memberships
+            if m.user and m.user.is_active
+        ]
+
+    async def _send_sms_to_user(
+        self, user: User, nudge: HumanNudge, from_number: str
+    ) -> bool:
+        """Send SMS nudge to a single user."""
+        if not user.notification_sms or not user.phone_number:
+            return False
+
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                await client.post(
+                    "https://api.telnyx.com/v2/messages",
+                    headers={
+                        "Authorization": f"Bearer {settings.telnyx_api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "from": from_number,
+                        "to": user.phone_number,
+                        "text": nudge.message,
+                        "type": "SMS",
+                    },
+                )
+            return True
+        except Exception:
+            logger.exception("Failed to send nudge SMS to user %s", user.id)
+            return False
+
+    def _is_quiet_hours(self, workspace: Workspace) -> bool:
+        """Check if current time is within quiet hours."""
+        nudge_settings: dict[str, object] = workspace.settings.get(
+            "nudge_settings", {}
+        )
+        quiet_hours: dict[str, str] = nudge_settings.get("quiet_hours", {})  # type: ignore[assignment]
+        start_str = quiet_hours.get("start", DEFAULT_QUIET_START)
+        end_str = quiet_hours.get("end", DEFAULT_QUIET_END)
+
+        try:
+            start_hour, start_min = (int(x) for x in start_str.split(":"))
+            end_hour, end_min = (int(x) for x in end_str.split(":"))
+        except (ValueError, AttributeError):
+            return False
+
+        now = datetime.now(UTC)
+        current_minutes = now.hour * 60 + now.minute
+        start_minutes = start_hour * 60 + start_min
+        end_minutes = end_hour * 60 + end_min
+
+        if start_minutes > end_minutes:
+            # Quiet hours span midnight (e.g. 22:00 - 08:00)
+            return current_minutes >= start_minutes or current_minutes < end_minutes
+        else:
+            return start_minutes <= current_minutes < end_minutes
+
+    async def _resolve_from_number(
+        self, db: AsyncSession, workspace_id: uuid.UUID
+    ) -> str | None:
+        """Get an SMS-enabled phone number for the workspace."""
+        result = await db.execute(
+            select(PhoneNumber.phone_number).where(
+                and_(
+                    PhoneNumber.workspace_id == workspace_id,
+                    PhoneNumber.is_active.is_(True),
+                    PhoneNumber.sms_enabled.is_(True),
+                )
+            )
+            .order_by(PhoneNumber.created_at)
+            .limit(1)
+        )
+        phone = result.scalar_one_or_none()
+        return str(phone) if phone else None
+
+
+nudge_delivery_service = NudgeDeliveryService()
