@@ -15,6 +15,7 @@ from app.workers.followup_worker import _registry as followup_registry
 from app.workers.message_test_worker import _registry as message_test_registry
 from app.workers.never_booked_worker import _registry as never_booked_registry
 from app.workers.noshow_reengagement_worker import _registry as noshow_reengagement_registry
+from app.workers.nudge_worker import _registry as nudge_registry
 from app.workers.prompt_improvement_worker import _registry as prompt_improvement_registry
 from app.workers.prompt_stats_worker import _registry as prompt_stats_registry
 from app.workers.reminder_worker import _registry as reminder_registry
@@ -38,6 +39,7 @@ ALL_REGISTRIES: list[WorkerRegistry[BaseWorker]] = [
     automation_registry,
     noshow_reengagement_registry,
     never_booked_registry,
+    nudge_registry,
 ]
 
 
