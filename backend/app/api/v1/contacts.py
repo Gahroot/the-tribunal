@@ -198,6 +198,7 @@ async def create_contact(
         tags=contact_in.tags,
         notes=contact_in.notes,
         source=contact_in.source,
+        important_dates=contact_in.important_dates,
     )
 
 

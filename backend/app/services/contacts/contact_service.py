@@ -159,6 +159,7 @@ class ContactService:
         tags: list[str] | None = None,
         notes: str | None = None,
         source: str | None = None,
+        important_dates: dict[str, Any] | None = None,
     ) -> Contact:
         """Create a new contact.
 
@@ -173,6 +174,7 @@ class ContactService:
             tags: List of tags
             notes: Additional notes
             source: Source of contact
+            important_dates: Important dates (birthday, anniversary, custom)
 
         Returns:
             Created contact
@@ -189,6 +191,7 @@ class ContactService:
             tags=tags,
             notes=notes,
             source=source,
+            important_dates=important_dates,
         )
 
     async def update_contact(

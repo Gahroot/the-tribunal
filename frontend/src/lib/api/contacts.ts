@@ -33,6 +33,12 @@ export interface ContactsListResponse {
   pages: number;
 }
 
+export interface ImportantDates {
+  birthday?: string;
+  anniversary?: string;
+  custom?: Array<{ label: string; date: string }>;
+}
+
 export interface CreateContactRequest {
   first_name: string;
   last_name?: string;
@@ -43,6 +49,7 @@ export interface CreateContactRequest {
   tags?: string[];
   notes?: string;
   source?: string;
+  important_dates?: ImportantDates | null;
 }
 
 export interface UpdateContactRequest {
@@ -54,6 +61,7 @@ export interface UpdateContactRequest {
   status?: ContactStatus;
   tags?: string[];
   notes?: string;
+  important_dates?: ImportantDates | null;
 }
 
 export interface ImportErrorDetail {

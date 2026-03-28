@@ -92,4 +92,9 @@ export interface Contact {
   lead_score?: number;
   noshow_count?: number;
   last_appointment_status?: string | null;
+  important_dates?: {
+    birthday?: string;
+    anniversary?: string;
+    custom?: Array<{ label: string; date: string }>;
+  } | null;
 }

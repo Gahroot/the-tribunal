@@ -187,6 +187,7 @@ async def create_contact(
     tags: list[str] | None = None,
     notes: str | None = None,
     source: str | None = None,
+    important_dates: dict[str, Any] | None = None,
 ) -> Contact:
     """Create a new contact.
 
@@ -217,6 +218,7 @@ async def create_contact(
         tags=tags,
         notes=notes,
         source=source,
+        important_dates=important_dates,
     )
     db.add(contact)
     await db.commit()

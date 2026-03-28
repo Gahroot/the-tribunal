@@ -21,6 +21,7 @@ class ContactCreate(BaseModel):
     tags: list[str] | None = None
     notes: str | None = None
     source: str | None = None
+    important_dates: dict[str, Any] | None = None
 
 
 class ContactUpdate(BaseModel):
@@ -35,6 +36,7 @@ class ContactUpdate(BaseModel):
     tags: list[str] | None = None
     notes: str | None = None
     lead_score: int | None = None
+    important_dates: dict[str, Any] | None = None
 
 
 class QualificationSignalDetail(BaseModel):
