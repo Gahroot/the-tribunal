@@ -77,6 +77,7 @@ class ContactResponse(BaseModel):
     qualified_at: datetime | None
     tags: list[str] | None
     notes: str | None
+    important_dates: dict[str, Any] | None = None
     source: str | None
     source_campaign_id: uuid.UUID | None
     # AI Enrichment fields

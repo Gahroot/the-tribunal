@@ -65,6 +65,12 @@ class Contact(Base):
     # Organization
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    important_dates: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # Structure: {
+    #     "birthday": "1990-03-15",
+    #     "anniversary": "2020-06-20",
+    #     "custom": [{"label": "Contract Renewal", "date": "2026-08-01"}]
+    # }
 
     # AI Enrichment fields
     website_url: Mapped[str | None] = mapped_column(String(500), nullable=True)

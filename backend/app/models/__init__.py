@@ -16,6 +16,7 @@ from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
 from app.models.demo_request import DemoRequest
 from app.models.device_token import DeviceToken
+from app.models.human_nudge import HumanNudge
 from app.models.invitation import WorkspaceInvitation
 from app.models.lead_magnet import LeadMagnet
 from app.models.lead_source import LeadSource
@@ -89,6 +90,7 @@ __all__ = [
     "ContactTag",
     "Segment",
     "DeviceToken",
+    "HumanNudge",
     "AuthRateLimit",
     "RefreshToken",
 ]
