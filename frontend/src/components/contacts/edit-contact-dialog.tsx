@@ -49,6 +49,8 @@ const contactFormSchema = z.object({
   status: z.enum(["new", "contacted", "qualified", "converted", "lost"]),
   tags: z.string().optional(),
   notes: z.string().optional(),
+  birthday: z.string().optional(),
+  anniversary: z.string().optional(),
 });
 
 type ContactFormValues = z.infer<typeof contactFormSchema>;
@@ -83,6 +85,8 @@ export function EditContactDialog({ contact, open, onOpenChange }: EditContactDi
       status: contact.status || "new",
       tags: tagsString,
       notes: contact.notes || "",
+      birthday: contact.important_dates?.birthday || "",
+      anniversary: contact.important_dates?.anniversary || "",
     },
   });
 
@@ -103,6 +107,8 @@ export function EditContactDialog({ contact, open, onOpenChange }: EditContactDi
       status: contact.status || "new",
       tags: newTagsString,
       notes: contact.notes || "",
+      birthday: contact.important_dates?.birthday || "",
+      anniversary: contact.important_dates?.anniversary || "",
     });
   }, [contact, form]);
 
@@ -137,6 +143,14 @@ export function EditContactDialog({ contact, open, onOpenChange }: EditContactDi
       ? data.tags.split(",").map((tag) => tag.trim()).filter(Boolean)
       : undefined;
 
+    // Build important_dates, preserving existing custom dates
+    const importantDates = {
+      ...(contact.important_dates ?? {}),
+      birthday: data.birthday || undefined,
+      anniversary: data.anniversary || undefined,
+    };
+    const hasImportantDates = importantDates.birthday || importantDates.anniversary || (importantDates.custom && importantDates.custom.length > 0);
+
     const request: UpdateContactRequest = {
       first_name: data.first_name,
       last_name: data.last_name || undefined,
@@ -146,6 +160,7 @@ export function EditContactDialog({ contact, open, onOpenChange }: EditContactDi
       status: data.status as ContactStatus,
       tags: tagsArray,
       notes: data.notes || undefined,
+      important_dates: hasImportantDates ? importantDates : null,
     };
 
     updateContactMutation.mutate(request);
@@ -273,6 +288,36 @@ export function EditContactDialog({ contact, open, onOpenChange }: EditContactDi
                 </FormItem>
               )}
             />
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="birthday"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Birthday</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="anniversary"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Anniversary</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <FormField
               control={form.control}

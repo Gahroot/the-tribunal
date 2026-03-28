@@ -17,6 +17,7 @@ import {
   Trash2,
   Bell,
   AlertTriangle,
+  Plus,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -41,9 +42,18 @@ import { cn } from "@/lib/utils";
 import { useContactStore } from "@/lib/contact-store";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { appointmentsApi } from "@/lib/api/appointments";
-import { useToggleContactAI, useDeleteContact, useContactTimeline } from "@/hooks/useContacts";
+import { useToggleContactAI, useDeleteContact, useContactTimeline, contactQueryKeys } from "@/hooks/useContacts";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { callsApi, type InitiateCallRequest } from "@/lib/api/calls";
+import { contactsApi, type ImportantDates } from "@/lib/api/contacts";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { conversationsApi } from "@/lib/api/conversations";
 import { phoneNumbersApi } from "@/lib/api/phone-numbers";
 import { EditContactDialog } from "@/components/contacts/edit-contact-dialog";
@@ -125,6 +135,215 @@ function QuickAction({
       {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : icon}
       <span className="ml-2">{label}</span>
     </Button>
+  );
+}
+
+type DateType = "birthday" | "anniversary" | "custom";
+
+function ImportantDatesSection({ contact, workspaceId }: { contact: Contact; workspaceId: string | null | undefined }) {
+  const queryClient = useQueryClient();
+  const { setSelectedContact } = useContactStore();
+  const [addFormOpen, setAddFormOpen] = useState(false);
+  const [dateType, setDateType] = useState<DateType>("birthday");
+  const [dateValue, setDateValue] = useState("");
+  const [customLabel, setCustomLabel] = useState("");
+
+  const dates = contact.important_dates;
+
+  const updateDatesMutation = useMutation({
+    mutationFn: (newDates: ImportantDates | null) => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return contactsApi.update(workspaceId, contact.id, { important_dates: newDates });
+    },
+    onSuccess: (updatedContact) => {
+      void queryClient.invalidateQueries({ queryKey: contactQueryKeys.all(workspaceId ?? "") });
+      void queryClient.invalidateQueries({ queryKey: contactQueryKeys.get(workspaceId ?? "", contact.id) });
+      setSelectedContact(updatedContact);
+      toast.success("Important dates updated");
+    },
+    onError: () => {
+      toast.error("Failed to update important dates");
+    },
+  });
+
+  const handleAdd = () => {
+    if (!dateValue) return;
+    const current: ImportantDates = { ...dates };
+
+    if (dateType === "birthday") {
+      current.birthday = dateValue;
+    } else if (dateType === "anniversary") {
+      current.anniversary = dateValue;
+    } else {
+      if (!customLabel.trim()) return;
+      current.custom = [...(current.custom ?? []), { label: customLabel.trim(), date: dateValue }];
+    }
+
+    updateDatesMutation.mutate(current);
+    setAddFormOpen(false);
+    setDateValue("");
+    setCustomLabel("");
+    setDateType("birthday");
+  };
+
+  const handleRemove = (type: "birthday" | "anniversary" | "custom", index?: number) => {
+    const current: ImportantDates = { ...dates };
+    if (type === "birthday") {
+      delete current.birthday;
+    } else if (type === "anniversary") {
+      delete current.anniversary;
+    } else if (type === "custom" && index !== undefined) {
+      current.custom = [...(current.custom ?? [])];
+      current.custom.splice(index, 1);
+      if (current.custom.length === 0) delete current.custom;
+    }
+    const hasData = current.birthday || current.anniversary || (current.custom && current.custom.length > 0);
+    updateDatesMutation.mutate(hasData ? current : null);
+  };
+
+  const formatDate = (dateStr: string) => {
+    try {
+      // Parse as local date to avoid timezone issues
+      const [year, month, day] = dateStr.split("-").map(Number);
+      return format(new Date(year, month - 1, day), "MMMM d, yyyy");
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const hasDates = dates?.birthday || dates?.anniversary || (dates?.custom && dates.custom.length > 0);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between px-2">
+        <h3 className="text-sm font-medium text-muted-foreground">Important Dates</h3>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6"
+          onClick={() => setAddFormOpen(!addFormOpen)}
+          disabled={updateDatesMutation.isPending}
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+
+      {!hasDates && !addFormOpen && (
+        <p className="text-xs text-muted-foreground px-2 py-1">
+          No important dates yet. Add birthdays and anniversaries to get reminders.
+        </p>
+      )}
+
+      {/* Existing dates */}
+      <div className="space-y-1 px-2">
+        {dates?.birthday && (
+          <div className="flex items-center gap-2 text-sm group">
+            <span>🎂</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-muted-foreground">Birthday</p>
+              <p className="text-sm font-medium">{formatDate(dates.birthday)}</p>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={() => handleRemove("birthday")}
+              disabled={updateDatesMutation.isPending}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
+        {dates?.anniversary && (
+          <div className="flex items-center gap-2 text-sm group">
+            <span>💍</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-muted-foreground">Anniversary</p>
+              <p className="text-sm font-medium">{formatDate(dates.anniversary)}</p>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={() => handleRemove("anniversary")}
+              disabled={updateDatesMutation.isPending}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
+        {dates?.custom?.map((item, i) => (
+          <div key={`${item.label}-${item.date}`} className="flex items-center gap-2 text-sm group">
+            <span>📅</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-muted-foreground">{item.label}</p>
+              <p className="text-sm font-medium">{formatDate(item.date)}</p>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={() => handleRemove("custom", i)}
+              disabled={updateDatesMutation.isPending}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        ))}
+      </div>
+
+      {/* Add form */}
+      {addFormOpen && (
+        <div className="space-y-2 px-2 py-2 bg-muted/30 rounded-lg">
+          <Select value={dateType} onValueChange={(v) => setDateType(v as DateType)}>
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="birthday">Birthday</SelectItem>
+              <SelectItem value="anniversary">Anniversary</SelectItem>
+              <SelectItem value="custom">Custom</SelectItem>
+            </SelectContent>
+          </Select>
+          {dateType === "custom" && (
+            <Input
+              placeholder="Label (e.g. Contract Renewal)"
+              value={customLabel}
+              onChange={(e) => setCustomLabel(e.target.value)}
+              className="h-8 text-xs"
+            />
+          )}
+          <Input
+            type="date"
+            value={dateValue}
+            onChange={(e) => setDateValue(e.target.value)}
+            className="h-8 text-xs"
+          />
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-1 h-7 text-xs"
+              onClick={() => {
+                setAddFormOpen(false);
+                setDateValue("");
+                setCustomLabel("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              className="flex-1 h-7 text-xs"
+              onClick={handleAdd}
+              disabled={!dateValue || (dateType === "custom" && !customLabel.trim()) || updateDatesMutation.isPending}
+            >
+              {updateDatesMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -474,6 +693,10 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
               </div>
             </>
           ) : null}
+
+          {/* Important Dates */}
+          <Separator />
+          <ImportantDatesSection contact={selectedContact} workspaceId={workspaceId} />
 
           {/* Activity Stats */}
           <Separator />
