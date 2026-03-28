@@ -17,3 +17,4 @@ export * from "./conversation";
 export * from "./appointment";
 export * from "./offer";
 export * from "./campaign";
+export * from "./nudge";
