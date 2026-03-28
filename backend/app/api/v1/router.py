@@ -28,6 +28,7 @@ from app.api.v1 import (
     lead_sources,
     message_templates,
     message_tests,
+    nudges,
     offers,
     opportunities,
     phone_numbers,
@@ -211,6 +212,16 @@ api_router.include_router(
     lead_sources.router,
     prefix="/workspaces/{workspace_id}/lead-sources",
     tags=["Lead Sources"],
+)
+api_router.include_router(
+    nudges.router,
+    prefix="/workspaces/{workspace_id}/nudges",
+    tags=["Human Nudges"],
+)
+api_router.include_router(
+    nudges.settings_router,
+    prefix="/workspaces/{workspace_id}/nudge-settings",
+    tags=["Human Nudges"],
 )
 # Public lead form endpoint (no auth, origin-validated, rate-limited)
 api_router.include_router(
