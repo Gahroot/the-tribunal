@@ -21,8 +21,11 @@ import {
   Bot,
   Loader2,
   AlertCircle,
+  Bell,
 } from "lucide-react";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
+import { nudgesApi } from "@/lib/api/nudges";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -702,6 +705,51 @@ function ErrorState({ error }: { error: Error }) {
   );
 }
 
+function NudgesCard({ workspaceId }: { workspaceId: string | null }) {
+  const { data: nudgeStats, isLoading } = useQuery({
+    queryKey: ["nudgeStats", workspaceId],
+    queryFn: () => nudgesApi.getStats(workspaceId!),
+    enabled: !!workspaceId,
+    refetchInterval: 60000,
+  });
+
+  const pending = nudgeStats?.pending ?? 0;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 gradient-heading">
+          <Bell className="size-5" />
+          Nudges
+        </CardTitle>
+        <CardDescription>Relationship reminders</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <Skeleton className="h-8 w-32" />
+        ) : pending > 0 ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-bold text-orange-500">{pending}</span>
+              <span className="text-sm text-muted-foreground">
+                nudge{pending !== 1 ? "s" : ""} pending
+              </span>
+            </div>
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/nudges">
+                View Nudges
+                <ArrowUpRight className="ml-2 size-4" />
+              </Link>
+            </Button>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No pending nudges 🎉</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function DashboardPage() {
   const workspaceId = useWorkspaceId();
   const { data, isLoading, error, isFetching } = useDashboard(workspaceId ?? "");
@@ -802,6 +850,9 @@ export function DashboardPage() {
             overview={data?.today_overview}
             isLoading={isLoading}
           />
+
+          {/* Nudges summary */}
+          <NudgesCard workspaceId={workspaceId} />
 
           {/* Quick Actions */}
           <QuickActionsCard />

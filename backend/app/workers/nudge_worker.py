@@ -6,10 +6,13 @@ For each active workspace with nudge_settings enabled:
 2. NudgeDeliveryService delivers pending nudges via SMS/push to workspace members
 """
 
-from sqlalchemy import select
+from datetime import UTC, datetime
+
+from sqlalchemy import and_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import AsyncSessionLocal
+from app.models.human_nudge import HumanNudge
 from app.models.workspace import Workspace
 from app.services.nudges.nudge_delivery import NudgeDeliveryService
 from app.services.nudges.nudge_generator import NudgeGeneratorService
@@ -32,8 +35,30 @@ class NudgeWorker(BaseWorker):
         async with AsyncSessionLocal() as db:
             await self._process_workspaces(db)
 
+    async def _expire_snoozed_nudges(self, db: AsyncSession) -> int:
+        """Reset snoozed nudges back to pending if snooze_until has passed."""
+        now = datetime.now(UTC)
+        cursor = await db.execute(
+            update(HumanNudge)
+            .where(
+                and_(
+                    HumanNudge.status == "snoozed",
+                    HumanNudge.snoozed_until <= now,
+                )
+            )
+            .values(status="pending", snoozed_until=None)
+        )
+        count: int = cursor.rowcount  # type: ignore[attr-defined]
+        if count:
+            await db.commit()
+            self.logger.info("Expired %d snoozed nudges back to pending", count)
+        return count
+
     async def _process_workspaces(self, db: AsyncSession) -> None:
         """Iterate active workspaces and run nudge generation + delivery."""
+        # Un-snooze expired nudges first
+        await self._expire_snoozed_nudges(db)
+
         result = await db.execute(
             select(Workspace).where(Workspace.is_active.is_(True))
         )

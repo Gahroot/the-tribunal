@@ -28,7 +28,10 @@ import {
   Search,
 } from "lucide-react";
 import { useTheme } from "next-themes";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/providers/auth-provider";
+import { nudgesApi } from "@/lib/api/nudges";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 
 import {
   Sidebar,
@@ -242,6 +245,13 @@ export function AppSidebar({ children }: AppSidebarProps) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
+  const workspaceId = useWorkspaceId();
+  const { data: nudgeStats } = useQuery({
+    queryKey: ["nudgeStats", workspaceId],
+    queryFn: () => nudgesApi.getStats(workspaceId!),
+    enabled: !!workspaceId,
+    refetchInterval: 60000,
+  });
   const breadcrumbs = buildBreadcrumbs(pathname);
   const [commandOpen, setCommandOpen] = React.useState(false);
 
@@ -283,6 +293,11 @@ export function AppSidebar({ children }: AppSidebarProps) {
                       <Link href={item.url}>
                         <item.icon className="size-4" />
                         <span>{item.title}</span>
+                        {item.title === "Nudges" && nudgeStats && nudgeStats.pending > 0 && (
+                          <span className="ml-auto flex size-5 items-center justify-center rounded-full bg-orange-500 text-[10px] font-medium text-white">
+                            {nudgeStats.pending > 99 ? "99+" : nudgeStats.pending}
+                          </span>
+                        )}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
