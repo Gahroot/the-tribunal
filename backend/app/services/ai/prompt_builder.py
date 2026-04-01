@@ -414,7 +414,10 @@ AVAILABILITY ACCURACY RULES:
         if contact_info.get("company"):
             parts.append(f"- Company: {contact_info['company']}")
         if contact_info.get("notes"):
-            parts.append(f"\n### Lead Intake Notes (use this to personalize the conversation):\n{contact_info['notes']}")
+            notes = contact_info["notes"]
+            parts.append(
+                f"\n### Lead Intake Notes (use this to personalize the conversation):\n{notes}"
+            )
         return parts
 
     def _build_offer_section(
@@ -532,10 +535,10 @@ AVAILABILITY ACCURACY RULES:
         ) or ""
         if "Opening the Call" in system_prompt:
             return (
-                f"You just called someone and they answered. "
-                f"Follow your 'Opening the Call' instructions from your system prompt. "
-                f"Reference the lead intake notes to personalize your opener. "
-                f"Keep it natural and conversational. Wait for their response."
+                "You just called someone and they answered. "
+                "Follow your 'Opening the Call' instructions from your system prompt. "
+                "Reference the lead intake notes to personalize your opener. "
+                "Keep it natural and conversational. Wait for their response."
             )
 
         return (

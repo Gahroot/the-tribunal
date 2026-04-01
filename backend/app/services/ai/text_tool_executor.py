@@ -19,11 +19,14 @@ Usage:
     result = await executor.execute("book_appointment", {"date": "2024-01-15", ...})
 """
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import quote
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import httpx
 import structlog
 from openai.types.chat import ChatCompletionMessageToolCall
 from sqlalchemy import select
@@ -33,7 +36,10 @@ from app.models.agent import Agent
 from app.models.appointment import Appointment
 from app.models.contact import Contact
 from app.models.conversation import Conversation
+from app.models.user import User
+from app.models.workspace import WorkspaceIntegration, WorkspaceMembership
 from app.services.ai.base_tool_executor import BaseToolExecutor
+from app.services.email import send_appointment_booked_notification
 
 logger = structlog.get_logger()
 
@@ -174,15 +180,12 @@ class TextToolExecutor(BaseToolExecutor):
             self.log.info("contact_email_updated", contact_id=contact.id, email=email)
 
         if not booking_email:
-            self.log.warning(
-                "contact_email_missing",
+            self.log.info(
+                "contact_email_missing_building_link",
                 contact_id=contact.id,
                 contact_name=contact.full_name,
             )
-            return {
-                "success": False,
-                "error": "Email is required for booking. Please ask for their email.",
-            }
+            return await self._build_booking_link(contact)
 
         # Parse date and time for the Appointment record
         try:
@@ -339,7 +342,194 @@ class TextToolExecutor(BaseToolExecutor):
 
         self.log.info("appointment_created", appointment_id=appointment.id)
 
+        # Fire-and-forget email notification to the workspace owner/admin
+        try:
+            owner = await self._get_workspace_owner()
+            if owner:
+                realtor_email, realtor_name = owner
+                asyncio.create_task(
+                    send_appointment_booked_notification(
+                        to_email=realtor_email,
+                        realtor_name=realtor_name,
+                        contact_name=contact.full_name or "Unknown",
+                        contact_phone=contact.phone_number or "",
+                        appointment_time=appointment.scheduled_at,
+                    )
+                )
+                self.log.info(
+                    "appointment_booked_email_queued",
+                    to_email=realtor_email,
+                    appointment_id=appointment.id,
+                )
+        except Exception:
+            self.log.exception("appointment_booked_email_failed")
+
     # ── Text-only helpers ───────────────────────────────────────────
+
+    async def _get_calcom_api_key(self) -> str | None:
+        """Return the Cal.com API key for this workspace, or None if not found.
+
+        Checks the workspace's WorkspaceIntegration record (type "calcom").
+        Falls back to the global ``settings.calcom_api_key`` if set.
+        """
+        from app.core.config import settings
+        from app.core.encryption import decrypt_json
+
+        workspace_id = self.conversation.workspace_id
+        result = await self.db.execute(
+            select(WorkspaceIntegration).where(
+                WorkspaceIntegration.workspace_id == workspace_id,
+                WorkspaceIntegration.integration_type == "calcom",
+                WorkspaceIntegration.is_active.is_(True),
+            )
+        )
+        integration = result.scalar_one_or_none()
+        if integration is not None:
+            try:
+                creds = decrypt_json(integration.encrypted_credentials)
+                key = creds.get("api_key")
+                if key:
+                    return str(key)
+            except Exception:
+                self.log.warning("calcom_credential_decrypt_failed")
+
+        # Fall back to global key
+        global_key = settings.calcom_api_key
+        return global_key if global_key else None
+
+    async def _build_booking_link(self, contact: Contact) -> dict[str, Any]:
+        """Build a Cal.com booking URL for a contact who has no email address.
+
+        Fetches the Cal.com username via the v1 ``/me`` endpoint and the event
+        slug via the v1 ``/event-types/{id}`` endpoint, then assembles a
+        pre-filled booking URL and returns an action dict the AI should use to
+        send the link via SMS.
+        """
+        username, slug, err = await self._resolve_calcom_identity()
+        if err:
+            return {"success": False, "error": err}
+
+        # Build the pre-filled URL
+        name_param = quote(contact.full_name or "", safe="")
+        phone_param = quote(contact.phone_number or "", safe="")
+        booking_url = (
+            f"https://cal.com/{username}/{slug}"
+            f"?name={name_param}&phone={phone_param}"
+        )
+
+        self.log.info(
+            "booking_link_built",
+            contact_id=contact.id,
+            booking_url=booking_url,
+        )
+
+        return {
+            "success": True,
+            "action": "send_booking_link",
+            "booking_url": booking_url,
+            "message": (
+                f"I'd love to set something up! Here's my booking link where you can "
+                f"pick a time that works for you: {booking_url}"
+            ),
+        }
+
+    async def _resolve_calcom_identity(
+        self,
+    ) -> "tuple[str, str, None] | tuple[None, None, str]":
+        """Fetch the Cal.com username and event slug for the current agent.
+
+        Returns ``(username, slug, None)`` on success or
+        ``(None, None, error_message)`` on failure.
+        """
+        event_type_id = self.agent.calcom_event_type_id
+        if not event_type_id:
+            return None, None, "Cal.com not configured for this agent"
+
+        api_key = await self._get_calcom_api_key()
+        if not api_key:
+            return None, None, "Cal.com API key not available — cannot generate booking link"
+
+        calcom_v1 = "https://api.cal.com/v1"
+
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                username = await self._fetch_calcom_username(client, calcom_v1, api_key)
+                if username is None:
+                    return None, None, "Cal.com username not found — cannot generate booking link"
+
+                slug = await self._fetch_event_slug(client, calcom_v1, api_key, event_type_id)
+                if slug is None:
+                    return None, None, "Cal.com event slug not found — cannot generate booking link"
+
+        except httpx.HTTPError as exc:
+            self.log.exception("calcom_booking_link_http_error", error=str(exc))
+            return None, None, f"Network error building booking link: {exc!s}"
+
+        return username, slug, None
+
+    async def _fetch_calcom_username(
+        self,
+        client: httpx.AsyncClient,
+        base_url: str,
+        api_key: str,
+    ) -> str | None:
+        """Call Cal.com v1 /me and return the username, or None on failure."""
+        resp = await client.get(f"{base_url}/me", params={"apiKey": api_key})
+        if resp.status_code != 200:
+            self.log.error("calcom_me_failed", status=resp.status_code, body=resp.text[:200])
+            return None
+        data = resp.json()
+        return (
+            data.get("user", {}).get("username")
+            or data.get("username")
+            or None
+        )
+
+    async def _fetch_event_slug(
+        self,
+        client: httpx.AsyncClient,
+        base_url: str,
+        api_key: str,
+        event_type_id: int,
+    ) -> str | None:
+        """Call Cal.com v1 /event-types/{id} and return the slug, or None on failure."""
+        resp = await client.get(
+            f"{base_url}/event-types/{event_type_id}",
+            params={"apiKey": api_key},
+        )
+        if resp.status_code != 200:
+            self.log.error(
+                "calcom_event_type_failed",
+                status=resp.status_code,
+                event_type_id=event_type_id,
+                body=resp.text[:200],
+            )
+            return None
+        data = resp.json()
+        event_type = data.get("event_type") or data.get("eventType") or data
+        if not isinstance(event_type, dict):
+            return None
+        return event_type.get("slug") or None
+
+    async def _get_workspace_owner(self) -> "tuple[str, str] | None":
+        """Return (email, full_name) for the workspace owner or first admin/member."""
+        workspace_id = self.conversation.workspace_id
+        for role in ("owner", "admin", "member"):
+            result = await self.db.execute(
+                select(User.email, User.full_name)
+                .join(WorkspaceMembership, WorkspaceMembership.user_id == User.id)
+                .where(
+                    WorkspaceMembership.workspace_id == workspace_id,
+                    WorkspaceMembership.role == role,
+                )
+                .limit(1)
+            )
+            row = result.first()
+            if row:
+                email: str = row[0]
+                full_name: str = row[1] or email.split("@")[0]
+                return email, full_name
+        return None
 
     async def _get_contact(self) -> Contact | None:
         """Get contact for this conversation."""

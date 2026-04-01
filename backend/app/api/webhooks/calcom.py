@@ -1,5 +1,6 @@
 """Cal.com webhook endpoints for appointment events."""
 
+import asyncio
 import re
 import uuid
 import zoneinfo
@@ -20,8 +21,10 @@ from app.models.campaign import Campaign, CampaignContact
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
 from app.models.phone_number import PhoneNumber
-from app.models.workspace import Workspace
+from app.models.user import User
+from app.models.workspace import Workspace, WorkspaceMembership
 from app.services.campaigns.guarantee_tracker import increment_completed_and_check_guarantee
+from app.services.email import send_appointment_booked_notification
 from app.services.push_notifications import push_notification_service
 from app.services.rate_limiting.opt_out_manager import OptOutManager
 from app.services.telephony.telnyx import TelnyxSMSService
@@ -160,6 +163,34 @@ async def _find_recent_voice_message(
             return msg_id
     except Exception as e:
         log.warning("message_linking_failed", error=str(e))
+    return None
+
+
+async def _get_workspace_owner(
+    db: Any,
+    workspace_id: uuid.UUID,
+) -> "tuple[str, str] | None":
+    """Return (email, full_name) for the workspace owner or first admin.
+
+    Falls back to the first member if no owner/admin exists.
+    Returns None when the workspace has no members.
+    """
+    # Prefer owner, then admin, then any member
+    for role in ("owner", "admin", "member"):
+        result = await db.execute(
+            select(User.email, User.full_name)
+            .join(WorkspaceMembership, WorkspaceMembership.user_id == User.id)
+            .where(
+                WorkspaceMembership.workspace_id == workspace_id,
+                WorkspaceMembership.role == role,
+            )
+            .limit(1)
+        )
+        row = result.first()
+        if row:
+            email: str = row[0]
+            full_name: str = row[1] or email.split("@")[0]
+            return email, full_name
     return None
 
 
@@ -574,6 +605,33 @@ async def handle_booking_created(data: dict[str, Any], log: Any) -> None:  # noq
                 agent=agent,
                 body_text=confirmation_body,
             )
+
+        # Email notification to realtor for new bookings
+        if is_new_booking:
+            try:
+                owner = await _get_workspace_owner(db, workspace_id)
+                if owner:
+                    realtor_email, realtor_name = owner
+                    contact_name = (
+                        " ".join(filter(None, [contact.first_name, contact.last_name]))
+                        or "Unknown"
+                    )
+                    asyncio.create_task(
+                        send_appointment_booked_notification(
+                            to_email=realtor_email,
+                            realtor_name=realtor_name,
+                            contact_name=contact_name,
+                            contact_phone=contact.phone_number or "",
+                            appointment_time=appointment.scheduled_at,
+                        )
+                    )
+                    log.info(
+                        "appointment_booked_email_queued",
+                        to_email=realtor_email,
+                        contact_id=contact.id,
+                    )
+            except Exception:
+                log.exception("appointment_booked_email_failed")
 
         # Push notification for new appointment
         try:

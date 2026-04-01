@@ -8,6 +8,7 @@ from app.api.v1 import (
     appointments,
     auth,
     automations,
+    billing,
     call_feedback,
     call_outcomes,
     calls,
@@ -33,6 +34,7 @@ from app.api.v1 import (
     opportunities,
     phone_numbers,
     prompt_versions,
+    realtor,
     scraping,
     segments,
     settings,
@@ -228,4 +230,11 @@ api_router.include_router(
     lead_form.router,
     prefix="/p/leads",
     tags=["Public Lead Form"],
+)
+api_router.include_router(billing.router, prefix="/billing", tags=["Billing"])
+api_router.include_router(realtor.router, prefix="/realtor", tags=["Realtor"])
+api_router.include_router(
+    realtor.workspace_router,
+    prefix="/workspaces/{workspace_id}/realtor",
+    tags=["Realtor"],
 )

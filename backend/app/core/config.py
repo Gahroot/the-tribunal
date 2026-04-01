@@ -84,6 +84,12 @@ class Settings(BaseSettings):
     demo_phone_rate_limit: int = 9  # Max requests per phone per day
     demo_rate_limit_bypass_phones: list[str] = ["+12482259677"]  # Dev phones that skip rate limits
 
+    # Stripe
+    stripe_secret_key: str = ""
+    stripe_publishable_key: str = ""
+    stripe_price_id: str = ""  # Monthly subscription price ID
+    stripe_webhook_secret: str = ""
+
     # Lead form
     lead_form_ip_rate_limit: int = 20  # Max submissions per IP per hour
 
