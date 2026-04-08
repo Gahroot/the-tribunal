@@ -24,6 +24,8 @@ import {
   Loader2,
   Trash2,
   Headphones,
+  UserCircle,
+  BookOpen,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -60,6 +62,8 @@ import {
   PromptTab,
   ToolsTab,
   AdvancedTab,
+  HumanProfileTab,
+  KnowledgeBaseTab,
 } from "@/components/agents/tabs";
 
 interface EditAgentPageProps {
@@ -459,6 +463,14 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
               <TabTriggerWithErrors value="advanced" label="Advanced" form={form} />
               <TabsTrigger value="versions">Versions</TabsTrigger>
               <TabsTrigger value="ab-testing">A/B Testing</TabsTrigger>
+              <TabsTrigger value="my-human">
+                <UserCircle className="mr-1.5 h-3.5 w-3.5" />
+                My Human
+              </TabsTrigger>
+              <TabsTrigger value="knowledge-base">
+                <BookOpen className="mr-1.5 h-3.5 w-3.5" />
+                Knowledge
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="basic" className="mt-4 space-y-3">
@@ -504,6 +516,14 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
                 <PromptImprovementDialog agentId={agentId} agentName={agent.name} />
               </div>
               <ABTestDashboard agentId={agentId} />
+            </TabsContent>
+
+            <TabsContent value="my-human" className="mt-4 space-y-4">
+              <HumanProfileTab agentId={agentId} />
+            </TabsContent>
+
+            <TabsContent value="knowledge-base" className="mt-4 space-y-4">
+              <KnowledgeBaseTab agentId={agentId} />
             </TabsContent>
           </Tabs>
 

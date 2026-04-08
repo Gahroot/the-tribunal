@@ -92,6 +92,11 @@ export interface Contact {
   lead_score?: number;
   noshow_count?: number;
   last_appointment_status?: string | null;
+  address_line1?: string;
+  address_line2?: string;
+  address_city?: string;
+  address_state?: string;
+  address_zip?: string;
   important_dates?: {
     birthday?: string;
     anniversary?: string;

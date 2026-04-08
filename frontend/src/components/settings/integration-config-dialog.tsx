@@ -35,7 +35,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 
-type IntegrationType = "calcom" | "telnyx" | "openai" | "sendgrid";
+type IntegrationType = "calcom" | "telnyx" | "openai" | "sendgrid" | "lob";
 
 interface IntegrationConfig {
   name: string;
@@ -141,6 +141,20 @@ const INTEGRATION_CONFIGS: Record<IntegrationType, IntegrationConfig> = {
         label: "From Name",
         placeholder: "My Company",
         description: "Default sender display name",
+      },
+    ],
+  },
+  lob: {
+    name: "Lob",
+    description: "Send physical postcards and letters to contacts",
+    fields: [
+      {
+        key: "api_key",
+        label: "API Key",
+        placeholder: "test_...",
+        description: "Find in Lob Dashboard > Settings > API Keys",
+        required: true,
+        type: "password",
       },
     ],
   },

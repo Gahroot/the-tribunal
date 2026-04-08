@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Phone, Mail, Calendar, Webhook, Key, Loader2 } from "lucide-react";
+import { Phone, Mail, Calendar, Webhook, Key, Loader2, Send as SendIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -23,7 +23,7 @@ import {
   type IntegrationWithMaskedCredentials,
 } from "@/lib/api/integrations";
 
-type IntegrationType = "calcom" | "telnyx" | "openai" | "sendgrid";
+type IntegrationType = "calcom" | "telnyx" | "openai" | "sendgrid" | "lob";
 
 function getIntegrationIcon(type: string) {
   switch (type) {
@@ -33,6 +33,8 @@ function getIntegrationIcon(type: string) {
       return Phone;
     case "sendgrid":
       return Mail;
+    case "lob":
+      return SendIcon;
     default:
       return Webhook;
   }
@@ -46,6 +48,8 @@ function getIntegrationColor(type: string) {
       return "text-destructive bg-destructive/10";
     case "sendgrid":
       return "text-info bg-info/10";
+    case "lob":
+      return "text-amber-600 bg-amber-100";
     default:
       return "text-primary bg-primary/10";
   }

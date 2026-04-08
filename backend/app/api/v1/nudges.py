@@ -3,14 +3,18 @@
 import uuid
 from datetime import UTC, datetime
 
+import httpx
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload
 
 from app.api.deps import DB, WorkspaceAccess
 from app.db.pagination import paginate
+from app.models.contact import Contact
 from app.models.human_nudge import HumanNudge
+from app.models.workspace import WorkspaceIntegration
 from app.schemas.nudge import (
+    NudgeActRequest,
     NudgeListResponse,
     NudgeResponse,
     NudgeSettingsResponse,
@@ -18,6 +22,8 @@ from app.schemas.nudge import (
     NudgeSnoozeRequest,
     NudgeStatsResponse,
 )
+from app.services.cards.card_service import CardService
+from app.services.cards.card_templates import render_template
 
 router = APIRouter()
 
@@ -143,9 +149,78 @@ async def act_on_nudge(
     nudge_id: uuid.UUID,
     workspace: WorkspaceAccess,
     db: DB,
+    body: NudgeActRequest | None = None,
 ) -> NudgeResponse:
-    """Mark a nudge as acted upon."""
+    """Mark a nudge as acted upon, optionally dispatching an action like sending a card."""
     nudge = await _get_nudge_or_404(db, nudge_id, workspace.id)
+
+    if body and body.action_taken == "send_card":
+        # Load contact for address
+        contact_result = await db.execute(
+            select(Contact).where(Contact.id == nudge.contact_id)
+        )
+        contact = contact_result.scalar_one_or_none()
+        if not contact or not contact.has_address:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Contact does not have a complete mailing address.",
+            )
+
+        # Load Lob integration
+        integration_result = await db.execute(
+            select(WorkspaceIntegration).where(
+                WorkspaceIntegration.integration_type == "lob",
+                WorkspaceIntegration.workspace_id == workspace.id,
+                WorkspaceIntegration.is_active.is_(True),
+            )
+        )
+        integration = integration_result.scalar_one_or_none()
+        if not integration:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Card service not configured. Set up Lob in Settings > Integrations.",
+            )
+
+        # Get sender address from workspace card settings
+        card_settings: dict[str, str] = workspace.settings.get("card_service", {})
+        if not card_settings.get("from_name") or not card_settings.get(
+            "from_address_line1"
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Sender address not configured in card settings.",
+            )
+
+        # Render template
+        front_html, back_html = render_template(
+            nudge.nudge_type, contact.first_name, card_settings["from_name"]
+        )
+
+        # Send postcard via Lob
+        api_key: str = integration.credentials.get("api_key", "")
+        card_svc = CardService(api_key=api_key)
+        try:
+            await card_svc.send_postcard(
+                to_name=contact.full_name,
+                to_address_line1=contact.address_line1 or "",
+                to_address_city=contact.address_city or "",
+                to_address_state=contact.address_state or "",
+                to_address_zip=contact.address_zip or "",
+                from_name=card_settings["from_name"],
+                from_address_line1=card_settings["from_address_line1"],
+                from_address_city=card_settings.get("from_address_city", ""),
+                from_address_state=card_settings.get("from_address_state", ""),
+                from_address_zip=card_settings.get("from_address_zip", ""),
+                front_html=front_html,
+                back_html=back_html,
+                to_address_line2=contact.address_line2 or "",
+                from_address_line2=card_settings.get("from_address_line2", ""),
+            )
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Failed to send card: {exc.response.text}",
+            ) from exc
 
     nudge.status = "acted"
     nudge.acted_at = datetime.now(UTC)

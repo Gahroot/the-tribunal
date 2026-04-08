@@ -46,6 +46,7 @@ def build_text_instructions(
     contact_phone: str | None = None,
     offer_context: str | None = None,
     booking_url: str | None = None,
+    knowledge_context: str | None = None,
 ) -> str:
     """Build instructions for text agent.
 
@@ -59,6 +60,7 @@ def build_text_instructions(
         contact_phone: The contact's phone number
         offer_context: Optional offer context to include in instructions
         booking_url: Optional Cal.com booking URL to include in instructions
+        knowledge_context: Optional knowledge base context for CAG
 
     Returns:
         Complete instructions string for text conversations
@@ -86,11 +88,20 @@ def build_text_instructions(
             f"suggest they click here: {booking_url}"
         )
 
+    # Add knowledge base context if available
+    knowledge_section = ""
+    if knowledge_context:
+        knowledge_section = (
+            f"\n\n[KNOWLEDGE BASE]\n"
+            f"Use the following information to answer questions accurately:\n"
+            f"{knowledge_context}"
+        )
+
     return f"""[CONTEXT]
 Language: {language_name}
 Timezone: {timezone}
 Current: {current_datetime}
-Channel: SMS/Text Message{phone_context}{offer_section}{booking_section}
+Channel: SMS/Text Message{phone_context}{offer_section}{booking_section}{knowledge_section}
 
 [RESPONSE RULES]
 - Respond ONLY in {language_name}

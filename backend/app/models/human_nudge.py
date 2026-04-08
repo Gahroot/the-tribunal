@@ -40,7 +40,8 @@ class HumanNudge(Base):
     # Nudge content
     nudge_type: Mapped[str] = mapped_column(
         String(50), nullable=False, index=True
-    )  # birthday, anniversary, follow_up, cooling, deal_milestone, custom
+    )  # birthday | anniversary | custom | cooling | follow_up | deal_milestone
+    # noshow_recovery | unresponsive | hot_lead | referral_ask
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     suggested_action: Mapped[str | None] = mapped_column(

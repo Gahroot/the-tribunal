@@ -33,6 +33,7 @@ from app.services.ai.text_prompt_builder import (
 )
 from app.services.ai.text_tool_executor import TextToolExecutor
 from app.services.ai.voice_tools import get_text_booking_tools
+from app.services.knowledge.knowledge_context_service import knowledge_context_service
 
 logger = structlog.get_logger()
 
@@ -196,6 +197,9 @@ async def generate_text_response(  # noqa: PLR0915, PLR0912
         if extracted_email:
             log.info("email_extracted_from_history", email=extracted_email)
 
+    # Fetch knowledge base context for CAG
+    knowledge_context = await knowledge_context_service.get_context_for_agent(db, agent.id)
+
     system_prompt = build_text_instructions(
         system_prompt=agent.system_prompt + booking_instructions,
         language=agent.language,
@@ -203,6 +207,7 @@ async def generate_text_response(  # noqa: PLR0915, PLR0912
         contact_phone=conversation.contact_phone,
         offer_context=offer_context,
         booking_url=None,  # Don't include URL when using function calling
+        knowledge_context=knowledge_context,
     )
 
     # Create OpenAI client

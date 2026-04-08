@@ -6,6 +6,7 @@ Provides centralized lifecycle management for all background workers.
 import structlog
 
 # Import all worker registries
+from app.workers.approval_worker import _registry as approval_registry
 from app.workers.automation_worker import _registry as automation_registry
 from app.workers.base import BaseWorker, WorkerRegistry
 from app.workers.campaign_worker import _registry as campaign_registry
@@ -40,6 +41,7 @@ ALL_REGISTRIES: list[WorkerRegistry[BaseWorker]] = [
     noshow_reengagement_registry,
     never_booked_registry,
     nudge_registry,
+    approval_registry,
 ]
 
 

@@ -47,6 +47,11 @@ const contactFormSchema = z.object({
   status: z.enum(["new", "contacted", "qualified", "converted", "lost"]),
   tags: z.string().optional(),
   notes: z.string().optional(),
+  address_line1: z.string().optional(),
+  address_line2: z.string().optional(),
+  address_city: z.string().optional(),
+  address_state: z.string().optional(),
+  address_zip: z.string().optional(),
 });
 
 type ContactFormValues = z.infer<typeof contactFormSchema>;
@@ -72,6 +77,11 @@ export function CreateContactDialog({ open, onOpenChange }: CreateContactDialogP
       status: "new",
       tags: "",
       notes: "",
+      address_line1: "",
+      address_line2: "",
+      address_city: "",
+      address_state: "",
+      address_zip: "",
     },
   });
 
@@ -114,6 +124,11 @@ export function CreateContactDialog({ open, onOpenChange }: CreateContactDialogP
       status: data.status as ContactStatus,
       tags: tagsArray,
       notes: data.notes || undefined,
+      address_line1: data.address_line1 || undefined,
+      address_line2: data.address_line2 || undefined,
+      address_city: data.address_city || undefined,
+      address_state: data.address_state || undefined,
+      address_zip: data.address_zip || undefined,
     };
 
     createContactMutation.mutate(request);
@@ -241,6 +256,80 @@ export function CreateContactDialog({ open, onOpenChange }: CreateContactDialogP
                 </FormItem>
               )}
             />
+
+            {/* Mailing Address */}
+            <div className="space-y-3 rounded-lg border p-3">
+              <p className="text-sm font-medium">Mailing Address</p>
+              <FormField
+                control={form.control}
+                name="address_line1"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Address Line 1</FormLabel>
+                    <FormControl>
+                      <Input placeholder="123 Main St" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="address_line2"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Address Line 2</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Apt 4B" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="address_city"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>City</FormLabel>
+                      <FormControl>
+                        <Input placeholder="New York" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="address_state"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>State</FormLabel>
+                      <FormControl>
+                        <Input placeholder="NY" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="address_zip"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>ZIP Code</FormLabel>
+                      <FormControl>
+                        <Input placeholder="10001" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
 
             <FormField
               control={form.control}

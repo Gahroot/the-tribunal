@@ -35,9 +35,10 @@ export const nudgesApi = {
     );
   },
 
-  act: async (workspaceId: string, nudgeId: string): Promise<HumanNudge> => {
+  act: async (workspaceId: string, nudgeId: string, actionTaken?: string): Promise<HumanNudge> => {
     return apiPut<HumanNudge>(
-      `/api/v1/workspaces/${workspaceId}/nudges/${nudgeId}/act`
+      `/api/v1/workspaces/${workspaceId}/nudges/${nudgeId}/act`,
+      actionTaken ? { action_taken: actionTaken } : undefined
     );
   },
 

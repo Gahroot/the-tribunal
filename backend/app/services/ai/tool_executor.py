@@ -18,6 +18,7 @@ import structlog
 
 from app.core.config import settings
 from app.services.ai.base_tool_executor import BaseToolExecutor
+from app.services.approval.approval_gate_service import approval_gate_service
 
 logger = structlog.get_logger()
 
@@ -421,6 +422,41 @@ def create_tool_callback(
             function_name=function_name,
             arguments=arguments,
         )
+
+        # Check approval gate (voice has no db session — gate opens its own)
+        decision, gate_result = await approval_gate_service.check_and_execute_or_queue(
+            db=None,
+            agent_id=agent.id,
+            workspace_id=agent.workspace_id,
+            action_type=function_name,
+            action_payload=arguments,
+            description=f"{function_name}: {arguments}",
+            context={"source": "voice_call", "call_id": call_id},
+        )
+
+        if decision == "pending":
+            log.info(
+                "action_pending_approval",
+                function_name=function_name,
+                gate_result=gate_result,
+            )
+            return {
+                "success": False,
+                "pending_approval": True,
+                "message": (
+                    "This action requires approval from your operator. "
+                    "They've been notified and will respond shortly."
+                ),
+            }
+        if decision == "blocked":
+            log.info("action_blocked", function_name=function_name)
+            return {
+                "success": False,
+                "blocked": True,
+                "message": "This action is not permitted by your operator's policy.",
+            }
+
+        # decision == "auto" — proceed with normal execution
         result = await executor.execute(function_name, arguments)
         log.info(
             "tool_callback_completed",

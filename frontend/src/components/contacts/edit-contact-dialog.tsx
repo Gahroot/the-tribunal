@@ -51,6 +51,11 @@ const contactFormSchema = z.object({
   notes: z.string().optional(),
   birthday: z.string().optional(),
   anniversary: z.string().optional(),
+  address_line1: z.string().optional(),
+  address_line2: z.string().optional(),
+  address_city: z.string().optional(),
+  address_state: z.string().optional(),
+  address_zip: z.string().optional(),
 });
 
 type ContactFormValues = z.infer<typeof contactFormSchema>;
@@ -87,6 +92,11 @@ export function EditContactDialog({ contact, open, onOpenChange }: EditContactDi
       notes: contact.notes || "",
       birthday: contact.important_dates?.birthday || "",
       anniversary: contact.important_dates?.anniversary || "",
+      address_line1: contact.address_line1 || "",
+      address_line2: contact.address_line2 || "",
+      address_city: contact.address_city || "",
+      address_state: contact.address_state || "",
+      address_zip: contact.address_zip || "",
     },
   });
 
@@ -109,6 +119,11 @@ export function EditContactDialog({ contact, open, onOpenChange }: EditContactDi
       notes: contact.notes || "",
       birthday: contact.important_dates?.birthday || "",
       anniversary: contact.important_dates?.anniversary || "",
+      address_line1: contact.address_line1 || "",
+      address_line2: contact.address_line2 || "",
+      address_city: contact.address_city || "",
+      address_state: contact.address_state || "",
+      address_zip: contact.address_zip || "",
     });
   }, [contact, form]);
 
@@ -161,6 +176,11 @@ export function EditContactDialog({ contact, open, onOpenChange }: EditContactDi
       tags: tagsArray,
       notes: data.notes || undefined,
       important_dates: hasImportantDates ? importantDates : null,
+      address_line1: data.address_line1 || undefined,
+      address_line2: data.address_line2 || undefined,
+      address_city: data.address_city || undefined,
+      address_state: data.address_state || undefined,
+      address_zip: data.address_zip || undefined,
     };
 
     updateContactMutation.mutate(request);
@@ -317,6 +337,80 @@ export function EditContactDialog({ contact, open, onOpenChange }: EditContactDi
                   </FormItem>
                 )}
               />
+            </div>
+
+            {/* Mailing Address */}
+            <div className="space-y-3 rounded-lg border p-3">
+              <p className="text-sm font-medium">Mailing Address</p>
+              <FormField
+                control={form.control}
+                name="address_line1"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Address Line 1</FormLabel>
+                    <FormControl>
+                      <Input placeholder="123 Main St" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="address_line2"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Address Line 2</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Apt 4B" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="address_city"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>City</FormLabel>
+                      <FormControl>
+                        <Input placeholder="New York" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="address_state"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>State</FormLabel>
+                      <FormControl>
+                        <Input placeholder="NY" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="address_zip"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>ZIP Code</FormLabel>
+                      <FormControl>
+                        <Input placeholder="10001" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </div>
 
             <FormField

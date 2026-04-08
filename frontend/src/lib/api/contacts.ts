@@ -50,6 +50,11 @@ export interface CreateContactRequest {
   notes?: string;
   source?: string;
   important_dates?: ImportantDates | null;
+  address_line1?: string;
+  address_line2?: string;
+  address_city?: string;
+  address_state?: string;
+  address_zip?: string;
 }
 
 export interface UpdateContactRequest {
@@ -62,6 +67,11 @@ export interface UpdateContactRequest {
   tags?: string[];
   notes?: string;
   important_dates?: ImportantDates | null;
+  address_line1?: string;
+  address_line2?: string;
+  address_city?: string;
+  address_state?: string;
+  address_zip?: string;
 }
 
 export interface ImportErrorDetail {

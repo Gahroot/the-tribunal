@@ -39,6 +39,13 @@ class Contact(Base):
     phone_number: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    # Mailing address (for physical cards/mail)
+    address_line1: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    address_line2: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    address_city: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    address_state: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    address_zip: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
     # Lifecycle
     status: Mapped[str] = mapped_column(
         String(50), nullable=False, default="new", index=True
@@ -130,6 +137,13 @@ class Contact(Base):
         if self.last_name:
             return f"{self.first_name} {self.last_name}"
         return self.first_name
+
+    @property
+    def has_address(self) -> bool:
+        """Check if contact has a complete mailing address."""
+        return bool(
+            self.address_line1 and self.address_city and self.address_state and self.address_zip
+        )
 
     def __repr__(self) -> str:
         return f"<Contact(id={self.id}, phone={self.phone_number}, status={self.status})>"

@@ -17,7 +17,9 @@ from app.models.conversation import Conversation, Message
 from app.models.demo_request import DemoRequest
 from app.models.device_token import DeviceToken
 from app.models.human_nudge import HumanNudge
+from app.models.human_profile import HumanProfile
 from app.models.invitation import WorkspaceInvitation
+from app.models.knowledge_document import KnowledgeDocument
 from app.models.lead_magnet import LeadMagnet
 from app.models.lead_source import LeadSource
 from app.models.message_template import MessageTemplate
@@ -32,6 +34,7 @@ from app.models.offer import Offer
 from app.models.offer_lead_magnet import OfferLeadMagnet
 from app.models.opportunity import Opportunity, OpportunityActivity, OpportunityLineItem
 from app.models.opt_out import GlobalOptOut
+from app.models.pending_action import PendingAction
 from app.models.phone_number import PhoneNumber
 from app.models.phone_number_stats import PhoneNumberDailyStats
 from app.models.pipeline import Pipeline, PipelineStage
@@ -91,6 +94,9 @@ __all__ = [
     "Segment",
     "DeviceToken",
     "HumanNudge",
+    "HumanProfile",
+    "KnowledgeDocument",
+    "PendingAction",
     "AuthRateLimit",
     "RefreshToken",
 ]

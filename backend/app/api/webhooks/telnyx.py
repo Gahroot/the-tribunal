@@ -13,6 +13,7 @@ from app.core.webhook_security import verify_telnyx_webhook
 from app.db.session import AsyncSessionLocal
 from app.models.phone_number import PhoneNumber
 from app.services.ai.text_agent import schedule_ai_response
+from app.services.approval.command_processor_service import command_processor_service
 from app.services.campaigns.conversation_syncer import CampaignConversationSyncer
 from app.services.push_notifications import push_notification_service
 from app.services.telephony.call_outcome_classifier import CallOutcomeClassifier
@@ -66,7 +67,7 @@ async def telnyx_sms_webhook(request: Request) -> dict[str, str]:
     return {"status": "ok"}
 
 
-async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:  # noqa: PLR0915
+async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:  # noqa: PLR0912, PLR0915
     """Handle inbound SMS message."""
     from app.utils.phone import normalize_phone_safe
 
@@ -100,6 +101,14 @@ async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:  # 
             return
 
         workspace_id = phone_record.workspace_id
+
+        # Check if this is an approval command (Y/N/approve/reject)
+        is_command = await command_processor_service.try_process_command(
+            db=db, from_number=from_number, to_number=to_number, body=body,
+        )
+        if is_command:
+            log.info("processed_approval_command", from_number=from_number)
+            return
 
         # Process inbound message
         telnyx_api_key = settings.telnyx_api_key

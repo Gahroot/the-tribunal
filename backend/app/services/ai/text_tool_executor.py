@@ -39,6 +39,7 @@ from app.models.conversation import Conversation
 from app.models.user import User
 from app.models.workspace import WorkspaceIntegration, WorkspaceMembership
 from app.services.ai.base_tool_executor import BaseToolExecutor
+from app.services.approval.approval_gate_service import approval_gate_service
 from app.services.email import send_appointment_booked_notification
 
 logger = structlog.get_logger()
@@ -97,7 +98,37 @@ class TextToolExecutor(BaseToolExecutor):
                 arguments=arguments,
             )
 
-            result = await self.execute(function_name, arguments)
+            # Check approval gate
+            decision, _gate_result = await approval_gate_service.check_and_execute_or_queue(
+                db=self.db,
+                agent_id=self.agent.id,
+                workspace_id=self.agent.workspace_id,
+                action_type=function_name,
+                action_payload=arguments,
+                description=f"{function_name}: {arguments}",
+                context={
+                    "source": "text_conversation",
+                    "conversation_id": str(self.conversation.id),
+                },
+            )
+
+            if decision == "pending":
+                result = {
+                    "success": False,
+                    "pending_approval": True,
+                    "message": (
+                        "I need approval from your operator for this action. "
+                        "They've been notified."
+                    ),
+                }
+            elif decision == "blocked":
+                result = {
+                    "success": False,
+                    "blocked": True,
+                    "message": "I'm not permitted to perform this action.",
+                }
+            else:
+                result = await self.execute(function_name, arguments)
 
             results.append({
                 "tool_call_id": tool_call.id,

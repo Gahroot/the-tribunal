@@ -14,6 +14,7 @@ import {
   AlarmClock,
   Inbox,
   CalendarIcon,
+  Mail,
 } from "lucide-react";
 
 import { nudgesApi } from "@/lib/api/nudges";
@@ -95,15 +96,15 @@ export function NudgesPage() {
   };
 
   const actMutation = useMutation({
-    mutationFn: (nudgeId: string) => {
+    mutationFn: ({ nudgeId, actionTaken }: { nudgeId: string; actionTaken?: string }) => {
       if (!workspaceId) throw new Error("No workspace");
-      return nudgesApi.act(workspaceId, nudgeId);
+      return nudgesApi.act(workspaceId, nudgeId, actionTaken);
     },
-    onSuccess: () => {
-      toast.success("Marked as done ✅");
+    onSuccess: (_data, variables) => {
+      toast.success(variables.actionTaken === "send_card" ? "Card sent!" : "Marked as done");
       invalidateNudges();
     },
-    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to mark as done")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed")),
   });
 
   const dismissMutation = useMutation({
@@ -238,7 +239,7 @@ export function NudgesPage() {
                     <NudgeCard
                       key={nudge.id}
                       nudge={nudge}
-                      onAct={() => actMutation.mutate(nudge.id)}
+                      onAct={(actionTaken) => actMutation.mutate({ nudgeId: nudge.id, actionTaken })}
                       onDismiss={() => dismissMutation.mutate(nudge.id)}
                       onSnooze={(date) =>
                         snoozeMutation.mutate({
@@ -297,7 +298,7 @@ function NudgeCard({
   isDismissing,
 }: {
   nudge: HumanNudge;
-  onAct: () => void;
+  onAct: (actionTaken?: string) => void;
   onDismiss: () => void;
   onSnooze: (date: Date) => void;
   isActing: boolean;
@@ -371,16 +372,40 @@ function NudgeCard({
         {/* Actions */}
         {isPending && (
           <div className="flex shrink-0 items-center gap-1">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={onAct}
-              disabled={isActing}
-              title="Mark as done"
-            >
-              <Check className="mr-1 h-3.5 w-3.5" />
-              Done
-            </Button>
+            {nudge.suggested_action === "send_card" ? (
+              <>
+                <Button
+                  size="sm"
+                  onClick={() => onAct("send_card")}
+                  disabled={isActing}
+                  title="Send Card"
+                >
+                  <Mail className="mr-1 h-3.5 w-3.5" />
+                  Send Card
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onAct()}
+                  disabled={isActing}
+                  title="Mark as done"
+                >
+                  <Check className="mr-1 h-3.5 w-3.5" />
+                  Done
+                </Button>
+              </>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onAct()}
+                disabled={isActing}
+                title="Mark as done"
+              >
+                <Check className="mr-1 h-3.5 w-3.5" />
+                Done
+              </Button>
+            )}
 
             <Popover open={snoozeOpen} onOpenChange={setSnoozeOpen}>
               <PopoverTrigger asChild>

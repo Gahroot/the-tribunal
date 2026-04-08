@@ -70,15 +70,26 @@ class NudgeSettingsResponse(BaseModel):
         default_factory=lambda: [
             "birthday",
             "anniversary",
-            "follow_up",
-            "cooling",
             "custom",
+            "cooling",
+            "follow_up",
+            "deal_milestone",
+            "noshow_recovery",
+            "unresponsive",
+            "hot_lead",
+            "referral_ask",
         ]
     )
     delivery_channels: list[str] = Field(default_factory=lambda: ["sms", "push"])
     cooling_days: int = 30
     quiet_hours_start: str = "22:00"
     quiet_hours_end: str = "08:00"
+
+
+class NudgeActRequest(BaseModel):
+    """Request body for acting on a nudge."""
+
+    action_taken: str | None = None  # "send_card", "call", "text", "email", or None
 
 
 class NudgeSettingsUpdate(BaseModel):

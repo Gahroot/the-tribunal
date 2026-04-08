@@ -26,11 +26,13 @@ import {
   MoonStar,
   Sun,
   Search,
+  ClipboardCheck,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/providers/auth-provider";
 import { nudgesApi } from "@/lib/api/nudges";
+import { pendingActionsApi } from "@/lib/api/pending-actions";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 
 import {
@@ -88,6 +90,11 @@ const mainNavItems = [
     title: "Nudges",
     url: "/nudges",
     icon: Bell,
+  },
+  {
+    title: "Pending Actions",
+    url: "/pending-actions",
+    icon: ClipboardCheck,
   },
   {
     title: "Contacts",
@@ -184,6 +191,7 @@ const segmentLabelMap: Record<string, string> = {
   "find-leads-ai": "Find Leads AI",
   "voice-test": "Voice Test",
   opportunities: "Opportunities",
+  "pending-actions": "Pending Actions",
 };
 
 interface BreadcrumbSegment {
@@ -252,6 +260,12 @@ export function AppSidebar({ children }: AppSidebarProps) {
     enabled: !!workspaceId,
     refetchInterval: 60000,
   });
+  const { data: pendingActionStats } = useQuery({
+    queryKey: ["pendingActionStats", workspaceId],
+    queryFn: () => pendingActionsApi.getStats(workspaceId!),
+    enabled: !!workspaceId,
+    refetchInterval: 60000,
+  });
   const breadcrumbs = buildBreadcrumbs(pathname);
   const [commandOpen, setCommandOpen] = React.useState(false);
 
@@ -296,6 +310,11 @@ export function AppSidebar({ children }: AppSidebarProps) {
                         {item.title === "Nudges" && nudgeStats && nudgeStats.pending > 0 && (
                           <span className="ml-auto flex size-5 items-center justify-center rounded-full bg-orange-500 text-[10px] font-medium text-white">
                             {nudgeStats.pending > 99 ? "99+" : nudgeStats.pending}
+                          </span>
+                        )}
+                        {item.title === "Pending Actions" && pendingActionStats && pendingActionStats.pending > 0 && (
+                          <span className="ml-auto flex size-5 items-center justify-center rounded-full bg-orange-500 text-[10px] font-medium text-white">
+                            {pendingActionStats.pending > 99 ? "99+" : pendingActionStats.pending}
                           </span>
                         )}
                       </Link>

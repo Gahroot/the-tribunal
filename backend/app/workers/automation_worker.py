@@ -44,6 +44,7 @@ from app.models.campaign import Campaign, CampaignContact, CampaignContactStatus
 from app.models.contact import Contact
 from app.models.conversation import Conversation
 from app.models.phone_number import PhoneNumber
+from app.services.approval.approval_gate_service import approval_gate_service
 from app.services.telephony.telnyx import TelnyxSMSService
 from app.workers.base import BaseWorker, WorkerRegistry
 
@@ -323,6 +324,28 @@ class AutomationWorker(BaseWorker):
                 action_config: dict[str, Any] = action.get("config", {})
 
                 log.debug("Executing action", action_type=action_type)
+
+                # Check approval gate (automation has no agent_id)
+                decision, _gate_result = await approval_gate_service.check_and_execute_or_queue(
+                    db=db,
+                    agent_id=None,
+                    workspace_id=automation.workspace_id,
+                    action_type=action_type,
+                    action_payload=action_config,
+                    description=f"Automation '{automation.name}': {action_type}",
+                    context={
+                        "source": "automation",
+                        "automation_id": str(automation.id),
+                        "contact_id": contact.id,
+                    },
+                )
+
+                if decision == "pending":
+                    log.info("automation_action_pending_approval", action_type=action_type)
+                    continue
+                elif decision == "blocked":
+                    log.warning("automation_action_blocked", action_type=action_type)
+                    continue
 
                 if action_type == "send_sms":
                     await self._action_send_sms(

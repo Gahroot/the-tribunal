@@ -17,6 +17,11 @@ class ContactCreate(BaseModel):
     email: EmailStr | None = None
     phone_number: str = Field(..., min_length=10, max_length=20)
     company_name: str | None = Field(None, max_length=255)
+    address_line1: str | None = Field(None, max_length=255)
+    address_line2: str | None = Field(None, max_length=255)
+    address_city: str | None = Field(None, max_length=100)
+    address_state: str | None = Field(None, max_length=50)
+    address_zip: str | None = Field(None, max_length=20)
     status: str = Field(default="new")
     tags: list[str] | None = None
     notes: str | None = None
@@ -32,6 +37,11 @@ class ContactUpdate(BaseModel):
     email: EmailStr | None = None
     phone_number: str | None = Field(None, min_length=10, max_length=20)
     company_name: str | None = Field(None, max_length=255)
+    address_line1: str | None = Field(None, max_length=255)
+    address_line2: str | None = Field(None, max_length=255)
+    address_city: str | None = Field(None, max_length=100)
+    address_state: str | None = Field(None, max_length=50)
+    address_zip: str | None = Field(None, max_length=20)
     status: str | None = None
     tags: list[str] | None = None
     notes: str | None = None
@@ -72,6 +82,11 @@ class ContactResponse(BaseModel):
     email: str | None
     phone_number: str
     company_name: str | None
+    address_line1: str | None = None
+    address_line2: str | None = None
+    address_city: str | None = None
+    address_state: str | None = None
+    address_zip: str | None = None
     status: str
     lead_score: int
     is_qualified: bool

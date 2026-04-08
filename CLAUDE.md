@@ -1,20 +1,22 @@
 # The Tribunal - AI CRM
 
-AI-powered CRM platform that manages leads through calls, SMS, and messages with AI voice agents and SMS campaigns, featuring a Next.js dashboard with Cal.com appointment booking integration.
+AI-powered CRM platform that manages leads through calls, SMS, and messages with AI voice agents and SMS campaigns, featuring a Next.js dashboard with Cal.com appointment booking integration and human-in-the-loop approval gates.
 
 ## Project Structure
 
 ```
 frontend/                           # Next.js 16 React frontend
   src/
-    app/                            # App Router pages
+    app/                            # App Router pages (27 routes)
       agents/, campaigns/, contacts/, calls/, dashboard/, settings/
       offers/, experiments/, suggestions/, lead-magnets/, opportunities/
       automations/, calendar/, find-leads/, phone-numbers/, voice-test/
-    components/                     # React components (one per file, grouped by feature)
+      pending-actions/, billing/, nudges/, onboarding/
+    components/                     # React components (one per file, 29 feature groups)
       ui/                           # shadcn/ui primitives (Radix-based)
       agents/, campaigns/, contacts/, calls/, conversation/, settings/
       opportunities/, automations/, calcom/, layout/, auth/, wizard/
+      pending-actions/, nudges/, suggestions/, tags/, segments/
     lib/
       api/                          # API client functions (one per resource)
       api.ts                        # Axios fetch wrapper
@@ -29,16 +31,17 @@ backend/                            # FastAPI Python backend
   app/
     main.py                         # FastAPI app entrypoint
     api/v1/                         # Versioned API routes (one per resource)
-    api/webhooks/                   # Incoming webhook handlers
-    models/                         # SQLAlchemy ORM models (38 files)
-    schemas/                        # Pydantic schemas (34 files)
-    services/                       # Business logic by domain
+    api/webhooks/                   # Incoming webhook handlers (Telnyx, Cal.com)
+    models/                         # SQLAlchemy ORM models (41 files)
+    schemas/                        # Pydantic schemas (39 files)
+    services/                       # Business logic by domain (21 service groups)
       ai/, telephony/, calendar/, campaigns/, contacts/
       conversations/, opportunities/, segments/, tags/, tools/
+      approval/, knowledge/, nudges/, appointments/
     core/                           # Config, security, logging, encryption
     db/                             # Session factory, Redis, pagination
     utils/                          # Calendar, phone, datetime helpers
-    workers/                        # Background jobs (15 worker types)
+    workers/                        # Background jobs (17 worker types)
     websockets/                     # Voice bridge, real-time handlers
   alembic/versions/                 # Database migrations
   tests/                            # Pytest test suite (api/, schemas/, services/, workers/)
@@ -63,7 +66,7 @@ backend/                            # FastAPI Python backend
 - API routes → `app/api/v1/`, one file per resource
 - Models → `app/models/`, one model per file
 - Schemas → `app/schemas/`, matching model structure
-- Services → `app/services/`, grouped by domain (ai, telephony, calendar, campaigns)
+- Services → `app/services/`, grouped by domain (ai, telephony, calendar, approval, knowledge)
 - Workers → `app/workers/`, one worker per job type
 - Migrations → `alembic/versions/`
 

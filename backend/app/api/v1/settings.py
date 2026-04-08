@@ -45,6 +45,11 @@ KNOWN_INTEGRATIONS = [
         "display_name": "OpenAI",
         "description": "AI models for agents",
     },
+    {
+        "integration_type": "lob",
+        "display_name": "Lob",
+        "description": "Physical card & postcard mailing",
+    },
 ]
 
 
@@ -259,3 +264,24 @@ async def update_call_forwarding(
     await db.refresh(workspace)
 
     return CallForwardingSettings(**workspace.settings.get("call_forwarding", {}))
+
+
+@router.get("/workspaces/{workspace_id}/card-settings")
+async def get_card_settings(
+    workspace: WorkspaceAccess, db: DB  # noqa: ARG001
+) -> dict[str, str]:
+    """Get card service sender address settings."""
+    result: dict[str, str] = workspace.settings.get("card_service", {})
+    return result
+
+
+@router.put("/workspaces/{workspace_id}/card-settings")
+async def update_card_settings(
+    workspace: WorkspaceAccess, db: DB, body: dict[str, str]
+) -> dict[str, str]:
+    """Update card service sender address."""
+    settings = dict(workspace.settings)
+    settings["card_service"] = body
+    workspace.settings = settings
+    await db.commit()
+    return body

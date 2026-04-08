@@ -21,9 +21,11 @@ from app.api.v1 import (
     device_tokens,
     embed,
     find_leads_ai,
+    human_profiles,
     improvement_suggestions,
     integrations,
     invitations,
+    knowledge_documents,
     lead_form,
     lead_magnets,
     lead_sources,
@@ -32,6 +34,7 @@ from app.api.v1 import (
     nudges,
     offers,
     opportunities,
+    pending_actions,
     phone_numbers,
     prompt_versions,
     realtor,
@@ -230,6 +233,21 @@ api_router.include_router(
     lead_form.router,
     prefix="/p/leads",
     tags=["Public Lead Form"],
+)
+api_router.include_router(
+    human_profiles.router,
+    prefix="/workspaces/{workspace_id}/agents/{agent_id}/human-profile",
+    tags=["Human Profile"],
+)
+api_router.include_router(
+    knowledge_documents.router,
+    prefix="/workspaces/{workspace_id}/agents/{agent_id}/knowledge",
+    tags=["Knowledge Documents"],
+)
+api_router.include_router(
+    pending_actions.router,
+    prefix="/workspaces/{workspace_id}/pending-actions",
+    tags=["Pending Actions"],
 )
 api_router.include_router(billing.router, prefix="/billing", tags=["Billing"])
 api_router.include_router(realtor.router, prefix="/realtor", tags=["Realtor"])
