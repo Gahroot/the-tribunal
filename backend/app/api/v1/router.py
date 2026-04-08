@@ -19,6 +19,7 @@ from app.api.v1 import (
     dashboard,
     demo,
     device_tokens,
+    drip_campaigns,
     embed,
     find_leads_ai,
     human_profiles,
@@ -248,6 +249,11 @@ api_router.include_router(
     pending_actions.router,
     prefix="/workspaces/{workspace_id}/pending-actions",
     tags=["Pending Actions"],
+)
+api_router.include_router(
+    drip_campaigns.router,
+    prefix="/workspaces/{workspace_id}/drip-campaigns",
+    tags=["Drip Campaigns"],
 )
 api_router.include_router(billing.router, prefix="/billing", tags=["Billing"])
 api_router.include_router(realtor.router, prefix="/realtor", tags=["Realtor"])

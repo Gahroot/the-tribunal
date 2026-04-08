@@ -159,6 +159,27 @@ async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:  # 
                             delay_ms=delay_ms,
                         )
 
+            # Pause any active drip enrollments for this contact
+            if message.conversation_id:
+                try:
+                    from app.models.conversation import Conversation as Conv
+                    from app.services.reactivation.drip_runner import handle_inbound_reply
+
+                    conv_for_drip = await db.execute(
+                        select(Conv).where(
+                            Conv.id == message.conversation_id
+                        )
+                    )
+                    drip_conv = conv_for_drip.scalar_one_or_none()
+                    if drip_conv and drip_conv.contact_id:
+                        await handle_inbound_reply(
+                            contact_id=drip_conv.contact_id,
+                            workspace_id=workspace_id,
+                            db=db,
+                        )
+                except Exception as e:
+                    log.exception("drip_pause_on_reply_failed", error=str(e))
+
             # Update campaign reply stats
             if message.conversation_id:
                 try:

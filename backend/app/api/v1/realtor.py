@@ -20,6 +20,7 @@ from app.models.appointment import Appointment, AppointmentStatus
 from app.models.campaign import Campaign, CampaignContact, CampaignStatus
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message, MessageDirection
+from app.models.drip_campaign import DripCampaign, DripCampaignStatus
 from app.models.phone_number import PhoneNumber
 from app.models.workspace import Workspace, WorkspaceIntegration, WorkspaceMembership
 from app.schemas.followupboss import (
@@ -42,6 +43,8 @@ from app.services.agents.realtor_template import (
 )
 from app.services.contacts import ContactImportService
 from app.services.followupboss import FollowUpBossClient
+from app.services.reactivation.drip_runner import enroll_contacts
+from app.services.reactivation.sequence_config import get_realtor_drip_config
 from app.services.telephony.telnyx import TelnyxSMSService
 
 router = APIRouter()
@@ -507,6 +510,12 @@ async def create_realtor_campaign(
     campaign.status = CampaignStatus.RUNNING.value
     campaign.started_at = datetime.now(UTC)
 
+    # ------------------------------------------------------------------ #
+    # 8. Create and start drip campaign (automated multi-step reactivation)
+    # ------------------------------------------------------------------ #
+    drip_ids = [c.id for c in import_result.created_contacts]
+    await _auto_create_drip_for_imports(db, workspace_id, drip_ids)
+
     await db.commit()
     await db.refresh(campaign)
 
@@ -868,9 +877,18 @@ async def import_fub_contacts(
                 people_to_import.append(data.get("person", data))
 
         counts = {"imported": 0, "skipped": 0, "failed": 0}
+        imported_contact_ids: list[int] = []
         for p in people_to_import:
-            result = await _import_single_fub_contact(db, workspace_id, p)
+            result, contact_id = await _import_single_fub_contact(db, workspace_id, p)
             counts[result] += 1
+            if result == "imported" and contact_id is not None:
+                imported_contact_ids.append(contact_id)
+
+        # Auto-create drip campaign for imported contacts
+        if imported_contact_ids:
+            await _auto_create_drip_for_imports(
+                db, workspace_id, imported_contact_ids
+            )
 
         await db.commit()
         return FUBImportResponse(**counts)
@@ -922,15 +940,15 @@ async def _import_single_fub_contact(
     db: AsyncSession,
     workspace_id: uuid.UUID,
     fub_person: dict,  # type: ignore[type-arg]
-) -> str:
-    """Import a single FUB contact. Returns 'imported', 'skipped', or 'failed'."""
+) -> tuple[str, int | None]:
+    """Import a single FUB contact. Returns ('imported'|'skipped'|'failed', contact_id)."""
     phones: list[dict[str, str]] = fub_person.get("phones", [])
     emails: list[dict[str, str]] = fub_person.get("emails", [])
     phone = phones[0]["value"] if phones else None
     email = emails[0]["value"] if emails else None
 
     if not phone and not email:
-        return "failed"
+        return "failed", None
 
     conditions = []
     if phone:
@@ -945,7 +963,7 @@ async def _import_single_fub_contact(
         )
     )
     if existing.scalar_one_or_none():
-        return "skipped"
+        return "skipped", None
 
     contact = Contact(
         workspace_id=workspace_id,
@@ -957,4 +975,76 @@ async def _import_single_fub_contact(
         notes=fub_person.get("background"),
     )
     db.add(contact)
-    return "imported"
+    await db.flush()
+    return "imported", contact.id
+
+
+async def _auto_create_drip_for_imports(
+    db: AsyncSession,
+    workspace_id: uuid.UUID,
+    contact_ids: list[int],
+) -> None:
+    """Auto-create a drip campaign and enroll imported contacts.
+
+    Finds the workspace's realtor agent and first active phone number,
+    then creates a drip campaign with the default reactivation sequence.
+    """
+    # Find agent
+    agent_result = await db.execute(
+        select(Agent)
+        .where(
+            Agent.workspace_id == workspace_id,
+            Agent.name == "Realtor Lead Reactivation Agent",
+        )
+        .limit(1)
+    )
+    agent = agent_result.scalar_one_or_none()
+    if agent is None:
+        fallback_result = await db.execute(
+            select(Agent)
+            .where(Agent.workspace_id == workspace_id, Agent.channel_mode == "text")
+            .order_by(Agent.created_at.asc())
+            .limit(1)
+        )
+        agent = fallback_result.scalar_one_or_none()
+
+    if agent is None:
+        logger.warning("no_agent_for_drip", workspace_id=str(workspace_id))
+        return
+
+    # Find phone number
+    phone_result = await db.execute(
+        select(PhoneNumber)
+        .where(
+            PhoneNumber.workspace_id == workspace_id,
+            PhoneNumber.is_active.is_(True),
+            PhoneNumber.sms_enabled.is_(True),
+        )
+        .order_by(PhoneNumber.created_at.asc())
+        .limit(1)
+    )
+    phone_record = phone_result.scalar_one_or_none()
+    if phone_record is None:
+        logger.warning("no_phone_for_drip", workspace_id=str(workspace_id))
+        return
+
+    # Create drip campaign
+    drip_config = get_realtor_drip_config()
+    drip_campaign = DripCampaign(
+        workspace_id=workspace_id,
+        agent_id=agent.id,
+        from_phone_number=phone_record.phone_number,
+        status=DripCampaignStatus.ACTIVE.value,
+        started_at=datetime.now(UTC),
+        **drip_config,
+    )
+    db.add(drip_campaign)
+    await db.flush()
+
+    enrolled = await enroll_contacts(drip_campaign, contact_ids, db)
+    logger.info(
+        "drip_auto_created_for_fub_import",
+        workspace_id=str(workspace_id),
+        drip_campaign_id=str(drip_campaign.id),
+        enrolled=enrolled,
+    )

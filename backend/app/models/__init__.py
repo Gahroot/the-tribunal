@@ -16,6 +16,7 @@ from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
 from app.models.demo_request import DemoRequest
 from app.models.device_token import DeviceToken
+from app.models.drip_campaign import DripCampaign, DripEnrollment
 from app.models.human_nudge import HumanNudge
 from app.models.human_profile import HumanProfile
 from app.models.invitation import WorkspaceInvitation
@@ -92,6 +93,8 @@ __all__ = [
     "Tag",
     "ContactTag",
     "Segment",
+    "DripCampaign",
+    "DripEnrollment",
     "DeviceToken",
     "HumanNudge",
     "HumanProfile",

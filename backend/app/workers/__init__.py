@@ -10,6 +10,7 @@ from app.workers.approval_worker import _registry as approval_registry
 from app.workers.automation_worker import _registry as automation_registry
 from app.workers.base import BaseWorker, WorkerRegistry
 from app.workers.campaign_worker import _registry as campaign_registry
+from app.workers.drip_campaign_worker import _registry as drip_campaign_registry
 from app.workers.enrichment_worker import _registry as enrichment_registry
 from app.workers.experiment_evaluation_worker import _registry as experiment_evaluation_registry
 from app.workers.followup_worker import _registry as followup_registry
@@ -42,6 +43,7 @@ ALL_REGISTRIES: list[WorkerRegistry[BaseWorker]] = [
     never_booked_registry,
     nudge_registry,
     approval_registry,
+    drip_campaign_registry,
 ]
 
 
