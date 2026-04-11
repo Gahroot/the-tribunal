@@ -9,15 +9,15 @@ import uuid
 from datetime import UTC, datetime
 
 import httpx
-from sqlalchemy import and_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.agent import Agent
 from app.models.human_profile import HumanProfile
 from app.models.pending_action import PendingAction
-from app.models.phone_number import PhoneNumber
 from app.services.push_notifications import push_notification_service
+from app.services.telephony.phone_number_resolver import get_workspace_sms_number
 
 logger = logging.getLogger(__name__)
 
@@ -107,13 +107,14 @@ class ApprovalDeliveryService:
         description: str,
     ) -> bool:
         """Send an approval request SMS via Telnyx."""
-        from_number = await self._resolve_from_number(db, workspace_id)
-        if not from_number or not settings.telnyx_api_key:
+        phone = await get_workspace_sms_number(db, workspace_id)
+        if phone is None or not settings.telnyx_api_key:
             logger.debug(
                 "No from_number or Telnyx API key for workspace %s",
                 workspace_id,
             )
             return False
+        from_number = phone.phone_number
 
         message = (
             f"[{agent_name}] wants to: {description}. "
@@ -168,25 +169,5 @@ class ApprovalDeliveryService:
                 "Failed to send approval push for action %s", action.id
             )
             return False
-
-    async def _resolve_from_number(
-        self, db: AsyncSession, workspace_id: uuid.UUID
-    ) -> str | None:
-        """Get the first active SMS-enabled phone number for the workspace."""
-        result = await db.execute(
-            select(PhoneNumber.phone_number)
-            .where(
-                and_(
-                    PhoneNumber.workspace_id == workspace_id,
-                    PhoneNumber.is_active.is_(True),
-                    PhoneNumber.sms_enabled.is_(True),
-                )
-            )
-            .order_by(PhoneNumber.created_at)
-            .limit(1)
-        )
-        phone = result.scalar_one_or_none()
-        return str(phone) if phone else None
-
 
 approval_delivery_service = ApprovalDeliveryService()

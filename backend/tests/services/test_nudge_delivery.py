@@ -99,7 +99,7 @@ class TestDeliverToWorkspaceMembers:
             side_effect=[
                 _scalar_one_result(ws),          # load workspace
                 _scalar_result([membership]),     # resolve target users
-                _scalar_one_result("+15550000000"),  # resolve from number
+                _scalar_one_result(MagicMock(phone_number="+15550000000")),  # resolve from number
             ]
         )
         mock_db.commit = AsyncMock()
@@ -142,7 +142,7 @@ class TestSkipUsersWithoutPhone:
             side_effect=[
                 _scalar_one_result(ws),
                 _scalar_result([membership]),
-                _scalar_one_result("+15550000000"),
+                _scalar_one_result(MagicMock(phone_number="+15550000000")),
             ]
         )
         mock_db.commit = AsyncMock()
@@ -183,7 +183,7 @@ class TestSkipUsersSmsDisabled:
             side_effect=[
                 _scalar_one_result(ws),
                 _scalar_result([membership]),
-                _scalar_one_result("+15550000000"),
+                _scalar_one_result(MagicMock(phone_number="+15550000000")),
             ]
         )
         mock_db.commit = AsyncMock()
