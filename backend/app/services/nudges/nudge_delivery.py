@@ -5,16 +5,16 @@ import uuid
 from datetime import UTC, datetime
 
 import httpx
-from sqlalchemy import and_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.models.human_nudge import HumanNudge
-from app.models.phone_number import PhoneNumber
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMembership
 from app.services.push_notifications import push_notification_service
+from app.services.telephony.phone_number_resolver import get_workspace_sms_number
 
 logger = logging.getLogger(__name__)
 
@@ -125,9 +125,10 @@ class NudgeDeliveryService:
         users: list[User],
     ) -> bool:
         """Send SMS to eligible users. Returns True if at least one sent."""
-        from_number = await self._resolve_from_number(db, nudge.workspace_id)
-        if not from_number or not settings.telnyx_api_key:
+        phone = await get_workspace_sms_number(db, nudge.workspace_id)
+        if phone is None or not settings.telnyx_api_key:
             return False
+        from_number = phone.phone_number
 
         sms_sent = False
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -233,24 +234,5 @@ class NudgeDeliveryService:
             return current_minutes >= start_minutes or current_minutes < end_minutes
         else:
             return start_minutes <= current_minutes < end_minutes
-
-    async def _resolve_from_number(
-        self, db: AsyncSession, workspace_id: uuid.UUID
-    ) -> str | None:
-        """Get an SMS-enabled phone number for the workspace."""
-        result = await db.execute(
-            select(PhoneNumber.phone_number).where(
-                and_(
-                    PhoneNumber.workspace_id == workspace_id,
-                    PhoneNumber.is_active.is_(True),
-                    PhoneNumber.sms_enabled.is_(True),
-                )
-            )
-            .order_by(PhoneNumber.created_at)
-            .limit(1)
-        )
-        phone = result.scalar_one_or_none()
-        return str(phone) if phone else None
-
 
 nudge_delivery_service = NudgeDeliveryService()
