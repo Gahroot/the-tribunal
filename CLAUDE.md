@@ -7,7 +7,7 @@ AI-powered CRM platform that manages leads through calls, SMS, and messages with
 ```
 frontend/                           # Next.js 16 React frontend
   src/
-    app/                            # App Router pages (27 routes)
+    app/                            # App Router pages (27 route groups)
       agents/, campaigns/, contacts/, calls/, dashboard/, settings/
       offers/, experiments/, suggestions/, lead-magnets/, opportunities/
       automations/, calendar/, find-leads/, phone-numbers/, voice-test/
@@ -30,11 +30,11 @@ frontend/                           # Next.js 16 React frontend
 backend/                            # FastAPI Python backend
   app/
     main.py                         # FastAPI app entrypoint
-    api/v1/                         # Versioned API routes (one per resource)
+    api/v1/                         # Versioned API routes (43 resource modules)
     api/webhooks/                   # Incoming webhook handlers (Telnyx, Cal.com)
-    models/                         # SQLAlchemy ORM models (41 files)
+    models/                         # SQLAlchemy ORM models (43 files)
     schemas/                        # Pydantic schemas (39 files)
-    services/                       # Business logic by domain (21 service groups)
+    services/                       # Business logic by domain (24 service groups)
       ai/, telephony/, calendar/, campaigns/, contacts/
       conversations/, opportunities/, segments/, tags/, tools/
       approval/, knowledge/, nudges/, appointments/
@@ -83,6 +83,15 @@ cd backend && uv run ruff check app && uv run mypy app
 ```
 
 Fix ALL errors/warnings before continuing.
+
+## Shared primitives
+
+Prefer these canonical patterns over rolling new ones:
+
+- `backend/app/services/contacts/contact_filters.py` — gold-standard filter engine. Reuse `apply_contact_filters()` and the `FilterDefinition` shape for any list endpoint that needs rule-based filtering.
+- `frontend/src/lib/query-keys.ts` — canonical React Query key factory. All new hooks should pull keys from here rather than inlining tuples.
+- `frontend/src/lib/query-options.ts` — shared query option presets (stale times, retry policies). Compose these instead of hand-tuning per-hook.
+- `frontend/src/components/ui/page-state.tsx` — `PageLoadingState`, `PageErrorState`, `PageEmptyState`. Use for every page-level loading/error/empty surface so the app renders consistent states.
 
 ## Development
 
