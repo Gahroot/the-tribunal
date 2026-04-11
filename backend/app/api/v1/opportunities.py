@@ -1,6 +1,8 @@
 """Opportunity management endpoints."""
 
 import uuid
+from datetime import datetime
+from decimal import Decimal
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, status
@@ -136,6 +138,15 @@ async def list_opportunities(
     workspace: Annotated[Workspace, Depends(get_workspace)],
     pipeline_id: Annotated[uuid.UUID | None, Query()] = None,
     stage_id: Annotated[uuid.UUID | None, Query()] = None,
+    owner_id: Annotated[uuid.UUID | None, Query()] = None,
+    opportunity_status: Annotated[str | None, Query(alias="status")] = None,
+    source: Annotated[str | None, Query()] = None,
+    value_min: Annotated[Decimal | None, Query(ge=0)] = None,
+    value_max: Annotated[Decimal | None, Query(ge=0)] = None,
+    probability_min: Annotated[int | None, Query(ge=0, le=100)] = None,
+    probability_max: Annotated[int | None, Query(ge=0, le=100)] = None,
+    created_after: Annotated[datetime | None, Query()] = None,
+    created_before: Annotated[datetime | None, Query()] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=500)] = 50,
     search: str | None = None,
@@ -149,6 +160,15 @@ async def list_opportunities(
         page=page,
         page_size=page_size,
         search=search,
+        owner_id=owner_id,
+        opportunity_status=opportunity_status,
+        source=source,
+        value_min=value_min,
+        value_max=value_max,
+        probability_min=probability_min,
+        probability_max=probability_max,
+        created_after=created_after,
+        created_before=created_before,
     )
 
 

@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 
 import structlog
 from fastapi import HTTPException, status
@@ -28,6 +29,7 @@ from app.schemas.opportunity import (
     PipelineStageUpdate,
     PipelineUpdate,
 )
+from app.services.opportunities.opportunity_filters import apply_opportunity_filters
 
 logger = structlog.get_logger()
 
@@ -201,20 +203,36 @@ class OpportunityService:
         page: int = 1,
         page_size: int = 50,
         search: str | None = None,
+        *,
+        owner_id: uuid.UUID | None = None,
+        opportunity_status: str | None = None,
+        source: str | None = None,
+        value_min: Decimal | float | None = None,
+        value_max: Decimal | float | None = None,
+        probability_min: int | None = None,
+        probability_max: int | None = None,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
     ) -> PaginatedOpportunities:
         """List opportunities with optional filters."""
-        query = select(Opportunity).where(Opportunity.workspace_id == workspace_id)
+        query = apply_opportunity_filters(
+            select(Opportunity),
+            workspace_id,
+            pipeline_id=pipeline_id,
+            stage_id=stage_id,
+            owner_id=owner_id,
+            status=opportunity_status,
+            source=source,
+            search=search,
+            value_min=value_min,
+            value_max=value_max,
+            probability_min=probability_min,
+            probability_max=probability_max,
+            created_after=created_after,
+            created_before=created_before,
+        ).order_by(Opportunity.created_at.desc())
 
-        if pipeline_id:
-            query = query.where(Opportunity.pipeline_id == pipeline_id)
-        if stage_id:
-            query = query.where(Opportunity.stage_id == stage_id)
-        if search:
-            query = query.where(Opportunity.name.ilike(f"%{search}%"))
-
-        query = query.order_by(Opportunity.created_at.desc())
         result = await paginate(self.db, query, page=page, page_size=page_size)
-
         return PaginatedOpportunities(**result.to_response(OpportunityResponse))
 
     async def create_opportunity(
