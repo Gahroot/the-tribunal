@@ -25,6 +25,7 @@ from app.schemas.campaign import (
     GuaranteeProgressResponse,
     PaginatedCampaigns,
 )
+from app.services.campaigns.campaign_filters import apply_campaign_filters
 from app.services.campaigns.guarantee_tracker import check_guarantee_expiry
 from app.utils.datetime import parse_time_string
 
@@ -42,11 +43,11 @@ async def list_campaigns(
     status_filter: str | None = None,
 ) -> PaginatedCampaigns:
     """List campaigns in a workspace."""
-    query = select(Campaign).where(Campaign.workspace_id == workspace_id)
-
-    if status_filter:
-        query = query.where(Campaign.status == status_filter)
-
+    query = apply_campaign_filters(
+        select(Campaign),
+        workspace_id,
+        status=status_filter,
+    )
     query = query.order_by(Campaign.created_at.desc())
     result = await paginate(db, query, page=page, page_size=page_size)
 
