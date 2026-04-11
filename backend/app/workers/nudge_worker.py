@@ -17,9 +17,10 @@ from app.models.workspace import Workspace
 from app.services.nudges.nudge_delivery import NudgeDeliveryService
 from app.services.nudges.nudge_generator import NudgeGeneratorService
 from app.workers.base import BaseWorker, WorkerRegistry
+from app.workers.retryable import RetryableWorker
 
 
-class NudgeWorker(BaseWorker):
+class NudgeWorker(RetryableWorker, BaseWorker):
     """Background worker for generating and delivering human nudges."""
 
     POLL_INTERVAL_SECONDS = 3600  # 1 hour
@@ -69,34 +70,31 @@ class NudgeWorker(BaseWorker):
             if not nudge_settings.get("enabled", True):
                 continue
 
-            try:
-                # Phase 1: Generate nudges
-                generated = await self.generator.generate_for_workspace(
-                    db, workspace
-                )
-                if generated:
-                    self.logger.info(
-                        "Nudges generated",
-                        workspace_id=str(workspace.id),
-                        count=generated,
-                    )
+            await self.execute_with_retry(
+                self._process_single_workspace, db, workspace
+            )
 
-                # Phase 2: Deliver pending nudges
-                delivered = await self.delivery.deliver_pending_nudges(
-                    db, workspace.id
-                )
-                if delivered:
-                    self.logger.info(
-                        "Nudges delivered",
-                        workspace_id=str(workspace.id),
-                        count=delivered,
-                    )
+    async def _process_single_workspace(
+        self, db: AsyncSession, workspace: Workspace
+    ) -> None:
+        """Generate and deliver nudges for a single workspace."""
+        # Phase 1: Generate nudges
+        generated = await self.generator.generate_for_workspace(db, workspace)
+        if generated:
+            self.logger.info(
+                "Nudges generated",
+                workspace_id=str(workspace.id),
+                count=generated,
+            )
 
-            except Exception:
-                self.logger.exception(
-                    "Error processing nudges for workspace",
-                    workspace_id=str(workspace.id),
-                )
+        # Phase 2: Deliver pending nudges
+        delivered = await self.delivery.deliver_pending_nudges(db, workspace.id)
+        if delivered:
+            self.logger.info(
+                "Nudges delivered",
+                workspace_id=str(workspace.id),
+                count=delivered,
+            )
 
 
 # Singleton registry
