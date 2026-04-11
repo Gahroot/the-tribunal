@@ -1,4 +1,9 @@
-"""Realtor onboarding endpoint."""
+"""Realtor self-serve onboarding flow.
+
+Workspace setup, Cal.com wiring, agent provisioning, phone-number purchase,
+CSV upload + drip-campaign enrollment, and the realtor dashboard stats
+endpoint. Extracted from the original ``app/api/v1/realtor.py`` god file.
+"""
 
 import re
 import uuid
@@ -7,12 +12,12 @@ from typing import Annotated
 
 import httpx
 import structlog
-from fastapi import APIRouter, Body, Depends, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
-from sqlalchemy import func, or_, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func, select
 
 from app.api.deps import DB, CurrentUser, get_workspace
+from app.api.v1.integrations.followupboss import upsert_fub_integration
 from app.core.config import settings
 from app.core.encryption import decrypt_json, encrypt_json
 from app.models.agent import Agent
@@ -20,15 +25,8 @@ from app.models.appointment import Appointment, AppointmentStatus
 from app.models.campaign import Campaign, CampaignContact, CampaignStatus
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message, MessageDirection
-from app.models.drip_campaign import DripCampaign, DripCampaignStatus
 from app.models.phone_number import PhoneNumber
 from app.models.workspace import Workspace, WorkspaceIntegration, WorkspaceMembership
-from app.schemas.followupboss import (
-    FUBContact,
-    FUBImportResponse,
-    FUBPeopleResponse,
-    FUBVerifyResponse,
-)
 from app.schemas.realtor import (
     ParseCalcomUrlRequest,
     ParseCalcomUrlResponse,
@@ -42,14 +40,16 @@ from app.services.agents.realtor_template import (
     get_realtor_campaign_defaults,
 )
 from app.services.contacts import ContactImportService
-from app.services.followupboss import FollowUpBossClient
-from app.services.reactivation.drip_runner import enroll_contacts
-from app.services.reactivation.sequence_config import get_realtor_drip_config
+from app.services.reactivation.drip_bootstrap import auto_create_drip_for_imports
 from app.services.telephony.telnyx import TelnyxSMSService
 
 router = APIRouter()
 workspace_router = APIRouter()
 logger = structlog.get_logger()
+
+_CALCOM_URL_RE = re.compile(r"^https?://(?:app\.)?cal\.com/([^/?#]+)/([^/?#]+)")
+_CALCOM_V1_BASE = "https://api.cal.com/v1"
+_CALCOM_V2_BASE = "https://api.cal.com/v2"
 
 
 class RealtorStatsResponse(BaseModel):
@@ -61,78 +61,8 @@ class RealtorStatsResponse(BaseModel):
     appointments_booked: int
 
 
-@workspace_router.get(
-    "/stats",
-    response_model=RealtorStatsResponse,
-)
-async def get_realtor_stats(
-    workspace_id: uuid.UUID,
-    current_user: CurrentUser,
-    db: DB,
-    workspace: Annotated[Workspace, Depends(get_workspace)],
-) -> RealtorStatsResponse:
-    """Get realtor dashboard statistics for a workspace.
-
-    Returns:
-    - leads_uploaded: total contacts in the workspace
-    - texts_sent: outbound messages
-    - replies_received: inbound messages
-    - appointments_booked: confirmed or completed appointments
-    """
-    # Count contacts (leads uploaded)
-    leads_result = await db.execute(
-        select(func.count()).select_from(Contact).where(
-            Contact.workspace_id == workspace_id
-        )
-    )
-    leads_uploaded = leads_result.scalar() or 0
-
-    # Subquery: conversation IDs belonging to this workspace
-    workspace_conversations = select(Conversation.id).where(
-        Conversation.workspace_id == workspace_id
-    )
-
-    # Count outbound messages (texts sent)
-    texts_sent_result = await db.execute(
-        select(func.count()).select_from(Message).where(
-            Message.conversation_id.in_(workspace_conversations),
-            Message.direction == MessageDirection.OUTBOUND,
-        )
-    )
-    texts_sent = texts_sent_result.scalar() or 0
-
-    # Count inbound messages (replies received)
-    replies_result = await db.execute(
-        select(func.count()).select_from(Message).where(
-            Message.conversation_id.in_(workspace_conversations),
-            Message.direction == MessageDirection.INBOUND,
-        )
-    )
-    replies_received = replies_result.scalar() or 0
-
-    # Count booked appointments (confirmed + completed)
-    appointments_result = await db.execute(
-        select(func.count()).select_from(Appointment).where(
-            Appointment.workspace_id == workspace_id,
-            Appointment.status.in_([
-                AppointmentStatus.SCHEDULED,
-                AppointmentStatus.COMPLETED,
-            ]),
-        )
-    )
-    appointments_booked = appointments_result.scalar() or 0
-
-    return RealtorStatsResponse(
-        leads_uploaded=leads_uploaded,
-        texts_sent=texts_sent,
-        replies_received=replies_received,
-        appointments_booked=appointments_booked,
-    )
-
-
 async def _get_user_workspace(current_user: CurrentUser, db: DB) -> Workspace:
     """Resolve the user's default (or first) workspace."""
-    # Try default workspace first
     result = await db.execute(
         select(WorkspaceMembership).where(
             WorkspaceMembership.user_id == current_user.id,
@@ -142,7 +72,6 @@ async def _get_user_workspace(current_user: CurrentUser, db: DB) -> Workspace:
     membership = result.scalar_one_or_none()
 
     if membership is None:
-        # Fall back to any workspace membership
         result = await db.execute(
             select(WorkspaceMembership)
             .where(WorkspaceMembership.user_id == current_user.id)
@@ -174,6 +103,89 @@ async def _get_user_workspace(current_user: CurrentUser, db: DB) -> Workspace:
     return workspace
 
 
+async def _get_workspace_calcom_api_key(
+    workspace_id: uuid.UUID,
+    db: DB,
+) -> str | None:
+    """Return the stored Cal.com API key for the workspace, or None if not set."""
+    result = await db.execute(
+        select(WorkspaceIntegration).where(
+            WorkspaceIntegration.workspace_id == workspace_id,
+            WorkspaceIntegration.integration_type == "calcom",
+            WorkspaceIntegration.is_active.is_(True),
+        )
+    )
+    integration = result.scalar_one_or_none()
+    if integration is None:
+        return None
+    try:
+        creds = decrypt_json(integration.encrypted_credentials)
+        return creds.get("api_key") or None
+    except Exception:
+        return None
+
+
+@workspace_router.get("/stats", response_model=RealtorStatsResponse)
+async def get_realtor_stats(
+    workspace_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> RealtorStatsResponse:
+    """Get realtor dashboard statistics for a workspace.
+
+    Returns:
+    - leads_uploaded: total contacts in the workspace
+    - texts_sent: outbound messages
+    - replies_received: inbound messages
+    - appointments_booked: confirmed or completed appointments
+    """
+    leads_result = await db.execute(
+        select(func.count()).select_from(Contact).where(
+            Contact.workspace_id == workspace_id
+        )
+    )
+    leads_uploaded = leads_result.scalar() or 0
+
+    workspace_conversations = select(Conversation.id).where(
+        Conversation.workspace_id == workspace_id
+    )
+
+    texts_sent_result = await db.execute(
+        select(func.count()).select_from(Message).where(
+            Message.conversation_id.in_(workspace_conversations),
+            Message.direction == MessageDirection.OUTBOUND,
+        )
+    )
+    texts_sent = texts_sent_result.scalar() or 0
+
+    replies_result = await db.execute(
+        select(func.count()).select_from(Message).where(
+            Message.conversation_id.in_(workspace_conversations),
+            Message.direction == MessageDirection.INBOUND,
+        )
+    )
+    replies_received = replies_result.scalar() or 0
+
+    appointments_result = await db.execute(
+        select(func.count()).select_from(Appointment).where(
+            Appointment.workspace_id == workspace_id,
+            Appointment.status.in_([
+                AppointmentStatus.SCHEDULED,
+                AppointmentStatus.COMPLETED,
+            ]),
+        )
+    )
+    appointments_booked = appointments_result.scalar() or 0
+
+    return RealtorStatsResponse(
+        leads_uploaded=leads_uploaded,
+        texts_sent=texts_sent,
+        replies_received=replies_received,
+        appointments_booked=appointments_booked,
+    )
+
+
 @router.post(
     "/onboard",
     response_model=RealtorOnboardResponse,
@@ -193,9 +205,7 @@ async def realtor_onboard(
     workspace = await _get_user_workspace(current_user, db)
     workspace_id = workspace.id
 
-    # ------------------------------------------------------------------ #
     # 1. Create the AI agent from the realtor template
-    # ------------------------------------------------------------------ #
     agent_config = get_realtor_agent_config()
     agent = Agent(
         workspace_id=workspace_id,
@@ -204,7 +214,7 @@ async def realtor_onboard(
         **agent_config,
     )
     db.add(agent)
-    await db.flush()  # populate agent.id before continuing
+    await db.flush()
 
     logger.info(
         "realtor_agent_created",
@@ -213,10 +223,7 @@ async def realtor_onboard(
         user_id=current_user.id,
     )
 
-    # ------------------------------------------------------------------ #
-    # 2. Store the Cal.com integration
-    #    Upsert: if a calcom integration already exists, update it.
-    # ------------------------------------------------------------------ #
+    # 2. Store the Cal.com integration (upsert).
     calcom_result = await db.execute(
         select(WorkspaceIntegration).where(
             WorkspaceIntegration.workspace_id == workspace_id,
@@ -245,20 +252,16 @@ async def realtor_onboard(
         user_id=current_user.id,
     )
 
-    # ------------------------------------------------------------------ #
     # 2b. Store the Follow Up Boss integration (optional)
-    # ------------------------------------------------------------------ #
     if request.fub_api_key:
-        await _upsert_fub_integration(db, workspace_id, request.fub_api_key)
+        await upsert_fub_integration(db, workspace_id, request.fub_api_key)
         logger.info(
             "fub_integration_stored",
             workspace_id=str(workspace_id),
             user_id=current_user.id,
         )
 
-    # ------------------------------------------------------------------ #
-    # 3. Auto-purchase a phone number (best-effort)
-    # ------------------------------------------------------------------ #
+    # 3. Auto-purchase a phone number (best-effort).
     phone_number_id: uuid.UUID | None = None
     phone_number_str: str | None = None
 
@@ -312,9 +315,7 @@ async def realtor_onboard(
             workspace_id=str(workspace_id),
         )
 
-    # ------------------------------------------------------------------ #
     # 4. Commit everything
-    # ------------------------------------------------------------------ #
     await db.commit()
 
     if phone_number_str:
@@ -361,9 +362,7 @@ async def create_realtor_campaign(
     workspace = await _get_user_workspace(current_user, db)
     workspace_id = workspace.id
 
-    # ------------------------------------------------------------------ #
     # 1. Read CSV
-    # ------------------------------------------------------------------ #
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -378,9 +377,7 @@ async def create_realtor_campaign(
             detail=f"Failed to read file: {exc!s}",
         ) from exc
 
-    # ------------------------------------------------------------------ #
     # 2. Import contacts
-    # ------------------------------------------------------------------ #
     import_service = ContactImportService(db)
     try:
         import_result = await import_service.import_csv(
@@ -406,9 +403,7 @@ async def create_realtor_campaign(
             ),
         )
 
-    # ------------------------------------------------------------------ #
     # 3. Find the realtor agent
-    # ------------------------------------------------------------------ #
     agent_result = await db.execute(
         select(Agent)
         .where(
@@ -420,7 +415,6 @@ async def create_realtor_campaign(
     agent = agent_result.scalar_one_or_none()
 
     if agent is None:
-        # Fall back to any text-channel agent in the workspace
         fallback_result = await db.execute(
             select(Agent)
             .where(
@@ -441,9 +435,7 @@ async def create_realtor_campaign(
             ),
         )
 
-    # ------------------------------------------------------------------ #
     # 4. Find the workspace's active phone number
-    # ------------------------------------------------------------------ #
     phone_result = await db.execute(
         select(PhoneNumber)
         .where(
@@ -465,9 +457,7 @@ async def create_realtor_campaign(
             ),
         )
 
-    # ------------------------------------------------------------------ #
     # 5. Create the campaign
-    # ------------------------------------------------------------------ #
     defaults = get_realtor_campaign_defaults()
     date_str = datetime.now(UTC).strftime("%B %d, %Y")
     resolved_name = campaign_name or f"Lead Reactivation - {date_str}"
@@ -481,7 +471,7 @@ async def create_realtor_campaign(
         **{k: v for k, v in defaults.items() if k not in ("name", "ai_enabled")},
     )
     db.add(campaign)
-    await db.flush()  # populate campaign.id
+    await db.flush()
 
     logger.info(
         "realtor_campaign_created",
@@ -490,9 +480,7 @@ async def create_realtor_campaign(
         user_id=current_user.id,
     )
 
-    # ------------------------------------------------------------------ #
     # 6. Enroll imported contacts
-    # ------------------------------------------------------------------ #
     added_count = 0
     for contact in import_result.created_contacts:
         campaign_contact = CampaignContact(
@@ -504,17 +492,13 @@ async def create_realtor_campaign(
 
     campaign.total_contacts = added_count
 
-    # ------------------------------------------------------------------ #
     # 7. Start the campaign
-    # ------------------------------------------------------------------ #
     campaign.status = CampaignStatus.RUNNING.value
     campaign.started_at = datetime.now(UTC)
 
-    # ------------------------------------------------------------------ #
     # 8. Create and start drip campaign (automated multi-step reactivation)
-    # ------------------------------------------------------------------ #
     drip_ids = [c.id for c in import_result.created_contacts]
-    await _auto_create_drip_for_imports(db, workspace_id, drip_ids)
+    await auto_create_drip_for_imports(db, workspace_id, drip_ids)
 
     await db.commit()
     await db.refresh(campaign)
@@ -539,44 +523,7 @@ async def create_realtor_campaign(
     )
 
 
-# ---------------------------------------------------------------------------
-# Cal.com helper endpoints
-# ---------------------------------------------------------------------------
-
-_CALCOM_URL_RE = re.compile(
-    r"^https?://(?:app\.)?cal\.com/([^/?#]+)/([^/?#]+)"
-)
-
-_CALCOM_V1_BASE = "https://api.cal.com/v1"
-_CALCOM_V2_BASE = "https://api.cal.com/v2"
-
-
-async def _get_workspace_calcom_api_key(
-    workspace_id: uuid.UUID,
-    db: DB,
-) -> str | None:
-    """Return the stored Cal.com API key for the workspace, or None if not set."""
-    result = await db.execute(
-        select(WorkspaceIntegration).where(
-            WorkspaceIntegration.workspace_id == workspace_id,
-            WorkspaceIntegration.integration_type == "calcom",
-            WorkspaceIntegration.is_active.is_(True),
-        )
-    )
-    integration = result.scalar_one_or_none()
-    if integration is None:
-        return None
-    try:
-        creds = decrypt_json(integration.encrypted_credentials)
-        return creds.get("api_key") or None
-    except Exception:
-        return None
-
-
-@router.post(
-    "/parse-calcom-url",
-    response_model=ParseCalcomUrlResponse,
-)
+@router.post("/parse-calcom-url", response_model=ParseCalcomUrlResponse)
 async def parse_calcom_url(
     request: ParseCalcomUrlRequest,
     current_user: CurrentUser,
@@ -590,7 +537,6 @@ async def parse_calcom_url(
     """
     workspace = await _get_user_workspace(current_user, db)
 
-    # ---- 1. Parse the URL ------------------------------------------------
     match = _CALCOM_URL_RE.match(request.url.strip())
     if match is None:
         raise HTTPException(
@@ -604,7 +550,6 @@ async def parse_calcom_url(
 
     username, slug = match.group(1), match.group(2)
 
-    # ---- 2. Resolve API key -----------------------------------------------
     api_key = await _get_workspace_calcom_api_key(workspace.id, db)
     if api_key is None:
         api_key = request.api_key
@@ -617,7 +562,6 @@ async def parse_calcom_url(
             ),
         )
 
-    # ---- 3. Look up the event type ID via Cal.com v2 ---------------------
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(
@@ -661,7 +605,6 @@ async def parse_calcom_url(
     if isinstance(data, list):
         event_types = data
     elif isinstance(data, dict):
-        # Some v2 endpoints wrap the list further
         event_types = data.get("eventTypeGroups", []) or []
 
     matched_id: int | None = None
@@ -694,10 +637,7 @@ async def parse_calcom_url(
     )
 
 
-@router.get(
-    "/verify-calcom",
-    response_model=VerifyCalcomResponse,
-)
+@router.get("/verify-calcom", response_model=VerifyCalcomResponse)
 async def verify_calcom(
     current_user: CurrentUser,
     api_key: str = Query(..., min_length=1, description="Cal.com API key to verify"),
@@ -743,308 +683,3 @@ async def verify_calcom(
     logger.info("calcom_key_verified", username=username)
 
     return VerifyCalcomResponse(valid=True, username=username)
-
-
-# ---------------------------------------------------------------------------
-# Follow Up Boss helpers
-# ---------------------------------------------------------------------------
-
-
-async def _upsert_fub_integration(
-    db: AsyncSession,
-    workspace_id: uuid.UUID,
-    api_key: str,
-) -> None:
-    """Create or update a Follow Up Boss WorkspaceIntegration."""
-    result = await db.execute(
-        select(WorkspaceIntegration).where(
-            WorkspaceIntegration.workspace_id == workspace_id,
-            WorkspaceIntegration.integration_type == "followupboss",
-        )
-    )
-    existing = result.scalar_one_or_none()
-
-    if existing is not None:
-        existing.encrypted_credentials = encrypt_json({"api_key": api_key})
-        existing.is_active = True
-    else:
-        integration = WorkspaceIntegration(
-            workspace_id=workspace_id,
-            integration_type="followupboss",
-            encrypted_credentials=encrypt_json({"api_key": api_key}),
-            is_active=True,
-        )
-        db.add(integration)
-
-
-# ---------------------------------------------------------------------------
-# Follow Up Boss endpoints
-# ---------------------------------------------------------------------------
-
-
-@router.post(
-    "/verify-fub",
-    response_model=FUBVerifyResponse,
-)
-async def verify_fub(
-    current_user: CurrentUser,
-    api_key: str = Body(..., embed=True),
-) -> FUBVerifyResponse:
-    """Verify a Follow Up Boss API key by calling the /me endpoint."""
-    client = FollowUpBossClient(api_key)
-    try:
-        data = await client.verify()
-        return FUBVerifyResponse(
-            valid=True,
-            name=data.get("name"),
-            email=data.get("email"),
-        )
-    except httpx.HTTPStatusError:
-        return FUBVerifyResponse(valid=False, name=None, email=None)
-    finally:
-        await client.close()
-
-
-@router.get(
-    "/fub-contacts",
-    response_model=FUBPeopleResponse,
-)
-async def get_fub_contacts(
-    workspace_id: uuid.UUID,
-    current_user: CurrentUser,
-    db: DB,
-    limit: int = Query(default=100, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
-) -> FUBPeopleResponse:
-    """Fetch contacts from Follow Up Boss using stored credentials."""
-    integration = await _get_fub_integration(workspace_id, db)
-
-    client = FollowUpBossClient(integration.credentials["api_key"])
-    try:
-        data = await client.get_people(limit=limit, offset=offset)
-        people = data.get("people", [])
-        contacts: list[FUBContact] = []
-        for p in people:
-            phones: list[dict[str, str]] = p.get("phones", [])
-            emails: list[dict[str, str]] = p.get("emails", [])
-            contacts.append(FUBContact(
-                id=p["id"],
-                first_name=p.get("firstName"),
-                last_name=p.get("lastName"),
-                email=emails[0]["value"] if emails else None,
-                phone=phones[0]["value"] if phones else None,
-                stage=p.get("stage"),
-                tags=p.get("tags", []),
-                last_activity=p.get("lastActivity"),
-                source=p.get("source"),
-            ))
-
-        metadata: dict[str, int] = data.get("_metadata", {})
-        total = metadata.get("total", len(contacts))
-
-        return FUBPeopleResponse(
-            contacts=contacts,
-            total=total,
-            has_more=(offset + limit) < total,
-        )
-    finally:
-        await client.close()
-
-
-@router.post(
-    "/import-fub-contacts",
-    response_model=FUBImportResponse,
-)
-async def import_fub_contacts(
-    current_user: CurrentUser,
-    db: DB,
-    workspace_id: uuid.UUID = Body(...),
-    contact_ids: list[int] | None = Body(None),
-    import_all: bool = Body(False),
-) -> FUBImportResponse:
-    """Import contacts from Follow Up Boss into the CRM."""
-    integration = await _get_fub_integration(workspace_id, db)
-
-    client = FollowUpBossClient(integration.credentials["api_key"])
-    try:
-        people_to_import: list[dict] = []  # type: ignore[type-arg]
-
-        if import_all:
-            people_to_import = await _fetch_all_fub_people(client)
-        elif contact_ids:
-            for cid in contact_ids:
-                data = await client.get_person(cid)
-                people_to_import.append(data.get("person", data))
-
-        counts = {"imported": 0, "skipped": 0, "failed": 0}
-        imported_contact_ids: list[int] = []
-        for p in people_to_import:
-            result, contact_id = await _import_single_fub_contact(db, workspace_id, p)
-            counts[result] += 1
-            if result == "imported" and contact_id is not None:
-                imported_contact_ids.append(contact_id)
-
-        # Auto-create drip campaign for imported contacts
-        if imported_contact_ids:
-            await _auto_create_drip_for_imports(
-                db, workspace_id, imported_contact_ids
-            )
-
-        await db.commit()
-        return FUBImportResponse(**counts)
-    finally:
-        await client.close()
-
-
-async def _fetch_all_fub_people(
-    client: FollowUpBossClient,
-) -> list[dict]:  # type: ignore[type-arg]
-    """Paginate through all FUB contacts and return as a flat list."""
-    all_people: list[dict] = []  # type: ignore[type-arg]
-    page_offset = 0
-    while True:
-        data = await client.get_people(limit=100, offset=page_offset)
-        people = data.get("people", [])
-        if not people:
-            break
-        all_people.extend(people)
-        page_offset += 100
-        metadata: dict[str, int] = data.get("_metadata", {})
-        if page_offset >= metadata.get("total", 0):
-            break
-    return all_people
-
-
-async def _get_fub_integration(
-    workspace_id: uuid.UUID,
-    db: AsyncSession,
-) -> WorkspaceIntegration:
-    """Fetch the active Follow Up Boss integration or raise 404."""
-    result = await db.execute(
-        select(WorkspaceIntegration).where(
-            WorkspaceIntegration.workspace_id == workspace_id,
-            WorkspaceIntegration.integration_type == "followupboss",
-            WorkspaceIntegration.is_active.is_(True),
-        )
-    )
-    integration = result.scalar_one_or_none()
-    if not integration:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Follow Up Boss not connected",
-        )
-    return integration
-
-
-async def _import_single_fub_contact(
-    db: AsyncSession,
-    workspace_id: uuid.UUID,
-    fub_person: dict,  # type: ignore[type-arg]
-) -> tuple[str, int | None]:
-    """Import a single FUB contact. Returns ('imported'|'skipped'|'failed', contact_id)."""
-    phones: list[dict[str, str]] = fub_person.get("phones", [])
-    emails: list[dict[str, str]] = fub_person.get("emails", [])
-    phone = phones[0]["value"] if phones else None
-    email = emails[0]["value"] if emails else None
-
-    if not phone and not email:
-        return "failed", None
-
-    conditions = []
-    if phone:
-        conditions.append(Contact.phone_number == phone)
-    if email:
-        conditions.append(Contact.email == email)
-
-    existing = await db.execute(
-        select(Contact).where(
-            Contact.workspace_id == workspace_id,
-            or_(*conditions),
-        )
-    )
-    if existing.scalar_one_or_none():
-        return "skipped", None
-
-    contact = Contact(
-        workspace_id=workspace_id,
-        first_name=fub_person.get("firstName", ""),
-        last_name=fub_person.get("lastName"),
-        phone_number=phone or "",
-        email=email,
-        source=f"Follow Up Boss (ID: {fub_person.get('id', 'unknown')})",
-        notes=fub_person.get("background"),
-    )
-    db.add(contact)
-    await db.flush()
-    return "imported", contact.id
-
-
-async def _auto_create_drip_for_imports(
-    db: AsyncSession,
-    workspace_id: uuid.UUID,
-    contact_ids: list[int],
-) -> None:
-    """Auto-create a drip campaign and enroll imported contacts.
-
-    Finds the workspace's realtor agent and first active phone number,
-    then creates a drip campaign with the default reactivation sequence.
-    """
-    # Find agent
-    agent_result = await db.execute(
-        select(Agent)
-        .where(
-            Agent.workspace_id == workspace_id,
-            Agent.name == "Realtor Lead Reactivation Agent",
-        )
-        .limit(1)
-    )
-    agent = agent_result.scalar_one_or_none()
-    if agent is None:
-        fallback_result = await db.execute(
-            select(Agent)
-            .where(Agent.workspace_id == workspace_id, Agent.channel_mode == "text")
-            .order_by(Agent.created_at.asc())
-            .limit(1)
-        )
-        agent = fallback_result.scalar_one_or_none()
-
-    if agent is None:
-        logger.warning("no_agent_for_drip", workspace_id=str(workspace_id))
-        return
-
-    # Find phone number
-    phone_result = await db.execute(
-        select(PhoneNumber)
-        .where(
-            PhoneNumber.workspace_id == workspace_id,
-            PhoneNumber.is_active.is_(True),
-            PhoneNumber.sms_enabled.is_(True),
-        )
-        .order_by(PhoneNumber.created_at.asc())
-        .limit(1)
-    )
-    phone_record = phone_result.scalar_one_or_none()
-    if phone_record is None:
-        logger.warning("no_phone_for_drip", workspace_id=str(workspace_id))
-        return
-
-    # Create drip campaign
-    drip_config = get_realtor_drip_config()
-    drip_campaign = DripCampaign(
-        workspace_id=workspace_id,
-        agent_id=agent.id,
-        from_phone_number=phone_record.phone_number,
-        status=DripCampaignStatus.ACTIVE.value,
-        started_at=datetime.now(UTC),
-        **drip_config,
-    )
-    db.add(drip_campaign)
-    await db.flush()
-
-    enrolled = await enroll_contacts(drip_campaign, contact_ids, db)
-    logger.info(
-        "drip_auto_created_for_fub_import",
-        workspace_id=str(workspace_id),
-        drip_campaign_id=str(drip_campaign.id),
-        enrolled=enrolled,
-    )
