@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Tag,
@@ -17,7 +17,6 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog,
   DialogContent,
@@ -36,6 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { OfferPreview } from "@/components/offers/offer-preview";
+import { GenericResourceSelector } from "@/components/shared/generic-resource-selector";
 import type { Offer, DiscountType, LeadMagnet } from "@/types";
 
 interface OfferSelectorProps {
@@ -53,6 +53,34 @@ const discountTypeIcons: Record<DiscountType, React.ReactNode> = {
   free_service: <Gift className="size-4" />,
 };
 
+const NO_OFFER_ID = "__none__";
+
+type OfferRow =
+  | { kind: "none"; id: typeof NO_OFFER_ID }
+  | { kind: "offer"; id: string; offer: Offer };
+
+const emptyNewOffer: Partial<Offer> = {
+  name: "",
+  description: "",
+  discount_type: "percentage",
+  discount_value: 0,
+  terms: "",
+  is_active: true,
+};
+
+function formatDiscount(offer: Offer): string {
+  switch (offer.discount_type) {
+    case "percentage":
+      return `${offer.discount_value}% off`;
+    case "fixed":
+      return `$${offer.discount_value} off`;
+    case "free_service":
+      return "Free";
+    default:
+      return "";
+  }
+}
+
 export function OfferSelector({
   offers,
   selectedId,
@@ -62,17 +90,34 @@ export function OfferSelector({
 }: OfferSelectorProps) {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [previewOffer, setPreviewOffer] = useState<Offer | null>(null);
-  const [newOffer, setNewOffer] = useState<Partial<Offer>>({
-    name: "",
-    description: "",
-    discount_type: "percentage",
-    discount_value: 0,
-    terms: "",
-    is_active: true,
-  });
+  const [newOffer, setNewOffer] = useState<Partial<Offer>>(emptyNewOffer);
   const [isCreating, setIsCreating] = useState(false);
 
-  // Calculate total value for an offer
+  const activeOffers = useMemo(() => offers.filter((o) => o.is_active), [offers]);
+
+  const rows = useMemo<OfferRow[]>(
+    () => [
+      { kind: "none", id: NO_OFFER_ID },
+      ...activeOffers.map<OfferRow>((offer) => ({
+        kind: "offer",
+        id: offer.id,
+        offer,
+      })),
+    ],
+    [activeOffers]
+  );
+
+  const selectedRowIds: string[] = [selectedId ?? NO_OFFER_ID];
+
+  const handleSelectionChange = (ids: (string | number)[]) => {
+    const next = ids[0];
+    if (next === undefined || next === NO_OFFER_ID) {
+      onSelect(undefined);
+      return;
+    }
+    onSelect(String(next));
+  };
+
   const calculateTotalValue = (offer: Offer) => {
     const valueStackTotal = (offer.value_stack_items || [])
       .filter((item) => item.included)
@@ -85,342 +130,158 @@ export function OfferSelector({
     return offer.total_value || valueStackTotal + leadMagnetTotal;
   };
 
-  const formatDiscount = (offer: Offer) => {
-    switch (offer.discount_type) {
-      case "percentage":
-        return `${offer.discount_value}% off`;
-      case "fixed":
-        return `$${offer.discount_value} off`;
-      case "free_service":
-        return "Free";
-      default:
-        return "";
-    }
-  };
-
   const handleCreate = async () => {
     if (!onCreateOffer || !newOffer.name) return;
     setIsCreating(true);
     try {
       await onCreateOffer(newOffer);
       setShowCreateDialog(false);
-      setNewOffer({
-        name: "",
-        description: "",
-        discount_type: "percentage",
-        discount_value: 0,
-        terms: "",
-        is_active: true,
-      });
+      setNewOffer(emptyNewOffer);
     } finally {
       setIsCreating(false);
     }
   };
 
-  const activeOffers = offers.filter((o) => o.is_active);
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Tag className="size-4" />
-          <span>Pair an offer with your campaign ({activeOffers.length} available)</span>
-        </div>
-
-        {onCreateOffer && (
-          <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Plus className="size-4 mr-1" />
-                Create Offer
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create New Offer</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="offer-name">Offer Name</Label>
-                  <Input
-                    id="offer-name"
-                    placeholder="e.g., Summer Sale 20% Off"
-                    value={newOffer.name}
-                    onChange={(e) =>
-                      setNewOffer({ ...newOffer, name: e.target.value })
-                    }
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Discount Type</Label>
-                    <Select
-                      value={newOffer.discount_type}
-                      onValueChange={(v) =>
-                        setNewOffer({
-                          ...newOffer,
-                          discount_type: v as DiscountType,
-                        })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="percentage">Percentage</SelectItem>
-                        <SelectItem value="fixed">Fixed Amount</SelectItem>
-                        <SelectItem value="free_service">Free Service</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="discount-value">
-                      {newOffer.discount_type === "percentage"
-                        ? "Percentage"
-                        : "Amount ($)"}
-                    </Label>
-                    <Input
-                      id="discount-value"
-                      type="number"
-                      min="0"
-                      value={newOffer.discount_value}
-                      onChange={(e) =>
-                        setNewOffer({
-                          ...newOffer,
-                          discount_value: parseFloat(e.target.value) || 0,
-                        })
-                      }
-                      disabled={newOffer.discount_type === "free_service"}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="offer-description">Description</Label>
-                  <Textarea
-                    id="offer-description"
-                    placeholder="Brief description of the offer..."
-                    value={newOffer.description}
-                    onChange={(e) =>
-                      setNewOffer({ ...newOffer, description: e.target.value })
-                    }
-                    rows={2}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="offer-terms">Terms & Conditions</Label>
-                  <Textarea
-                    id="offer-terms"
-                    placeholder="e.g., Valid for new customers only..."
-                    value={newOffer.terms}
-                    onChange={(e) =>
-                      setNewOffer({ ...newOffer, terms: e.target.value })
-                    }
-                    rows={2}
-                  />
-                </div>
-
-                <Button
-                  onClick={handleCreate}
-                  disabled={!newOffer.name || isCreating}
-                  className="w-full"
-                >
-                  {isCreating ? "Creating..." : "Create Offer"}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        )}
+  const header = (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Tag className="size-4" />
+        <span>Pair an offer with your campaign ({activeOffers.length} available)</span>
       </div>
 
-      <ScrollArea className="h-[300px]">
-        <div className="space-y-2 pr-4">
-          {/* No offer option */}
-          <motion.div
-            whileHover={{ scale: 1.01 }}
-            whileTap={{ scale: 0.99 }}
-            onClick={() => onSelect(undefined)}
-            className={`relative p-4 rounded-lg border-2 cursor-pointer transition-colors ${
-              !selectedId
-                ? "border-primary bg-primary/5"
-                : "border-border hover:border-primary/50"
-            }`}
-          >
-            {!selectedId && (
-              <div className="absolute top-3 right-3">
-                <div className="size-5 rounded-full bg-primary flex items-center justify-center">
-                  <Check className="size-3 text-primary-foreground" />
+      {onCreateOffer && (
+        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+          <DialogTrigger asChild>
+            <Button variant="outline" size="sm">
+              <Plus className="size-4 mr-1" />
+              Create Offer
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Create New Offer</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="offer-name">Offer Name</Label>
+                <Input
+                  id="offer-name"
+                  placeholder="e.g., Summer Sale 20% Off"
+                  value={newOffer.name}
+                  onChange={(e) => setNewOffer({ ...newOffer, name: e.target.value })}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Discount Type</Label>
+                  <Select
+                    value={newOffer.discount_type}
+                    onValueChange={(v) =>
+                      setNewOffer({ ...newOffer, discount_type: v as DiscountType })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="percentage">Percentage</SelectItem>
+                      <SelectItem value="fixed">Fixed Amount</SelectItem>
+                      <SelectItem value="free_service">Free Service</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="discount-value">
+                    {newOffer.discount_type === "percentage" ? "Percentage" : "Amount ($)"}
+                  </Label>
+                  <Input
+                    id="discount-value"
+                    type="number"
+                    min="0"
+                    value={newOffer.discount_value}
+                    onChange={(e) =>
+                      setNewOffer({
+                        ...newOffer,
+                        discount_value: parseFloat(e.target.value) || 0,
+                      })
+                    }
+                    disabled={newOffer.discount_type === "free_service"}
+                  />
                 </div>
               </div>
-            )}
-            <div className="flex items-center gap-3">
-              <div className="size-10 rounded-full bg-muted flex items-center justify-center">
-                <Tag className="size-5 text-muted-foreground" />
-              </div>
-              <div>
-                <div className="font-medium">No Offer</div>
-                <div className="text-sm text-muted-foreground">
-                  Send campaign without a special offer
-                </div>
-              </div>
-            </div>
-          </motion.div>
 
-          {/* Offer cards */}
-          {activeOffers.map((offer) => {
-            const isSelected = selectedId === offer.id;
-            const totalValue = calculateTotalValue(offer);
-            const leadMagnets = offerLeadMagnets[offer.id] || offer.lead_magnets || [];
-            const valueStackCount = (offer.value_stack_items || []).filter(
-              (item) => item.included
-            ).length;
+              <div className="space-y-2">
+                <Label htmlFor="offer-description">Description</Label>
+                <Textarea
+                  id="offer-description"
+                  placeholder="Brief description of the offer..."
+                  value={newOffer.description}
+                  onChange={(e) =>
+                    setNewOffer({ ...newOffer, description: e.target.value })
+                  }
+                  rows={2}
+                />
+              </div>
 
-            return (
-              <motion.div
-                key={offer.id}
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.99 }}
-                onClick={() => onSelect(offer.id)}
-                className={`relative p-4 rounded-lg border-2 cursor-pointer transition-colors ${
-                  isSelected
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-primary/50"
-                }`}
+              <div className="space-y-2">
+                <Label htmlFor="offer-terms">Terms & Conditions</Label>
+                <Textarea
+                  id="offer-terms"
+                  placeholder="e.g., Valid for new customers only..."
+                  value={newOffer.terms}
+                  onChange={(e) => setNewOffer({ ...newOffer, terms: e.target.value })}
+                  rows={2}
+                />
+              </div>
+
+              <Button
+                onClick={handleCreate}
+                disabled={!newOffer.name || isCreating}
+                className="w-full"
               >
-                {isSelected && (
-                  <div className="absolute top-3 right-3">
-                    <div className="size-5 rounded-full bg-primary flex items-center justify-center">
-                      <Check className="size-3 text-primary-foreground" />
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex items-start gap-3">
-                  <div className="size-10 rounded-full bg-gradient-to-br from-success/20 to-success/5 flex items-center justify-center text-success">
-                    {discountTypeIcons[offer.discount_type]}
-                  </div>
-
-                  <div className="flex-1 min-w-0 pr-6">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium">{offer.name}</span>
-                      <Badge variant="secondary" className="bg-success/10 text-success">
-                        {formatDiscount(offer)}
-                      </Badge>
-                      {totalValue > 0 && (
-                        <Badge variant="outline" className="text-success border-success/20">
-                          <DollarSign className="size-3 mr-0.5" />
-                          {totalValue.toLocaleString()} value
-                        </Badge>
-                      )}
-                      {valueStackCount > 0 && (
-                        <Badge variant="outline" className="gap-1">
-                          <Layers className="size-3" />
-                          {valueStackCount} items
-                        </Badge>
-                      )}
-                      {leadMagnets.length > 0 && (
-                        <Badge variant="outline" className="gap-1 text-info border-info/20">
-                          <FileText className="size-3" />
-                          {leadMagnets.length} bonus{leadMagnets.length > 1 ? "es" : ""}
-                        </Badge>
-                      )}
-                    </div>
-
-                    {offer.headline && (
-                      <p className="text-sm font-medium text-muted-foreground mt-1 line-clamp-1">
-                        {offer.headline}
-                      </p>
-                    )}
-
-                    {offer.description && !offer.headline && (
-                      <p className="text-sm text-muted-foreground mt-1 line-clamp-1">
-                        {offer.description}
-                      </p>
-                    )}
-
-                    <div className="flex items-center gap-2 mt-2">
-                      {(offer.valid_from || offer.valid_until) && (
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Calendar className="size-3" />
-                          {offer.valid_from && (
-                            <span>
-                              From {new Date(offer.valid_from).toLocaleDateString()}
-                            </span>
-                          )}
-                          {offer.valid_until && (
-                            <span>
-                              to {new Date(offer.valid_until).toLocaleDateString()}
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Preview button */}
-                      {(offer.value_stack_items?.length || leadMagnets.length > 0 || offer.headline) && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 px-2 text-xs"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPreviewOffer(offer);
-                          }}
-                        >
-                          <Eye className="size-3 mr-1" />
-                          Preview
-                        </Button>
-                      )}
-                    </div>
-
-                    {offer.terms && !offer.headline && (
-                      <div className="mt-2 text-xs text-muted-foreground italic line-clamp-1">
-                        {offer.terms}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </motion.div>
-            );
-          })}
-
-          {activeOffers.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-              <Tag className="size-12 mb-2 opacity-50" />
-              <p>No offers available</p>
-              {onCreateOffer && (
-                <Button
-                  variant="link"
-                  onClick={() => setShowCreateDialog(true)}
-                  className="mt-1"
-                >
-                  Create your first offer
-                </Button>
-              )}
+                {isCreating ? "Creating..." : "Create Offer"}
+              </Button>
             </div>
-          )}
-        </div>
-      </ScrollArea>
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
+  );
 
-      {/* Insert offer text helper */}
+  const noOffersHint = activeOffers.length === 0 && (
+    <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+      <Tag className="size-12 mb-2 opacity-50" />
+      <p>No offers available</p>
+      {onCreateOffer && (
+        <Button
+          variant="link"
+          onClick={() => setShowCreateDialog(true)}
+          className="mt-1"
+        >
+          Create your first offer
+        </Button>
+      )}
+    </div>
+  );
+
+  const footer = (
+    <>
+      {noOffersHint}
       {selectedId && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           className="p-3 bg-success/10 rounded-lg border border-success/20 text-sm"
         >
-          <p className="text-success">
-            Use these placeholders in your message:
-          </p>
+          <p className="text-success">Use these placeholders in your message:</p>
           <code className="text-xs bg-muted px-1 py-0.5 rounded mt-1 inline-block">
             {"{offer_name}"} {"{offer_discount}"} {"{offer_terms}"}
           </code>
         </motion.div>
       )}
 
-      {/* Offer Preview Dialog */}
       <Dialog open={!!previewOffer} onOpenChange={() => setPreviewOffer(null)}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-auto">
           <DialogHeader>
@@ -438,6 +299,145 @@ export function OfferSelector({
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </>
+  );
+
+  const renderRow = (row: OfferRow, isSelected: boolean) => {
+    const baseClass = `relative p-4 rounded-lg border-2 transition-colors ${
+      isSelected ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+    }`;
+    const checkBadge = isSelected ? (
+      <div className="absolute top-3 right-3">
+        <div className="size-5 rounded-full bg-primary flex items-center justify-center">
+          <Check className="size-3 text-primary-foreground" />
+        </div>
+      </div>
+    ) : null;
+
+    if (row.kind === "none") {
+      return (
+        <div className={baseClass}>
+          {checkBadge}
+          <div className="flex items-center gap-3">
+            <div className="size-10 rounded-full bg-muted flex items-center justify-center">
+              <Tag className="size-5 text-muted-foreground" />
+            </div>
+            <div>
+              <div className="font-medium">No Offer</div>
+              <div className="text-sm text-muted-foreground">
+                Send campaign without a special offer
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const { offer } = row;
+    const totalValue = calculateTotalValue(offer);
+    const leadMagnets = offerLeadMagnets[offer.id] || offer.lead_magnets || [];
+    const valueStackCount = (offer.value_stack_items || []).filter(
+      (item) => item.included
+    ).length;
+
+    return (
+      <div className={baseClass}>
+        {checkBadge}
+        <div className="flex items-start gap-3">
+          <div className="size-10 rounded-full bg-gradient-to-br from-success/20 to-success/5 flex items-center justify-center text-success">
+            {discountTypeIcons[offer.discount_type]}
+          </div>
+
+          <div className="flex-1 min-w-0 pr-6">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-medium">{offer.name}</span>
+              <Badge variant="secondary" className="bg-success/10 text-success">
+                {formatDiscount(offer)}
+              </Badge>
+              {totalValue > 0 && (
+                <Badge variant="outline" className="text-success border-success/20">
+                  <DollarSign className="size-3 mr-0.5" />
+                  {totalValue.toLocaleString()} value
+                </Badge>
+              )}
+              {valueStackCount > 0 && (
+                <Badge variant="outline" className="gap-1">
+                  <Layers className="size-3" />
+                  {valueStackCount} items
+                </Badge>
+              )}
+              {leadMagnets.length > 0 && (
+                <Badge variant="outline" className="gap-1 text-info border-info/20">
+                  <FileText className="size-3" />
+                  {leadMagnets.length} bonus{leadMagnets.length > 1 ? "es" : ""}
+                </Badge>
+              )}
+            </div>
+
+            {offer.headline && (
+              <p className="text-sm font-medium text-muted-foreground mt-1 line-clamp-1">
+                {offer.headline}
+              </p>
+            )}
+
+            {offer.description && !offer.headline && (
+              <p className="text-sm text-muted-foreground mt-1 line-clamp-1">
+                {offer.description}
+              </p>
+            )}
+
+            <div className="flex items-center gap-2 mt-2">
+              {(offer.valid_from || offer.valid_until) && (
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Calendar className="size-3" />
+                  {offer.valid_from && (
+                    <span>From {new Date(offer.valid_from).toLocaleDateString()}</span>
+                  )}
+                  {offer.valid_until && (
+                    <span>to {new Date(offer.valid_until).toLocaleDateString()}</span>
+                  )}
+                </div>
+              )}
+
+              {(offer.value_stack_items?.length || leadMagnets.length > 0 || offer.headline) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPreviewOffer(offer);
+                  }}
+                >
+                  <Eye className="size-3 mr-1" />
+                  Preview
+                </Button>
+              )}
+            </div>
+
+            {offer.terms && !offer.headline && (
+              <div className="mt-2 text-xs text-muted-foreground italic line-clamp-1">
+                {offer.terms}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <GenericResourceSelector<OfferRow>
+      items={rows}
+      getItemId={(row) => row.id}
+      selectedIds={selectedRowIds}
+      onSelectionChange={handleSelectionChange}
+      multiple={false}
+      allowDeselect={false}
+      renderItem={renderRow}
+      header={header}
+      footer={footer}
+      height={300}
+    />
   );
 }
