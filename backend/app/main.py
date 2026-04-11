@@ -2,9 +2,10 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 import structlog
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -184,6 +185,57 @@ app.include_router(voice_test_router, tags=["voice"])
 
 # Mount static files for lead magnets and other assets
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+_STATUS_CODE_SLUGS: dict[int, str] = {
+    400: "bad_request",
+    401: "unauthorized",
+    403: "forbidden",
+    404: "not_found",
+    405: "method_not_allowed",
+    409: "conflict",
+    410: "gone",
+    413: "payload_too_large",
+    415: "unsupported_media_type",
+    422: "unprocessable_entity",
+    429: "too_many_requests",
+    500: "internal_server_error",
+    502: "bad_gateway",
+    503: "service_unavailable",
+    504: "gateway_timeout",
+}
+
+
+def _error_payload_from_detail(status_code: int, detail: Any) -> dict[str, Any]:
+    """Normalize an ``HTTPException.detail`` into ``ErrorResponse`` shape.
+
+    - Preserves already-structured payloads (dicts with a ``code`` field).
+    - Wraps plain strings / other types into ``{code, message}`` using a slug
+      derived from the HTTP status code.
+    """
+    if isinstance(detail, dict) and isinstance(detail.get("code"), str):
+        payload: dict[str, Any] = {
+            "code": detail["code"],
+            "message": str(detail.get("message", "")),
+        }
+        if "details" in detail:
+            payload["details"] = detail["details"]
+        return payload
+
+    code = _STATUS_CODE_SLUGS.get(status_code, f"http_{status_code}")
+    message = detail if isinstance(detail, str) else str(detail) if detail is not None else ""
+    return {"code": code, "message": message}
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    """Return ``HTTPException``s in the canonical ``ErrorResponse`` shape."""
+    payload = _error_payload_from_detail(exc.status_code, exc.detail)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=payload,
+        headers=getattr(exc, "headers", None),
+    )
 
 
 @app.exception_handler(Exception)
