@@ -156,8 +156,9 @@ class CampaignAnalytics(BaseModel):
     replies_received: int
     contacts_qualified: int
     contacts_opted_out: int
-    reply_rate: float
-    qualification_rate: float
+    reply_rate: float = 0.0
+    delivery_rate: float = 0.0
+    qualification_rate: float = 0.0
 
 
 # Voice Campaign Schemas

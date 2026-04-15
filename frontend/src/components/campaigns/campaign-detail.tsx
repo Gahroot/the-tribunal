@@ -27,6 +27,7 @@ import {
 import { campaignStatusColors } from "@/lib/status-colors";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { campaignsApi } from "@/lib/api/campaigns";
+import { useCampaignAnalytics } from "@/hooks/useCampaigns";
 import { GuaranteeProgress } from "@/components/campaigns/guarantee-progress";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 
@@ -47,6 +48,8 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
     },
     enabled: !!workspaceId,
   });
+
+  const { data: analytics } = useCampaignAnalytics(workspaceId ?? "", campaignId);
 
   // Start campaign mutation
   const startMutation = useMutation({
@@ -317,6 +320,9 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
                   <p className="text-xs text-muted-foreground">Booked</p>
                 </div>
               )}
+              <RateStat label="Delivery Rate" rate={analytics?.delivery_rate} />
+              <RateStat label="Reply Rate" rate={analytics?.reply_rate} />
+              <RateStat label="Qualification Rate" rate={analytics?.qualification_rate} />
             </div>
           </CardContent>
         </Card>
@@ -385,6 +391,24 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+function RateStat({ label, rate }: { label: string; rate: number | undefined }) {
+  const value = rate ?? 0;
+  const colorClass =
+    value >= 0.2
+      ? "text-success"
+      : value >= 0.05
+        ? "text-amber-500"
+        : "text-muted-foreground";
+  return (
+    <div>
+      <p className={`text-2xl font-bold ${colorClass}`}>
+        {(value * 100).toFixed(1)}%
+      </p>
+      <p className="text-xs text-muted-foreground">{label}</p>
     </div>
   );
 }
