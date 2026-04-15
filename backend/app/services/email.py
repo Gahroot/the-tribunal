@@ -1,26 +1,52 @@
-"""Email service for sending transactional emails."""
+"""Email service for sending transactional emails via Resend."""
 
 import asyncio
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
 from app.core.config import settings
 
-# Make sendgrid optional - app can run without it
 try:
-    from sendgrid import SendGridAPIClient
-    from sendgrid.helpers.mail import Mail
+    import resend
 
-    SENDGRID_AVAILABLE = True
+    RESEND_AVAILABLE = True
 except ImportError:
-    SENDGRID_AVAILABLE = False
+    RESEND_AVAILABLE = False
     if TYPE_CHECKING:
-        from sendgrid import SendGridAPIClient
-        from sendgrid.helpers.mail import Mail
+        import resend
 
 logger = structlog.get_logger()
+
+
+def _from_address() -> str:
+    name = settings.resend_from_name or "AI CRM"
+    email = settings.resend_from_email or "noreply@example.com"
+    return f"{name} <{email}>"
+
+
+def _send_sync(params: dict[str, Any]) -> dict[str, Any]:
+    response = resend.Emails.send(params)  # type: ignore[arg-type]
+    return dict(response) if response else {}
+
+
+async def _send(params: dict[str, Any]) -> dict[str, Any] | None:
+    """Send an email via Resend, returning the response dict or None on failure."""
+    if not RESEND_AVAILABLE:
+        logger.warning("resend_not_installed", hint="Install with: uv add resend")
+        return None
+
+    if not settings.resend_api_key:
+        logger.warning("resend_api_key_not_configured")
+        return None
+
+    resend.api_key = settings.resend_api_key
+    try:
+        return await asyncio.to_thread(_send_sync, params)
+    except Exception as exc:
+        logger.error("resend_send_failed", error=str(exc), to=params.get("to"))
+        return None
 
 
 async def send_invitation_email(
@@ -31,30 +57,9 @@ async def send_invitation_email(
     role: str,
     message: str | None = None,
 ) -> bool:
-    """Send a workspace invitation email.
-
-    Args:
-        to_email: Recipient email address
-        workspace_name: Name of the workspace
-        inviter_name: Name of the person who sent the invitation
-        invitation_url: URL to accept the invitation
-        role: Role being offered (admin, member)
-        message: Optional personal message from the inviter
-
-    Returns:
-        True if email was sent successfully, False otherwise
-    """
-    if not SENDGRID_AVAILABLE:
-        logger.warning("sendgrid_not_installed", hint="Install with: uv add sendgrid")
-        return False
-
-    if not settings.sendgrid_api_key:
-        logger.warning("sendgrid_api_key_not_configured")
-        return False
-
+    """Send a workspace invitation email."""
     subject = f"You've been invited to join {workspace_name}"
 
-    # Build email content
     personal_message = ""
     if message:
         personal_message = f"""
@@ -65,7 +70,6 @@ async def send_invitation_email(
 
     role_display = "an administrator" if role == "admin" else "a team member"
 
-    # Build HTML email content
     body_style = (
         "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; "
         "line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;"
@@ -107,40 +111,24 @@ async def send_invitation_email(
 </body>
 </html>"""
 
-    mail = Mail(
-        from_email=settings.sendgrid_from_email or "noreply@example.com",
-        to_emails=to_email,
-        subject=subject,
-        html_content=html_content,
-    )
+    params: dict[str, Any] = {
+        "from": _from_address(),
+        "to": [to_email],
+        "subject": subject,
+        "html": html_content,
+    }
 
-    try:
-        sg = SendGridAPIClient(settings.sendgrid_api_key)
-        response = await asyncio.to_thread(sg.send, mail)
-
-        if response.status_code in (200, 201, 202):
-            logger.info(
-                "invitation_email_sent",
-                to_email=to_email,
-                workspace=workspace_name,
-                status_code=response.status_code,
-            )
-            return True
-        else:
-            logger.error(
-                "invitation_email_failed",
-                to_email=to_email,
-                status_code=response.status_code,
-            )
-            return False
-
-    except Exception as e:
-        logger.error(
-            "invitation_email_error",
-            to_email=to_email,
-            error=str(e),
-        )
+    response = await _send(params)
+    if response is None:
         return False
+
+    logger.info(
+        "invitation_email_sent",
+        to_email=to_email,
+        workspace=workspace_name,
+        email_id=response.get("id"),
+    )
+    return True
 
 
 async def send_appointment_booked_notification(
@@ -151,33 +139,11 @@ async def send_appointment_booked_notification(
     appointment_time: datetime,
     calcom_booking_url: str | None = None,
 ) -> bool:
-    """Send an email notification to the realtor when an appointment is booked.
+    """Send an email notification to the realtor when an appointment is booked."""
+    subject = f"New Appointment Booked — {contact_name}"
 
-    Args:
-        to_email: Realtor's email address
-        realtor_name: Realtor's display name
-        contact_name: Lead's full name
-        contact_phone: Lead's phone number
-        appointment_time: UTC datetime of the appointment
-        calcom_booking_url: Optional Cal.com booking/manage URL
-
-    Returns:
-        True if email was sent successfully, False otherwise
-    """
-    if not SENDGRID_AVAILABLE:
-        logger.warning("sendgrid_not_installed", hint="Install with: uv add sendgrid")
-        return False
-
-    if not settings.sendgrid_api_key:
-        logger.warning("sendgrid_api_key_not_configured")
-        return False
-
-    subject = f"🎉 New Appointment Booked — {contact_name}"
-
-    # Format appointment time as "Monday, January 6 at 2:00 PM ET"
     formatted_time = appointment_time.strftime("%A, %B %-d at %-I:%M %p UTC")
 
-    # Optional Cal.com button
     calcom_button = ""
     if calcom_booking_url:
         button_style = (
@@ -206,7 +172,7 @@ async def send_appointment_booked_notification(
 </head>
 <body style="{body_style}">
     <div style="text-align: center; margin-bottom: 30px;">
-        <h1 style="color: #1a1a1a; margin-bottom: 5px;">🎉 New Appointment Booked!</h1>
+        <h1 style="color: #1a1a1a; margin-bottom: 5px;">New Appointment Booked!</h1>
     </div>
     <p>Hi {realtor_name},</p>
     <p>
@@ -228,37 +194,21 @@ async def send_appointment_booked_notification(
 </body>
 </html>"""
 
-    mail = Mail(
-        from_email=settings.sendgrid_from_email or "noreply@example.com",
-        to_emails=to_email,
-        subject=subject,
-        html_content=html_content,
-    )
+    params: dict[str, Any] = {
+        "from": _from_address(),
+        "to": [to_email],
+        "subject": subject,
+        "html": html_content,
+    }
 
-    try:
-        sg = SendGridAPIClient(settings.sendgrid_api_key)
-        response = await asyncio.to_thread(sg.send, mail)
-
-        if response.status_code in (200, 201, 202):
-            logger.info(
-                "appointment_booked_notification_sent",
-                to_email=to_email,
-                contact_name=contact_name,
-                status_code=response.status_code,
-            )
-            return True
-        else:
-            logger.error(
-                "appointment_booked_notification_failed",
-                to_email=to_email,
-                status_code=response.status_code,
-            )
-            return False
-
-    except Exception as e:
-        logger.error(
-            "appointment_booked_notification_error",
-            to_email=to_email,
-            error=str(e),
-        )
+    response = await _send(params)
+    if response is None:
         return False
+
+    logger.info(
+        "appointment_booked_notification_sent",
+        to_email=to_email,
+        contact_name=contact_name,
+        email_id=response.get("id"),
+    )
+    return True

@@ -36,8 +36,8 @@ KNOWN_INTEGRATIONS = [
         "description": "Voice & SMS provider",
     },
     {
-        "integration_type": "sendgrid",
-        "display_name": "SendGrid",
+        "integration_type": "resend",
+        "display_name": "Resend",
         "description": "Email delivery",
     },
     {

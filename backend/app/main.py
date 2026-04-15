@@ -14,6 +14,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.api.v1.router import api_router
 from app.api.webhooks.calcom import router as calcom_webhook_router
+from app.api.webhooks.resend import router as resend_webhook_router
 from app.api.webhooks.telnyx import router as telnyx_webhook_router
 from app.core.config import settings
 from app.db.redis import close_redis
@@ -178,6 +179,7 @@ app.include_router(api_router, prefix="/api/v1")
 # Include webhook routers
 app.include_router(telnyx_webhook_router, prefix="/webhooks/telnyx", tags=["webhooks"])
 app.include_router(calcom_webhook_router, prefix="/webhooks/calcom", tags=["webhooks"])
+app.include_router(resend_webhook_router, prefix="/webhooks/resend", tags=["webhooks"])
 
 # Include WebSocket routers
 app.include_router(voice_bridge_router, tags=["voice"])

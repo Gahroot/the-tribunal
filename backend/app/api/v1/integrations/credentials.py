@@ -327,20 +327,20 @@ async def _test_openai(client: httpx.AsyncClient, api_key: str) -> IntegrationTe
     )
 
 
-async def _test_sendgrid(client: httpx.AsyncClient, api_key: str) -> IntegrationTestResult:
-    """Test SendGrid API connection."""
+async def _test_resend(client: httpx.AsyncClient, api_key: str) -> IntegrationTestResult:
+    """Test Resend API connection."""
     response = await client.get(
-        "https://api.sendgrid.com/v3/user/profile",
+        "https://api.resend.com/domains",
         headers={"Authorization": f"Bearer {api_key}"},
     )
     if response.status_code == 200:
         return IntegrationTestResult(
             success=True,
-            message="Successfully connected to SendGrid",
+            message="Successfully connected to Resend",
         )
     return IntegrationTestResult(
         success=False,
-        message=f"SendGrid API returned status {response.status_code}",
+        message=f"Resend API returned status {response.status_code}",
     )
 
 
@@ -349,7 +349,7 @@ _INTEGRATION_TESTERS = {
     "calcom": _test_calcom,
     "telnyx": _test_telnyx,
     "openai": _test_openai,
-    "sendgrid": _test_sendgrid,
+    "resend": _test_resend,
 }
 
 
