@@ -58,6 +58,7 @@ import { conversationsApi } from "@/lib/api/conversations";
 import { phoneNumbersApi } from "@/lib/api/phone-numbers";
 import { EditContactDialog } from "@/components/contacts/edit-contact-dialog";
 import { ScheduleAppointmentDialog } from "@/components/contacts/schedule-appointment-dialog";
+import { EngagementSummary } from "@/components/contacts/contact-sidebar/engagement-summary";
 import { TagBadge } from "@/components/tags/tag-badge";
 import { contactStatusDotColors } from "@/lib/status-colors";
 import type { Contact } from "@/types";
@@ -697,6 +698,13 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
           {/* Important Dates */}
           <Separator />
           <ImportantDatesSection contact={selectedContact} workspaceId={workspaceId} />
+
+          {/* Engagement Summary */}
+          <Separator />
+          <EngagementSummary
+            workspaceId={workspaceId ?? ""}
+            contactId={selectedContact.id}
+          />
 
           {/* Activity Stats */}
           <Separator />

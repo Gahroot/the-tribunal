@@ -131,6 +131,18 @@ export interface ContactIdsResponse {
   total: number;
 }
 
+export interface ContactEngagementSummary {
+  total_messages_sent: number;
+  total_messages_received: number;
+  total_calls: number;
+  total_calls_answered: number;
+  total_appointments: number;
+  events_last_7d: number;
+  events_last_30d: number;
+  last_activity_at: string | null;
+  channels_used: string[];
+}
+
 export interface ContactIdsParams {
   search?: string;
   status?: ContactStatus;
@@ -184,6 +196,15 @@ export const contactsApi = {
     return apiGet<TimelineItem[]>(
       `/api/v1/workspaces/${workspaceId}/contacts/${contactId}/timeline`,
       { params: { limit } }
+    );
+  },
+
+  getEngagementSummary: async (
+    workspaceId: string,
+    contactId: number
+  ): Promise<ContactEngagementSummary> => {
+    return apiGet<ContactEngagementSummary>(
+      `/api/v1/workspaces/${workspaceId}/contacts/${contactId}/engagement-summary`
     );
   },
 

@@ -64,6 +64,8 @@ export const queryKeys = {
       ["contacts", workspaceId, "detail", contactId, "conversations"] as const,
     tags: (workspaceId: string, contactId: string) =>
       ["contacts", workspaceId, "detail", contactId, "tags"] as const,
+    engagementSummary: (workspaceId: string, contactId: string) =>
+      ["contacts", workspaceId, "detail", contactId, "engagement-summary"] as const,
   },
   conversations: {
     ...resource("conversations"),

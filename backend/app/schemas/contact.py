@@ -223,6 +223,20 @@ class TimelineItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ContactEngagementSummary(BaseModel):
+    """Aggregated engagement stats for a single contact."""
+
+    total_messages_sent: int
+    total_messages_received: int
+    total_calls: int
+    total_calls_answered: int
+    total_appointments: int
+    events_last_7d: int
+    events_last_30d: int
+    last_activity_at: datetime | None
+    channels_used: list[str]
+
+
 class ImportResult(BaseModel):
     """Result of a CSV import operation."""
 

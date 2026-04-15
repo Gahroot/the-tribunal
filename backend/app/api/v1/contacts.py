@@ -21,6 +21,7 @@ from app.schemas.contact import (
     BulkStatusUpdateRequest,
     BulkStatusUpdateResponse,
     ContactCreate,
+    ContactEngagementSummary,
     ContactIdsResponse,
     ContactListResponse,
     ContactResponse,
@@ -35,6 +36,7 @@ from app.schemas.contact import (
 )
 from app.services.contacts import ContactImportService, ContactService
 from app.services.contacts.contact_import import CONTACT_FIELDS
+from app.services.contacts.engagement_summary import get_engagement_summary
 from app.services.contacts.exceptions import (
     ContactNotFoundError,
 )
@@ -372,6 +374,33 @@ async def get_contact_timeline(
 
     # Convert dicts to TimelineItem models
     return [TimelineItem(**item) for item in timeline_items_data]
+
+
+@router.get(
+    "/{contact_id}/engagement-summary",
+    response_model=ContactEngagementSummary,
+)
+async def get_contact_engagement_summary(
+    workspace_id: uuid.UUID,
+    contact_id: int,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> ContactEngagementSummary:
+    """Return aggregated engagement stats for a contact."""
+    service = ContactService(db)
+    try:
+        await service.get_contact(contact_id, workspace.id)
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+        ) from e
+
+    return await get_engagement_summary(
+        db=db,
+        contact_id=contact_id,
+        workspace_id=workspace.id,
+    )
 
 
 # ============================================================================
