@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000"]
     api_base_url: str = ""  # Base URL for webhooks (e.g., https://api.example.com)
     frontend_url: str = "http://localhost:3000"  # Frontend URL for links in emails
+    public_base_url: str = "http://localhost:8000"  # Public base URL for short link redirects
 
     # Workers
     campaign_poll_interval: int = 5

@@ -320,6 +320,12 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
                   <p className="text-xs text-muted-foreground">Booked</p>
                 </div>
               )}
+              <div>
+                <p className="text-2xl font-bold">
+                  {campaign.links_clicked ?? 0}
+                </p>
+                <p className="text-xs text-muted-foreground">Links Clicked</p>
+              </div>
               <RateStat label="Delivery Rate" rate={analytics?.delivery_rate} />
               <RateStat label="Reply Rate" rate={analytics?.reply_rate} />
               <RateStat label="Qualification Rate" rate={analytics?.qualification_rate} />

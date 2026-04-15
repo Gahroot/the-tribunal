@@ -183,6 +183,7 @@ class Campaign(Base):
     contacts_opted_out: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     appointments_booked: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     appointments_completed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    links_clicked: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # Guarantee tracking
     guarantee_target: Mapped[int | None] = mapped_column(Integer, nullable=True)

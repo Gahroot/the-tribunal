@@ -10,8 +10,10 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
+from app.services.messaging.link_shortener import shorten_urls_in_text
 from app.utils.phone import normalize_phone_e164, normalize_phone_safe
 
 logger = structlog.get_logger()
@@ -110,7 +112,7 @@ class TelnyxSMSService:
             workspace_id=workspace_id,
         )
 
-        # Create message record
+        # Create message record (flush first so short links can reference its id)
         message = Message(
             conversation_id=conversation.id,
             direction="outbound",
@@ -123,6 +125,17 @@ class TelnyxSMSService:
         )
         db.add(message)
         await db.flush()
+
+        body = await shorten_urls_in_text(
+            body,
+            workspace_id=workspace_id,
+            contact_id=conversation.contact_id,
+            campaign_id=campaign_id,
+            message_id=message.id,
+            db=db,
+            base_url=settings.public_base_url,
+        )
+        message.body = body
 
         # Send via Telnyx
         try:

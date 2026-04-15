@@ -24,6 +24,7 @@ from app.models.invitation import WorkspaceInvitation
 from app.models.knowledge_document import KnowledgeDocument
 from app.models.lead_magnet import LeadMagnet
 from app.models.lead_source import LeadSource
+from app.models.link_click import LinkClick
 from app.models.message_template import MessageTemplate
 from app.models.message_test import (
     MessageTest,
@@ -44,6 +45,7 @@ from app.models.prompt_version import PromptVersion
 from app.models.prompt_version_stats import PromptVersionStats
 from app.models.refresh_token import RefreshToken
 from app.models.segment import Segment
+from app.models.short_link import ShortLink
 from app.models.tag import ContactTag, Tag
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceIntegration, WorkspaceMembership
@@ -94,6 +96,7 @@ __all__ = [
     "Tag",
     "ContactTag",
     "Segment",
+    "ShortLink",
     "DripCampaign",
     "DripEnrollment",
     "DeviceToken",
@@ -102,6 +105,7 @@ __all__ = [
     "HumanNudge",
     "HumanProfile",
     "KnowledgeDocument",
+    "LinkClick",
     "PendingAction",
     "AuthRateLimit",
     "RefreshToken",

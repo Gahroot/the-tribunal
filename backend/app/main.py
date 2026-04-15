@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from app.api.redirects import router as redirects_router
 from app.api.v1.router import api_router
 from app.api.webhooks.calcom import router as calcom_webhook_router
 from app.api.webhooks.resend import router as resend_webhook_router
@@ -175,6 +176,9 @@ app.add_middleware(
 
 # Include API router
 app.include_router(api_router, prefix="/api/v1")
+
+# Public short-link redirects (no /api/v1 prefix — these are user-facing URLs)
+app.include_router(redirects_router)
 
 # Include webhook routers
 app.include_router(telnyx_webhook_router, prefix="/webhooks/telnyx", tags=["webhooks"])
