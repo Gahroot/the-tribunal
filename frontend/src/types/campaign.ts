@@ -42,6 +42,7 @@ export interface Campaign {
   contacts_opted_out: number;
   appointments_booked: number;
   appointments_completed: number;
+  links_clicked?: number;
   guarantee_target?: number;
   guarantee_window_days?: number;
   guarantee_status?: "pending" | "met" | "missed" | null;
