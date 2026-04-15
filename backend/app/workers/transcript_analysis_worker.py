@@ -1,9 +1,11 @@
 """Transcript analysis worker.
 
-Polls for voice call messages that have a transcript but no sentiment
-analysis yet, runs them through the transcript analysis service, and
-merges the results into the linked CallOutcome.signals dict.
+Polls voice call messages with a transcript but no sentiment analysis,
+runs them through the transcript analysis service, and merges results
+into the linked CallOutcome.signals dict.
 """
+
+import asyncio
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -36,29 +38,36 @@ class TranscriptAnalysisWorker(BaseWorker):
                 )
                 .limit(BATCH_SIZE)
             )
-            messages = result.scalars().all()
+            items: list[tuple[Message, CallOutcome, str]] = [
+                (m, m.call_outcome, m.transcript)
+                for m in result.scalars().all()
+                if m.call_outcome is not None and m.transcript
+            ]
 
-            if not messages:
+            if not items:
                 return
 
-            self.logger.info("transcript_analysis_batch", count=len(messages))
+            self.logger.info("transcript_analysis_batch", count=len(items))
 
-            for msg in messages:
-                outcome = msg.call_outcome
-                if outcome is None or not msg.transcript:
-                    continue
+            analyses = await asyncio.gather(
+                *(analyze_transcript(transcript) for _, _, transcript in items),
+                return_exceptions=True,
+            )
 
+            for (msg, outcome, _), analysis in zip(items, analyses, strict=True):
                 log = self.logger.bind(message_id=str(msg.id))
                 current: dict[str, object] = dict(outcome.signals or {})
-                try:
-                    analysis = await analyze_transcript(msg.transcript)
+                if isinstance(analysis, BaseException):
+                    log.exception(
+                        "transcript_analysis_failed", exc_info=analysis
+                    )
+                    current["analyzed"] = "error"
+                else:
                     current.update(analysis)
                     current["analyzed"] = True
-                    log.info("transcript_analyzed", sentiment=analysis.get("sentiment"))
-                except Exception:
-                    log.exception("transcript_analysis_failed")
-                    current["analyzed"] = "error"
-
+                    log.info(
+                        "transcript_analyzed", sentiment=analysis.get("sentiment")
+                    )
                 outcome.signals = current
 
             await db.commit()

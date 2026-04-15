@@ -7,7 +7,7 @@ import uuid
 from urllib.parse import urlparse
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.short_link import ShortLink
@@ -21,19 +21,37 @@ _MAX_CODE_ATTEMPTS = 8
 
 
 def _generate_short_code() -> str:
-    """Generate a random 7-char base62 short code."""
     return "".join(secrets.choice(_CODE_ALPHABET) for _ in range(_CODE_LENGTH))
 
 
-async def _allocate_short_code(db: AsyncSession) -> str:
-    """Return a short code that is not already taken in the DB."""
+async def _insert_short_link(
+    db: AsyncSession,
+    *,
+    workspace_id: uuid.UUID,
+    target_url: str,
+    contact_id: int | None,
+    campaign_id: uuid.UUID | None,
+    message_id: uuid.UUID | None,
+) -> str:
+    # 7-char base62 gives ~3.5T codes — collisions are astronomically rare,
+    # so trust the unique index and retry only on IntegrityError.
     for _ in range(_MAX_CODE_ATTEMPTS):
         code = _generate_short_code()
-        existing = await db.execute(
-            select(ShortLink.id).where(ShortLink.short_code == code)
+        short_link = ShortLink(
+            workspace_id=workspace_id,
+            short_code=code,
+            target_url=target_url,
+            contact_id=contact_id,
+            campaign_id=campaign_id,
+            message_id=message_id,
         )
-        if existing.scalar_one_or_none() is None:
-            return code
+        db.add(short_link)
+        try:
+            await db.flush()
+        except IntegrityError:
+            await db.rollback()
+            continue
+        return code
     raise RuntimeError("Unable to allocate unique short_code after retries")
 
 
@@ -74,16 +92,14 @@ async def shorten_urls_in_text(
             rewritten.append(url)
             continue
 
-        code = await _allocate_short_code(db)
-        short_link = ShortLink(
+        code = await _insert_short_link(
+            db,
             workspace_id=workspace_id,
-            short_code=code,
             target_url=url,
             contact_id=contact_id,
             campaign_id=campaign_id,
             message_id=message_id,
         )
-        db.add(short_link)
         rewritten.append(f"{base_url_clean}/r/{code}")
         logger.info(
             "short_link_created",

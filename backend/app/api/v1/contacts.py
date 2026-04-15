@@ -390,7 +390,7 @@ async def get_contact_engagement_summary(
     """Return aggregated engagement stats for a contact."""
     service = ContactService(db)
     try:
-        await service.get_contact(contact_id, workspace.id)
+        contact = await service.get_contact(contact_id, workspace.id)
     except NotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
@@ -398,7 +398,7 @@ async def get_contact_engagement_summary(
 
     return await get_engagement_summary(
         db=db,
-        contact_id=contact_id,
+        contact=contact,
         workspace_id=workspace.id,
     )
 

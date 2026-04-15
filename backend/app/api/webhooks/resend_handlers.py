@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import uuid
 from datetime import UTC, datetime
 from typing import Any
 
@@ -86,14 +85,6 @@ async def handle_event(
 
     message = await _find_message(db, data)
     workspace_id = message.conversation.workspace_id if message else None
-
-    if workspace_id is None:
-        workspace_hint = data.get("workspace_id") or event.get("workspace_id")
-        if isinstance(workspace_hint, str):
-            try:
-                workspace_id = uuid.UUID(workspace_hint)
-            except ValueError:
-                workspace_id = None
 
     if workspace_id is None:
         log.warning(

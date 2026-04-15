@@ -243,18 +243,16 @@ class TelnyxSMSService:
         # - False positives: "I think you should quit", "Don't quit on me"
         # This runs in parallel during the debounce delay, adding no latency.
 
-        await db.commit()
-        await db.refresh(message)
-
-        # Update contact engagement signal for inbound SMS.
         if conversation.contact_id:
             try:
                 from app.services.contacts.engagement_score import record_engagement
 
-                await record_engagement(db, conversation.contact_id, "sms_in")
-                await db.commit()
+                await record_engagement(db, conversation.contact_id)
             except Exception as e:
                 log.warning("engagement_update_failed", error=str(e))
+
+        await db.commit()
+        await db.refresh(message)
 
         log.info("inbound_sms_processed", message_id=str(message.id))
         return message

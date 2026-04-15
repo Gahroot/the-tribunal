@@ -350,15 +350,9 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:  # noqa
             duration = message.duration_seconds or 0
             if contact_id and duration > 0:
                 try:
-                    from app.services.contacts.engagement_score import (
-                        EngagementEvent,
-                        record_engagement,
-                    )
+                    from app.services.contacts.engagement_score import record_engagement
 
-                    event: EngagementEvent = (
-                        "call_completed" if duration >= 30 else "call_answered"
-                    )
-                    await record_engagement(db, contact_id, event)
+                    await record_engagement(db, contact_id)
                     await db.commit()
                 except Exception as e:
                     log.warning("engagement_update_failed", error=str(e))
