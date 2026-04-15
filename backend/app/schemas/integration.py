@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-IntegrationType = Literal["calcom", "telnyx", "openai", "sendgrid"]
+IntegrationType = Literal["calcom", "telnyx", "openai", "resend"]
 
 
 class IntegrationCredentialsBase(BaseModel):
@@ -34,8 +34,8 @@ class OpenAICredentials(IntegrationCredentialsBase):
     organization_id: str | None = Field(None, description="OpenAI organization ID")
 
 
-class SendGridCredentials(IntegrationCredentialsBase):
-    """SendGrid specific credentials."""
+class ResendCredentials(IntegrationCredentialsBase):
+    """Resend specific credentials."""
 
     from_email: str | None = Field(None, description="Default sender email address")
     from_name: str | None = Field(None, description="Default sender name")

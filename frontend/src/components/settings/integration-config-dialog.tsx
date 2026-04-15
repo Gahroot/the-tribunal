@@ -35,7 +35,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 
-type IntegrationType = "calcom" | "telnyx" | "openai" | "sendgrid" | "lob";
+type IntegrationType = "calcom" | "telnyx" | "openai" | "resend" | "lob";
 
 interface IntegrationConfig {
   name: string;
@@ -117,15 +117,15 @@ const INTEGRATION_CONFIGS: Record<IntegrationType, IntegrationConfig> = {
       },
     ],
   },
-  sendgrid: {
-    name: "SendGrid",
-    description: "Connect SendGrid for email delivery",
+  resend: {
+    name: "Resend",
+    description: "Connect Resend for email delivery and tracking",
     fields: [
       {
         key: "api_key",
         label: "API Key",
-        placeholder: "SG...",
-        description: "Find this in SendGrid Settings > API Keys",
+        placeholder: "re_...",
+        description: "Find this in Resend Dashboard > API Keys",
         required: true,
         type: "password",
       },

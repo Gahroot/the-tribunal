@@ -52,10 +52,11 @@ class Settings(BaseSettings):
     # xAI (Grok)
     xai_api_key: str = ""
 
-    # SendGrid
-    sendgrid_api_key: str = ""
-    sendgrid_from_email: str = "noreply@example.com"
-    sendgrid_from_name: str = "AI CRM"
+    # Resend
+    resend_api_key: str = ""
+    resend_from_email: str = "noreply@example.com"
+    resend_from_name: str = "AI CRM"
+    resend_webhook_secret: str = ""
 
     # Expo Push Notifications
     expo_access_token: str = ""

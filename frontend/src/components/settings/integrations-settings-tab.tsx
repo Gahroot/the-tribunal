@@ -23,7 +23,7 @@ import {
   type IntegrationWithMaskedCredentials,
 } from "@/lib/api/integrations";
 
-type IntegrationType = "calcom" | "telnyx" | "openai" | "sendgrid" | "lob";
+type IntegrationType = "calcom" | "telnyx" | "openai" | "resend" | "lob";
 
 function getIntegrationIcon(type: string) {
   switch (type) {
@@ -31,7 +31,7 @@ function getIntegrationIcon(type: string) {
       return Calendar;
     case "telnyx":
       return Phone;
-    case "sendgrid":
+    case "resend":
       return Mail;
     case "lob":
       return SendIcon;
@@ -46,8 +46,8 @@ function getIntegrationColor(type: string) {
       return "text-primary bg-primary/10";
     case "telnyx":
       return "text-destructive bg-destructive/10";
-    case "sendgrid":
-      return "text-info bg-info/10";
+    case "resend":
+      return "text-black bg-neutral-100";
     case "lob":
       return "text-amber-600 bg-amber-100";
     default:

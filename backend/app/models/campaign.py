@@ -197,6 +197,14 @@ class Campaign(Base):
     calls_voicemail: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     sms_fallbacks_sent: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
+    # Email campaign statistics
+    emails_sent: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    emails_delivered: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    emails_bounced: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    emails_opened: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    emails_clicked: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    emails_unsubscribed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
     # Error tracking
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

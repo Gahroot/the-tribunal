@@ -195,8 +195,15 @@ class Message(Base):
 
     # Message details
     direction: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
-    channel: Mapped[str] = mapped_column(String(20), nullable=False)  # sms, voice, voicemail
+    channel: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # sms, voice, voicemail, email
     body: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Email-specific fields
+    subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    recipient_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    sender_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
 
     # Delivery tracking
     status: Mapped[str] = mapped_column(
