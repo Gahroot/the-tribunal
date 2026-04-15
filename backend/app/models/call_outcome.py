@@ -77,6 +77,15 @@ class CallOutcome(Base):
 
     # Flexible outcome signals (JSON)
     # Example: {"appointment_booked": true, "lead_qualified": true, "duration_seconds": 180}
+    # Transcript analysis keys (populated by transcript_analysis_worker):
+    # - "sentiment": "positive" | "neutral" | "negative"
+    # - "sentiment_score": float between -1.0 and 1.0
+    # - "intents": list[str]
+    # - "topics": list[str]
+    # - "summary": str (1-2 sentence call summary)
+    # - "objections": list[str]
+    # - "next_steps": list[str]
+    # - "analyzed": true when analysis succeeded, "error" when it failed
     signals: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict, nullable=False)
 
     # Classification metadata

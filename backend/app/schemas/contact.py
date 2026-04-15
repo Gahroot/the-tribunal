@@ -217,6 +217,7 @@ class TimelineItem(BaseModel):
     transcript: str | None = None
     status: str | None = None
     booking_outcome: str | None = None
+    signals: dict[str, Any] | None = None
     original_id: uuid.UUID
     original_type: str  # "sms_message", "call_record", "appointment", "note"
 

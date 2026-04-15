@@ -95,10 +95,18 @@ const callStatusConfig: Record<
   },
 };
 
+const sentimentStyles: Record<"positive" | "neutral" | "negative", string> = {
+  positive: "bg-success/10 text-success border-success/20",
+  neutral: "bg-muted text-muted-foreground border-border",
+  negative: "bg-destructive/10 text-destructive border-destructive/20",
+};
+
 export function MessageItem({ item, contactName }: MessageItemProps) {
   const isOutbound = item.direction === "outbound";
   const isCall = item.type === "call";
   const isAppointment = item.type === "appointment";
+  const sentiment = item.signals?.sentiment;
+  const callSummary = item.signals?.summary;
 
   // Format timestamp
   const timestamp = format(new Date(item.timestamp), "h:mm a");
@@ -220,7 +228,24 @@ export function MessageItem({ item, contactName }: MessageItemProps) {
                         <span className="ml-0.5">{callStatus.label}</span>
                       </Badge>
                     )}
+                    {sentiment && (
+                      <Badge
+                        variant="outline"
+                        title={callSummary || undefined}
+                        className={cn(
+                          "text-[10px] px-1.5 py-0 h-4 capitalize",
+                          sentimentStyles[sentiment]
+                        )}
+                      >
+                        {sentiment}
+                      </Badge>
+                    )}
                   </div>
+                  {callSummary && (
+                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                      {callSummary}
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     {item.status === "completed" && item.duration_seconds
                       ? `Duration: ${formatDuration(item.duration_seconds)}`

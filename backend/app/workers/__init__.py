@@ -22,6 +22,7 @@ from app.workers.prompt_improvement_worker import _registry as prompt_improvemen
 from app.workers.prompt_stats_worker import _registry as prompt_stats_registry
 from app.workers.reminder_worker import _registry as reminder_registry
 from app.workers.reputation_worker import _registry as reputation_registry
+from app.workers.transcript_analysis_worker import _registry as transcript_analysis_registry
 from app.workers.voice_campaign_worker import _registry as voice_campaign_registry
 
 logger = structlog.get_logger()
@@ -44,6 +45,7 @@ ALL_REGISTRIES: list[WorkerRegistry[BaseWorker]] = [
     nudge_registry,
     approval_registry,
     drip_campaign_registry,
+    transcript_analysis_registry,
 ]
 
 

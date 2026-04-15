@@ -423,6 +423,7 @@ async def get_contact_timeline(
         msg_result = await db.execute(
             select(Message)
             .where(Message.conversation_id.in_(conversation_ids))
+            .options(selectinload(Message.call_outcome))
             .order_by(Message.created_at.desc())
         )
         all_messages = msg_result.scalars().all()
@@ -442,6 +443,10 @@ async def get_contact_timeline(
                 # Determine type based on channel
                 item_type = "call" if msg.channel == "voice" else msg.channel
 
+                signals: dict[str, Any] | None = None
+                if msg.call_outcome is not None and msg.call_outcome.signals:
+                    signals = dict(msg.call_outcome.signals)
+
                 timeline_items.append({
                     "id": msg.id,
                     "type": item_type,
@@ -454,6 +459,7 @@ async def get_contact_timeline(
                     "transcript": msg.transcript,
                     "status": msg.status,
                     "booking_outcome": msg.booking_outcome,
+                    "signals": signals,
                     "original_id": msg.id,
                     "original_type": f"{msg.channel}_message",
                 })
