@@ -1,9 +1,21 @@
 "use client";
 
-import { format } from "date-fns";
-import { Clock, AlertTriangle } from "lucide-react";
+import { format, formatDistanceToNow } from "date-fns";
+import { Clock, AlertTriangle, Flame } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { Contact, TimelineItem } from "@/types";
+
+function engagementTier(score: number): "hot" | "warm" | "cold" {
+  if (score >= 70) return "hot";
+  if (score >= 30) return "warm";
+  return "cold";
+}
+
+const TIER_CLASSES: Record<"hot" | "warm" | "cold", string> = {
+  hot: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30",
+  warm: "bg-amber-500/15 text-amber-600 border-amber-500/30",
+  cold: "bg-muted text-muted-foreground border-border",
+};
 
 type Sentiment = "positive" | "neutral" | "negative";
 
@@ -29,6 +41,8 @@ export function ContactTimeline({ contact, timeline }: ContactTimelineProps) {
   const messageCount = timeline.filter((t) => t.type === "sms").length;
   const bookingCount = timeline.filter((t) => t.booking_outcome === "success").length;
   const lastActivity = timeline[timeline.length - 1];
+  const engagementScore = contact.engagement_score ?? 0;
+  const tier = engagementTier(engagementScore);
 
   const recentSentimentCalls = timeline
     .filter((t) => t.type === "call" && t.signals?.sentiment)
@@ -48,7 +62,22 @@ export function ContactTimeline({ contact, timeline }: ContactTimelineProps) {
 
   return (
     <div className="space-y-2">
-      <h3 className="text-sm font-medium text-muted-foreground px-2">Activity</h3>
+      <div className="flex items-center justify-between px-2">
+        <h3 className="text-sm font-medium text-muted-foreground">Activity</h3>
+        <Badge variant="outline" className={`${TIER_CLASSES[tier]} text-xs gap-1`}>
+          <Flame className="h-3 w-3" />
+          Engagement {engagementScore}
+        </Badge>
+      </div>
+      {contact.last_engaged_at && (
+        <div className="flex items-center gap-2 px-2 text-xs text-muted-foreground">
+          <Clock className="h-3 w-3" />
+          <span>
+            Last engaged{" "}
+            {formatDistanceToNow(new Date(contact.last_engaged_at), { addSuffix: true })}
+          </span>
+        </div>
+      )}
       <div className="grid grid-cols-3 gap-3 px-2">
         <div className="bg-muted/50 rounded-lg p-3 text-center">
           <p className="text-2xl font-semibold">{callCount}</p>

@@ -90,6 +90,8 @@ export interface Contact {
   enrichment_status?: EnrichmentStatus;
   enriched_at?: string;
   lead_score?: number;
+  last_engaged_at?: string | null;
+  engagement_score?: number;
   noshow_count?: number;
   last_appointment_status?: string | null;
   address_line1?: string;

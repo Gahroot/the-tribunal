@@ -246,6 +246,16 @@ class TelnyxSMSService:
         await db.commit()
         await db.refresh(message)
 
+        # Update contact engagement signal for inbound SMS.
+        if conversation.contact_id:
+            try:
+                from app.services.contacts.engagement_score import record_engagement
+
+                await record_engagement(db, conversation.contact_id, "sms_in")
+                await db.commit()
+            except Exception as e:
+                log.warning("engagement_update_failed", error=str(e))
+
         log.info("inbound_sms_processed", message_id=str(message.id))
         return message
 

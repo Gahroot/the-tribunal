@@ -102,6 +102,14 @@ class Contact(Base):
         UUID(as_uuid=True), nullable=True
     )
 
+    # Engagement tracking
+    last_engaged_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    engagement_score: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
