@@ -5,6 +5,20 @@ import { Clock, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { Contact, TimelineItem } from "@/types";
 
+type Sentiment = "positive" | "neutral" | "negative";
+
+const SENTIMENT_LABELS: Record<Sentiment, string> = {
+  positive: "Positive",
+  neutral: "Neutral",
+  negative: "Negative",
+};
+
+const SENTIMENT_CLASSES: Record<Sentiment, string> = {
+  positive: "text-success",
+  neutral: "text-muted-foreground",
+  negative: "text-destructive",
+};
+
 interface ContactTimelineProps {
   contact: Contact;
   timeline: TimelineItem[];
@@ -15,6 +29,22 @@ export function ContactTimeline({ contact, timeline }: ContactTimelineProps) {
   const messageCount = timeline.filter((t) => t.type === "sms").length;
   const bookingCount = timeline.filter((t) => t.booking_outcome === "success").length;
   const lastActivity = timeline[timeline.length - 1];
+
+  const recentSentimentCalls = timeline
+    .filter((t) => t.type === "call" && t.signals?.sentiment)
+    .slice(-4);
+  const sentimentSummary = (() => {
+    if (recentSentimentCalls.length === 0) return null;
+    const counts: Record<Sentiment, number> = { positive: 0, neutral: 0, negative: 0 };
+    for (const call of recentSentimentCalls) {
+      const s = call.signals?.sentiment as Sentiment | undefined;
+      if (s) counts[s] += 1;
+    }
+    const [dominant, count] = (
+      Object.entries(counts) as Array<[Sentiment, number]>
+    ).sort((a, b) => b[1] - a[1])[0];
+    return { sentiment: dominant, count, total: recentSentimentCalls.length };
+  })();
 
   return (
     <div className="space-y-2">
@@ -38,6 +68,15 @@ export function ContactTimeline({ contact, timeline }: ContactTimelineProps) {
           <Clock className="h-3 w-3" />
           <span>
             Last activity: {format(new Date(lastActivity.timestamp), "MMM d, h:mm a")}
+          </span>
+        </div>
+      )}
+      {sentimentSummary && (
+        <div className="flex items-center gap-2 px-2 text-xs">
+          <span className="text-muted-foreground">Recent sentiment:</span>
+          <span className={SENTIMENT_CLASSES[sentimentSummary.sentiment]}>
+            {SENTIMENT_LABELS[sentimentSummary.sentiment]} ({sentimentSummary.count}/
+            {sentimentSummary.total} calls)
           </span>
         </div>
       )}

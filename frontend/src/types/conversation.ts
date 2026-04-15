@@ -74,6 +74,19 @@ export interface FollowupSendResponse {
   message_body: string;
 }
 
+// Call outcome signals (populated by transcript analysis worker)
+export interface CallSignals {
+  sentiment?: "positive" | "neutral" | "negative";
+  sentiment_score?: number;
+  intents?: string[];
+  topics?: string[];
+  summary?: string;
+  objections?: string[];
+  next_steps?: string[];
+  analyzed?: boolean | "error";
+  [key: string]: unknown;
+}
+
 // Unified timeline item for the conversation feed
 export type TimelineItemType = "sms" | "call" | "email" | "voicemail" | "appointment" | "note";
 
@@ -91,6 +104,7 @@ export interface TimelineItem {
   transcript?: string;
   status?: string;
   booking_outcome?: string;
+  signals?: CallSignals | null;
   // Reference to original record
   original_id: string;
   original_type: "sms_message" | "call_record" | "appointment" | "note";
