@@ -105,6 +105,8 @@ class ContactResponse(BaseModel):
     enriched_at: datetime | None = None
     noshow_count: int = 0
     last_appointment_status: str | None = None
+    last_engaged_at: datetime | None = None
+    engagement_score: int = 0
     tag_objects: list[TagResponse] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime

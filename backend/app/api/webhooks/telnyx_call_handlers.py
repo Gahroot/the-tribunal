@@ -344,6 +344,25 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:  # noqa
             await db.commit()
             log.info("message_updated", message_id=str(message.id), status=message.status)
 
+            contact_id = (
+                message.conversation.contact_id if message.conversation else None
+            )
+            duration = message.duration_seconds or 0
+            if contact_id and duration > 0:
+                try:
+                    from app.services.contacts.engagement_score import (
+                        EngagementEvent,
+                        record_engagement,
+                    )
+
+                    event: EngagementEvent = (
+                        "call_completed" if duration >= 30 else "call_answered"
+                    )
+                    await record_engagement(db, contact_id, event)
+                    await db.commit()
+                except Exception as e:
+                    log.warning("engagement_update_failed", error=str(e))
+
             # Push notification for missed/failed inbound calls
             if message.direction == "inbound" and message.status in ("no_answer", "failed"):
                 try:
