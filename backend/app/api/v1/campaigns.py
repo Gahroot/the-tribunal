@@ -353,14 +353,19 @@ async def get_analytics(
     """Get campaign analytics."""
     campaign = await get_or_404(db, Campaign, campaign_id, workspace_id=workspace_id)
 
-    # Calculate rates
-    reply_rate = 0.0
-    if campaign.messages_sent > 0:
-        reply_rate = (campaign.replies_received / campaign.messages_sent) * 100
-
-    qualification_rate = 0.0
-    if campaign.replies_received > 0:
-        qualification_rate = (campaign.contacts_qualified / campaign.replies_received) * 100
+    reply_rate = (
+        campaign.replies_received / campaign.messages_sent if campaign.messages_sent > 0 else 0.0
+    )
+    delivery_rate = (
+        campaign.messages_delivered / campaign.messages_sent
+        if campaign.messages_sent > 0
+        else 0.0
+    )
+    qualification_rate = (
+        campaign.contacts_qualified / campaign.total_contacts
+        if campaign.total_contacts > 0
+        else 0.0
+    )
 
     return CampaignAnalytics(
         total_contacts=campaign.total_contacts,
@@ -371,6 +376,7 @@ async def get_analytics(
         contacts_qualified=campaign.contacts_qualified,
         contacts_opted_out=campaign.contacts_opted_out,
         reply_rate=reply_rate,
+        delivery_rate=delivery_rate,
         qualification_rate=qualification_rate,
     )
 

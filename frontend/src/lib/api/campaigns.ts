@@ -72,8 +72,9 @@ export interface CampaignAnalytics {
   replies_received: number;
   contacts_qualified: number;
   contacts_opted_out: number;
-  reply_rate: number;
-  qualification_rate: number;
+  reply_rate?: number;
+  delivery_rate?: number;
+  qualification_rate?: number;
 }
 
 export interface CampaignActionResponse {
