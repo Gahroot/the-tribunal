@@ -33,7 +33,7 @@ export function OpportunitiesList({ workspaceId }: OpportunitiesListProps) {
   const [page] = React.useState(1);
   const [search] = React.useState("");
 
-  const { data, isLoading } = useQuery({
+  const { data, isPending } = useQuery({
     queryKey: ["opportunities", workspaceId, page, search],
     queryFn: () =>
       opportunitiesApi.list(workspaceId, {
@@ -44,7 +44,7 @@ export function OpportunitiesList({ workspaceId }: OpportunitiesListProps) {
     enabled: !!workspaceId,
   });
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <div className="w-full h-full p-4 overflow-auto">
         <Table>

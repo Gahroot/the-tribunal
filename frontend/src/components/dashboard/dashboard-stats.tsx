@@ -3,7 +3,7 @@
 import type React from "react";
 import { memo } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import {
   Megaphone,
   MessageSquare,
@@ -91,14 +91,14 @@ function StatCardSkeleton() {
 
 interface DashboardStatsGridProps {
   stats: DashboardStats | undefined;
-  isLoading: boolean;
+  isPending: boolean;
 }
 
 export const DashboardStatsGrid = memo(function DashboardStatsGrid({
   stats,
-  isLoading,
+  isPending,
 }: DashboardStatsGridProps) {
-  if (isLoading) {
+  if (isPending) {
     return (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {[1, 2, 3, 4].map((i) => (

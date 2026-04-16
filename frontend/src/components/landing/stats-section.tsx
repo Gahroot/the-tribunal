@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { Database, AlertTriangle, TrendingDown } from "lucide-react";
 
 const containerVariants = {

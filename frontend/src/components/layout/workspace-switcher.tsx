@@ -19,10 +19,10 @@ import {
 } from "@/components/ui/sidebar";
 
 export function WorkspaceSwitcher() {
-  const { workspaces, currentWorkspace, setCurrentWorkspace, isLoading } = useWorkspace();
+  const { workspaces, currentWorkspace, setCurrentWorkspace, isPending } = useWorkspace();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <SidebarMenu>
         <SidebarMenuItem>

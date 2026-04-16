@@ -87,13 +87,13 @@ export function NewAppointmentDialog({ open, onOpenChange }: NewAppointmentDialo
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [contactSearch, setContactSearch] = useState("");
 
-  const { data: agentsData, isLoading: agentsLoading } = useAgents(
+  const { data: agentsData, isPending: agentsLoading } = useAgents(
     workspaceId ?? "",
     { active_only: true, page_size: 100 }
   );
   const agents = agentsData?.items ?? [];
 
-  const { data: contactsData, isLoading: contactsLoading } = useContacts(
+  const { data: contactsData, isPending: contactsLoading } = useContacts(
     workspaceId ?? "",
     { page: 1, page_size: 100, search: contactSearch || undefined }
   );

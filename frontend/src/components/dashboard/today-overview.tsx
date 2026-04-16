@@ -36,12 +36,12 @@ import type { TodayOverview } from "@/lib/api/dashboard";
 
 interface TodayOverviewCardProps {
   overview: TodayOverview | undefined;
-  isLoading: boolean;
+  isPending: boolean;
 }
 
 export const TodayOverviewCard = memo(function TodayOverviewCard({
   overview,
-  isLoading,
+  isPending,
 }: TodayOverviewCardProps) {
   return (
     <Card>
@@ -56,7 +56,7 @@ export const TodayOverviewCard = memo(function TodayOverviewCard({
       <CardContent>
         <TooltipProvider>
           <div className="grid grid-cols-3 gap-4 text-center">
-            {isLoading ? (
+            {isPending ? (
               <>
                 {[1, 2, 3].map((i) => (
                   <div key={i} className="space-y-1">
@@ -167,7 +167,7 @@ interface NudgesCardProps {
 }
 
 export const NudgesCard = memo(function NudgesCard({ workspaceId }: NudgesCardProps) {
-  const { data: nudgeStats, isLoading } = useQuery({
+  const { data: nudgeStats, isPending } = useQuery({
     queryKey: ["nudgeStats", workspaceId],
     queryFn: () => nudgesApi.getStats(workspaceId!),
     enabled: !!workspaceId,
@@ -186,7 +186,7 @@ export const NudgesCard = memo(function NudgesCard({ workspaceId }: NudgesCardPr
         <CardDescription>Relationship reminders</CardDescription>
       </CardHeader>
       <CardContent>
-        {isLoading ? (
+        {isPending ? (
           <Skeleton className="h-8 w-32" />
         ) : pending > 0 ? (
           <div className="space-y-3">

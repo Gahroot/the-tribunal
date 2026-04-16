@@ -42,7 +42,7 @@ export function ProfileSettingsTab() {
   }>({});
 
   // Fetch profile
-  const { data: profile, isLoading: profileLoading } = useQuery({
+  const { data: profile, isPending: profileLoading } = useQuery({
     queryKey: ["settings", "profile"],
     queryFn: settingsApi.getProfile,
   });

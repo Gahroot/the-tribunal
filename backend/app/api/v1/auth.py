@@ -15,6 +15,7 @@ from app.core.security import (
     create_refresh_token,
     decode_refresh_token,
     get_password_hash,
+    password_needs_rehash,
     revoke_all_user_refresh_tokens,
     revoke_refresh_token,
     store_refresh_token,
@@ -155,6 +156,11 @@ async def login(
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Transparently upgrade legacy bcrypt hashes to Argon2id on successful login
+    if password_needs_rehash(user.hashed_password):
+        user.hashed_password = get_password_hash(form_data.password)
+        await db.flush()
 
     if not user.is_active:
         raise HTTPException(

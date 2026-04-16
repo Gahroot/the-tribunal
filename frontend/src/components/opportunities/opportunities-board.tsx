@@ -229,13 +229,13 @@ export function OpportunitiesBoard({ workspaceId }: OpportunitiesBoardProps) {
     useSensor(KeyboardSensor)
   );
 
-  const { data: pipelines, isLoading: pipelinesLoading } = useQuery({
+  const { data: pipelines, isPending: pipelinesLoading } = useQuery({
     queryKey: ["pipelines", workspaceId],
     queryFn: () => opportunitiesApi.listPipelines(workspaceId),
     enabled: !!workspaceId,
   });
 
-  const { data: opportunities, isLoading: opportunitiesLoading } = useQuery({
+  const { data: opportunities, isPending: opportunitiesLoading } = useQuery({
     queryKey: ["opportunities", workspaceId],
     queryFn: () => opportunitiesApi.list(workspaceId, { page_size: 500 }),
     enabled: !!workspaceId,

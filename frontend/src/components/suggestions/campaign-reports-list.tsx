@@ -14,7 +14,7 @@ import { CampaignReportCard } from "./campaign-report-card";
 export function CampaignReportsList() {
   const workspaceId = useWorkspaceId();
 
-  const { data, isLoading } = useQuery({
+  const { data, isPending } = useQuery({
     queryKey: ["campaignReports", workspaceId],
     queryFn: () => {
       if (!workspaceId) throw new Error("No workspace");
@@ -37,7 +37,7 @@ export function CampaignReportsList() {
     enabled: !!workspaceId && !!data?.items.length,
   });
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <div className="flex items-center justify-center py-8">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

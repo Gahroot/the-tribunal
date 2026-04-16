@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -75,7 +75,7 @@ export function CampaignsList() {
   const workspaceId = useWorkspaceId();
   const queryClient = useQueryClient();
 
-  const { data: campaignsData, isLoading, error } = useQuery({
+  const { data: campaignsData, isPending, error } = useQuery({
     queryKey: ["campaigns", workspaceId],
     queryFn: () => {
       if (!workspaceId) throw new Error("Workspace not loaded");
@@ -158,7 +158,7 @@ export function CampaignsList() {
     );
   };
 
-  if (isLoading) return <ResourceListLoading />;
+  if (isPending) return <ResourceListLoading />;
 
   if (error) {
     return (

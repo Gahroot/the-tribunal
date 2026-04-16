@@ -22,7 +22,7 @@ export default function EditOfferPage({ params }: EditOfferPageProps) {
 
   const {
     data: offer,
-    isLoading,
+    isPending,
     error,
   } = useQuery({
     queryKey: ["offers", workspaceId, offerId],
@@ -30,7 +30,7 @@ export default function EditOfferPage({ params }: EditOfferPageProps) {
     enabled: !!workspaceId,
   });
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <AppSidebar>
         <div className="flex items-center justify-center py-16">

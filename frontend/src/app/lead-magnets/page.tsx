@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import {
   Plus,
   FileText,
@@ -127,7 +127,7 @@ export default function LeadMagnetsPage() {
     is_active: true,
   });
 
-  const { data, isLoading } = useQuery({
+  const { data, isPending } = useQuery({
     queryKey: ["lead-magnets", workspaceId],
     queryFn: () => leadMagnetsApi.list(workspaceId!),
     enabled: !!workspaceId,
@@ -252,7 +252,7 @@ export default function LeadMagnetsPage() {
         </div>
 
         {/* Lead Magnets List */}
-        {isLoading ? (
+        {isPending ? (
           <div className="grid grid-cols-2 gap-4">
             {[1, 2, 3, 4].map((i) => (
               <Skeleton key={i} className="h-40 w-full" />

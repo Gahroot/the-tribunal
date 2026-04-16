@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { Upload, Sparkles, Calendar } from "lucide-react";
 
 const containerVariants = {

@@ -17,12 +17,12 @@ import type { RecentActivity } from "@/lib/api/dashboard";
 
 interface RecentActivityFeedProps {
   activities: RecentActivity[];
-  isLoading: boolean;
+  isPending: boolean;
 }
 
 export const RecentActivityFeed = memo(function RecentActivityFeed({
   activities,
-  isLoading,
+  isPending,
 }: RecentActivityFeedProps) {
   return (
     <Card>
@@ -33,7 +33,7 @@ export const RecentActivityFeed = memo(function RecentActivityFeed({
       <CardContent>
         <ScrollArea className="max-h-[400px]">
           <div className="space-y-4 pr-3">
-            {isLoading ? (
+            {isPending ? (
               <>
                 {[1, 2, 3, 4, 5].map((i) => (
                   <div key={i} className="flex items-center gap-4 text-sm">

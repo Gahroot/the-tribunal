@@ -34,7 +34,7 @@ export function LoadTemplateDialog({
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isPending } = useQuery({
     queryKey: ["message-templates", workspaceId],
     queryFn: () => {
       if (!workspaceId) throw new Error("Workspace not loaded");
@@ -85,7 +85,7 @@ export function LoadTemplateDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {isLoading ? (
+        {isPending ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="size-8 animate-spin text-muted-foreground" />
           </div>

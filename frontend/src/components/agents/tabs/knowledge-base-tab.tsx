@@ -80,7 +80,7 @@ export function KnowledgeBaseTab({ agentId }: KnowledgeBaseTabProps) {
   const [newDocType, setNewDocType] = useState("general");
   const [newPriority, setNewPriority] = useState(0);
 
-  const { data: docList, isLoading } = useQuery({
+  const { data: docList, isPending } = useQuery({
     queryKey: ["knowledgeDocs", workspaceId, agentId],
     queryFn: () => {
       if (!workspaceId) throw new Error("No workspace");
@@ -141,7 +141,7 @@ export function KnowledgeBaseTab({ agentId }: KnowledgeBaseTabProps) {
     });
   };
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />

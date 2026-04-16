@@ -21,7 +21,7 @@ export default function NewExperimentPage() {
   const router = useRouter();
   const workspaceId = useWorkspaceId();
 
-  const { data: contacts = [], isLoading: contactsLoading } = useQuery({
+  const { data: contacts = [], isPending: contactsLoading } = useQuery({
     queryKey: ["contacts", workspaceId],
     queryFn: () => {
       if (!workspaceId) throw new Error("Workspace not loaded");
@@ -31,7 +31,7 @@ export default function NewExperimentPage() {
     select: (data) => data.items || data,
   });
 
-  const { data: agents = [], isLoading: agentsLoading } = useQuery({
+  const { data: agents = [], isPending: agentsLoading } = useQuery({
     queryKey: ["agents", workspaceId],
     queryFn: async () => {
       if (!workspaceId) throw new Error("Workspace not loaded");
@@ -41,7 +41,7 @@ export default function NewExperimentPage() {
     enabled: !!workspaceId,
   });
 
-  const { data: phoneNumbers = [], isLoading: phoneNumbersLoading } = useQuery({
+  const { data: phoneNumbers = [], isPending: phoneNumbersLoading } = useQuery({
     queryKey: ["phone-numbers", workspaceId],
     queryFn: async () => {
       if (!workspaceId) throw new Error("Workspace not loaded");
@@ -91,9 +91,9 @@ export default function NewExperimentPage() {
     return createMutation.mutateAsync({ data, contactIds });
   };
 
-  const isLoading = contactsLoading || agentsLoading || phoneNumbersLoading;
+  const isPending = contactsLoading || agentsLoading || phoneNumbersLoading;
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <AppSidebar>
         <div className="flex items-center justify-center h-screen">

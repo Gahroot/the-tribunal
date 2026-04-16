@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { AnimatePresence } from "framer-motion";
+import { AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { Users, CheckSquare, X, Plus, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -92,7 +92,7 @@ export function ContactsPage() {
   }), [contactsPage, contactsPageSize, sortBy, searchQuery, statusFilter, filters]);
 
   // Fetch contacts via React Query
-  const { data: contactsData, isLoading: isLoadingContacts } = useContactsPaginated(
+  const { data: contactsData, isPending: isLoadingContacts } = useContactsPaginated(
     workspaceId ?? "",
     contactsListParams,
   );

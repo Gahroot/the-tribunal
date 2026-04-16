@@ -20,7 +20,7 @@ import {
   Plus,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -368,7 +368,7 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Fetch appointments for this contact only (server-side filter by contact_id)
-  const { data: appointmentsData, isLoading: appointmentsLoading } = useQuery({
+  const { data: appointmentsData, isPending: appointmentsLoading } = useQuery({
     queryKey: ["appointments", workspaceId, { contact_id: selectedContact?.id }],
     queryFn: () =>
       appointmentsApi.list(workspaceId!, {

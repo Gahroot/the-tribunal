@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { Search, Plus, User, Phone, Mail, Building2, Sparkles } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -144,7 +144,7 @@ export function ContactsList({ className }: ContactsListProps) {
   const workspaceId = useWorkspaceId();
 
   // Fetch contacts with server-side search filtering
-  const { data, isLoading } = useContactsPaginated(workspaceId ?? "", {
+  const { data, isPending } = useContactsPaginated(workspaceId ?? "", {
     page: 1,
     page_size: 50,
     ...(searchQuery.trim() && { search: searchQuery.trim() }),
@@ -182,7 +182,7 @@ export function ContactsList({ className }: ContactsListProps) {
       {/* Contacts List */}
       <ScrollArea className="flex-1">
         <div className="p-2">
-          {isLoading ? (
+          {isPending ? (
             <div className="space-y-1">
               {Array.from({ length: 8 }).map((_, i) => (
                 <ContactItemSkeleton key={i} />

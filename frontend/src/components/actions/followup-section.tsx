@@ -73,7 +73,7 @@ export function FollowupSection() {
   const conversationId = contactConversation?.id ?? "";
 
   // Hooks for followup management
-  const { data: settings, isLoading: isLoadingSettings } = useFollowupSettings(
+  const { data: settings, isPending: isLoadingSettings } = useFollowupSettings(
     workspaceId ?? "",
     conversationId
   );

@@ -37,7 +37,7 @@ export function TagPicker({
 }: TagPickerProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const { data: tagsData, isLoading } = useTags(workspaceId);
+  const { data: tagsData, isPending } = useTags(workspaceId);
   const createTag = useCreateTag(workspaceId);
 
   const tags = tagsData?.items ?? [];
@@ -94,7 +94,7 @@ export function TagPicker({
           />
         </div>
         <ScrollArea className="max-h-[200px]">
-          {isLoading ? (
+          {isPending ? (
             <div className="flex items-center justify-center py-4">
               <Loader2 className="h-4 w-4 animate-spin" />
             </div>

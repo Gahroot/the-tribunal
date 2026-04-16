@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import {
   Plus,
   Tag,
@@ -70,7 +70,7 @@ export default function OffersPage() {
 
   const [deleteOfferId, setDeleteOfferId] = useState<string | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isPending } = useQuery({
     queryKey: ["offers", workspaceId],
     queryFn: () => offersApi.list(workspaceId!),
     enabled: !!workspaceId,
@@ -179,7 +179,7 @@ export default function OffersPage() {
         </div>
 
         {/* Offers List */}
-        {isLoading ? (
+        {isPending ? (
           <div className="space-y-4">
             {[1, 2, 3].map((i) => (
               <Skeleton key={i} className="h-32 w-full" />

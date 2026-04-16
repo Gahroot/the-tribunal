@@ -5,7 +5,8 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-import bcrypt
+import argon2
+import bcrypt as _bcrypt_lib
 import jwt
 from jwt.exceptions import InvalidTokenError
 from sqlalchemy import select, update
@@ -13,21 +14,41 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 
+_password_hasher = argon2.PasswordHasher()
+
+
+def _is_bcrypt_hash(hashed_password: str) -> bool:
+    """Check if a hash is in bcrypt format ($2b$, $2a$, $2y$)."""
+    return hashed_password.startswith(("$2b$", "$2a$", "$2y$"))
+
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a plain password against a hashed password."""
-    return bcrypt.checkpw(
-        plain_password.encode("utf-8"),
-        hashed_password.encode("utf-8")
-    )
+    """Verify a plain password against a hashed password.
+
+    Supports both Argon2id (current) and bcrypt (legacy) hashes.
+    Use `password_needs_rehash` to check if the hash should be upgraded.
+    """
+    if _is_bcrypt_hash(hashed_password):
+        return _bcrypt_lib.checkpw(
+            plain_password.encode("utf-8"),
+            hashed_password.encode("utf-8"),
+        )
+    try:
+        return _password_hasher.verify(hashed_password, plain_password)
+    except (argon2.exceptions.VerifyMismatchError, argon2.exceptions.InvalidHashError):
+        return False
+
+
+def password_needs_rehash(hashed_password: str) -> bool:
+    """Check if a password hash should be upgraded to Argon2id."""
+    if _is_bcrypt_hash(hashed_password):
+        return True
+    return _password_hasher.check_needs_rehash(hashed_password)
 
 
 def get_password_hash(password: str) -> str:
-    """Hash a password."""
-    return bcrypt.hashpw(
-        password.encode("utf-8"),
-        bcrypt.gensalt()
-    ).decode("utf-8")
+    """Hash a password using Argon2id."""
+    return _password_hasher.hash(password)
 
 
 def _hash_jti(jti: str) -> str:

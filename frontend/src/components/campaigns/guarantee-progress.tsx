@@ -24,7 +24,7 @@ interface GuaranteeProgressProps {
 export function GuaranteeProgress({ campaignId, campaignType }: GuaranteeProgressProps) {
   const workspaceId = useWorkspaceId();
 
-  const { data: progress, isLoading } = useQuery<GuaranteeProgressType>({
+  const { data: progress, isPending } = useQuery<GuaranteeProgressType>({
     queryKey: ["guarantee-progress", workspaceId, campaignId],
     queryFn: async () => {
       if (!workspaceId) throw new Error("Workspace not loaded");
@@ -37,7 +37,7 @@ export function GuaranteeProgress({ campaignId, campaignType }: GuaranteeProgres
     refetchInterval: 30000,
   });
 
-  if (isLoading || !progress) {
+  if (isPending || !progress) {
     return null;
   }
 

@@ -22,7 +22,7 @@ export default function ConversationPage({ params }: PageProps) {
   const contactId = parseInt(id, 10);
 
   // Fetch the specific contact
-  const { data: contact, isLoading: isLoadingContact } = useContact(
+  const { data: contact, isPending: isLoadingContact } = useContact(
     workspaceId ?? "",
     contactId,
   );

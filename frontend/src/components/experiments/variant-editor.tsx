@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Plus, Trash2, GripVertical, Star, MessageSquare, FileText } from "lucide-react";
-import { motion, AnimatePresence, Reorder } from "framer-motion";
+import { motion, AnimatePresence, Reorder } from "motion/react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { AlertCircle, Loader2, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -49,7 +49,7 @@ function ErrorState({ error }: { error: Error }) {
 
 export function DashboardPage() {
   const workspaceId = useWorkspaceId();
-  const { data, isLoading, error, isFetching } = useDashboard(workspaceId ?? "");
+  const { data, isPending, error, isFetching } = useDashboard(workspaceId ?? "");
 
   if (error && !data) {
     return <ErrorState error={error as Error} />;
@@ -61,7 +61,7 @@ export function DashboardPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight gradient-heading">
             Dashboard
-            {isFetching && !isLoading && (
+            {isFetching && !isPending && (
               <Loader2 className="ml-2 inline size-4 animate-spin text-muted-foreground" />
             )}
           </h1>
@@ -82,7 +82,7 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <DashboardStatsGrid stats={data?.stats} isLoading={isLoading} />
+      <DashboardStatsGrid stats={data?.stats} isPending={isPending} />
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -91,7 +91,7 @@ export function DashboardPage() {
       >
         <AppointmentStatsCard
           appointmentStats={data?.appointment_stats}
-          isLoading={isLoading}
+          isPending={isPending}
         />
       </motion.div>
 
@@ -104,7 +104,7 @@ export function DashboardPage() {
         >
           <ActiveCampaignsCard
             campaigns={data?.campaign_stats ?? []}
-            isLoading={isLoading}
+            isPending={isPending}
           />
         </motion.div>
 
@@ -113,7 +113,7 @@ export function DashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
         >
-          <AgentsCard agents={data?.agent_stats ?? []} isLoading={isLoading} />
+          <AgentsCard agents={data?.agent_stats ?? []} isPending={isPending} />
         </motion.div>
       </div>
 
@@ -125,7 +125,7 @@ export function DashboardPage() {
         >
           <RecentActivityFeed
             activities={data?.recent_activity ?? []}
-            isLoading={isLoading}
+            isPending={isPending}
           />
         </motion.div>
 
@@ -137,7 +137,7 @@ export function DashboardPage() {
         >
           <TodayOverviewCard
             overview={data?.today_overview}
-            isLoading={isLoading}
+            isPending={isPending}
           />
           <NudgesCard workspaceId={workspaceId} />
           <QuickActionsCard />

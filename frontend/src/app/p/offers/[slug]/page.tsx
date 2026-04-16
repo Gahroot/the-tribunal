@@ -34,7 +34,7 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
   const [name, setName] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
-  const { data: offer, isLoading, error } = useQuery({
+  const { data: offer, isPending, error } = useQuery({
     queryKey: ["public-offer", slug],
     queryFn: () => publicOffersApi.get(slug),
     enabled: !!slug,
@@ -64,7 +64,7 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
     return email || phone || name;
   };
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted">
         <Loader2 className="size-8 animate-spin text-primary" />

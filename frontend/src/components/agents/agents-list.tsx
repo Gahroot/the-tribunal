@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -88,7 +88,7 @@ export function AgentsList() {
 
   const {
     data: agentsData,
-    isLoading,
+    isPending,
     error,
   } = useQuery({
     queryKey: ["agents", workspaceId],
@@ -219,7 +219,7 @@ export function AgentsList() {
 
   const activeAgents = agents.filter((a) => a.is_active).length;
 
-  if (isLoading) return <ResourceListLoading />;
+  if (isPending) return <ResourceListLoading />;
 
   if (error) {
     return (

@@ -17,7 +17,7 @@ interface PromptPerformanceChartProps {
 export function PromptPerformanceChart({ agentId }: PromptPerformanceChartProps) {
   const workspaceId = useWorkspaceId();
 
-  const { data: versions, isLoading } = useQuery({
+  const { data: versions, isPending } = useQuery({
     queryKey: ["promptVersions", workspaceId, agentId],
     queryFn: () => {
       if (!workspaceId) throw new Error("No workspace");
@@ -26,7 +26,7 @@ export function PromptPerformanceChart({ agentId }: PromptPerformanceChartProps)
     enabled: !!workspaceId,
   });
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <div className="flex items-center justify-center py-8">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

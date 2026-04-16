@@ -31,12 +31,12 @@ import type {
 
 interface AppointmentStatsCardProps {
   appointmentStats: AppointmentStats | undefined;
-  isLoading: boolean;
+  isPending: boolean;
 }
 
 export const AppointmentStatsCard = memo(function AppointmentStatsCard({
   appointmentStats,
-  isLoading,
+  isPending,
 }: AppointmentStatsCardProps) {
   const showUpRate = appointmentStats?.show_up_rate_30d ?? null;
 
@@ -68,7 +68,7 @@ export const AppointmentStatsCard = memo(function AppointmentStatsCard({
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          {isLoading ? (
+          {isPending ? (
             <>
               {[1, 2, 3, 4].map((i) => (
                 <div key={i} className="space-y-1 text-center">
@@ -135,12 +135,12 @@ export const AppointmentStatsCard = memo(function AppointmentStatsCard({
 
 interface ActiveCampaignsCardProps {
   campaigns: CampaignStat[];
-  isLoading: boolean;
+  isPending: boolean;
 }
 
 export const ActiveCampaignsCard = memo(function ActiveCampaignsCard({
   campaigns,
-  isLoading,
+  isPending,
 }: ActiveCampaignsCardProps) {
   return (
     <Card>
@@ -159,7 +159,7 @@ export const ActiveCampaignsCard = memo(function ActiveCampaignsCard({
         </Button>
       </CardHeader>
       <CardContent className="space-y-4">
-        {isLoading ? (
+        {isPending ? (
           <>
             {[1, 2, 3].map((i) => (
               <div key={i} className="flex items-center gap-4 p-3 rounded-lg border">
@@ -214,12 +214,12 @@ export const ActiveCampaignsCard = memo(function ActiveCampaignsCard({
 
 interface AgentsCardProps {
   agents: AgentStat[];
-  isLoading: boolean;
+  isPending: boolean;
 }
 
 export const AgentsCard = memo(function AgentsCard({
   agents,
-  isLoading,
+  isPending,
 }: AgentsCardProps) {
   return (
     <Card>
@@ -231,7 +231,7 @@ export const AgentsCard = memo(function AgentsCard({
         <CardDescription>Performance this week</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {isLoading ? (
+        {isPending ? (
           <>
             {[1, 2, 3].map((i) => (
               <div key={i} className="flex items-center justify-between">

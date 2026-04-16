@@ -90,7 +90,7 @@ export function ScheduleAppointmentDialog({
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { data: agentsData, isLoading: agentsLoading } = useAgents(
+  const { data: agentsData, isPending: agentsLoading } = useAgents(
     workspaceId ?? "",
     { active_only: true, page_size: 100 }
   );

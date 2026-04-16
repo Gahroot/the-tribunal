@@ -33,7 +33,7 @@ export default function InviteAcceptPage({ params }: PageProps) {
   // Fetch invitation details
   const {
     data: invitation,
-    isLoading: isInvitationLoading,
+    isPending: isInvitationLoading,
     error,
   } = useQuery({
     queryKey: ["invitation", token],

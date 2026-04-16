@@ -46,7 +46,7 @@ export function EngagementSummary({
   workspaceId,
   contactId,
 }: EngagementSummaryProps) {
-  const { data, isLoading, isError, refetch } = useContactEngagement(
+  const { data, isPending, isError, refetch } = useContactEngagement(
     workspaceId,
     contactId,
   );
@@ -56,7 +56,7 @@ export function EngagementSummary({
       <h3 className="text-sm font-medium text-muted-foreground px-2">
         Engagement
       </h3>
-      {isLoading ? (
+      {isPending ? (
         <PageLoadingState className="min-h-[120px]" />
       ) : isError || !data ? (
         <PageErrorState

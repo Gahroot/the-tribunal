@@ -21,6 +21,18 @@ export function Providers({ children }: ProvidersProps) {
           queries: {
             staleTime: 60 * 1000,
             refetchOnWindowFocus: false,
+            throwOnError: (error) => {
+              // Propagate server errors to the nearest error boundary (error.tsx)
+              // so unexpected failures surface visibly instead of silently failing.
+              const status = (error as { status?: number }).status;
+              return typeof status === "number" && status >= 500;
+            },
+          },
+          mutations: {
+            throwOnError: (error) => {
+              const status = (error as { status?: number }).status;
+              return typeof status === "number" && status >= 500;
+            },
           },
         },
       })

@@ -433,7 +433,7 @@ export function LeadSourcesSettingsTab() {
   const [editingSource, setEditingSource] = useState<LeadSource | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<LeadSource | null>(null);
 
-  const { data: sources, isLoading } = useQuery({
+  const { data: sources, isPending } = useQuery({
     queryKey: ["lead-sources", workspaceId],
     queryFn: () => leadSourcesApi.list(workspaceId!),
     enabled: !!workspaceId,
@@ -485,7 +485,7 @@ export function LeadSourcesSettingsTab() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isPending ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="size-6 animate-spin text-muted-foreground" />
             </div>

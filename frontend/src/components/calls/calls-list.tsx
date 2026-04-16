@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { format, formatDistanceToNow } from "date-fns";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import {
@@ -101,7 +101,7 @@ export function CallsList() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const { data, isLoading, error, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+  const { data, isPending, error, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ["calls", workspaceId, directionFilter, statusFilter, debouncedSearch],
     queryFn: ({ pageParam }) => {
       if (!workspaceId) throw new Error("Workspace not loaded");
@@ -150,7 +150,7 @@ export function CallsList() {
     return () => observer.disconnect();
   }, [handleObserver]);
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <div className="flex items-center justify-center h-96">
         <Loader2 className="size-8 animate-spin text-muted-foreground" />

@@ -40,7 +40,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
   const workspaceId = useWorkspaceId();
 
   // Load campaign data
-  const { data: campaign, isLoading, error } = useQuery({
+  const { data: campaign, isPending, error } = useQuery({
     queryKey: ["campaigns", workspaceId, campaignId],
     queryFn: async () => {
       if (!workspaceId) throw new Error("Workspace not loaded");
@@ -119,7 +119,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
     },
   });
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="flex flex-col items-center gap-4">

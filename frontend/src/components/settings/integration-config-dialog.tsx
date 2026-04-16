@@ -312,7 +312,7 @@ export function IntegrationConfigDialog({
       updateMutation.mutate(credentials);
     } else {
       createMutation.mutate({
-        integration_type: integrationType,
+        integration_type: integrationType as CreateIntegrationRequest["integration_type"],
         credentials,
       });
     }

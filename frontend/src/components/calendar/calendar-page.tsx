@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { format, addDays, startOfWeek, endOfWeek, isSameDay } from "date-fns";
 import {
   ChevronLeft,
@@ -254,7 +254,7 @@ export function CalendarPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [weekStart.toISOString(), weekEnd.toISOString(), statusFilter]);
 
-  const { data: appointmentsData, isLoading, error, refetch } = useAppointments(
+  const { data: appointmentsData, isPending, error, refetch } = useAppointments(
     workspaceId ?? "",
     queryParams
   );
@@ -295,7 +295,7 @@ export function CalendarPage() {
     });
   };
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <div className="p-6 flex items-center justify-center h-96">
         <Loader2 className="size-8 animate-spin text-muted-foreground" />

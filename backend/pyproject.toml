@@ -22,6 +22,7 @@ dependencies = [
     "email-validator>=2.2.0",
     # Authentication & Encryption
     "pyjwt[crypto]>=2.8.0",
+    "argon2-cffi>=23.1.0",
     "bcrypt>=4.0.0",
     "python-multipart>=0.0.17",
     # HTTP Client
@@ -70,6 +71,15 @@ ignore = ["PLR0913", "PLR2004", "B008"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
+
+[[tool.mypy.overrides]]
+module = [
+    "sklearn.*",
+    "audioop_lts",
+    "soxr",
+    "scipy",
+    "scipy.*",
+]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

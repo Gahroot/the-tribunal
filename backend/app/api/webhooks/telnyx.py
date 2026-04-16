@@ -66,7 +66,10 @@ async def telnyx_sms_webhook(request: Request) -> dict[str, str]:
 
     handler = _SMS_HANDLERS.get(event_type)
     if handler is not None:
-        await handler(event_payload, log)
+        try:
+            await handler(event_payload, log)
+        except Exception:
+            log.exception("Error handling event", event_type=event_type)
     else:
         log.debug("unhandled_event_type")
 
@@ -101,7 +104,10 @@ async def telnyx_voice_webhook(request: Request) -> dict[str, str]:
 
     handler = _VOICE_HANDLERS.get(event_type)
     if handler is not None:
-        await handler(event_payload, log)
+        try:
+            await handler(event_payload, log)
+        except Exception:
+            log.exception("Error handling event", event_type=event_type)
     else:
         log.info("unhandled_voice_event_type", event_type=event_type)
 

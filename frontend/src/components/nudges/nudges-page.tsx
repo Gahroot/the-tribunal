@@ -68,7 +68,7 @@ export function NudgesPage() {
   const [statusFilter, setStatusFilter] = useState<NudgeStatus>("pending");
   const [page, setPage] = useState(1);
 
-  const { data: stats, isLoading: statsLoading } = useQuery({
+  const { data: stats, isPending: statsLoading } = useQuery({
     queryKey: ["nudgeStats", workspaceId],
     queryFn: () => {
       if (!workspaceId) throw new Error("No workspace");
@@ -77,7 +77,7 @@ export function NudgesPage() {
     enabled: !!workspaceId,
   });
 
-  const { data: nudgeList, isLoading: listLoading } = useQuery({
+  const { data: nudgeList, isPending: listLoading } = useQuery({
     queryKey: ["nudges", workspaceId, statusFilter, page],
     queryFn: () => {
       if (!workspaceId) throw new Error("No workspace");

@@ -62,7 +62,7 @@ export function IntegrationsSettingsTab() {
     useState<IntegrationType | null>(null);
 
   // Fetch integrations (status display)
-  const { data: integrationsData, isLoading: integrationsLoading } = useQuery({
+  const { data: integrationsData, isPending: integrationsLoading } = useQuery({
     queryKey: ["settings", "integrations", workspaceId],
     queryFn: () => settingsApi.getIntegrations(workspaceId!),
     enabled: !!workspaceId,

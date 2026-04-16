@@ -42,7 +42,7 @@ function BillingContent() {
   const router = useRouter();
   const [isRedirecting, setIsRedirecting] = React.useState(false);
 
-  const { data: billingStatus, isLoading } = useQuery<BillingStatus>({
+  const { data: billingStatus, isPending } = useQuery<BillingStatus>({
     queryKey: ["billing-status"],
     queryFn: getBillingStatus,
     retry: false,
@@ -120,7 +120,7 @@ function BillingContent() {
           </ul>
 
           {/* CTA button */}
-          {isLoading ? (
+          {isPending ? (
             <Button className="w-full" disabled>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Loading…

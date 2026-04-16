@@ -62,7 +62,7 @@ export function VirtualContactSelector({
   const {
     contacts,
     total,
-    isLoading,
+    isPending,
     isFetchingNextPage,
     hasNextPage,
     fetchNextPage,
@@ -331,7 +331,7 @@ export function VirtualContactSelector({
         ref={parentRef}
         className="h-[400px] border rounded-lg overflow-auto"
       >
-        {isLoading ? (
+        {isPending ? (
           <div className="flex items-center justify-center h-full">
             <div className="flex flex-col items-center gap-2 text-muted-foreground">
               <Loader2 className="size-8 animate-spin" />

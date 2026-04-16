@@ -46,7 +46,7 @@ export function ABTestDashboard({ agentId }: ABTestDashboardProps) {
   const [declareWinnerVersion, setDeclareWinnerVersion] = useState<string | null>(null);
   const [eliminateVersion, setEliminateVersion] = useState<string | null>(null);
 
-  const { data: comparison, isLoading } = useQuery({
+  const { data: comparison, isPending } = useQuery({
     queryKey: ["promptVersionComparison", workspaceId, agentId],
     queryFn: () => {
       if (!workspaceId) throw new Error("No workspace");
@@ -110,7 +110,7 @@ export function ABTestDashboard({ agentId }: ABTestDashboardProps) {
     onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to eliminate version")),
   });
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <div className="flex items-center justify-center py-8">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

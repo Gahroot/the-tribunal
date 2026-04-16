@@ -11,7 +11,7 @@ interface WorkspaceContextType {
   workspaces: WorkspaceWithMembership[];
   currentWorkspace: WorkspaceWithMembership | null;
   currentWorkspaceId: string | null;
-  isLoading: boolean;
+  isPending: boolean;
   setCurrentWorkspace: (workspaceId: string) => void;
 }
 
@@ -40,7 +40,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const [currentWorkspaceId, setCurrentWorkspaceId] = React.useState<string | null>(null);
 
-  const { data: workspaces = [], isLoading } = useQuery({
+  const { data: workspaces = [], isPending } = useQuery({
     queryKey: ["workspaces"],
     queryFn: workspacesApi.list,
     enabled: isAuthenticated,
@@ -87,10 +87,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       workspaces,
       currentWorkspace,
       currentWorkspaceId,
-      isLoading,
+      isPending,
       setCurrentWorkspace,
     }),
-    [workspaces, currentWorkspace, currentWorkspaceId, isLoading, setCurrentWorkspace]
+    [workspaces, currentWorkspace, currentWorkspaceId, isPending, setCurrentWorkspace]
   );
 
   return <WorkspaceContext value={value}>{children}</WorkspaceContext>;

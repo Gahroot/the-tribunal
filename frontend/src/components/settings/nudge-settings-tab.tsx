@@ -30,7 +30,7 @@ export function NudgeSettingsTab() {
   const workspaceId = useWorkspaceId();
   const queryClient = useQueryClient();
 
-  const { data: settings, isLoading } = useQuery({
+  const { data: settings, isPending } = useQuery({
     queryKey: ["nudge-settings", workspaceId],
     queryFn: () => nudgesApi.getSettings(workspaceId!),
     enabled: !!workspaceId,
@@ -64,7 +64,7 @@ export function NudgeSettingsTab() {
     update({ delivery_channels: updated });
   };
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />

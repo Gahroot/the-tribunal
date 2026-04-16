@@ -21,10 +21,10 @@ export function SegmentPicker({
   selectedSegmentId,
   onSegmentSelect,
 }: SegmentPickerProps) {
-  const { data: segmentsData, isLoading } = useSegments(workspaceId);
+  const { data: segmentsData, isPending } = useSegments(workspaceId);
   const segments = segmentsData?.items ?? [];
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" />

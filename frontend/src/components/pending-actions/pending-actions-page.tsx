@@ -51,7 +51,7 @@ export function PendingActionsPage() {
   const [rejectActionId, setRejectActionId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
 
-  const { data: stats, isLoading: statsLoading } = useQuery({
+  const { data: stats, isPending: statsLoading } = useQuery({
     queryKey: ["pendingActionStats", workspaceId],
     queryFn: () => {
       if (!workspaceId) throw new Error("No workspace");
@@ -60,7 +60,7 @@ export function PendingActionsPage() {
     enabled: !!workspaceId,
   });
 
-  const { data: actionList, isLoading: listLoading } = useQuery({
+  const { data: actionList, isPending: listLoading } = useQuery({
     queryKey: ["pendingActions", workspaceId, statusFilter, page],
     queryFn: () => {
       if (!workspaceId) throw new Error("No workspace");

@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { TrendingUp, BarChart3, Clock, DollarSign } from "lucide-react";
 
 const containerVariants = {

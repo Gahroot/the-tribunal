@@ -58,7 +58,7 @@ interface HumanProfileTabProps {
 export function HumanProfileTab({ agentId }: HumanProfileTabProps) {
   const workspaceId = useWorkspaceId();
 
-  const { data: profile, isLoading, error } = useQuery({
+  const { data: profile, isPending, error } = useQuery({
     queryKey: ["humanProfile", workspaceId, agentId],
     queryFn: () => {
       if (!workspaceId) throw new Error("No workspace");
@@ -80,7 +80,7 @@ export function HumanProfileTab({ agentId }: HumanProfileTabProps) {
     "response" in error &&
     (error as { response?: { status?: number } }).response?.status === 404;
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />

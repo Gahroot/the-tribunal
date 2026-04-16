@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import {
   Plus,
   Search,
@@ -132,7 +132,7 @@ export function AutomationsPage() {
   const [newActionType, setNewActionType] = useState<AutomationActionType>("send_sms");
   const [editingAutomation, setEditingAutomation] = useState<Automation | null>(null);
 
-  const { data, isLoading, error } = useAutomations(workspaceId ?? "");
+  const { data, isPending, error } = useAutomations(workspaceId ?? "");
   const { data: statsData } = useQuery({
     queryKey: ["automationStats", workspaceId],
     queryFn: () => automationsApi.getStats(workspaceId!),
@@ -384,7 +384,7 @@ export function AutomationsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {isLoading ? <Skeleton className="h-8 w-8" /> : automations.length}
+              {isPending ? <Skeleton className="h-8 w-8" /> : automations.length}
             </div>
           </CardContent>
         </Card>
@@ -394,7 +394,7 @@ export function AutomationsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-success">
-              {isLoading ? <Skeleton className="h-8 w-8" /> : activeCount}
+              {isPending ? <Skeleton className="h-8 w-8" /> : activeCount}
             </div>
           </CardContent>
         </Card>
@@ -404,7 +404,7 @@ export function AutomationsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {isLoading ? <Skeleton className="h-8 w-8" /> : statsData?.triggered_today ?? 0}
+              {isPending ? <Skeleton className="h-8 w-8" /> : statsData?.triggered_today ?? 0}
             </div>
           </CardContent>
         </Card>
@@ -422,7 +422,7 @@ export function AutomationsPage() {
       </div>
 
       {/* Automations Grid */}
-      {isLoading ? (
+      {isPending ? (
         <div className="grid gap-4 md:grid-cols-2">
           <AutomationCardSkeleton />
           <AutomationCardSkeleton />

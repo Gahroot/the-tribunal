@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { MessageSquare, Bot, Sparkles, FileText } from "lucide-react";
 
 import { Label } from "@/components/ui/label";

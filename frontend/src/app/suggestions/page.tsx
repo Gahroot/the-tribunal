@@ -37,7 +37,7 @@ export default function SuggestionsPage() {
     enabled: !!workspaceId,
   });
 
-  const { data: suggestionStats, isLoading: statsLoading } = useQuery({
+  const { data: suggestionStats, isPending: statsLoading } = useQuery({
     queryKey: ["suggestionsStats", workspaceId],
     queryFn: () => {
       if (!workspaceId) throw new Error("No workspace");

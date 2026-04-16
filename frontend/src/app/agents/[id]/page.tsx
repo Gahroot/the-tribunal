@@ -84,7 +84,7 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
 
   const {
     data: agent,
-    isLoading,
+    isPending,
     error,
   } = useAgent(workspaceId ?? "", agentId);
 
@@ -314,7 +314,7 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
     }
   }
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <div className="flex items-center justify-center py-16">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />

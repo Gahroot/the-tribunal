@@ -26,7 +26,7 @@ interface UseInfiniteContactsParams {
 interface UseInfiniteContactsReturn {
   contacts: Contact[];
   total: number;
-  isLoading: boolean;
+  isPending: boolean;
   isFetchingNextPage: boolean;
   hasNextPage: boolean;
   fetchNextPage: () => void;
@@ -119,7 +119,7 @@ export function useInfiniteContacts({
   return {
     contacts,
     total,
-    isLoading: query.isLoading,
+    isPending: query.isPending,
     isFetchingNextPage: query.isFetchingNextPage,
     hasNextPage: query.hasNextPage,
     fetchNextPage: query.fetchNextPage,

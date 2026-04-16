@@ -67,7 +67,7 @@ export function SuggestionsQueue({
   const [showRejectDialog, setShowRejectDialog] =
     useState<ImprovementSuggestionResponse | null>(null);
 
-  const { data: suggestions, isLoading } = useQuery({
+  const { data: suggestions, isPending } = useQuery({
     queryKey: ["improvementSuggestions", workspaceId, agentId, statusFilter],
     queryFn: () => {
       if (!workspaceId) throw new Error("No workspace");
@@ -154,7 +154,7 @@ export function SuggestionsQueue({
     }
   };
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <div className="flex items-center justify-center py-8">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

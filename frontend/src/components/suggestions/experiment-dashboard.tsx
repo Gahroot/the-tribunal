@@ -47,7 +47,7 @@ import { getApiErrorMessage } from "@/lib/utils/errors";
 
 export function ExperimentDashboard() {
   const workspaceId = useWorkspaceId();
-  const { data: agentsData, isLoading: agentsLoading } = useAgents(workspaceId ?? "", { page_size: 100 });
+  const { data: agentsData, isPending: agentsLoading } = useAgents(workspaceId ?? "", { page_size: 100 });
 
   const agents = agentsData?.items ?? [];
 
@@ -101,7 +101,7 @@ function AgentExperimentSection({ agentId, agentName }: { agentId: string; agent
   const [declareWinnerVersion, setDeclareWinnerVersion] = useState<string | null>(null);
   const [eliminateVersion, setEliminateVersion] = useState<string | null>(null);
 
-  const { data: comparison, isLoading } = useQuery<VersionComparisonResponse>({
+  const { data: comparison, isPending } = useQuery<VersionComparisonResponse>({
     queryKey: ["promptVersionComparison", workspaceId, agentId],
     queryFn: () => {
       if (!workspaceId) throw new Error("No workspace");
@@ -161,7 +161,7 @@ function AgentExperimentSection({ agentId, agentName }: { agentId: string; agent
     onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to eliminate version")),
   });
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <Card>
         <CardHeader>

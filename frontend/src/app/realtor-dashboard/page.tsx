@@ -37,7 +37,7 @@ interface MetricCardProps {
   label: string;
   value: number | undefined;
   icon: LucideIcon;
-  isLoading: boolean;
+  isPending: boolean;
 }
 
 type AppointmentStatus = "scheduled" | "completed" | "cancelled" | "no_show";
@@ -104,13 +104,13 @@ function StatusBadge({ status }: { status: AppointmentStatus }) {
   }
 }
 
-function MetricCard({ label, value, icon: Icon, isLoading }: MetricCardProps) {
+function MetricCard({ label, value, icon: Icon, isPending }: MetricCardProps) {
   return (
     <Card>
       <CardContent className="pt-6">
         <div className="flex items-start justify-between">
           <div className="space-y-1">
-            {isLoading ? (
+            {isPending ? (
               <Skeleton className="h-9 w-16" />
             ) : (
               <p className="text-3xl font-bold tracking-tight">
@@ -136,7 +136,7 @@ function RealtorDashboardContent() {
   // Metrics
   const {
     data: stats,
-    isLoading: statsLoading,
+    isPending: statsLoading,
   } = useQuery<RealtorStats>({
     queryKey: ["realtor-stats", workspaceId],
     queryFn: () => getRealtorStats(workspaceId!),
@@ -147,7 +147,7 @@ function RealtorDashboardContent() {
   // Upcoming appointments (scheduled + completed, soonest first)
   const {
     data: appointmentsData,
-    isLoading: appointmentsLoading,
+    isPending: appointmentsLoading,
   } = useQuery({
     queryKey: ["realtor-appointments", workspaceId],
     queryFn: () =>
@@ -199,7 +199,7 @@ function RealtorDashboardContent() {
             label={label}
             value={stats?.[key]}
             icon={icon}
-            isLoading={statsLoading}
+            isPending={statsLoading}
           />
         ))}
       </div>

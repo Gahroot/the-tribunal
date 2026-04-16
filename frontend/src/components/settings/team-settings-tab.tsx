@@ -102,7 +102,7 @@ export function TeamSettingsTab() {
   }>({});
 
   // Fetch team members
-  const { data: teamMembers, isLoading: teamLoading } = useQuery({
+  const { data: teamMembers, isPending: teamLoading } = useQuery({
     queryKey: ["settings", "team", workspaceId],
     queryFn: () => settingsApi.getTeamMembers(workspaceId!),
     enabled: !!workspaceId,
@@ -111,7 +111,7 @@ export function TeamSettingsTab() {
   // Fetch pending invitations (only for admins/owners)
   const isAdminOrOwner =
     currentWorkspace?.role === "owner" || currentWorkspace?.role === "admin";
-  const { data: pendingInvitations, isLoading: invitationsLoading } = useQuery({
+  const { data: pendingInvitations, isPending: invitationsLoading } = useQuery({
     queryKey: ["invitations", workspaceId],
     queryFn: () => invitationsApi.list(workspaceId!),
     enabled: !!workspaceId && isAdminOrOwner,

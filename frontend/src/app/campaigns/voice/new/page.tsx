@@ -26,7 +26,7 @@ export default function NewVoiceCampaignPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Fetch phone numbers from API - filter to voice-enabled only
-  const { data: phoneNumbersData, isLoading: phoneNumbersLoading } = useQuery({
+  const { data: phoneNumbersData, isPending: phoneNumbersLoading } = useQuery({
     queryKey: ["phone-numbers", workspaceId],
     queryFn: async () => {
       if (!workspaceId) return [];
@@ -38,7 +38,7 @@ export default function NewVoiceCampaignPage() {
   });
 
   // Fetch agents from API - all active agents
-  const { data: agentsData, isLoading: agentsLoading } = useQuery({
+  const { data: agentsData, isPending: agentsLoading } = useQuery({
     queryKey: ["agents", workspaceId, { active_only: true }],
     queryFn: async () => {
       if (!workspaceId) return [];
@@ -104,7 +104,7 @@ export default function NewVoiceCampaignPage() {
     }
   };
 
-  const isLoading = !workspaceId || phoneNumbersLoading || agentsLoading;
+  const isPending = !workspaceId || phoneNumbersLoading || agentsLoading;
 
   const agents = Array.isArray(agentsData) ? agentsData : [];
   const phoneNumbers = Array.isArray(phoneNumbersData) ? phoneNumbersData : [];
@@ -138,7 +138,7 @@ export default function NewVoiceCampaignPage() {
         </div>
 
         {/* Wizard content */}
-        {isLoading ? (
+        {isPending ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="flex flex-col items-center gap-4">
               <Loader2 className="size-8 animate-spin text-muted-foreground" />

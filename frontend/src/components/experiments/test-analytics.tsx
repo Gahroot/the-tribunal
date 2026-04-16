@@ -59,7 +59,7 @@ export function TestAnalytics({ testId }: TestAnalyticsProps) {
 
   const {
     data: analytics,
-    isLoading,
+    isPending,
     error,
   } = useQuery({
     queryKey: ["message-test-analytics", workspaceId, testId],
@@ -111,7 +111,7 @@ export function TestAnalytics({ testId }: TestAnalyticsProps) {
     onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to convert to campaign")),
   });
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="size-8 animate-spin text-muted-foreground" />

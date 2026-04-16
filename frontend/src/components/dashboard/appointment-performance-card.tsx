@@ -181,7 +181,7 @@ interface AppointmentPerformanceCardProps {
 export function AppointmentPerformanceCard({
   workspaceId,
 }: AppointmentPerformanceCardProps) {
-  const { data, isLoading, isError } = useQuery<AppointmentStatsResponse>({
+  const { data, isPending, isError } = useQuery<AppointmentStatsResponse>({
     queryKey: ["appointments", "stats", workspaceId],
     queryFn: () => appointmentsApi.getStats(workspaceId),
     enabled: !!workspaceId,
@@ -201,7 +201,7 @@ export function AppointmentPerformanceCard({
       </CardHeader>
 
       <CardContent className="space-y-6">
-        {isLoading && <LoadingSkeleton />}
+        {isPending && <LoadingSkeleton />}
 
         {isError && (
           <p className="py-4 text-center text-sm text-destructive">
@@ -237,7 +237,7 @@ export function AppointmentPerformanceCard({
           </>
         )}
 
-        {!isLoading && !isError && !data && (
+        {!isPending && !isError && !data && (
           <div className="flex flex-col items-center gap-1 py-8 text-center text-muted-foreground">
             <TrendingUp className="size-8 opacity-40" />
             <p className="text-sm">No appointment data yet.</p>

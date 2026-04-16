@@ -49,7 +49,7 @@ export default function ExperimentDetailPage({ params }: ExperimentDetailPagePro
 
   const {
     data: test,
-    isLoading,
+    isPending,
     error,
   } = useQuery({
     queryKey: ["message-test", workspaceId, testId],
@@ -106,7 +106,7 @@ export default function ExperimentDetailPage({ params }: ExperimentDetailPagePro
     onError: () => toast.error("Failed to complete test"),
   });
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <AppSidebar>
         <div className="flex items-center justify-center h-screen">

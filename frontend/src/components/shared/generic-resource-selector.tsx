@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { Search, X, Loader2 } from "lucide-react";
 
 import { Input } from "@/components/ui/input";

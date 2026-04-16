@@ -24,7 +24,7 @@ export default function NewSMSCampaignPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Fetch offers from API (with fallback to empty array)
-  const { data: offersData, isLoading: offersLoading } = useQuery({
+  const { data: offersData, isPending: offersLoading } = useQuery({
     queryKey: ["offers", workspaceId],
     queryFn: async () => {
       if (!workspaceId) return [];
@@ -40,7 +40,7 @@ export default function NewSMSCampaignPage() {
   });
 
   // Fetch phone numbers from API - filter to SMS-enabled only
-  const { data: phoneNumbersData, isLoading: phoneNumbersLoading } = useQuery({
+  const { data: phoneNumbersData, isPending: phoneNumbersLoading } = useQuery({
     queryKey: ["phone-numbers", workspaceId, { sms_enabled: true }],
     queryFn: async () => {
       if (!workspaceId) return [];
@@ -51,7 +51,7 @@ export default function NewSMSCampaignPage() {
   });
 
   // Fetch agents from API - filter to active agents only
-  const { data: agentsData, isLoading: agentsLoading } = useQuery({
+  const { data: agentsData, isPending: agentsLoading } = useQuery({
     queryKey: ["agents", workspaceId, { active_only: true }],
     queryFn: async () => {
       if (!workspaceId) return [];
@@ -137,7 +137,7 @@ export default function NewSMSCampaignPage() {
     await createOfferMutation.mutateAsync(offer);
   };
 
-  const isLoading = !workspaceId || offersLoading || phoneNumbersLoading || agentsLoading;
+  const isPending = !workspaceId || offersLoading || phoneNumbersLoading || agentsLoading;
 
   const agents = Array.isArray(agentsData) ? agentsData : [];
   const offers = Array.isArray(offersData) ? offersData : [];
@@ -162,7 +162,7 @@ export default function NewSMSCampaignPage() {
         </div>
 
         {/* Wizard content */}
-        {isLoading ? (
+        {isPending ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="flex flex-col items-center gap-4">
               <Loader2 className="size-8 animate-spin text-muted-foreground" />

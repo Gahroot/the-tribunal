@@ -115,7 +115,7 @@ function EmbedDialogContent({
   const [newDomain, setNewDomain] = useState("");
 
   // Fetch embed settings
-  const { data: embedSettings, isLoading } = useQuery({
+  const { data: embedSettings, isPending } = useQuery({
     queryKey: ["agent-embed", workspaceId, agentId],
     queryFn: () => agentsApi.getEmbedSettings(workspaceId, agentId),
   });
@@ -277,7 +277,7 @@ function EmbedDialogContent({
   // Key for preview iframe reloading
   const previewKey = `${currentValues.theme}-${currentValues.mode}-${currentValues.primaryColor}-${currentValues.display}`;
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <div className="flex items-center justify-center py-8">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AnimatePresence } from "framer-motion";
+import { AnimatePresence } from "motion/react";
 import { format, isToday, isYesterday, isSameDay } from "date-fns";
 import { Send, Paperclip, Mic, Phone, MoreVertical, MessageSquare, Loader2, PhoneOutgoing, Bot, User, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -102,7 +102,7 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
   const queryClient = useQueryClient();
 
   // Fetch timeline via React Query (polls every 3s)
-  const { data: timelineData, isLoading: isLoadingTimeline } = useContactTimeline(
+  const { data: timelineData, isPending: isLoadingTimeline } = useContactTimeline(
     workspaceId ?? "",
     selectedContact?.id ?? 0,
   );

@@ -21,7 +21,7 @@ export function NotificationsSettingsTab() {
   const queryClient = useQueryClient();
 
   // Fetch notifications
-  const { data: notifications, isLoading: notificationsLoading } = useQuery({
+  const { data: notifications, isPending: notificationsLoading } = useQuery({
     queryKey: ["settings", "notifications"],
     queryFn: settingsApi.getNotifications,
   });

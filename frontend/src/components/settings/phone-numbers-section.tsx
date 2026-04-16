@@ -75,7 +75,7 @@ export function PhoneNumbersSection() {
   // Fetch current phone numbers
   const {
     data: phoneNumbersData,
-    isLoading: isLoadingNumbers,
+    isPending: isLoadingNumbers,
     error: numbersError,
   } = useQuery({
     queryKey: ["phone-numbers", workspaceId, { active_only: false }],
