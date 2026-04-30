@@ -3,6 +3,7 @@
 from app.models.agent import Agent
 from app.models.api_key import APIKey
 from app.models.appointment import Appointment
+from app.models.assistant_conversation import AssistantConversation, AssistantMessage
 from app.models.auth_rate_limit import AuthRateLimit
 from app.models.automation import Automation
 from app.models.automation_execution import AutomationExecution
@@ -107,6 +108,8 @@ __all__ = [
     "KnowledgeDocument",
     "LinkClick",
     "PendingAction",
+    "AssistantConversation",
+    "AssistantMessage",
     "AuthRateLimit",
     "RefreshToken",
 ]

@@ -7,6 +7,8 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.models.phone_number import PhoneNumber
+from app.models.user import User
+from app.models.workspace import WorkspaceMembership
 from app.services.ai.text_agent import schedule_ai_response
 from app.services.approval.command_processor_service import command_processor_service
 from app.services.campaigns.conversation_syncer import CampaignConversationSyncer
@@ -57,6 +59,23 @@ async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:  # 
         )
         if is_command:
             log.info("processed_approval_command", from_number=from_number)
+            return
+
+        # Check if sender is a workspace operator (member texting their own number)
+        operator_user = await _check_operator(db, from_number, workspace_id)
+        if operator_user:
+            log.info("detected_operator_sms", user_id=operator_user.id)
+            from app.services.ai.crm_assistant import process_assistant_message
+
+            await process_assistant_message(
+                db=db,
+                workspace_id=workspace_id,
+                user_id=operator_user.id,
+                message=body,
+                response_channel="sms",
+                sms_from_number=to_number,
+                sms_to_number=from_number,
+            )
             return
 
         # Process inbound message
@@ -252,3 +271,25 @@ async def handle_delivery_status(payload: dict[str, Any], log: Any) -> None:
 
         finally:
             await sms_service.close()
+
+
+async def _check_operator(db: Any, from_number: str, workspace_id: Any) -> User | None:
+    """Check if the sender is a workspace member texting from their registered phone."""
+    from app.utils.phone import normalize_phone_e164
+
+    try:
+        normalized = normalize_phone_e164(from_number)
+    except Exception:
+        return None
+
+    result = await db.execute(
+        select(User)
+        .join(WorkspaceMembership, WorkspaceMembership.user_id == User.id)
+        .where(
+            User.phone_number == normalized,
+            WorkspaceMembership.workspace_id == workspace_id,
+            User.is_active == True,  # noqa: E712
+        )
+    )
+    user: User | None = result.scalar_one_or_none()
+    return user

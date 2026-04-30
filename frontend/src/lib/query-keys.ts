@@ -37,6 +37,9 @@ export const queryKeys = {
     versions: (workspaceId: string, agentId: string) =>
       ["agents", workspaceId, "detail", agentId, "versions"] as const,
   },
+  assistant: {
+    history: (workspaceId: string) => ["assistant", workspaceId, "history"] as const,
+  },
   appointments: resource("appointments"),
   auth: {
     currentUser: () => ["auth", "currentUser"] as const,

@@ -87,6 +87,11 @@ const mainNavItems = [
     icon: LayoutDashboard,
   },
   {
+    title: "Assistant",
+    url: "/assistant",
+    icon: Sparkles,
+  },
+  {
     title: "Nudges",
     url: "/nudges",
     icon: Bell,

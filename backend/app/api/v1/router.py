@@ -16,6 +16,7 @@ from app.api.v1 import (
     campaigns,
     contacts,
     conversations,
+    crm_assistant,
     dashboard,
     demo,
     device_tokens,
@@ -84,6 +85,11 @@ api_router.include_router(
     agents.router,
     prefix="/workspaces/{workspace_id}/agents",
     tags=["Agents"],
+)
+api_router.include_router(
+    crm_assistant.router,
+    prefix="/workspaces/{workspace_id}/assistant",
+    tags=["CRM Assistant"],
 )
 api_router.include_router(
     prompt_versions.router,
