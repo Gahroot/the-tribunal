@@ -1,6 +1,20 @@
-"""CRM assistant processor — orchestrates LLM + tool execution for operator chat."""
+"""CRM assistant processor — orchestrates LLM + tool execution for operator chat.
+
+Architecture:
+- Multi-turn tool loop (capped) so the model can chain actions like
+  search → send_sms in one user request.
+- Parallel tool execution within a single turn (asyncio.gather).
+- OpenAI prompt caching via `prompt_cache_key` keyed per (workspace, user)
+  — the system prompt prefix stays byte-identical across turns so
+  cached_tokens hit on every follow-up call.
+- Auto-summarization when the message log grows past a token budget,
+  preserving the system prefix for cache stability.
+
+Patterns adapted from ezcoder's agent-loop and compactor (see /home/groot/ezcoder).
+"""
 
 import asyncio
+import hashlib
 import json
 import uuid
 from typing import Any
@@ -12,22 +26,127 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.assistant_conversation import AssistantConversation, AssistantMessage
+from app.services.ai.crm_assistant._summarizer import maybe_summarize
 from app.services.ai.crm_assistant._tool_executor import CRMToolExecutor
 from app.services.ai.crm_assistant._tools import get_crm_tools
 
 logger = structlog.get_logger()
 
+# ── Configuration ────────────────────────────────────────────────────
+MODEL = "gpt-5.4-nano"
+MAX_TOOL_TURNS = 5  # safety cap on chained tool calls
+HISTORY_LOAD_LIMIT = 60  # rows pulled from DB before summarization
+LLM_TIMEOUT_SECONDS = 45.0
+MAX_COMPLETION_TOKENS = 800
+TEMPERATURE = 0.3
+
+# Concise, action-oriented system prompt. Style borrowed from ezcoder's
+# system-prompt.ts: short bullets, clear rules, no preamble.
 SYSTEM_PROMPT = """\
-You are a CRM management assistant. You help the user manage their CRM by searching \
-contacts, creating records, sending messages, checking campaigns, and more. \
-Be concise and helpful. When performing actions, confirm what you did. \
-Available tools let you search contacts, create contacts, list campaigns, \
-manage agents, send SMS, read conversations, check appointments, \
-and view dashboard stats.\
-"""
+You are the CRM operator assistant. Help the user run their CRM by calling tools.
+
+## How to talk
+- Be concise. 1–3 sentences per reply.
+- After taking action, confirm what you did in one line.
+- No preamble, no recap, no "let me know if…".
+
+## How to work
+- Prefer tools over guessing. If you need data, call a tool.
+- Chain tools when needed (e.g. search_contacts → send_sms).
+- Confirm destructive actions (sending SMS, creating records) before doing them, \
+unless the user already gave a clear directive.
+- If a tool fails, surface the error briefly and stop — don't retry blindly."""
 
 
-async def process_assistant_message(  # noqa: PLR0912, PLR0913, PLR0915
+def _cache_key(workspace_id: uuid.UUID, user_id: int) -> str:
+    """Stable per-(workspace, user) key for OpenAI prompt caching.
+
+    OpenAI uses this as a routing hint to keep similar requests on the
+    same machine for prefix-cache hits. Each operator gets their own
+    bucket so their conversation prefix stays warm.
+    See: https://platform.openai.com/docs/guides/prompt-caching
+    """
+    raw = f"crm_assistant:{workspace_id}:{user_id}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:32]
+
+
+def _serialize_history(rows: list[AssistantMessage]) -> list[dict[str, Any]]:
+    """Convert DB rows into the OpenAI Chat Completions message shape."""
+    out: list[dict[str, Any]] = []
+    for msg in rows:
+        entry: dict[str, Any] = {"role": msg.role, "content": msg.content}
+        if msg.tool_calls:
+            entry["tool_calls"] = msg.tool_calls
+        if msg.tool_call_id:
+            entry["tool_call_id"] = msg.tool_call_id
+        out.append(entry)
+    return out
+
+
+def _repair_pairing(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop any orphan tool_calls or tool_results that would cause a 400.
+
+    Mirrors ezcoder's repairToolPairing — defensive cleanup before sending
+    to OpenAI in case a previous turn was interrupted mid-loop and left
+    asymmetric history in the DB.
+    """
+    call_ids: set[str] = set()
+    result_ids: set[str] = set()
+    for msg in messages:
+        for tc in msg.get("tool_calls") or []:
+            tcid = tc.get("id")
+            if tcid:
+                call_ids.add(tcid)
+        if msg.get("role") == "tool":
+            tcid = msg.get("tool_call_id")
+            if tcid:
+                result_ids.add(tcid)
+
+    repaired: list[dict[str, Any]] = []
+    for msg in messages:
+        # Drop orphan tool results
+        if msg.get("role") == "tool" and msg.get("tool_call_id") not in call_ids:
+            continue
+        # Strip orphan tool_calls from assistant messages
+        if msg.get("role") == "assistant" and msg.get("tool_calls"):
+            kept = [tc for tc in msg["tool_calls"] if tc.get("id") in result_ids]
+            new_msg = dict(msg)
+            if kept:
+                new_msg["tool_calls"] = kept
+            else:
+                new_msg.pop("tool_calls", None)
+                # If the assistant message had no text content either, skip it.
+                if not new_msg.get("content"):
+                    continue
+            repaired.append(new_msg)
+            continue
+        repaired.append(msg)
+    return repaired
+
+
+async def _execute_tool_calls_parallel(
+    executor: CRMToolExecutor,
+    tool_calls: list[Any],
+) -> list[dict[str, Any]]:
+    """Run all tool calls in a single turn concurrently.
+
+    Returns a list of dicts: { id, name, arguments, result } in the same
+    order as `tool_calls`, so we can build matching tool messages and
+    actions_taken summaries.
+    """
+    async def _run(tc: Any) -> dict[str, Any]:
+        name = tc.function.name
+        try:
+            args = json.loads(tc.function.arguments)
+        except json.JSONDecodeError:
+            args = {}
+        result = await executor.execute(name, args)
+        return {"id": tc.id, "name": name, "arguments": args, "result": result}
+
+    return await asyncio.gather(*(_run(tc) for tc in tool_calls))
+
+
+async def process_assistant_message(  # noqa: PLR0913, PLR0915
     db: AsyncSession,
     workspace_id: uuid.UUID,
     user_id: int,
@@ -35,20 +154,12 @@ async def process_assistant_message(  # noqa: PLR0912, PLR0913, PLR0915
     response_channel: str = "in_app",
     sms_from_number: str | None = None,
     sms_to_number: str | None = None,
-) -> str:
+) -> dict[str, Any]:
     """Process an operator message through the CRM assistant.
 
-    Args:
-        db: Database session.
-        workspace_id: Workspace scope.
-        user_id: Operator's user ID.
-        message: The operator's text message.
-        response_channel: "in_app" or "sms".
-        sms_from_number: Telnyx number to send from (for SMS responses).
-        sms_to_number: Operator's phone number (for SMS responses).
-
-    Returns:
-        The assistant's response text.
+    Returns a dict with:
+        response: str — final assistant text
+        actions_taken: list[{tool_name, success, summary}]
     """
     log = logger.bind(
         workspace_id=str(workspace_id),
@@ -65,66 +176,86 @@ async def process_assistant_message(  # noqa: PLR0912, PLR0913, PLR0915
         )
     )
     conversation = conv_result.scalar_one_or_none()
-
     if conversation is None:
-        conversation = AssistantConversation(
-            workspace_id=workspace_id,
-            user_id=user_id,
-        )
+        conversation = AssistantConversation(workspace_id=workspace_id, user_id=user_id)
         db.add(conversation)
         await db.flush()
 
     # ── 2. Append user message ─────────────────────────────────────────
-    user_msg = AssistantMessage(
-        conversation_id=conversation.id,
-        role="user",
-        content=message,
-    )
-    db.add(user_msg)
+    db.add(AssistantMessage(conversation_id=conversation.id, role="user", content=message))
     await db.flush()
 
-    # ── 3. Load recent history ─────────────────────────────────────────
+    # ── 3. Load history (most recent N), oldest first ──────────────────
     history_result = await db.execute(
         select(AssistantMessage)
         .where(AssistantMessage.conversation_id == conversation.id)
         .order_by(AssistantMessage.created_at.desc())
-        .limit(20)
+        .limit(HISTORY_LOAD_LIMIT)
     )
-    history = list(reversed(history_result.scalars().all()))
+    history_rows = list(reversed(history_result.scalars().all()))
 
-    api_messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
-    for msg in history:
-        entry: dict[str, Any] = {"role": msg.role, "content": msg.content}
-        if msg.tool_calls:
-            entry["tool_calls"] = msg.tool_calls
-        if msg.tool_call_id:
-            entry["tool_call_id"] = msg.tool_call_id
-        api_messages.append(entry)
+    api_messages: list[dict[str, Any]] = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        *_serialize_history(history_rows),
+    ]
+    api_messages = _repair_pairing(api_messages)
 
-    # ── 4. Call LLM with tools ─────────────────────────────────────────
     client = AsyncOpenAI(api_key=settings.openai_api_key)
+    cache_key = _cache_key(workspace_id, user_id)
+
+    # Compact older history if we're over budget. Preserves the system
+    # prefix so prompt caching keeps hitting.
+    api_messages = await maybe_summarize(client, api_messages)
+
     actions_taken: list[dict[str, Any]] = []
+    executor = CRMToolExecutor(db=db, workspace_id=workspace_id, user_id=user_id)
+    final_text: str | None = None
 
     try:
-        api_params: dict[str, Any] = {
-            "model": "gpt-5.4-nano",
-            "messages": api_messages,
-            "tools": get_crm_tools(),
-            "tool_choice": "auto",
-            "temperature": 0.3,
-            "max_completion_tokens": 800,
-        }
-        response = await asyncio.wait_for(
-            client.chat.completions.create(**api_params),
-            timeout=45.0,
-        )
+        # ── 4. Tool loop ───────────────────────────────────────────────
+        for turn_idx in range(MAX_TOOL_TURNS):
+            api_params: dict[str, Any] = {
+                "model": MODEL,
+                "messages": api_messages,
+                "tools": get_crm_tools(),
+                "tool_choice": "auto",
+                "temperature": TEMPERATURE,
+                "max_completion_tokens": MAX_COMPLETION_TOKENS,
+                "prompt_cache_key": cache_key,
+            }
+            response = await asyncio.wait_for(
+                client.chat.completions.create(**api_params),
+                timeout=LLM_TIMEOUT_SECONDS,
+            )
+            assistant_msg = response.choices[0].message
 
-        assistant_message = response.choices[0].message
+            # Log cache utilization for observability
+            usage = response.usage
+            if usage and usage.prompt_tokens_details:
+                log.info(
+                    "llm_call",
+                    turn=turn_idx,
+                    prompt_tokens=usage.prompt_tokens,
+                    cached_tokens=usage.prompt_tokens_details.cached_tokens or 0,
+                    completion_tokens=usage.completion_tokens,
+                )
 
-        # ── 5. Handle tool calls ───────────────────────────────────────
-        if assistant_message.tool_calls:
-            # Save assistant message with tool calls
-            tool_calls_data = [
+            # No tool calls → terminal turn
+            if not assistant_msg.tool_calls:
+                final_text = assistant_msg.content
+                if final_text:
+                    db.add(
+                        AssistantMessage(
+                            conversation_id=conversation.id,
+                            role="assistant",
+                            content=final_text,
+                        )
+                    )
+                    await db.flush()
+                break
+
+            # Tool calls → record assistant turn, execute in parallel, append results.
+            tool_calls_payload = [
                 {
                     "id": tc.id,
                     "type": "function",
@@ -133,118 +264,89 @@ async def process_assistant_message(  # noqa: PLR0912, PLR0913, PLR0915
                         "arguments": tc.function.arguments,
                     },
                 }
-                for tc in assistant_message.tool_calls
+                for tc in assistant_msg.tool_calls
             ]
-            assistant_msg = AssistantMessage(
-                conversation_id=conversation.id,
-                role="assistant",
-                content=assistant_message.content or "",
-                tool_calls=tool_calls_data,
-            )
-            db.add(assistant_msg)
-            await db.flush()
-
-            # Add assistant + tool results to API messages
-            api_messages.append({
-                "role": "assistant",
-                "content": assistant_message.content,
-                "tool_calls": tool_calls_data,
-            })
-
-            executor = CRMToolExecutor(db=db, workspace_id=workspace_id, user_id=user_id)
-            for tc in assistant_message.tool_calls:
-                try:
-                    arguments = json.loads(tc.function.arguments)
-                except json.JSONDecodeError:
-                    arguments = {}
-
-                result = await executor.execute(tc.function.name, arguments)
-                actions_taken.append({
-                    "tool_name": tc.function.name,
-                    "success": result.get("success", False),
-                    "summary": json.dumps(result)[:200],
-                })
-
-                tool_result_msg = AssistantMessage(
+            db.add(
+                AssistantMessage(
                     conversation_id=conversation.id,
-                    role="tool",
-                    content=json.dumps(result),
-                    tool_call_id=tc.id,
+                    role="assistant",
+                    content=assistant_msg.content or "",
+                    tool_calls=tool_calls_payload,
                 )
-                db.add(tool_result_msg)
-
-                api_messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": json.dumps(result),
-                })
-
-            await db.flush()
-
-            # ── 6. Follow-up LLM call for natural language ─────────────
-            follow_up_params: dict[str, Any] = {
-                "model": "gpt-5.4-nano",
-                "messages": api_messages,
-                "temperature": 0.3,
-                "max_completion_tokens": 500,
-            }
-            follow_up = await asyncio.wait_for(
-                client.chat.completions.create(**follow_up_params),
-                timeout=30.0,
             )
-            final_text: str | None = follow_up.choices[0].message.content
+            await db.flush()
+            api_messages.append(
+                {
+                    "role": "assistant",
+                    "content": assistant_msg.content,
+                    "tool_calls": tool_calls_payload,
+                }
+            )
 
-            if final_text:
-                final_msg = AssistantMessage(
+            executions = await _execute_tool_calls_parallel(executor, assistant_msg.tool_calls)
+            for ex in executions:
+                result_json = json.dumps(ex["result"])
+                db.add(
+                    AssistantMessage(
+                        conversation_id=conversation.id,
+                        role="tool",
+                        content=result_json,
+                        tool_call_id=ex["id"],
+                    )
+                )
+                api_messages.append(
+                    {"role": "tool", "tool_call_id": ex["id"], "content": result_json}
+                )
+                actions_taken.append(
+                    {
+                        "tool_name": ex["name"],
+                        "success": ex["result"].get("success", False),
+                        "summary": result_json[:200],
+                    }
+                )
+            await db.flush()
+        else:
+            # Fell out of the loop without a final reply — cap reached.
+            log.warning("tool_loop_cap_reached", turns=MAX_TOOL_TURNS)
+            final_text = (
+                "I worked through several steps but couldn't finish in one go. "
+                "Want me to keep going, or refine the request?"
+            )
+            db.add(
+                AssistantMessage(
                     conversation_id=conversation.id,
                     role="assistant",
                     content=final_text,
                 )
-                db.add(final_msg)
-                await db.flush()
-                await db.commit()
-
-                # Send via SMS if needed
-                if response_channel == "sms" and sms_from_number and sms_to_number:
-                    await _send_sms_response(
-                        sms_from_number, sms_to_number, final_text, db, workspace_id, log,
-                    )
-
-                return final_text
-
-            await db.commit()
-            return "I processed your request but couldn't generate a response."
-
-        # No tool calls — direct response
-        response_text: str | None = assistant_message.content
-        if response_text:
-            final_msg = AssistantMessage(
-                conversation_id=conversation.id,
-                role="assistant",
-                content=response_text,
             )
-            db.add(final_msg)
             await db.flush()
-            await db.commit()
 
-            if response_channel == "sms" and sms_from_number and sms_to_number:
-                await _send_sms_response(
-                    sms_from_number, sms_to_number, response_text, db, workspace_id, log,
-                )
-
-            return response_text
+        if not final_text:
+            final_text = "I processed your request but couldn't generate a response."
 
         await db.commit()
-        return "I couldn't generate a response."
+
+        if response_channel == "sms" and sms_from_number and sms_to_number:
+            await _send_sms_response(
+                sms_from_number, sms_to_number, final_text, db, workspace_id, log,
+            )
+
+        return {"response": final_text, "actions_taken": actions_taken}
 
     except TimeoutError:
         log.error("assistant_llm_timeout")
         await db.commit()
-        return "Sorry, that took too long. Please try again."
+        return {
+            "response": "Sorry, that took too long. Please try again.",
+            "actions_taken": actions_taken,
+        }
     except Exception:
         log.exception("assistant_processing_error")
         await db.commit()
-        return "Something went wrong processing your request. Please try again."
+        return {
+            "response": "Something went wrong processing your request. Please try again.",
+            "actions_taken": actions_taken,
+        }
 
 
 async def _send_sms_response(
@@ -255,7 +357,7 @@ async def _send_sms_response(
     workspace_id: uuid.UUID,
     log: Any,
 ) -> None:
-    """Send the assistant response via SMS."""
+    """Send the assistant's final reply as an SMS to the operator."""
     from app.services.telephony.telnyx import TelnyxSMSService
 
     telnyx_key = settings.telnyx_api_key

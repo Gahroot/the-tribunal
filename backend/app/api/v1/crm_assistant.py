@@ -10,6 +10,7 @@ from app.api.deps import DB, CurrentUser, get_workspace
 from app.models.assistant_conversation import AssistantConversation, AssistantMessage
 from app.models.workspace import Workspace
 from app.schemas.crm_assistant import (
+    ActionSummary,
     AssistantChatRequest,
     AssistantChatResponse,
     AssistantConversationResponse,
@@ -29,13 +30,16 @@ async def chat_with_assistant(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> AssistantChatResponse:
     """Send a message to the CRM assistant and get a response."""
-    response = await process_assistant_message(
+    result = await process_assistant_message(
         db=db,
         workspace_id=workspace_id,
         user_id=current_user.id,
         message=request.message,
     )
-    return AssistantChatResponse(response=response)
+    return AssistantChatResponse(
+        response=result["response"],
+        actions_taken=[ActionSummary(**a) for a in result["actions_taken"]],
+    )
 
 
 @router.get("/history", response_model=AssistantConversationResponse | None)

@@ -1,4 +1,8 @@
-"""CRM assistant tool definitions for OpenAI function calling."""
+"""CRM assistant tool definitions for OpenAI function calling.
+
+Style: short imperative descriptions, only non-obvious params documented.
+Mirrors the prompt-hint style in ezcoder's tools/prompt-hints.ts.
+"""
 
 from typing import Any
 
@@ -7,21 +11,12 @@ CRM_TOOLS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "search_contacts",
-            "description": (
-                "Search contacts by name, phone number, email, or tag. "
-                "Returns matching contacts with their details."
-            ),
+            "description": "Search contacts by name, phone, email, or company.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Search term — name, phone, email, or company",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Max results to return (default 10)",
-                    },
+                    "query": {"type": "string", "description": "Search term"},
+                    "limit": {"type": "integer", "description": "Max results (default 10)"},
                 },
                 "required": ["query"],
             },
@@ -31,30 +26,15 @@ CRM_TOOLS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "create_contact",
-            "description": "Create a new CRM contact.",
+            "description": "Create a new contact. Requires first_name + phone in E.164.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "first_name": {
-                        "type": "string",
-                        "description": "Contact first name",
-                    },
-                    "last_name": {
-                        "type": "string",
-                        "description": "Contact last name",
-                    },
-                    "phone": {
-                        "type": "string",
-                        "description": "Phone number in E.164 format",
-                    },
-                    "email": {
-                        "type": "string",
-                        "description": "Email address",
-                    },
-                    "notes": {
-                        "type": "string",
-                        "description": "Optional notes about the contact",
-                    },
+                    "first_name": {"type": "string"},
+                    "last_name": {"type": "string"},
+                    "phone": {"type": "string", "description": "E.164 format (+15551234567)"},
+                    "email": {"type": "string"},
+                    "notes": {"type": "string"},
                 },
                 "required": ["first_name", "phone"],
             },
@@ -64,18 +44,15 @@ CRM_TOOLS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "list_campaigns",
-            "description": "List campaigns with their status and stats.",
+            "description": "List campaigns. Filter by status if provided.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "status": {
                         "type": "string",
-                        "description": "Filter by status: draft, active, paused, completed",
+                        "description": "draft | active | paused | completed",
                     },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Max results to return (default 10)",
-                    },
+                    "limit": {"type": "integer", "description": "Max results (default 10)"},
                 },
             },
         },
@@ -84,14 +61,11 @@ CRM_TOOLS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "list_agents",
-            "description": "List AI agents configured in the workspace.",
+            "description": "List AI agents in the workspace.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "limit": {
-                        "type": "integer",
-                        "description": "Max results to return (default 10)",
-                    },
+                    "limit": {"type": "integer", "description": "Max results (default 10)"},
                 },
             },
         },
@@ -100,18 +74,13 @@ CRM_TOOLS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "send_sms",
-            "description": "Send an SMS message to a contact.",
+            "description": "Send an SMS to a contact by id. Confirm with the user first "
+                           "unless they already gave a clear directive.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "contact_id": {
-                        "type": "integer",
-                        "description": "ID of the contact to message",
-                    },
-                    "body": {
-                        "type": "string",
-                        "description": "Message content",
-                    },
+                    "contact_id": {"type": "integer"},
+                    "body": {"type": "string", "description": "Message text"},
                 },
                 "required": ["contact_id", "body"],
             },
@@ -121,18 +90,12 @@ CRM_TOOLS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_conversation",
-            "description": "Read recent messages with a specific contact.",
+            "description": "Read recent messages with a contact.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "contact_id": {
-                        "type": "integer",
-                        "description": "ID of the contact",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Number of recent messages to return (default 20)",
-                    },
+                    "contact_id": {"type": "integer"},
+                    "limit": {"type": "integer", "description": "Recent messages (default 20)"},
                 },
                 "required": ["contact_id"],
             },
@@ -146,10 +109,7 @@ CRM_TOOLS: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "limit": {
-                        "type": "integer",
-                        "description": "Max results to return (default 10)",
-                    },
+                    "limit": {"type": "integer", "description": "Max results (default 10)"},
                 },
             },
         },
@@ -162,10 +122,7 @@ CRM_TOOLS: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "limit": {
-                        "type": "integer",
-                        "description": "Max results to return (default 10)",
-                    },
+                    "limit": {"type": "integer", "description": "Max results (default 10)"},
                 },
             },
         },
@@ -174,26 +131,20 @@ CRM_TOOLS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_dashboard_stats",
-            "description": ("Get current dashboard metrics — "
-             "contacts, campaigns, messages, appointments."),
-            "parameters": {
-                "type": "object",
-                "properties": {},
-            },
+            "description": "Current totals: contacts, campaigns, conversations, "
+                           "upcoming appointments.",
+            "parameters": {"type": "object", "properties": {}},
         },
     },
     {
         "type": "function",
         "function": {
             "name": "list_opportunities",
-            "description": "Show pipeline opportunities/deals.",
+            "description": "Pipeline opportunities/deals.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "limit": {
-                        "type": "integer",
-                        "description": "Max results to return (default 10)",
-                    },
+                    "limit": {"type": "integer", "description": "Max results (default 10)"},
                 },
             },
         },
