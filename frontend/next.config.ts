@@ -8,9 +8,9 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
-        // Proxy public embed API calls to the backend
-        source: "/api/v1/p/embed/:path*",
-        destination: `${BACKEND_URL}/api/v1/p/embed/:path*`,
+        // Proxy all API calls to the backend (avoids CORS issues)
+        source: "/api/:path*",
+        destination: `${BACKEND_URL}/api/:path*`,
       },
     ];
   },
