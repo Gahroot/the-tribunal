@@ -47,6 +47,13 @@ export function VoiceTestDialog({
   const playbackContextRef = useRef<AudioContext | null>(null);
   const playbackQueueRef = useRef<Float32Array[]>([]);
   const isPlayingRef = useRef(false);
+  const isMutedRef = useRef(isMuted);
+
+  // Mirror isMuted into a ref so the long-lived audio processor closure
+  // always sees the latest value without needing to be recreated.
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
 
   // Clean up on unmount or dialog close
   useEffect(() => {
@@ -250,7 +257,7 @@ export function VoiceTestDialog({
 
       // Set up audio processing
       processorRef.current.onaudioprocess = (e) => {
-        if (isMuted || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        if (isMutedRef.current || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
           return;
         }
 
@@ -283,7 +290,7 @@ export function VoiceTestDialog({
       setConnectionStatus("error");
       disconnect();
     }
-  }, [agentId, workspaceId, connectionStatus, disconnect, isMuted, playAudioQueue]);
+  }, [agentId, workspaceId, connectionStatus, disconnect, playAudioQueue]);
 
   const toggleMute = useCallback(() => {
     setIsMuted((prev) => !prev);
