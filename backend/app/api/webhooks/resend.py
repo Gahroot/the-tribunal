@@ -29,8 +29,10 @@ def _verify_signature(
 
     if not secret:
         logger.warning("resend_webhook_secret_not_configured")
-        parsed: dict[str, Any] = json.loads(payload)
-        return parsed
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Webhook secret not configured.",
+        )
 
     if not SVIX_AVAILABLE:
         logger.error("svix_not_installed")
@@ -51,8 +53,8 @@ def _verify_signature(
 
     if isinstance(verified, dict):
         return verified
-    fallback: dict[str, Any] = json.loads(payload)
-    return fallback
+    parsed: dict[str, Any] = json.loads(payload)
+    return parsed
 
 
 @router.post("")
