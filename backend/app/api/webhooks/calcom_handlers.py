@@ -8,7 +8,6 @@ live in :mod:`calcom_parser`, side-effect dispatch in :mod:`calcom_events`.
 
 from __future__ import annotations
 
-import asyncio
 import zoneinfo
 from datetime import UTC, datetime
 from typing import Any
@@ -32,6 +31,7 @@ from app.models.workspace import Workspace
 from app.services.campaigns.guarantee_tracker import increment_completed_and_check_guarantee
 from app.services.email import send_appointment_booked_notification
 from app.services.push_notifications import push_notification_service
+from app.utils.background_tasks import spawn_background_task
 
 
 async def handle_booking_created(data: dict[str, Any], log: Any) -> None:  # noqa: PLR0912, PLR0915
@@ -202,14 +202,15 @@ async def handle_booking_created(data: dict[str, Any], log: Any) -> None:  # noq
                         " ".join(filter(None, [contact.first_name, contact.last_name]))
                         or "Unknown"
                     )
-                    asyncio.create_task(
+                    spawn_background_task(
                         send_appointment_booked_notification(
                             to_email=realtor_email,
                             realtor_name=realtor_name,
                             contact_name=contact_name,
                             contact_phone=contact.phone_number or "",
                             appointment_time=appointment.scheduled_at,
-                        )
+                        ),
+                        name="appointment_booked_email:calcom_webhook",
                     )
                     log.info(
                         "appointment_booked_email_queued",

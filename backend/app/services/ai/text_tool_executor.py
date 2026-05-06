@@ -19,7 +19,6 @@ Usage:
     result = await executor.execute("book_appointment", {"date": "2024-01-15", ...})
 """
 
-import asyncio
 import json
 from datetime import UTC, datetime
 from typing import Any
@@ -41,6 +40,7 @@ from app.models.workspace import WorkspaceIntegration, WorkspaceMembership
 from app.services.ai.base_tool_executor import BaseToolExecutor
 from app.services.approval.approval_gate_service import approval_gate_service
 from app.services.email import send_appointment_booked_notification
+from app.utils.background_tasks import spawn_background_task
 
 logger = structlog.get_logger()
 
@@ -378,14 +378,15 @@ class TextToolExecutor(BaseToolExecutor):
             owner = await self._get_workspace_owner()
             if owner:
                 realtor_email, realtor_name = owner
-                asyncio.create_task(
+                spawn_background_task(
                     send_appointment_booked_notification(
                         to_email=realtor_email,
                         realtor_name=realtor_name,
                         contact_name=contact.full_name or "Unknown",
                         contact_phone=contact.phone_number or "",
                         appointment_time=appointment.scheduled_at,
-                    )
+                    ),
+                    name="appointment_booked_email:text_tool_executor",
                 )
                 self.log.info(
                     "appointment_booked_email_queued",
