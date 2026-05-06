@@ -231,13 +231,15 @@ export default function VoiceTestPage() {
     addTranscript("system", `Connecting to ${selectedAgent.name}...`);
 
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-      const authToken = localStorage.getItem("access_token");
+      // Use relative URLs so calls go through the Next.js proxy and the
+      // httpOnly auth cookie is sent same-origin. JS cannot read the cookie,
+      // so an XSS payload cannot lift the access token.
+      const apiBase = "";
 
       // Get ephemeral token
       const tokenResponse = await fetch(
         `${apiBase}/api/v1/realtime/token/${selectedAgentId}?workspace_id=${workspaceId}`,
-        { headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} }
+        { credentials: "include" }
       );
 
       if (!tokenResponse.ok) {
@@ -336,9 +338,9 @@ export default function VoiceTestPage() {
             try {
               const toolResponse = await fetch(`${apiBase}/api/v1/tools/execute`, {
                 method: "POST",
+                credentials: "include",
                 headers: {
                   "Content-Type": "application/json",
-                  ...(authToken && { Authorization: `Bearer ${authToken}` }),
                 },
                 body: JSON.stringify({
                   tool_name: name,

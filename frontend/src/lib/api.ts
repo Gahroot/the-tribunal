@@ -1,5 +1,4 @@
 import axios, { type AxiosRequestConfig } from "axios";
-import { safeGetItem, safeSetItem, safeRemoveItem } from "./utils/storage";
 
 // Use relative URL so requests are proxied through Next.js rewrites (no CORS issues)
 // Fallback to direct backend URL for non-browser environments (SSR, tests)
@@ -13,14 +12,17 @@ export const api = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
+  // Both access_token and refresh_token are httpOnly cookies set by the
+  // backend. ``withCredentials`` is required so the browser includes them on
+  // every API call. JS never reads, stores, or forwards the tokens itself —
+  // an XSS payload cannot exfiltrate them.
   withCredentials: true,
   timeout: 30000,
 });
 
-// Logout function — clears access token and tells backend to clear refresh cookie
+// Logout — backend clears the httpOnly access + refresh cookies.
 export function logout(): void {
-  safeRemoveItem("access_token");
-  // Fire-and-forget: ask backend to clear the httpOnly refresh cookie
+  // Fire-and-forget: ask backend to clear the auth cookies.
   api.post("/api/v1/auth/logout").catch(() => {});
   try {
     window.location.href = "/login";
@@ -28,20 +30,6 @@ export function logout(): void {
     console.error("Failed to redirect to login:", navError);
   }
 }
-
-// Request interceptor for adding auth token
-api.interceptors.request.use(
-  (config) => {
-    const token = safeGetItem("access_token");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
 
 // Track if we're currently refreshing to prevent multiple refresh attempts
 let isRefreshing = false;
@@ -67,8 +55,12 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
+    // Never try to refresh on the refresh endpoint itself — that would loop.
+    const requestUrl: string = originalRequest?.url ?? "";
+    const isRefreshCall = requestUrl.includes("/api/v1/auth/refresh");
+
     // If 401 and we haven't tried to refresh yet
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && !originalRequest._retry && !isRefreshCall) {
       if (isRefreshing) {
         // If already refreshing, queue this request
         return new Promise((resolve, reject) => {
@@ -86,22 +78,15 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        // Attempt to refresh — refresh token is sent automatically via httpOnly cookie
-        const response = await api.post("/api/v1/auth/refresh");
-
-        const { access_token } = response.data;
-
-        // Store new access token
-        safeSetItem("access_token", access_token);
-
-        // Update authorization header
-        originalRequest.headers.Authorization = `Bearer ${access_token}`;
+        // Attempt to refresh — refresh token is sent automatically via httpOnly cookie.
+        // The new access cookie is set in the response; nothing for JS to store.
+        await api.post("/api/v1/auth/refresh");
 
         // Process queued requests
         processQueue(null);
         isRefreshing = false;
 
-        // Retry original request
+        // Retry original request — the browser will attach the new access cookie.
         return api(originalRequest);
       } catch (refreshError) {
         // Refresh failed, logout

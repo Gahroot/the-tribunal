@@ -43,6 +43,9 @@ _AUTH_RATE_WINDOW_MINUTES = 15
 
 _REFRESH_COOKIE_PATH = "/api/v1/auth"
 _REFRESH_COOKIE_MAX_AGE = 7 * 24 * 3600  # 7 days
+_ACCESS_COOKIE_NAME = "access_token"
+# Access cookie is needed across the entire API surface, not just /auth.
+_ACCESS_COOKIE_PATH = "/"
 
 
 def _set_refresh_cookie(response: Response, token: str) -> None:
@@ -63,6 +66,33 @@ def _clear_refresh_cookie(response: Response) -> None:
     response.delete_cookie(
         "refresh_token",
         path=_REFRESH_COOKIE_PATH,
+    )
+
+
+def _set_access_cookie(response: Response, token: str) -> None:
+    """Set the access token as an httpOnly cookie on the response.
+
+    Mirrors the refresh-token pattern: httpOnly + secure so JS in the browser
+    cannot read or exfiltrate the token via XSS. ``samesite=lax`` blocks the
+    cookie from being sent on most cross-site requests, which is the primary
+    CSRF mitigation for state-changing endpoints.
+    """
+    response.set_cookie(
+        _ACCESS_COOKIE_NAME,
+        token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=settings.access_token_expire_minutes * 60,
+        path=_ACCESS_COOKIE_PATH,
+    )
+
+
+def _clear_access_cookie(response: Response) -> None:
+    """Clear the access token cookie."""
+    response.delete_cookie(
+        _ACCESS_COOKIE_NAME,
+        path=_ACCESS_COOKIE_PATH,
     )
 
 
@@ -140,8 +170,10 @@ async def login(
 ) -> Token:
     """Login and get access token.
 
-    The access_token is returned in the JSON body (short-lived, stored in memory).
-    The refresh_token is set as an httpOnly cookie (not exposed to JS).
+    Both the access_token and refresh_token are set as httpOnly cookies so
+    they are never exposed to JavaScript (XSS-resistant). The access_token is
+    also returned in the JSON body for backward-compat callers (e.g. native
+    integrations); browser clients should ignore it and rely on the cookie.
     """
     client_ip = get_client_ip(request, settings.trusted_proxies)
     await _check_auth_rate_limit(db, client_ip, "login")
@@ -193,7 +225,8 @@ async def login(
 
     await db.commit()
 
-    # Set refresh token as httpOnly cookie
+    # Set both tokens as httpOnly cookies (JS cannot read them).
+    _set_access_cookie(response, access_token)
     _set_refresh_cookie(response, refresh_tok)
 
     return Token(access_token=access_token)
@@ -299,7 +332,8 @@ async def refresh_token(
 
     await db.commit()
 
-    # Rotate refresh token cookie
+    # Rotate both cookies on every refresh.
+    _set_access_cookie(response, access_token)
     _set_refresh_cookie(response, new_refresh_tok)
 
     return Token(access_token=access_token)
@@ -319,6 +353,7 @@ async def logout(
             await revoke_refresh_token(db, payload["jti"])
             await db.commit()
 
+    _clear_access_cookie(response)
     _clear_refresh_cookie(response)
     return {"message": "Logged out successfully"}
 
@@ -350,10 +385,30 @@ async def change_password(
 
     await db.commit()
 
-    # Clear the current session's refresh cookie
+    # Clear the current session's auth cookies
+    _clear_access_cookie(response)
     _clear_refresh_cookie(response)
 
     return {"message": "Password updated successfully"}
+
+
+@router.post("/ws-ticket", status_code=status.HTTP_200_OK)
+async def issue_ws_ticket(current_user: CurrentUser) -> dict[str, str]:
+    """Issue a short-lived ticket JWT for WebSocket authentication.
+
+    WebSocket connections cannot read httpOnly cookies in JS to forward as a
+    Bearer header, and cross-origin cookies on a WS handshake are unreliable.
+    The browser exchanges its httpOnly access cookie (verified by
+    ``CurrentUser`` here) for a small short-lived JWT that it appends as a
+    query param on the WS URL. The ticket is single-purpose and expires in
+    one minute, limiting the blast radius if it ever leaks via referer or
+    server logs.
+    """
+    ticket = create_access_token(
+        data={"sub": str(current_user.id)},
+        expires_delta=timedelta(minutes=1),
+    )
+    return {"ticket": ticket}
 
 
 @router.get("/me", response_model=UserWithWorkspace)

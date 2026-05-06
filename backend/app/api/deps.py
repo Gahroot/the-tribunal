@@ -19,6 +19,22 @@ from app.models.workspace import Workspace, WorkspaceMembership
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
+_ACCESS_COOKIE_NAME = "access_token"
+
+
+def _extract_jwt(request: Request, header_token: str | None) -> str | None:
+    """Resolve the JWT for this request.
+
+    Prefers the httpOnly ``access_token`` cookie (XSS-resistant — JS cannot
+    read it). Falls back to the ``Authorization: Bearer ...`` header so
+    server-to-server callers, native clients, and the existing test suite
+    continue to work.
+    """
+    cookie_token = request.cookies.get(_ACCESS_COOKIE_NAME)
+    if cookie_token:
+        return cookie_token
+    return header_token
+
 
 async def get_current_user(
     request: Request,
@@ -33,8 +49,10 @@ async def get_current_user(
     )
 
     user = await _user_from_api_key(request, db)
-    if user is None and token is not None:
-        user = await _user_from_jwt(token, db)
+    if user is None:
+        jwt_token = _extract_jwt(request, token)
+        if jwt_token is not None:
+            user = await _user_from_jwt(jwt_token, db)
     if user is None:
         raise credentials_exception
     return user
@@ -57,10 +75,11 @@ async def get_optional_current_user(
     if user is not None:
         return user
 
-    if token is None:
+    jwt_token = _extract_jwt(request, token)
+    if jwt_token is None:
         return None
 
-    return await _user_from_jwt(token, db)
+    return await _user_from_jwt(jwt_token, db)
 
 
 async def _user_from_api_key(request: Request, db: AsyncSession) -> User | None:

@@ -4,7 +4,6 @@ import * as React from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { api } from "@/lib/api";
 import { getCurrentUser, login as loginApi, type User, type LoginCredentials } from "@/lib/api/auth";
-import { getToken, setToken, removeToken } from "@/lib/utils/storage";
 
 interface AuthContextType {
   user: User | null;
@@ -29,17 +28,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isAuthenticated = user !== null;
 
   const fetchUser = React.useCallback(async () => {
-    const token = getToken();
-    if (!token) {
-      setIsLoading(false);
-      return;
-    }
-
+    // Auth tokens live in httpOnly cookies — JS can’t check for them. We just
+    // probe /auth/me; if the cookie is missing or expired the response
+    // interceptor will attempt a refresh, and a final 401 means signed-out.
     try {
       const userData = await getCurrentUser();
       setUser(userData);
     } catch {
-      removeToken();
       setUser(null);
     } finally {
       setIsLoading(false);
@@ -66,17 +61,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [isAuthenticated, isLoading, pathname, router]);
 
   const login = React.useCallback(async (credentials: LoginCredentials) => {
-    const response = await loginApi(credentials);
-    // Only access_token is in the response body; refresh_token is set as httpOnly cookie by backend
-    setToken(response.access_token);
+    // Backend sets both access_token and refresh_token as httpOnly cookies on
+    // the response; the body is ignored here. Subsequent requests carry the
+    // cookies automatically (axios is configured with withCredentials).
+    await loginApi(credentials);
     const userData = await getCurrentUser();
     setUser(userData);
     router.replace("/");
   }, [router]);
 
   const logout = React.useCallback(() => {
-    removeToken();
-    // Clear the httpOnly refresh cookie on the backend
+    // Backend clears both auth cookies.
     api.post("/api/v1/auth/logout").catch(() => {});
     setUser(null);
     router.replace("/login");

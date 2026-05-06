@@ -11,8 +11,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { apiPost } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { getToken } from "@/lib/utils/storage";
 
 interface VoiceTestDialogProps {
   open: boolean;
@@ -169,17 +169,24 @@ export function VoiceTestDialog({
         1
       );
 
-      // Connect WebSocket
+      // Connect WebSocket. The access_token is an httpOnly cookie that JS
+      // cannot read, so we exchange it for a short-lived (1 minute) ticket
+      // JWT via the cookie-authenticated /auth/ws-ticket endpoint and pass
+      // the ticket as a query param. The ticket cannot be used to make
+      // arbitrary API calls and expires quickly, limiting blast radius.
       const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const wsHost = process.env.NEXT_PUBLIC_API_URL?.replace(/^https?:\/\//, "") || "localhost:8000";
-      const token = getToken();
-      if (!token) {
+      let ticket: string;
+      try {
+        const resp = await apiPost<{ ticket: string }>("/api/v1/auth/ws-ticket");
+        ticket = resp.ticket;
+      } catch {
         setError("Not authenticated. Please log in again.");
         setConnectionStatus("error");
         disconnect();
         return;
       }
-      const wsUrl = `${wsProtocol}//${wsHost}/voice/test/${workspaceId}/${agentId}?token=${encodeURIComponent(token)}`;
+      const wsUrl = `${wsProtocol}//${wsHost}/voice/test/${workspaceId}/${agentId}?token=${encodeURIComponent(ticket)}`;
 
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;

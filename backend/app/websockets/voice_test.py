@@ -49,7 +49,9 @@ async def _authenticate_websocket(  # noqa: PLR0911
     Returns:
         True if authenticated and authorized, False otherwise
     """
-    token = websocket.query_params.get("token")
+    # Prefer query-param ticket (issued via /auth/ws-ticket); fall back to the
+    # httpOnly access cookie if the WS handshake is same-origin.
+    token = websocket.query_params.get("token") or websocket.cookies.get("access_token")
     if not token:
         log.warning("ws_auth_failed", reason="no_token")
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)

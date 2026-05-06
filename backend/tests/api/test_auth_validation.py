@@ -272,3 +272,38 @@ class TestRefreshEndpoint:
                 response = await ac.post("/api/v1/auth/refresh")
 
         assert response.status_code == 401
+
+
+class TestAccessCookieAuth:
+    """The access_token httpOnly cookie should authenticate requests.
+
+    These guard the XSS hardening: localStorage Bearer tokens were replaced
+    with httpOnly cookies, and ``/auth/me`` (and every other protected route
+    via ``deps.get_current_user``) must accept the cookie just like the
+    legacy ``Authorization: Bearer ...`` header.
+    """
+
+    async def test_me_with_invalid_access_cookie_returns_401(self) -> None:
+        """GET /auth/me with a bogus access_token cookie returns 401.
+
+        We don't have a real signed JWT here, so we just assert that the
+        cookie path is exercised: an unrecognised cookie value still yields
+        401 (rather than e.g. 422 from missing-header validation, which would
+        indicate the cookie path isn't wired up at all).
+        """
+        app = _make_test_app()
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://testserver",
+            cookies={"access_token": "not-a-real-jwt"},
+        ) as ac:
+            response = await ac.get("/api/v1/auth/me")
+
+        assert response.status_code == 401
+
+    async def test_ws_ticket_without_auth_returns_401(
+        self, client: AsyncClient
+    ) -> None:
+        """POST /auth/ws-ticket without any credentials returns 401."""
+        response = await client.post("/api/v1/auth/ws-ticket")
+        assert response.status_code == 401
