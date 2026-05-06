@@ -36,6 +36,11 @@ SCORING_WEIGHTS = {
 # Qualification threshold
 QUALIFICATION_THRESHOLD = 60  # Score >= 60 = qualified
 
+# Cap on conversations loaded per qualification run. Long-lived contacts can
+# accumulate dozens of conversations; we only need the most recent ones to
+# capture current intent.
+MAX_CONVERSATIONS_PER_QUALIFICATION = 10
+
 
 EXTRACTION_SYSTEM_PROMPT = """You are a lead qualification analyst. \
 Analyze the conversation and extract qualification signals using the BANT framework.
@@ -87,45 +92,88 @@ async def get_conversation_transcript(
     contact_id: int,
     db: AsyncSession,
     max_messages: int = 100,
+    max_conversations: int = MAX_CONVERSATIONS_PER_QUALIFICATION,
 ) -> tuple[str, int]:
-    """Get all conversation messages for a contact.
+    """Get conversation messages for a contact, bounded for performance.
+
+    Loads only the most recent ``max_conversations`` conversations and, for
+    each, only the most recent ``max_messages`` messages, using a windowed
+    ROW_NUMBER subquery so the database (not Python) does the slicing. This
+    follows the same "limit at the SQL boundary" pattern as
+    ``contact_repository.get_contact_timeline`` to avoid materializing tens
+    of thousands of rows for long-lived contacts.
 
     Args:
         contact_id: The contact ID
         db: Database session
         max_messages: Maximum messages to retrieve per conversation
+        max_conversations: Maximum conversations to retrieve (most recent first)
 
     Returns:
         Tuple of (formatted transcript, conversation count)
     """
-    # Use selectinload to eager load messages (2 queries instead of 1+N)
-    result = await db.execute(
-        select(Conversation)
-        .options(selectinload(Conversation.messages))
+    # 1. Pick the most recent N conversations for this contact. Using
+    #    last_message_at (falling back to updated_at) keeps the busiest
+    #    threads, which carry the qualification signal.
+    conv_result = await db.execute(
+        select(Conversation.id)
         .where(Conversation.contact_id == contact_id)
+        .order_by(
+            func.coalesce(
+                Conversation.last_message_at, Conversation.updated_at
+            ).desc(),
+            Conversation.id.desc(),
+        )
+        .limit(max_conversations)
     )
-    conversations = result.scalars().all()
+    conversation_ids = [row[0] for row in conv_result.all()]
 
-    if not conversations:
+    if not conversation_ids:
         return "", 0
 
+    # 2. Top-N messages per conversation via ROW_NUMBER() window function.
+    #    Order DESC inside the window so rn=1..max_messages selects the most
+    #    recent messages; we re-sort ASC for transcript display below.
+    row_number = (
+        func.row_number()
+        .over(
+            partition_by=Message.conversation_id,
+            order_by=Message.created_at.desc(),
+        )
+        .label("rn")
+    )
+    msg_subq = (
+        select(
+            Message.conversation_id,
+            Message.created_at,
+            Message.direction,
+            Message.body,
+            Message.transcript,
+            row_number,
+        )
+        .where(Message.conversation_id.in_(conversation_ids))
+        .subquery()
+    )
+
+    msg_result = await db.execute(
+        select(
+            msg_subq.c.conversation_id,
+            msg_subq.c.created_at,
+            msg_subq.c.direction,
+            msg_subq.c.body,
+            msg_subq.c.transcript,
+        )
+        .where(msg_subq.c.rn <= max_messages)
+        .order_by(msg_subq.c.conversation_id, msg_subq.c.created_at)
+    )
+
     transcript_parts = []
-    conversation_count = len(conversations)
+    for row in msg_result.all():
+        direction = "Contact" if row.direction == "inbound" else "Agent"
+        content = row.body or row.transcript or "[No content]"
+        transcript_parts.append(f"{direction}: {content}")
 
-    for conversation in conversations:
-        # Messages already loaded via selectinload
-        # Sort and limit in Python (acceptable since building full transcript)
-        messages = sorted(
-            conversation.messages,
-            key=lambda m: m.created_at
-        )[:max_messages]
-
-        for msg in messages:
-            direction = "Contact" if msg.direction == "inbound" else "Agent"
-            content = msg.body or msg.transcript or "[No content]"
-            transcript_parts.append(f"{direction}: {content}")
-
-    return "\n".join(transcript_parts), conversation_count
+    return "\n".join(transcript_parts), len(conversation_ids)
 
 
 async def extract_qualification_signals(
