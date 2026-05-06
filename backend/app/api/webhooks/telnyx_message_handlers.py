@@ -206,8 +206,11 @@ async def handle_delivery_status(payload: dict[str, Any], log: Any) -> None:
 
         sms_service = TelnyxSMSService(telnyx_api_key)
         try:
-            # Update message status with bounce classification
-            message = await sms_service.update_message_status(
+            # Update message status with bounce classification. We capture the
+            # message's previous status so downstream campaign-stats updates
+            # can dedup duplicate / redelivered Telnyx webhooks instead of
+            # double-counting delivered/failed messages.
+            message, previous_message_status = await sms_service.update_message_status(
                 db=db,
                 provider_message_id=message_id,
                 status=status,
@@ -265,6 +268,7 @@ async def handle_delivery_status(payload: dict[str, Any], log: Any) -> None:
                         conversation_id=message.conversation_id,
                         delivered=(message.status == "delivered"),
                         log=log,
+                        previous_status=previous_message_status,
                     )
                 except Exception as e:
                     log.exception("campaign_delivery_stats_failed", error=str(e))

@@ -312,7 +312,7 @@ class TelnyxSMSService:
         status: str,
         error_code: str | None = None,
         error_message: str | None = None,
-    ) -> Message | None:
+    ) -> tuple[Message | None, str | None]:
         """Update message delivery status.
 
         Args:
@@ -323,7 +323,11 @@ class TelnyxSMSService:
             error_message: Optional error message
 
         Returns:
-            Updated message or None if not found
+            Tuple of (updated message, previous status). Both are None if the
+            message could not be found. ``previous_status`` is the status the
+            message held before this call applied any change, allowing callers
+            to detect duplicate/redelivered Telnyx webhooks (where the message
+            is already in the same terminal state).
         """
         result = await db.execute(
             select(Message).where(Message.provider_message_id == provider_message_id)
@@ -332,7 +336,11 @@ class TelnyxSMSService:
 
         if not message:
             self.logger.warning("message_not_found", provider_message_id=provider_message_id)
-            return None
+            return None, None
+
+        # Capture the prior status BEFORE we mutate so callers can decide
+        # whether this webhook represents a real state transition.
+        previous_status = message.status
 
         # Map Telnyx status to our status
         status_map = {
@@ -352,8 +360,9 @@ class TelnyxSMSService:
         if error_message:
             message.error_message = error_message
 
-        # Set delivered timestamp
-        if message.status == "delivered":
+        # Set delivered timestamp only on the first transition into delivered
+        # so duplicate webhooks don't bump the timestamp forward.
+        if message.status == "delivered" and message.delivered_at is None:
             message.delivered_at = datetime.now(UTC)
 
         await db.commit()
@@ -363,10 +372,11 @@ class TelnyxSMSService:
             "message_status_updated",
             message_id=str(message.id),
             status=message.status,
+            previous_status=previous_status,
             error_code=error_code,
         )
 
-        return message
+        return message, previous_status
 
     async def _get_or_create_conversation(
         self,
