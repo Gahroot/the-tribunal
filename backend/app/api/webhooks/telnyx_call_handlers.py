@@ -17,6 +17,12 @@ from app.services.telephony.voice_agent_resolver import VoiceAgentResolver
 _call_classifier = CallOutcomeClassifier()
 _voice_agent_resolver = VoiceAgentResolver()
 
+# Terminal message statuses set by the hangup classifier. If a Message is
+# already in one of these states when a hangup webhook arrives, it's a Telnyx
+# retry of an event we've already processed and side effects (engagement
+# scoring, campaign call counters) must NOT run again.
+_TERMINAL_HANGUP_STATUSES = frozenset({"completed", "failed", "no_answer"})
+
 
 async def handle_call_initiated(payload: dict[Any, Any], log: Any) -> None:
     """Handle incoming call."""
@@ -313,6 +319,18 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:  # noqa
         message = result.scalar_one_or_none()
 
         if message:
+            # Capture status BEFORE any mutation so we can detect whether
+            # this is the first hangup transition or a Telnyx retry. Retries
+            # must not double-count engagement / campaign stats.
+            prior_status = message.status
+            already_finalized = prior_status in _TERMINAL_HANGUP_STATUSES
+            if already_finalized:
+                log.info(
+                    "hangup_retry_detected",
+                    message_id=str(message.id),
+                    prior_status=prior_status,
+                )
+
             # Reconcile booking outcome before classification
             reconciled = await _reconcile_booking_outcome(db, message, log)
             if reconciled and not message.booking_outcome:
@@ -362,7 +380,7 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:  # noqa
                 message.conversation.contact_id if message.conversation else None
             )
             duration = message.duration_seconds or 0
-            if contact_id and duration > 0:
+            if contact_id and duration > 0 and not already_finalized:
                 try:
                     from app.services.contacts.engagement_score import record_engagement
 
@@ -370,6 +388,8 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:  # noqa
                     await db.commit()
                 except Exception as e:
                     log.warning("engagement_update_failed", error=str(e))
+            elif already_finalized:
+                log.info("engagement_update_skipped_retry")
 
             # Push notification for missed/failed inbound calls
             if message.direction == "inbound" and message.status in ("no_answer", "failed"):
@@ -410,23 +430,29 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:  # noqa
             except Exception as e:
                 log.exception("call_outcome_creation_failed", error=str(e))
 
-            # Update campaign stats for ALL calls (successful and failed)
-            try:
-                from app.services.campaigns.campaign_call_stats import (
-                    update_campaign_call_stats,
-                )
+            # Update campaign stats for ALL calls (successful and failed),
+            # but only on the first hangup transition. Telnyx retries arrive
+            # with the same call_control_id and would otherwise inflate
+            # campaign call counters.
+            if not already_finalized:
+                try:
+                    from app.services.campaigns.campaign_call_stats import (
+                        update_campaign_call_stats,
+                    )
 
-                await update_campaign_call_stats(
-                    db=db,
-                    message_id=message.id,
-                    call_outcome=classification.outcome,
-                    message_status=classification.message_status,
-                    duration_secs=duration_secs,
-                    log=log,
-                    booking_outcome=message.booking_outcome,
-                )
-            except Exception as e:
-                log.exception("campaign_call_stats_update_failed", error=str(e))
+                    await update_campaign_call_stats(
+                        db=db,
+                        message_id=message.id,
+                        call_outcome=classification.outcome,
+                        message_status=classification.message_status,
+                        duration_secs=duration_secs,
+                        log=log,
+                        booking_outcome=message.booking_outcome,
+                    )
+                except Exception as e:
+                    log.exception("campaign_call_stats_update_failed", error=str(e))
+            else:
+                log.info("campaign_call_stats_skipped_retry")
 
             # Trigger SMS fallback for failed calls only
             if classification.outcome:
