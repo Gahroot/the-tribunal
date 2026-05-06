@@ -1,11 +1,12 @@
 """Track phone number reputation and health metrics."""
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import structlog
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.phone_number import PhoneNumber, PhoneNumberHealthStatus
@@ -199,6 +200,10 @@ class ReputationTracker:
     ) -> PhoneNumberDailyStats:
         """Get or create daily stats record for a phone number.
 
+        Uses ``INSERT ... ON CONFLICT DO NOTHING`` against the
+        ``uq_phone_daily_stats`` unique constraint so concurrent callers
+        don't both try to insert the same (phone_number_id, date) row.
+
         Args:
             phone_number_id: Phone number UUID
             date: Date to record stats for
@@ -209,6 +214,8 @@ class ReputationTracker:
         """
         stats_date = date.date() if isinstance(date, datetime) else date
 
+        await self._ensure_daily_stats_row(phone_number_id, stats_date, db)
+
         result = await db.execute(
             select(PhoneNumberDailyStats).where(
                 and_(
@@ -217,17 +224,62 @@ class ReputationTracker:
                 )
             )
         )
-        stats = result.scalar_one_or_none()
+        stats = result.scalar_one()
+        return stats
 
-        if not stats:
-            stats = PhoneNumberDailyStats(
+    async def _ensure_daily_stats_row(
+        self,
+        phone_number_id: uuid.UUID,
+        stats_date: date,
+        db: AsyncSession,
+    ) -> None:
+        """Ensure a daily stats row exists for (phone_number_id, stats_date).
+
+        Concurrency-safe: relies on the ``uq_phone_daily_stats`` unique
+        constraint. If the row already exists the insert is a no-op.
+        """
+        stmt = (
+            pg_insert(PhoneNumberDailyStats)
+            .values(
                 phone_number_id=phone_number_id,
                 date=stats_date,
             )
-            db.add(stats)
-            await db.flush()
+            .on_conflict_do_nothing(
+                index_elements=["phone_number_id", "date"],
+            )
+        )
+        await db.execute(stmt)
 
-        return stats
+    async def _atomic_increment(
+        self,
+        phone_number_id: uuid.UUID,
+        db: AsyncSession,
+        **column_deltas: int,
+    ) -> None:
+        """Atomically increment one or more counters on today's stats row.
+
+        Uses an in-database ``UPDATE ... SET col = col + delta`` so that
+        concurrent webhook handlers and worker sends cannot lose increments
+        the way a Python-side read-modify-write would.
+        """
+        stats_date = datetime.now(UTC).date()
+        await self._ensure_daily_stats_row(phone_number_id, stats_date, db)
+
+        values = {
+            column: getattr(PhoneNumberDailyStats, column) + delta
+            for column, delta in column_deltas.items()
+        }
+        await db.execute(
+            update(PhoneNumberDailyStats)
+            .where(
+                and_(
+                    PhoneNumberDailyStats.phone_number_id == phone_number_id,
+                    PhoneNumberDailyStats.date == stats_date,
+                )
+            )
+            .values(**values)
+        )
+        await db.flush()
 
     async def increment_sent(
         self,
@@ -240,9 +292,7 @@ class ReputationTracker:
             phone_number_id: Phone number UUID
             db: Database session
         """
-        stats = await self.record_daily_stats(phone_number_id, datetime.now(UTC), db)
-        stats.messages_sent += 1
-        await db.flush()
+        await self._atomic_increment(phone_number_id, db, messages_sent=1)
 
     async def increment_delivered(
         self,
@@ -255,9 +305,7 @@ class ReputationTracker:
             phone_number_id: Phone number UUID
             db: Database session
         """
-        stats = await self.record_daily_stats(phone_number_id, datetime.now(UTC), db)
-        stats.messages_delivered += 1
-        await db.flush()
+        await self._atomic_increment(phone_number_id, db, messages_delivered=1)
 
     async def increment_hard_bounce(
         self,
@@ -270,10 +318,9 @@ class ReputationTracker:
             phone_number_id: Phone number UUID
             db: Database session
         """
-        stats = await self.record_daily_stats(phone_number_id, datetime.now(UTC), db)
-        stats.hard_bounces += 1
-        stats.messages_failed += 1
-        await db.flush()
+        await self._atomic_increment(
+            phone_number_id, db, hard_bounces=1, messages_failed=1
+        )
 
     async def increment_soft_bounce(
         self,
@@ -286,10 +333,9 @@ class ReputationTracker:
             phone_number_id: Phone number UUID
             db: Database session
         """
-        stats = await self.record_daily_stats(phone_number_id, datetime.now(UTC), db)
-        stats.soft_bounces += 1
-        stats.messages_failed += 1
-        await db.flush()
+        await self._atomic_increment(
+            phone_number_id, db, soft_bounces=1, messages_failed=1
+        )
 
     async def increment_spam_complaint(
         self,
@@ -302,10 +348,9 @@ class ReputationTracker:
             phone_number_id: Phone number UUID
             db: Database session
         """
-        stats = await self.record_daily_stats(phone_number_id, datetime.now(UTC), db)
-        stats.spam_complaints += 1
-        stats.messages_failed += 1
-        await db.flush()
+        await self._atomic_increment(
+            phone_number_id, db, spam_complaints=1, messages_failed=1
+        )
 
     async def increment_opt_out(
         self,
@@ -318,9 +363,7 @@ class ReputationTracker:
             phone_number_id: Phone number UUID
             db: Database session
         """
-        stats = await self.record_daily_stats(phone_number_id, datetime.now(UTC), db)
-        stats.opt_outs += 1
-        await db.flush()
+        await self._atomic_increment(phone_number_id, db, opt_outs=1)
 
     async def release_from_quarantine(
         self,
