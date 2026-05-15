@@ -19,6 +19,13 @@ from app.models.demo_request import DemoRequest
 from app.models.device_token import DeviceToken
 from app.models.drip_campaign import DripCampaign, DripEnrollment
 from app.models.email_event import EmailEvent, EmailEventType
+from app.models.failed_job import (
+    FAILED_JOB_STATUS_ABANDONED,
+    FAILED_JOB_STATUS_PENDING,
+    FAILED_JOB_STATUS_RETRIED,
+    FAILED_JOB_STATUSES,
+    FailedJob,
+)
 from app.models.human_nudge import HumanNudge
 from app.models.human_profile import HumanProfile
 from app.models.invitation import WorkspaceInvitation
@@ -103,6 +110,11 @@ __all__ = [
     "DeviceToken",
     "EmailEvent",
     "EmailEventType",
+    "FAILED_JOB_STATUS_ABANDONED",
+    "FAILED_JOB_STATUS_PENDING",
+    "FAILED_JOB_STATUS_RETRIED",
+    "FAILED_JOB_STATUSES",
+    "FailedJob",
     "HumanNudge",
     "HumanProfile",
     "KnowledgeDocument",
