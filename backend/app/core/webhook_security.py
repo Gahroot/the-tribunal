@@ -192,17 +192,23 @@ async def verify_calcom_webhook(request: Request) -> bool:
         logger.warning("missing_calcom_signature")
         raise HTTPException(status_code=403, detail="Missing Cal.com signature")
 
-    # Reject requests with timestamps older than 5 minutes (replay-attack prevention)
+    # Require the timestamp header so replay protection cannot be silently
+    # bypassed by omitting it. Dev environments may opt out via
+    # ``settings.skip_webhook_verification`` (handled above).
     timestamp = request.headers.get("x-cal-timestamp", "")
-    if timestamp:
-        try:
-            current_time = int(time.time())
-            if abs(current_time - int(timestamp)) > 300:
-                logger.warning("calcom_webhook_timestamp_too_old", timestamp=timestamp)
-                raise HTTPException(status_code=403, detail="Webhook timestamp too old")
-        except ValueError as err:
-            logger.warning("calcom_webhook_invalid_timestamp", timestamp=timestamp)
-            raise HTTPException(status_code=403, detail="Invalid webhook timestamp") from err
+    if not timestamp:
+        logger.warning("missing_calcom_timestamp")
+        raise HTTPException(status_code=403, detail="Missing Cal.com timestamp")
+
+    # Reject requests with timestamps older than 5 minutes (replay-attack prevention)
+    try:
+        current_time = int(time.time())
+        if abs(current_time - int(timestamp)) > 300:
+            logger.warning("calcom_webhook_timestamp_too_old", timestamp=timestamp)
+            raise HTTPException(status_code=403, detail="Webhook timestamp too old")
+    except ValueError as err:
+        logger.warning("calcom_webhook_invalid_timestamp", timestamp=timestamp)
+        raise HTTPException(status_code=403, detail="Invalid webhook timestamp") from err
 
     # Get raw body
     body = await request.body()
