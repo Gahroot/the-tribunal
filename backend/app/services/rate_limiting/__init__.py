@@ -1,6 +1,11 @@
-"""Rate limiting services for SMS compliance."""
+"""Rate limiting services for SMS compliance and public API protection."""
 
 from app.services.rate_limiting.bounce_classifier import BounceClassifier
+from app.services.rate_limiting.embed_limiter import (
+    enforce_chat_rate_limits,
+    enforce_embed_rate_limit,
+    enforce_token_rate_limits,
+)
 from app.services.rate_limiting.number_pool import NumberPoolManager
 from app.services.rate_limiting.opt_out_manager import OptOutManager
 from app.services.rate_limiting.rate_limiter import RateLimiter
@@ -14,4 +19,7 @@ __all__ = [
     "WarmingScheduler",
     "OptOutManager",
     "NumberPoolManager",
+    "enforce_embed_rate_limit",
+    "enforce_chat_rate_limits",
+    "enforce_token_rate_limits",
 ]

@@ -20,6 +20,10 @@ from app.core.utils import get_client_ip
 from app.db.session import get_db
 from app.models.agent import Agent
 from app.models.demo_request import DemoRequest
+from app.services.rate_limiting.embed_limiter import (
+    enforce_chat_rate_limits,
+    enforce_token_rate_limits,
+)
 from app.services.telephony.telnyx import TelnyxSMSService
 from app.services.telephony.telnyx_voice import TelnyxVoiceService
 
@@ -228,6 +232,10 @@ async def get_ephemeral_token(
             detail="Origin not allowed",
         )
 
+    # Rate limit before doing any expensive work (OpenAI client_secrets mint)
+    client_ip = get_client_ip(request, settings.trusted_proxies)
+    await enforce_token_rate_limits(client_ip=client_ip, public_id=public_id)
+
     if not settings.openai_api_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -323,6 +331,9 @@ async def send_chat_message(
             detail="Origin not allowed",
         )
 
+    client_ip = get_client_ip(request, settings.trusted_proxies)
+    await enforce_chat_rate_limits(client_ip=client_ip, public_id=public_id)
+
     if not settings.openai_api_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -396,6 +407,9 @@ async def execute_tool_call(
             detail="Origin not allowed",
         )
 
+    client_ip = get_client_ip(request, settings.trusted_proxies)
+    await enforce_chat_rate_limits(client_ip=client_ip, public_id=public_id)
+
     # Handle built-in tools
     if body.tool_name == "end_call":
         return {
@@ -429,6 +443,9 @@ async def save_transcript(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Origin not allowed",
         )
+
+    client_ip = get_client_ip(request, settings.trusted_proxies)
+    await enforce_chat_rate_limits(client_ip=client_ip, public_id=public_id)
 
     # Log transcript for analytics (in a full implementation, save to database)
     logger.info(
