@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDistanceToNow } from "date-fns";
+import { formatRelative } from "@/lib/utils/date";
 import { Check, X, Clock, Loader2 } from "lucide-react";
 
 import type { PendingAction } from "@/types/pending-action";
@@ -104,12 +104,12 @@ export function PendingActionCard({
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <span>
               Created{" "}
-              {formatDistanceToNow(new Date(action.created_at), { addSuffix: true })}
+              {formatRelative(action.created_at)}
             </span>
             {action.expires_at && (
               <span>
                 Expires{" "}
-                {formatDistanceToNow(new Date(action.expires_at), { addSuffix: true })}
+                {formatRelative(action.expires_at)}
               </span>
             )}
             {action.rejection_reason && (

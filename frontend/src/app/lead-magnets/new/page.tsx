@@ -38,6 +38,7 @@ import { RichTextEditor } from "@/components/lead-magnets/rich-text-editor";
 
 import { useWorkspace } from "@/providers/workspace-provider";
 import { leadMagnetsApi, CreateLeadMagnetRequest } from "@/lib/api/lead-magnets";
+import { formatNumber } from "@/lib/utils/number";
 import type {
   LeadMagnetType,
   DeliveryMethod,
@@ -470,7 +471,7 @@ export default function NewLeadMagnetPage() {
               {estimatedValue && (
                 <div>
                   <span className="text-muted-foreground">Estimated Value:</span>
-                  <span className="ml-2 font-medium">${estimatedValue.toLocaleString()}</span>
+                  <span className="ml-2 font-medium">${formatNumber(estimatedValue)}</span>
                 </div>
               )}
             </div>

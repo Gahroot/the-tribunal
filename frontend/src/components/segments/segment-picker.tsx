@@ -9,6 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useSegments } from "@/hooks/useSegments";
+import { formatNumber } from "@/lib/utils/number";
 
 interface SegmentPickerProps {
   workspaceId: string;
@@ -55,7 +56,7 @@ export function SegmentPicker({
             <div className="flex items-center justify-between w-full gap-2">
               <span>{segment.name}</span>
               <span className="text-xs text-muted-foreground">
-                {segment.contact_count.toLocaleString()}
+                {formatNumber(segment.contact_count)}
               </span>
             </div>
           </SelectItem>

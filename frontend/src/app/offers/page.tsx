@@ -43,6 +43,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { offersApi } from "@/lib/api/offers";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import type { Offer, DiscountType } from "@/types";
+import { formatNumber } from "@/lib/utils/number";
 
 const discountTypeIcons: Record<DiscountType, React.ReactNode> = {
   percentage: <Percent className="size-4" />,
@@ -251,11 +252,11 @@ export default function OffersPage() {
                           )}
                           {offer.total_value && offer.total_value > 0 && (
                             <p className="text-sm text-success mt-2">
-                              Total Value: ${offer.total_value.toLocaleString()}
+                              Total Value: ${formatNumber(offer.total_value)}
                               {offer.offer_price && (
                                 <span className="text-muted-foreground">
                                   {" "}
-                                  • Your Price: ${offer.offer_price.toLocaleString()}
+                                  • Your Price: ${formatNumber(offer.offer_price)}
                                 </span>
                               )}
                             </p>

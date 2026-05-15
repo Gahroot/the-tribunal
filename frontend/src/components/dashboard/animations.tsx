@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatNumber as formatExact } from "@/lib/utils/number";
 
 export const containerVariants = {
   hidden: { opacity: 0 },
@@ -26,7 +27,7 @@ export function formatNumber(num: number): string {
   if (num >= 1000) {
     return `${(num / 1000).toFixed(1)}K`;
   }
-  return num.toLocaleString();
+  return formatExact(num);
 }
 
 export function isTrendUp(change: string): boolean {

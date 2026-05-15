@@ -32,6 +32,7 @@ import {
   GeneratedCTA,
 } from "@/lib/api/offers";
 import type { ValueStackItem, GuaranteeType, UrgencyType } from "@/types";
+import { formatNumber } from "@/lib/utils/number";
 
 interface AIOfferWriterProps {
   workspaceId: string;
@@ -349,7 +350,7 @@ export function AIOfferWriter({ workspaceId, onApply }: AIOfferWriterProps) {
                   )}
                   {"value" in option && (
                     <p className="text-sm font-medium text-success mt-1">
-                      ${(option as unknown as GeneratedValueStackItem).value.toLocaleString()} value
+                      ${formatNumber((option as unknown as GeneratedValueStackItem).value)} value
                     </p>
                   )}
                   {"days" in option && (
@@ -409,7 +410,7 @@ export function AIOfferWriter({ workspaceId, onApply }: AIOfferWriterProps) {
               {selectedValueItems.map((item, i) => (
                 <li key={i} className="text-sm flex justify-between">
                   <span>{item.name}</span>
-                  <span className="text-success">${item.value.toLocaleString()}</span>
+                  <span className="text-success">${formatNumber(item.value)}</span>
                 </li>
               ))}
             </ul>

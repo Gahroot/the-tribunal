@@ -8,6 +8,7 @@ import {
   CardDescription,
   CardHeader,
 } from "@/components/ui/card";
+import { formatNumber } from "@/lib/utils/number";
 
 function AnimatedNumber({ value }: { value: number }) {
   const [display, setDisplay] = useState(0);
@@ -30,7 +31,7 @@ function AnimatedNumber({ value }: { value: number }) {
     requestAnimationFrame(step);
   }, [value]);
 
-  return <span>{display.toLocaleString()}</span>;
+  return <span>{formatNumber(display)}</span>;
 }
 
 interface StatItem {

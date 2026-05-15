@@ -57,6 +57,7 @@ import { workspacesApi } from "@/lib/api/workspaces";
 import { invitationsApi } from "@/lib/api/invitations";
 import { TIMEZONE_OPTIONS } from "@/lib/constants";
 import { getApiErrorMessage } from "@/lib/utils/errors";
+import { formatDate } from "@/lib/utils/date";
 
 function getInitials(name: string | null, email: string): string {
   if (name) {
@@ -694,10 +695,10 @@ export function TeamSettingsTab() {
                       <p className="font-medium">{invitation.email}</p>
                       <p className="text-sm text-muted-foreground">
                         Invited{" "}
-                        {new Date(invitation.created_at).toLocaleDateString()}
+                        {formatDate(invitation.created_at)}
                         {" · "}
                         Expires{" "}
-                        {new Date(invitation.expires_at).toLocaleDateString()}
+                        {formatDate(invitation.expires_at)}
                       </p>
                     </div>
                   </div>

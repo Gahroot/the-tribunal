@@ -30,6 +30,7 @@ import { campaignsApi } from "@/lib/api/campaigns";
 import { useCampaignAnalytics } from "@/hooks/useCampaigns";
 import { GuaranteeProgress } from "@/components/campaigns/guarantee-progress";
 import { getApiErrorMessage } from "@/lib/utils/errors";
+import { formatDate } from "@/lib/utils/date";
 
 interface CampaignDetailProps {
   campaignId: string;
@@ -172,7 +173,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
               </Badge>
             </div>
             <p className="text-sm text-muted-foreground">
-              Created {new Date(campaign.created_at).toLocaleDateString()}
+              Created {formatDate(campaign.created_at)}
             </p>
           </div>
         </div>
@@ -351,7 +352,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
               <div>
                 <p className="text-sm text-muted-foreground">Start Date</p>
                 <p className="font-medium mt-1">
-                  {new Date(campaign.scheduled_start).toLocaleDateString()}
+                  {formatDate(campaign.scheduled_start)}
                 </p>
               </div>
             )}

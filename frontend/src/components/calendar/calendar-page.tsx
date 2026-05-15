@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { motion } from "motion/react";
-import { format, addDays, startOfWeek, endOfWeek, isSameDay } from "date-fns";
+import { formatDate, addDays, startOfWeek, endOfWeek, isSameDay } from "@/lib/utils/date";
 import {
   ChevronLeft,
   ChevronRight,
@@ -371,7 +371,7 @@ export function CalendarPage() {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg">
-                  {format(weekStart, "MMMM yyyy")}
+                  {formatDate(weekStart, { pattern: "MMMM yyyy" })}
                 </CardTitle>
                 <div className="flex items-center gap-1">
                   <Button
@@ -411,9 +411,9 @@ export function CalendarPage() {
                     }`}
                   >
                     <div className="text-xs font-medium">
-                      {format(day, "EEE")}
+                      {formatDate(day, { pattern: "EEE" })}
                     </div>
-                    <div className="text-lg font-bold">{format(day, "d")}</div>
+                    <div className="text-lg font-bold">{formatDate(day, { pattern: "d" })}</div>
                   </div>
                 ))}
               </div>
@@ -445,7 +445,7 @@ export function CalendarPage() {
                                     {apt.service_type || "Appointment"}
                                   </p>
                                   <p className="text-xs text-muted-foreground">
-                                    {format(new Date(apt.scheduled_at), "h:mm a")}
+                                    {formatDate(apt.scheduled_at, { pattern: "h:mm a" })}
                                   </p>
                                   {apt.sync_status === "pending" && (
                                     <Badge variant="outline" className="text-warning border-warning/20 text-[10px] py-0 mt-0.5">
@@ -458,10 +458,9 @@ export function CalendarPage() {
                                 <DialogHeader>
                                   <DialogTitle>{apt.service_type || "Appointment"}</DialogTitle>
                                   <DialogDescription>
-                                    {format(
-                                      new Date(apt.scheduled_at),
-                                      "EEEE, MMMM d, yyyy 'at' h:mm a"
-                                    )}
+                                    {formatDate(apt.scheduled_at, {
+                                      pattern: "EEEE, MMMM d, yyyy 'at' h:mm a",
+                                    })}
                                   </DialogDescription>
                                 </DialogHeader>
                                 <div className="space-y-4 py-4">
@@ -488,7 +487,7 @@ export function CalendarPage() {
                                         />
                                         {apt.reminder_sent_at && (
                                           <p className="text-xs text-muted-foreground">
-                                            Last reminder: {format(new Date(apt.reminder_sent_at), "MMM d, h:mm a")}
+                                            Last reminder: {formatDate(apt.reminder_sent_at, { pattern: "MMM d, h:mm a" })}
                                           </p>
                                         )}
                                       </div>
@@ -571,7 +570,7 @@ export function CalendarPage() {
                 Today
               </CardTitle>
               <CardDescription>
-                {format(new Date(), "EEEE, MMMM d")}
+                {formatDate(new Date(), { pattern: "EEEE, MMMM d" })}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -597,7 +596,7 @@ export function CalendarPage() {
                           {getContactName(apt.contact)}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {format(new Date(apt.scheduled_at), "h:mm a")} • {apt.duration_minutes}min
+                          {formatDate(apt.scheduled_at, { pattern: "h:mm a" })} • {apt.duration_minutes}min
                         </p>
                       </div>
                       <ReminderBadges
@@ -633,10 +632,10 @@ export function CalendarPage() {
                   >
                     <div className="text-center min-w-[40px]">
                       <div className="text-xs font-medium text-muted-foreground">
-                        {format(new Date(apt.scheduled_at), "MMM")}
+                        {formatDate(apt.scheduled_at, { pattern: "MMM" })}
                       </div>
                       <div className="text-lg font-bold">
-                        {format(new Date(apt.scheduled_at), "d")}
+                        {formatDate(apt.scheduled_at, { pattern: "d" })}
                       </div>
                     </div>
                     <div className="flex-1 min-w-0">
@@ -644,7 +643,7 @@ export function CalendarPage() {
                         {getContactName(apt.contact)}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {apt.service_type || "Appointment"} • {format(new Date(apt.scheduled_at), "h:mm a")}
+                        {apt.service_type || "Appointment"} • {formatDate(apt.scheduled_at, { pattern: "h:mm a" })}
                       </p>
                     </div>
                     {apt.sync_status === "pending" && (

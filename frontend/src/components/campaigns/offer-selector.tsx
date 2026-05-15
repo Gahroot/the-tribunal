@@ -37,6 +37,8 @@ import {
 import { OfferPreview } from "@/components/offers/offer-preview";
 import { GenericResourceSelector } from "@/components/shared/generic-resource-selector";
 import type { Offer, DiscountType, LeadMagnet } from "@/types";
+import { formatDate } from "@/lib/utils/date";
+import { formatNumber } from "@/lib/utils/number";
 
 interface OfferSelectorProps {
   offers: Offer[];
@@ -357,7 +359,7 @@ export function OfferSelector({
               {totalValue > 0 && (
                 <Badge variant="outline" className="text-success border-success/20">
                   <DollarSign className="size-3 mr-0.5" />
-                  {totalValue.toLocaleString()} value
+                  {formatNumber(totalValue)} value
                 </Badge>
               )}
               {valueStackCount > 0 && (
@@ -391,10 +393,10 @@ export function OfferSelector({
                 <div className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Calendar className="size-3" />
                   {offer.valid_from && (
-                    <span>From {new Date(offer.valid_from).toLocaleDateString()}</span>
+                    <span>From {formatDate(offer.valid_from)}</span>
                   )}
                   {offer.valid_until && (
-                    <span>to {new Date(offer.valid_until).toLocaleDateString()}</span>
+                    <span>to {formatDate(offer.valid_until)}</span>
                   )}
                 </div>
               )}

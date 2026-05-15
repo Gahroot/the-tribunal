@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import * as z from "zod";
-import { format } from "date-fns";
+import { formatDate } from "@/lib/utils/date";
 import { CalendarIcon, Loader2, Search } from "lucide-react";
 
 import { appointmentsApi, type CreateAppointmentRequest } from "@/lib/api/appointments";
@@ -260,7 +260,7 @@ export function NewAppointmentDialog({ open, onOpenChange }: NewAppointmentDialo
                           )}
                         >
                           {field.value ? (
-                            format(field.value, "PPP")
+                            formatDate(field.value, { pattern: "PPP" })
                           ) : (
                             <span>Pick a date</span>
                           )}

@@ -32,6 +32,7 @@ import { ContactFilterBuilder } from "@/components/filters/contact-filter-builde
 import { SegmentPicker } from "@/components/segments/segment-picker";
 import { contactStatusColors } from "@/lib/status-colors";
 import type { Contact, ContactStatus, FilterDefinition } from "@/types";
+import { formatNumber } from "@/lib/utils/number";
 
 const ROW_HEIGHT = 72;
 const OVERSCAN = 5;
@@ -262,7 +263,7 @@ export function VirtualContactSelector({
               <SelectItem value="250">Select 250</SelectItem>
               <SelectItem value="500">Select 500</SelectItem>
               <SelectItem value="1000">Select 1,000</SelectItem>
-              <SelectItem value="all">Select All ({total.toLocaleString()})</SelectItem>
+              <SelectItem value="all">Select All ({formatNumber(total)})</SelectItem>
             </SelectContent>
           </Select>
           <Button

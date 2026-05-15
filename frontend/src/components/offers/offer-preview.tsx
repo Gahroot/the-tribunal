@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import type { LeadMagnet, ValueStackItem, GuaranteeType, UrgencyType, DiscountType } from "@/types";
+import { formatNumber } from "@/lib/utils/number";
 
 // More flexible type to support wizard form data with empty string defaults
 interface OfferPreviewData {
@@ -135,7 +136,7 @@ export function OfferPreview({ offer, leadMagnets = [] }: OfferPreviewProps) {
                       </div>
                       <div className="text-right">
                         <p className="text-muted-foreground line-through text-sm">
-                          ${item.value?.toLocaleString()}
+                          ${item.value !== undefined ? formatNumber(item.value) : ""}
                         </p>
                       </div>
                     </motion.div>
@@ -174,7 +175,7 @@ export function OfferPreview({ offer, leadMagnets = [] }: OfferPreviewProps) {
                     {magnet.estimated_value && magnet.estimated_value > 0 && (
                       <div className="text-right">
                         <p className="text-muted-foreground line-through text-sm">
-                          ${magnet.estimated_value.toLocaleString()}
+                          ${formatNumber(magnet.estimated_value)}
                         </p>
                       </div>
                     )}
@@ -192,7 +193,7 @@ export function OfferPreview({ offer, leadMagnets = [] }: OfferPreviewProps) {
               <div>
                 <p className="text-sm text-muted-foreground">Total Value</p>
                 <p className="text-2xl font-bold text-muted-foreground line-through">
-                  ${totalValue.toLocaleString()}
+                  ${formatNumber(totalValue)}
                 </p>
               </div>
             )}
@@ -201,7 +202,7 @@ export function OfferPreview({ offer, leadMagnets = [] }: OfferPreviewProps) {
               <div>
                 <p className="text-sm text-muted-foreground">Regular Price</p>
                 <p className="text-xl text-muted-foreground line-through">
-                  ${offer.regular_price.toLocaleString()}
+                  ${formatNumber(offer.regular_price)}
                 </p>
               </div>
             )}
@@ -211,14 +212,14 @@ export function OfferPreview({ offer, leadMagnets = [] }: OfferPreviewProps) {
               <div className="flex items-center justify-center gap-3">
                 <p className="text-4xl font-bold text-success">
                   {offer.offer_price !== undefined && offer.offer_price !== null
-                    ? `$${offer.offer_price.toLocaleString()}`
+                    ? `$${formatNumber(offer.offer_price)}`
                     : offer.discount_type === "free_service"
                     ? "FREE"
                     : formatDiscount() || "Contact Us"}
                 </p>
                 {savings > 0 && (
                   <Badge className="bg-destructive text-white">
-                    Save ${savings.toLocaleString()}
+                    Save ${formatNumber(savings)}
                   </Badge>
                 )}
               </div>

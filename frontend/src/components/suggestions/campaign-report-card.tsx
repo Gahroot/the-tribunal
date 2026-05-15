@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { formatDistanceToNow } from "date-fns";
+import { formatRelative } from "@/lib/utils/date";
 import {
   ChevronDown,
   ChevronUp,
@@ -94,8 +94,8 @@ export function CampaignReportCard({ report }: CampaignReportCardProps) {
             </div>
             <CardDescription>
               {report.generated_at
-                ? `Generated ${formatDistanceToNow(new Date(report.generated_at), { addSuffix: true })}`
-                : `Created ${formatDistanceToNow(new Date(report.created_at), { addSuffix: true })}`}
+                ? `Generated ${formatRelative(report.generated_at)}`
+                : `Created ${formatRelative(report.created_at)}`}
             </CardDescription>
           </div>
         </div>

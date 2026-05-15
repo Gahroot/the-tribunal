@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useState } from "react";
-import { format } from "date-fns";
+import { formatDate, formatLongDate } from "@/lib/utils/date";
 import {
   Phone,
   Mail,
@@ -207,7 +207,7 @@ function ImportantDatesSection({ contact, workspaceId }: { contact: Contact; wor
     try {
       // Parse as local date to avoid timezone issues
       const [year, month, day] = dateStr.split("-").map(Number);
-      return format(new Date(year, month - 1, day), "MMMM d, yyyy");
+      return formatLongDate(new Date(year, month - 1, day));
     } catch {
       return dateStr;
     }
@@ -726,7 +726,7 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
               <div className="flex items-center gap-2 px-2 text-xs text-muted-foreground">
                 <Clock className="h-3 w-3" />
                 <span>
-                  Last activity: {format(new Date(lastActivity.timestamp), "MMM d, h:mm a")}
+                  Last activity: {formatDate(lastActivity.timestamp, { pattern: "MMM d, h:mm a" })}
                 </span>
               </div>
             )}
@@ -781,7 +781,7 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
                         {apt.service_type || "Appointment"}
                       </p>
                       <p className="text-muted-foreground text-xs">
-                        {format(new Date(apt.scheduled_at), "MMM d, h:mm a")}
+                        {formatDate(apt.scheduled_at, { pattern: "MMM d, h:mm a" })}
                       </p>
                     </div>
                     <Badge
@@ -840,8 +840,8 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
           {/* Timestamps */}
           <Separator />
           <div className="space-y-1 px-2 text-xs text-muted-foreground">
-            <p>Created: {format(new Date(selectedContact.created_at), "MMM d, yyyy 'at' h:mm a")}</p>
-            <p>Updated: {format(new Date(selectedContact.updated_at), "MMM d, yyyy 'at' h:mm a")}</p>
+            <p>Created: {formatDate(selectedContact.created_at, { pattern: "MMM d, yyyy 'at' h:mm a" })}</p>
+            <p>Updated: {formatDate(selectedContact.updated_at, { pattern: "MMM d, yyyy 'at' h:mm a" })}</p>
           </div>
         </div>
       </ScrollArea>

@@ -1,6 +1,6 @@
 "use client";
 
-import { format, formatDistanceToNow } from "date-fns";
+import { formatDate, formatRelative } from "@/lib/utils/date";
 import { Clock, AlertTriangle, Flame } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { Contact, TimelineItem } from "@/types";
@@ -74,7 +74,7 @@ export function ContactTimeline({ contact, timeline }: ContactTimelineProps) {
           <Clock className="h-3 w-3" />
           <span>
             Last engaged{" "}
-            {formatDistanceToNow(new Date(contact.last_engaged_at), { addSuffix: true })}
+            {formatRelative(contact.last_engaged_at)}
           </span>
         </div>
       )}
@@ -96,7 +96,7 @@ export function ContactTimeline({ contact, timeline }: ContactTimelineProps) {
         <div className="flex items-center gap-2 px-2 text-xs text-muted-foreground">
           <Clock className="h-3 w-3" />
           <span>
-            Last activity: {format(new Date(lastActivity.timestamp), "MMM d, h:mm a")}
+            Last activity: {formatDate(lastActivity.timestamp, { pattern: "MMM d, h:mm a" })}
           </span>
         </div>
       )}

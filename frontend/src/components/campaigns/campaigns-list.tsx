@@ -59,6 +59,7 @@ import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import type { Campaign, CampaignType } from "@/types";
 import { campaignsApi } from "@/lib/api/campaigns";
 import { getApiErrorMessage } from "@/lib/utils/errors";
+import { formatNumber } from "@/lib/utils/number";
 
 const typeIcons: Record<CampaignType, LucideIcon> = {
   sms: MessageSquare,
@@ -337,8 +338,8 @@ export function CampaignsList() {
                         <div className="space-y-1">
                           <Progress value={progress} className="h-2 w-24" />
                           <div className="text-xs text-muted-foreground">
-                            {campaign.messages_sent.toLocaleString()} /{" "}
-                            {campaign.total_contacts.toLocaleString()}
+                            {formatNumber(campaign.messages_sent)} /{" "}
+                            {formatNumber(campaign.total_contacts)}
                           </div>
                         </div>
                       </TableCell>

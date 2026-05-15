@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { AnimatePresence } from "motion/react";
-import { format, isToday, isYesterday, isSameDay } from "date-fns";
+import { formatLongDate, isToday, isYesterday, isSameDay } from "@/lib/utils/date";
 import { Send, Paperclip, Mic, Phone, MoreVertical, MessageSquare, Loader2, PhoneOutgoing, Bot, User, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -54,7 +54,7 @@ interface ConversationFeedProps {
 function formatDateLabel(date: Date): string {
   if (isToday(date)) return "Today";
   if (isYesterday(date)) return "Yesterday";
-  return format(date, "MMMM d, yyyy");
+  return formatLongDate(date);
 }
 
 function DateSeparator({ date }: { date: Date }) {
@@ -168,7 +168,7 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
       const itemDate = new Date(item.timestamp);
       const lastGroup = groups[groups.length - 1];
 
-      if (lastGroup && isSameDay(new Date(lastGroup.date), itemDate)) {
+      if (lastGroup && isSameDay(lastGroup.date, itemDate)) {
         lastGroup.items.push(item);
       } else {
         groups.push({ date: itemDate, items: [item] });

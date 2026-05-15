@@ -21,6 +21,7 @@ import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 import { publicOffersApi, OptInRequest } from "@/lib/api/public-offers";
+import { formatNumber } from "@/lib/utils/number";
 
 interface PublicOfferPageProps {
   params: Promise<{ slug: string }>;
@@ -147,7 +148,7 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
                           <span className="font-medium">{item.name}</span>
                           {item.value > 0 && (
                             <span className="text-sm text-muted-foreground">
-                              ${item.value.toLocaleString()} value
+                              ${formatNumber(item.value)} value
                             </span>
                           )}
                         </div>
@@ -184,7 +185,7 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
                           <span className="font-medium">{lm.name}</span>
                           {lm.estimated_value && (
                             <Badge variant="secondary">
-                              ${lm.estimated_value.toLocaleString()} value
+                              ${formatNumber(lm.estimated_value)} value
                             </Badge>
                           )}
                         </div>
@@ -237,22 +238,22 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
               <CardHeader className="text-center pb-2">
                 {offer.total_value && (
                   <p className="text-sm text-muted-foreground mb-1">
-                    Total Value: ${offer.total_value.toLocaleString()}
+                    Total Value: ${formatNumber(offer.total_value)}
                   </p>
                 )}
                 {offer.regular_price && offer.offer_price && (
                   <div className="flex items-center justify-center gap-3 mb-2">
                     <span className="text-2xl text-muted-foreground line-through">
-                      ${offer.regular_price.toLocaleString()}
+                      ${formatNumber(offer.regular_price)}
                     </span>
                     <span className="text-4xl font-bold text-primary">
-                      ${offer.offer_price.toLocaleString()}
+                      ${formatNumber(offer.offer_price)}
                     </span>
                   </div>
                 )}
                 {offer.savings_amount && offer.savings_amount > 0 && (
                   <Badge variant="secondary" className="text-success">
-                    Save ${offer.savings_amount.toLocaleString()}
+                    Save ${formatNumber(offer.savings_amount)}
                   </Badge>
                 )}
               </CardHeader>

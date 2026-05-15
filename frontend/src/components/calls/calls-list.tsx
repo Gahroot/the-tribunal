@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { format, formatDistanceToNow } from "date-fns";
+import { formatDate, formatRelative } from "@/lib/utils/date";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import {
   Search,
@@ -359,12 +359,10 @@ export function CallsList() {
                         </TableCell>
                         <TableCell>
                           <div className="text-sm">
-                            {formatDistanceToNow(new Date(call.created_at), {
-                              addSuffix: true,
-                            })}
+                            {formatRelative(call.created_at)}
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            {format(new Date(call.created_at), "MMM d, h:mm a")}
+                            {formatDate(call.created_at, { pattern: "MMM d, h:mm a" })}
                           </div>
                         </TableCell>
                         <TableCell>
@@ -393,10 +391,9 @@ export function CallsList() {
                                   <DialogTitle>Call Details</DialogTitle>
                                   <DialogDescription>
                                     {displayName} -{" "}
-                                    {format(
-                                      new Date(call.created_at),
-                                      "MMMM d, yyyy 'at' h:mm a"
-                                    )}
+                                    {formatDate(call.created_at, {
+                                      pattern: "MMMM d, yyyy 'at' h:mm a",
+                                    })}
                                   </DialogDescription>
                                 </DialogHeader>
                                 <div className="space-y-4">

@@ -9,6 +9,7 @@ import {
 } from "@/lib/api/prompt-versions";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { formatNumber } from "@/lib/utils/number";
 
 interface PromptPerformanceChartProps {
   agentId: string;
@@ -95,7 +96,7 @@ export function PromptPerformanceChart({ agentId }: PromptPerformanceChartProps)
                     )}
                   </div>
                   <div className="flex items-center gap-4 text-muted-foreground">
-                    <span>{version.total_calls.toLocaleString()} calls</span>
+                    <span>{formatNumber(version.total_calls)} calls</span>
                     <span className="font-medium text-foreground">
                       {bookingRate.toFixed(1)}% booking rate
                     </span>

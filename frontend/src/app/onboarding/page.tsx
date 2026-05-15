@@ -33,6 +33,7 @@ import { WizardContainer } from "@/components/wizard/wizard-container";
 import { useWizard, type WizardStepDef } from "@/hooks/useWizard";
 import { useWorkspace } from "@/providers/workspace-provider";
 import { getApiErrorMessage } from "@/lib/utils/errors";
+import { formatNumber } from "@/lib/utils/number";
 import {
   verifyCalcom,
   parseCalcomUrl,
@@ -513,7 +514,7 @@ function LeadsStep({
               <p className="font-semibold text-sm">Pull from Follow Up Boss</p>
               {fubImportCount !== null && (
                 <p className="text-xs text-green-600 mt-1">
-                  {fubImportCount.toLocaleString()} lead
+                  {formatNumber(fubImportCount)} lead
                   {fubImportCount !== 1 ? "s" : ""} imported
                 </p>
               )}
@@ -596,7 +597,7 @@ function LeadsStep({
               <p className="font-medium truncate text-sm">{file.name}</p>
               {rowCount !== null && (
                 <p className="text-xs text-muted-foreground">
-                  ~{rowCount.toLocaleString()} lead
+                  ~{formatNumber(rowCount)} lead
                   {rowCount !== 1 ? "s" : ""} detected
                 </p>
               )}
@@ -728,18 +729,18 @@ function ReviewStep({
             <div className="min-w-0">
               <p className="text-sm font-medium">
                 {totalLeads > 0
-                  ? `${totalLeads.toLocaleString()} lead${totalLeads !== 1 ? "s" : ""} to contact`
+                  ? `${formatNumber(totalLeads)} lead${totalLeads !== 1 ? "s" : ""} to contact`
                   : "No leads imported yet"}
               </p>
               <div className="text-xs text-muted-foreground space-y-0.5">
                 {fubImportCount !== null && fubImportCount > 0 && (
                   <p>
-                    {fubImportCount.toLocaleString()} from Follow Up Boss
+                    {formatNumber(fubImportCount)} from Follow Up Boss
                   </p>
                 )}
                 {file && rowCount !== null && (
                   <p>
-                    ~{rowCount.toLocaleString()} from {file.name}
+                    ~{formatNumber(rowCount)} from {file.name}
                   </p>
                 )}
               </div>
@@ -872,7 +873,7 @@ export default function OnboardingPage() {
         return next;
       });
       toast.success(
-        `Imported ${result.imported.toLocaleString()} leads from Follow Up Boss`
+        `Imported ${formatNumber(result.imported)} leads from Follow Up Boss`
       );
     } catch (err) {
       toast.error(getApiErrorMessage(err, "Failed to import leads."));

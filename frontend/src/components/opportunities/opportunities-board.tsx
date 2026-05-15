@@ -29,6 +29,7 @@ import { opportunityStatusColors } from "@/lib/status-colors";
 import type { Opportunity, OpportunityStatus, PipelineStage } from "@/types";
 import { OpportunityDetailSheet } from "./opportunity-detail-sheet";
 import { cn } from "@/lib/utils";
+import { formatDate } from "@/lib/utils/date";
 import { GripVertical, DollarSign, Calendar, CircleDot } from "lucide-react";
 
 interface OpportunitiesBoardProps {
@@ -120,7 +121,7 @@ function SortableOpportunityCard({
             {opportunity.expected_close_date && (
               <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
                 <Calendar className="h-3 w-3" />
-                {new Date(opportunity.expected_close_date).toLocaleDateString()}
+                {formatDate(opportunity.expected_close_date)}
               </div>
             )}
           </div>

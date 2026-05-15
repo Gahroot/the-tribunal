@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { formatDistanceToNow, format, addDays } from "date-fns";
+import { formatDayMonth, formatRelative, addDays } from "@/lib/utils/date";
 import Link from "next/link";
 import {
   Bell,
@@ -125,7 +125,7 @@ export function NudgesPage() {
       return nudgesApi.snooze(workspaceId, nudgeId, snoozeUntil);
     },
     onSuccess: (_data, variables) => {
-      toast.success(`Snoozed until ${format(new Date(variables.snoozeUntil), "MMM d")}`);
+      toast.success(`Snoozed until ${formatDayMonth(variables.snoozeUntil)}`);
       invalidateNudges();
     },
     onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to snooze")),
@@ -360,7 +360,7 @@ function NudgeCard({
             {nudge.status === "snoozed" && nudge.snoozed_until && (
               <span className="flex items-center gap-1">
                 <AlarmClock className="h-3 w-3" />
-                Snoozed until {format(new Date(nudge.snoozed_until), "MMM d")}
+                Snoozed until {formatDayMonth(nudge.snoozed_until)}
               </span>
             )}
             {nudge.status !== "pending" && nudge.status !== "snoozed" && (
@@ -547,5 +547,5 @@ function formatDueDate(dateStr: string): string {
   if (diffDays > 0 && diffDays <= 14) return `In ${diffDays} days`;
   if (diffDays < 0 && diffDays >= -14) return `${Math.abs(diffDays)} days ago`;
 
-  return formatDistanceToNow(due, { addSuffix: true });
+  return formatRelative(due);
 }

@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { formatDistanceToNow } from "date-fns";
+import { formatRelative } from "@/lib/utils/date";
+import { formatNumber } from "@/lib/utils/number";
 import {
   Play,
   Pause,
@@ -247,15 +248,13 @@ export function PromptVersionHistory({ agentId }: PromptVersionHistoryProps) {
                   </TableCell>
                   <TableCell>{getStatusBadge(version)}</TableCell>
                   <TableCell className="text-right font-mono">
-                    {version.total_calls.toLocaleString()}
+                    {formatNumber(version.total_calls)}
                   </TableCell>
                   <TableCell className="text-right font-mono">
                     {bookingRate !== null ? `${bookingRate.toFixed(1)}%` : "-"}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {formatDistanceToNow(new Date(version.created_at), {
-                      addSuffix: true,
-                    })}
+                    {formatRelative(version.created_at)}
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
@@ -383,13 +382,13 @@ export function PromptVersionHistory({ agentId }: PromptVersionHistoryProps) {
               <div>
                 <span className="text-muted-foreground">Total Calls:</span>{" "}
                 <span className="font-medium">
-                  {selectedVersion?.total_calls.toLocaleString()}
+                  {selectedVersion ? formatNumber(selectedVersion.total_calls) : ""}
                 </span>
               </div>
               <div>
                 <span className="text-muted-foreground">Bookings:</span>{" "}
                 <span className="font-medium">
-                  {selectedVersion?.booked_appointments.toLocaleString()}
+                  {selectedVersion ? formatNumber(selectedVersion.booked_appointments) : ""}
                 </span>
               </div>
             </div>

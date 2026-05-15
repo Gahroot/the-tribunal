@@ -30,6 +30,8 @@ import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { getRealtorStats, type RealtorStats } from "@/lib/api/realtor";
 import { appointmentsApi } from "@/lib/api/appointments";
 import type { Appointment } from "@/types";
+import { formatDateTime } from "@/lib/utils/date";
+import { formatNumber } from "@/lib/utils/number";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,21 +45,6 @@ interface MetricCardProps {
 type AppointmentStatus = "scheduled" | "completed" | "cancelled" | "no_show";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatDateTime(iso: string): string {
-  try {
-    return new Intl.DateTimeFormat("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    }).format(new Date(iso));
-  } catch {
-    return iso;
-  }
-}
 
 function getContactName(appt: Appointment): string {
   if (appt.contact) {
@@ -114,7 +101,7 @@ function MetricCard({ label, value, icon: Icon, isPending }: MetricCardProps) {
               <Skeleton className="h-9 w-16" />
             ) : (
               <p className="text-3xl font-bold tracking-tight">
-                {(value ?? 0).toLocaleString()}
+                {formatNumber(value ?? 0)}
               </p>
             )}
             <p className="text-sm text-muted-foreground">{label}</p>

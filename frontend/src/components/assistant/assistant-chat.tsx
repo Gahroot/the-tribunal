@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Send, Loader2, Bot, User, Sparkles } from "lucide-react";
-import { format } from "date-fns";
+import { formatTime } from "@/lib/utils/date";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -141,7 +141,7 @@ function MessageBubble({ message }: { message: AssistantMessageResponse }) {
               : "text-muted-foreground",
           )}
         >
-          {format(new Date(message.created_at), "h:mm a")}
+          {formatTime(message.created_at)}
         </p>
       </div>
     </div>

@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
 import type { ValueStackItem } from "@/types";
+import { formatNumber } from "@/lib/utils/number";
 
 interface ValueStackBuilderProps {
   items: ValueStackItem[];
@@ -76,7 +77,7 @@ export function ValueStackBuilder({ items, onChange }: ValueStackBuilderProps) {
         <div className="text-right">
           <p className="text-sm text-muted-foreground">Total Value</p>
           <p className="text-2xl font-bold text-success">
-            ${totalValue.toLocaleString()}
+            ${formatNumber(totalValue)}
           </p>
         </div>
       </div>
@@ -215,7 +216,7 @@ export function ValueStackBuilder({ items, onChange }: ValueStackBuilderProps) {
             </div>
             <div className="text-right">
               <p className="text-3xl font-bold text-success">
-                ${totalValue.toLocaleString()}
+                ${formatNumber(totalValue)}
               </p>
               <p className="text-xs text-muted-foreground">perceived value</p>
             </div>

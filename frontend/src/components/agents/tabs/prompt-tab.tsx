@@ -15,6 +15,7 @@ import { Wand2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BEST_PRACTICES_PROMPT } from "@/lib/voice-constants";
 import type { EditAgentFormValues } from "@/components/agents/agent-edit-schema";
+import { formatNumber } from "@/lib/utils/number";
 
 interface PromptTabProps {
   form: UseFormReturn<EditAgentFormValues>;
@@ -66,7 +67,7 @@ export function PromptTab({ form }: PromptTabProps) {
                       isTooLong && "text-destructive"
                     )}
                   >
-                    {charCount.toLocaleString()} characters
+                    {formatNumber(charCount)} characters
                     {isTooShort && " (recommended: 100+)"}
                     {isTooLong && " (recommended: under 2,000)"}
                   </span>

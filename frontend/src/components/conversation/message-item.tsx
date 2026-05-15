@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { motion } from "motion/react";
-import { format } from "date-fns";
+import { formatTime } from "@/lib/utils/date";
 import {
   Phone,
   PhoneIncoming,
@@ -109,7 +109,7 @@ export function MessageItem({ item, contactName }: MessageItemProps) {
   const callSummary = item.signals?.summary;
 
   // Format timestamp
-  const timestamp = format(new Date(item.timestamp), "h:mm a");
+  const timestamp = formatTime(item.timestamp);
 
   // Call-specific icon
   const callIcon = isCall ? (

@@ -33,6 +33,7 @@ import { opportunitiesApi } from "@/lib/api/opportunities";
 import { opportunityStatusColors } from "@/lib/status-colors";
 import type { Opportunity, OpportunityStatus, OpportunityActivity } from "@/types";
 import { cn } from "@/lib/utils";
+import { formatDate, formatDateTime } from "@/lib/utils/date";
 import {
   DollarSign,
   Calendar,
@@ -115,7 +116,7 @@ function ActivityItem({ activity }: ActivityItemProps) {
       <div className="flex-1 min-w-0">
         <p className="text-sm">{activity.description}</p>
         <p className="text-xs text-muted-foreground mt-1">
-          {new Date(activity.created_at).toLocaleString()}
+          {formatDateTime(activity.created_at)}
         </p>
       </div>
     </div>
@@ -326,7 +327,7 @@ export function OpportunityDetailSheet({
                   <p className="text-xs text-muted-foreground">Expected Close</p>
                   <p className="text-sm flex items-center">
                     <Calendar className="h-4 w-4 mr-1" />
-                    {new Date(opportunity.expected_close_date).toLocaleDateString()}
+                    {formatDate(opportunity.expected_close_date)}
                   </p>
                 </div>
               )}
@@ -522,12 +523,12 @@ export function OpportunityDetailSheet({
             {/* Metadata */}
             <Separator />
             <div className="text-xs text-muted-foreground space-y-1">
-              <p>Created: {new Date(opportunity.created_at).toLocaleString()}</p>
-              <p>Updated: {new Date(opportunity.updated_at).toLocaleString()}</p>
+              <p>Created: {formatDateTime(opportunity.created_at)}</p>
+              <p>Updated: {formatDateTime(opportunity.updated_at)}</p>
               {opportunity.stage_changed_at && (
                 <p>
                   Stage changed:{" "}
-                  {new Date(opportunity.stage_changed_at).toLocaleString()}
+                  {formatDateTime(opportunity.stage_changed_at)}
                 </p>
               )}
             </div>

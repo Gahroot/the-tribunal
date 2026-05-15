@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
+import { formatNumber } from "@/lib/utils/number";
 
 interface SettingsReviewStepProps {
   form: UseFormReturn<AgentFormValues>;
@@ -149,7 +150,7 @@ export function SettingsReviewStep({
                   <div className="flex items-center justify-between">
                     <FormLabel>Max Tokens</FormLabel>
                     <span className="text-sm font-medium">
-                      {(field.value ?? 2000).toLocaleString()}
+                      {formatNumber(field.value ?? 2000)}
                     </span>
                   </div>
                   <FormControl>

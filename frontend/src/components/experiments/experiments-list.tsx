@@ -55,6 +55,7 @@ import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import type { MessageTest } from "@/types";
 import { messageTestsApi } from "@/lib/api/message-tests";
 import { getApiErrorMessage } from "@/lib/utils/errors";
+import { formatNumber } from "@/lib/utils/number";
 
 export function ExperimentsList() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -272,7 +273,7 @@ export function ExperimentsList() {
                         <div className="space-y-1">
                           <Progress value={progress} className="h-2 w-24" />
                           <div className="text-xs text-muted-foreground">
-                            {test.messages_sent.toLocaleString()} / {test.total_contacts.toLocaleString()}
+                            {formatNumber(test.messages_sent)} / {formatNumber(test.total_contacts)}
                           </div>
                         </div>
                       </TableCell>

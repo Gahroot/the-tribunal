@@ -41,6 +41,7 @@ import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { messageTestsApi } from "@/lib/api/message-tests";
 import type { VariantAnalytics } from "@/types";
 import { getApiErrorMessage } from "@/lib/utils/errors";
+import { formatNumber } from "@/lib/utils/number";
 
 interface TestAnalyticsProps {
   testId: string;
@@ -158,7 +159,7 @@ export function TestAnalytics({ testId }: TestAnalyticsProps) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {analytics.total_contacts.toLocaleString()}
+              {formatNumber(analytics.total_contacts)}
             </div>
           </CardContent>
         </Card>
@@ -172,7 +173,7 @@ export function TestAnalytics({ testId }: TestAnalyticsProps) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {analytics.messages_sent.toLocaleString()}
+              {formatNumber(analytics.messages_sent)}
             </div>
           </CardContent>
         </Card>
@@ -200,7 +201,7 @@ export function TestAnalytics({ testId }: TestAnalyticsProps) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {analytics.contacts_qualified.toLocaleString()}
+              {formatNumber(analytics.contacts_qualified)}
             </div>
           </CardContent>
         </Card>

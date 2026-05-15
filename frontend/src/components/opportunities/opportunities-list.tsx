@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { opportunityStatusColors } from "@/lib/status-colors";
 import { opportunitiesApi } from "@/lib/api/opportunities";
 import type { OpportunityStatus } from "@/types";
+import { formatDate } from "@/lib/utils/date";
 
 interface OpportunitiesListProps {
   workspaceId: string;
@@ -111,12 +112,12 @@ export function OpportunitiesList({ workspaceId }: OpportunitiesListProps) {
                 </TableCell>
                 <TableCell>
                   {opportunity.expected_close_date
-                    ? new Date(opportunity.expected_close_date).toLocaleDateString()
+                    ? formatDate(opportunity.expected_close_date)
                     : "—"}
                 </TableCell>
                 <TableCell>{opportunity.source || "—"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">
-                  {new Date(opportunity.created_at).toLocaleDateString()}
+                  {formatDate(opportunity.created_at)}
                 </TableCell>
               </TableRow>
             ))

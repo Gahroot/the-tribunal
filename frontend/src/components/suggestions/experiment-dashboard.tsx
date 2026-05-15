@@ -44,6 +44,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { getApiErrorMessage } from "@/lib/utils/errors";
+import { formatNumber } from "@/lib/utils/number";
 
 export function ExperimentDashboard() {
   const workspaceId = useWorkspaceId();
@@ -322,7 +323,7 @@ function AgentExperimentSection({ agentId, agentName }: { agentId: string; agent
                 <div className="grid grid-cols-3 gap-2 text-center text-xs">
                   <div>
                     <p className="text-muted-foreground">Samples</p>
-                    <p className="font-medium">{version.sample_size.toLocaleString()}</p>
+                    <p className="font-medium">{formatNumber(version.sample_size)}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Booking Rate</p>

@@ -25,6 +25,7 @@ import { TextSettingsSection } from "@/components/agents/tabs/advanced/text-sett
 import { RemindersSection } from "@/components/agents/tabs/advanced/reminders-section";
 import { ValueReinforcementSection } from "@/components/agents/tabs/advanced/value-reinforcement-section";
 import { PostMeetingSmsSection } from "@/components/agents/tabs/advanced/post-meeting-sms-section";
+import { formatDate } from "@/lib/utils/date";
 
 interface AdvancedTabProps {
   form: UseFormReturn<EditAgentFormValues>;
@@ -451,13 +452,13 @@ export function AdvancedTab({ form, voiceProvider, agent }: AdvancedTabProps) {
             <div className="rounded-md border p-3">
               <p className="text-xs text-muted-foreground">Created</p>
               <p className="text-sm font-medium">
-                {new Date(agent.created_at).toLocaleDateString()}
+                {formatDate(agent.created_at)}
               </p>
             </div>
             <div className="rounded-md border p-3">
               <p className="text-xs text-muted-foreground">Last Updated</p>
               <p className="text-sm font-medium">
-                {new Date(agent.updated_at).toLocaleDateString()}
+                {formatDate(agent.updated_at)}
               </p>
             </div>
           </div>

@@ -13,6 +13,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { campaignsApi } from "@/lib/api/campaigns";
+import { formatDate } from "@/lib/utils/date";
 import { voiceCampaignsApi } from "@/lib/api/voice-campaigns";
 import type { GuaranteeProgress as GuaranteeProgressType } from "@/types";
 
@@ -123,7 +124,7 @@ export function GuaranteeProgress({ campaignId, campaignType }: GuaranteeProgres
         {progress.deadline && (
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Deadline</span>
-            <span>{new Date(progress.deadline).toLocaleDateString()}</span>
+            <span>{formatDate(progress.deadline)}</span>
           </div>
         )}
       </CardContent>

@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { getApiErrorMessage } from "@/lib/utils/errors";
+import { formatNumber } from "@/lib/utils/number";
 import { useState } from "react";
 
 interface ABTestDashboardProps {
@@ -359,7 +360,7 @@ function VersionCard({
           </div>
         </div>
         <CardDescription>
-          {version.sample_size.toLocaleString()} samples collected
+          {formatNumber(version.sample_size)} samples collected
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

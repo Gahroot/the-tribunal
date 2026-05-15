@@ -71,6 +71,7 @@ import {
 } from "@/hooks/useAutomations";
 import { automationsApi } from "@/lib/api/automations";
 import type { Automation, AutomationTriggerType, AutomationActionType } from "@/types";
+import { formatDate } from "@/lib/utils/date";
 
 const triggerTypeConfig: Record<AutomationTriggerType, { label: string; icon: LucideIcon; color: string }> = {
   event: { label: "Event", icon: Zap, color: "text-warning" },
@@ -580,7 +581,7 @@ export function AutomationsPage() {
                       <div className="flex items-center justify-between w-full text-sm">
                         <div className="text-muted-foreground">
                           {automation.last_triggered_at
-                            ? `Last run: ${new Date(automation.last_triggered_at).toLocaleDateString()}`
+                            ? `Last run: ${formatDate(automation.last_triggered_at)}`
                             : "Never triggered"}
                         </div>
                         <Switch

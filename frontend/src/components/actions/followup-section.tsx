@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { formatDistanceToNow } from "date-fns";
+import { formatRelative } from "@/lib/utils/date";
 import { RefreshCw, Send, Sparkles, Clock, RotateCcw, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
@@ -195,7 +195,7 @@ export function FollowupSection() {
 
   // Calculate time until next follow-up
   const nextFollowupText = settings?.next_followup_at
-    ? formatDistanceToNow(new Date(settings.next_followup_at), { addSuffix: true })
+    ? formatRelative(settings.next_followup_at)
     : null;
 
   return (

@@ -1,6 +1,6 @@
 "use client";
 
-import { format } from "date-fns";
+import { formatDate } from "@/lib/utils/date";
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -103,7 +103,7 @@ export function EngagementSummary({
               <Clock className="h-3 w-3" />
               <span>
                 Last activity:{" "}
-                {format(new Date(data.last_activity_at), "MMM d, h:mm a")}
+                {formatDate(data.last_activity_at, { pattern: "MMM d, h:mm a" })}
               </span>
             </div>
           ) : null}

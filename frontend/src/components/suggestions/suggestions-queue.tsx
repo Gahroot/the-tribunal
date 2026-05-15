@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { formatDistanceToNow } from "date-fns";
+import { formatRelative } from "@/lib/utils/date";
 import {
   Check,
   X,
@@ -408,7 +408,7 @@ function SuggestionCard({
           <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
             <span>
               Created{" "}
-              {formatDistanceToNow(new Date(suggestion.created_at), { addSuffix: true })}
+              {formatRelative(suggestion.created_at)}
             </span>
             {suggestion.expected_improvement && (
               <span className="max-w-xs truncate">

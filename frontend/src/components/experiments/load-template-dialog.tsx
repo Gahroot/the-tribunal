@@ -18,6 +18,7 @@ import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { messageTemplatesApi } from "@/lib/api/message-templates";
 import type { MessageTemplate } from "@/types";
 import { getApiErrorMessage } from "@/lib/utils/errors";
+import { formatDate } from "@/lib/utils/date";
 
 interface LoadTemplateDialogProps {
   open: boolean;
@@ -123,7 +124,7 @@ export function LoadTemplateDialog({
                         {template.message_template}
                       </p>
                       <p className="text-xs text-muted-foreground mt-2">
-                        Saved {new Date(template.created_at).toLocaleDateString()}
+                        Saved {formatDate(template.created_at)}
                       </p>
                     </div>
                     <Button

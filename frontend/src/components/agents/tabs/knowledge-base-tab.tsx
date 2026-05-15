@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { formatDistanceToNow } from "date-fns";
+import { formatRelative } from "@/lib/utils/date";
+import { formatNumber } from "@/lib/utils/number";
 import { Loader2, Plus, Trash2, BookOpen, FileText } from "lucide-react";
 
 import { knowledgeDocumentsApi } from "@/lib/api/knowledge-documents";
@@ -176,7 +177,7 @@ export function KnowledgeBaseTab({ agentId }: KnowledgeBaseTabProps) {
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Token usage</span>
               <span className="font-medium">
-                {totalTokens.toLocaleString()} / {tokenBudget.toLocaleString()} tokens
+                {formatNumber(totalTokens)} / {formatNumber(tokenBudget)} tokens
               </span>
             </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
@@ -224,7 +225,7 @@ export function KnowledgeBaseTab({ agentId }: KnowledgeBaseTabProps) {
                         {doc.doc_type}
                       </Badge>
                       <Badge variant="outline" className="text-xs">
-                        {doc.token_count.toLocaleString()} tokens
+                        {formatNumber(doc.token_count)} tokens
                       </Badge>
                       {doc.priority > 0 && (
                         <Badge variant="secondary" className="text-xs">
@@ -238,7 +239,7 @@ export function KnowledgeBaseTab({ agentId }: KnowledgeBaseTabProps) {
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Added{" "}
-                    {formatDistanceToNow(new Date(doc.created_at), { addSuffix: true })}
+                    {formatRelative(doc.created_at)}
                   </p>
                 </div>
                 <AlertDialog>

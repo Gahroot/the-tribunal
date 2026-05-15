@@ -2,7 +2,16 @@
 // imports from one place — easier to swap libraries, change locale defaults,
 // or harden bad-input handling later.
 
-import { format, formatDistanceToNow } from "date-fns";
+import {
+  format,
+  formatDistanceToNow,
+  addDays as dfAddDays,
+  startOfWeek as dfStartOfWeek,
+  endOfWeek as dfEndOfWeek,
+  isSameDay as dfIsSameDay,
+  isToday as dfIsToday,
+  isYesterday as dfIsYesterday,
+} from "date-fns";
 
 export type DateInput = Date | string | number;
 
@@ -43,4 +52,39 @@ export function formatDayMonth(date: DateInput): string {
 /** Long form, e.g. "January 5, 2026". */
 export function formatLongDate(date: DateInput): string {
   return format(toDate(date), "MMMM d, yyyy");
+}
+
+/** Add (or subtract, with negatives) calendar days. */
+export function addDays(date: DateInput, days: number): Date {
+  return dfAddDays(toDate(date), days);
+}
+
+export interface WeekOptions {
+  /** 0 = Sunday, 1 = Monday, … 6 = Saturday. Defaults to Sunday. */
+  weekStartsOn?: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+}
+
+/** Start of the week containing `date`. Defaults to Sunday. */
+export function startOfWeek(date: DateInput, options: WeekOptions = {}): Date {
+  return dfStartOfWeek(toDate(date), options);
+}
+
+/** End of the week containing `date`. Defaults to Sunday-start. */
+export function endOfWeek(date: DateInput, options: WeekOptions = {}): Date {
+  return dfEndOfWeek(toDate(date), options);
+}
+
+/** True if both inputs fall on the same calendar day. */
+export function isSameDay(a: DateInput, b: DateInput): boolean {
+  return dfIsSameDay(toDate(a), toDate(b));
+}
+
+/** True if `date` is today (local time). */
+export function isToday(date: DateInput): boolean {
+  return dfIsToday(toDate(date));
+}
+
+/** True if `date` is yesterday (local time). */
+export function isYesterday(date: DateInput): boolean {
+  return dfIsYesterday(toDate(date));
 }
