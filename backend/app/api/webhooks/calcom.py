@@ -18,6 +18,10 @@ from app.api.webhooks.calcom_handlers import (
     handle_booking_rescheduled,
     handle_meeting_ended,
 )
+from app.core.metrics import (
+    observe_calcom_signature_invalid,
+    observe_calcom_webhook,
+)
 from app.core.webhook_security import verify_calcom_webhook
 
 router = APIRouter()
@@ -53,6 +57,7 @@ async def calcom_booking_webhook(request: Request) -> dict[str, str]:
         await verify_calcom_webhook(request)
     except Exception as e:
         log.error("webhook_verification_failed", error=str(e))
+        observe_calcom_signature_invalid()
         raise
 
     try:
@@ -66,6 +71,7 @@ async def calcom_booking_webhook(request: Request) -> dict[str, str]:
 
     log = log.bind(event_type=trigger)
     log.info("webhook_received")
+    observe_calcom_webhook(trigger)
 
     handler = _EVENT_DISPATCH.get(trigger)
     if handler is None:

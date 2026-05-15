@@ -55,6 +55,7 @@ class ApprovalWorker(BaseWorker):
             try:
                 await self.delivery_service.notify_pending_action(db, action)
                 await db.commit()
+                self.record_items_processed()
             except Exception:
                 await db.rollback()
                 self.logger.exception(
@@ -73,6 +74,7 @@ class ApprovalWorker(BaseWorker):
             try:
                 await self.gate_service.execute_approved_action(db, action)
                 await db.commit()
+                self.record_items_processed()
             except Exception:
                 await db.rollback()
                 self.logger.exception(

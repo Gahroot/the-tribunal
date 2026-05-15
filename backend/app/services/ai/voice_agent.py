@@ -4,6 +4,7 @@ import asyncio
 import base64
 import binascii
 import json
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -11,6 +12,7 @@ import structlog
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
+from app.core.metrics import openai_realtime_latency_ms
 from app.models.agent import Agent
 from app.services.ai.voice_agent_base import VoiceAgentBase
 
@@ -46,6 +48,10 @@ class VoiceAgentSession(VoiceAgentBase):
         super().__init__(agent)
         self.api_key = api_key
         self._connection_task: asyncio.Task[None] | None = None
+        # Monotonic timestamp of the most recent response.create event we
+        # sent. Cleared once response.created is observed so we measure
+        # request → ack latency for each turn without double-counting.
+        self._pending_response_create_at: float | None = None
 
     async def connect(self) -> bool:
         """Connect to OpenAI Realtime API.
@@ -543,6 +549,14 @@ class VoiceAgentSession(VoiceAgentBase):
                     )
 
                 elif event_type == "response.created":
+                    # Observe request → ack latency for the matching
+                    # response.create event (if any) before resetting state.
+                    if self._pending_response_create_at is not None:
+                        openai_realtime_latency_ms.observe(
+                            (time.monotonic() - self._pending_response_create_at)
+                            * 1000.0
+                        )
+                        self._pending_response_create_at = None
                     # Handle new response - resets interrupted flag using base class
                     self._handle_response_created()
 
@@ -736,6 +750,9 @@ class VoiceAgentSession(VoiceAgentBase):
             )
         elif event_type == "response.create":
             response = event.get("response", {})
+            # Mark request-send time so the receive loop can observe latency
+            # when the matching response.created event arrives.
+            self._pending_response_create_at = time.monotonic()
             self.logger.info(
                 "sending_response_create",
                 modalities=response.get("modalities"),

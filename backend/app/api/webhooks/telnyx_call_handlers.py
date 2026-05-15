@@ -8,6 +8,10 @@ from sqlalchemy.orm import selectinload
 
 from app.api.webhooks.telnyx_parser import extract_phone_numbers
 from app.core.config import settings
+from app.core.metrics import (
+    observe_voice_call_completed,
+    observe_voice_call_started,
+)
 from app.db.session import AsyncSessionLocal
 from app.models.phone_number import PhoneNumber
 from app.services.push_notifications import push_notification_service
@@ -124,6 +128,7 @@ async def handle_call_initiated(payload: dict[Any, Any], log: Any) -> None:
         await db.commit()
         await db.refresh(message)
 
+        observe_voice_call_started(workspace_id)
         log.info("call_initiated_processed", message_id=str(message.id))
 
         # Push notification for incoming call
@@ -378,6 +383,20 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:  # noqa
 
             await db.commit()
             log.info("message_updated", message_id=str(message.id), status=message.status)
+
+            # Record completion metric exactly once per call (skip retries that
+            # arrive after we've already finalised the message status).
+            if not already_finalized:
+                workspace_id = (
+                    message.conversation.workspace_id
+                    if message.conversation
+                    else None
+                )
+                observe_voice_call_completed(
+                    workspace_id=workspace_id,
+                    outcome=str(message.status),
+                    duration_seconds=message.duration_seconds or duration_secs,
+                )
 
             contact_id = (
                 message.conversation.contact_id if message.conversation else None

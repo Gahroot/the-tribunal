@@ -60,6 +60,7 @@ class FollowupWorker(BaseWorker):
             for conversation in conversations:
                 try:
                     await self._process_conversation_followup(conversation, db)
+                    self.record_items_processed()
                 except Exception:
                     self.logger.exception(
                         "Error processing conversation follow-up",

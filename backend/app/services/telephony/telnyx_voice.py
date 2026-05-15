@@ -9,6 +9,11 @@ import httpx
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.metrics import (
+    latency_ms_timer,
+    observe_voice_call_started,
+    telnyx_api_latency_ms,
+)
 from app.models.conversation import Conversation, Message, MessageStatus
 
 logger = structlog.get_logger()
@@ -170,7 +175,7 @@ class TelnyxVoiceService:
             self.logger.exception("get_call_control_app_failed", error=str(e))
             raise ValueError(f"Failed to get Call Control Application: {e}") from e
 
-    async def initiate_call(
+    async def initiate_call(  # noqa: PLR0915
         self,
         to_number: str,
         from_number: str,
@@ -254,7 +259,8 @@ class TelnyxVoiceService:
                 }
                 log.info("machine_detection_enabled")
 
-            response = await self.client.post("/calls", json=payload)
+            with latency_ms_timer(telnyx_api_latency_ms):
+                response = await self.client.post("/calls", json=payload)
             response_data = response.json()
 
             log.info(
@@ -269,6 +275,7 @@ class TelnyxVoiceService:
 
                 message.provider_message_id = call_control_id  # Store call_control_id
                 message.status = MessageStatus.RINGING
+                observe_voice_call_started(workspace_id)
                 log.info(
                     "call_initiated",
                     call_id=call_id,

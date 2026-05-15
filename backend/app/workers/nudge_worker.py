@@ -81,6 +81,7 @@ class NudgeWorker(RetryableWorker, BaseWorker):
         # Phase 1: Generate nudges
         generated = await self.generator.generate_for_workspace(db, workspace)
         if generated:
+            self.record_items_processed(generated)
             self.logger.info(
                 "Nudges generated",
                 workspace_id=str(workspace.id),
@@ -90,6 +91,7 @@ class NudgeWorker(RetryableWorker, BaseWorker):
         # Phase 2: Deliver pending nudges
         delivered = await self.delivery.deliver_pending_nudges(db, workspace.id)
         if delivered:
+            self.record_items_processed(delivered)
             self.logger.info(
                 "Nudges delivered",
                 workspace_id=str(workspace.id),

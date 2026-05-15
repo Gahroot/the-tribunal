@@ -14,6 +14,11 @@ from typing import ClassVar
 
 import structlog
 
+from app.core.metrics import (
+    observe_worker_item,
+    worker_loop_timer,
+)
+
 logger = structlog.get_logger()
 
 
@@ -81,13 +86,28 @@ class BaseWorker(ABC):
 
     async def _run_loop(self) -> None:
         """Main worker loop that polls for items to process."""
+        worker_label = self.COMPONENT_NAME or self.__class__.__name__.lower()
         while self.running:
             try:
-                await self._process_items()
+                with worker_loop_timer(worker_label):
+                    await self._process_items()
             except Exception:
+                # worker_loop_timer already incremented the error counter
+                # before re-raising; we only need to log here.
                 self.logger.exception("Error in worker loop")
 
             await asyncio.sleep(self._poll_interval)
+
+    def record_items_processed(self, count: int = 1) -> None:
+        """Record ``count`` work items processed in the current cycle.
+
+        Subclasses should call this once per processed item (or in batches)
+        from inside :meth:`_process_items` so the
+        ``worker_items_processed_total`` counter reflects real throughput
+        rather than poll-cycle counts.
+        """
+        worker_label = self.COMPONENT_NAME or self.__class__.__name__.lower()
+        observe_worker_item(worker_label, count=count)
 
     @abstractmethod
     async def _process_items(self) -> None:

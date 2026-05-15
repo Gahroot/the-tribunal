@@ -8,12 +8,15 @@ import asyncio
 import base64
 import contextlib
 import json
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 
 import structlog
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed
+
+from app.core.metrics import elevenlabs_tts_latency_ms
 
 logger = structlog.get_logger()
 
@@ -98,6 +101,10 @@ class ElevenLabsTTSSession:
         self._audio_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
         self._receive_task: asyncio.Task[None] | None = None
         self._connected = False
+        # Monotonic timestamp of the most recent send_text() call. Cleared
+        # on first audio chunk so we measure first-byte TTS latency without
+        # double-counting subsequent chunks of the same utterance.
+        self._pending_send_text_at: float | None = None
 
     async def connect(self, output_format: str = "ulaw_8000") -> bool:
         """Connect to ElevenLabs WebSocket API.
@@ -197,6 +204,12 @@ class ElevenLabsTTSSession:
             if flush:
                 message["flush"] = True
 
+            # Mark send time so the receive loop can observe first-byte
+            # latency. Only record if we don't already have a pending
+            # observation to avoid resetting the clock mid-utterance.
+            if self._pending_send_text_at is None:
+                self._pending_send_text_at = time.monotonic()
+
             await self.ws.send(json.dumps(message))
             self.logger.debug(
                 "elevenlabs_text_sent",
@@ -226,6 +239,15 @@ class ElevenLabsTTSSession:
                         audio_chunks_received += 1
                         total_audio_bytes += len(audio_bytes)
 
+                        # Observe TTS first-byte latency on the first chunk
+                        # following a send_text() call.
+                        if self._pending_send_text_at is not None:
+                            elevenlabs_tts_latency_ms.observe(
+                                (time.monotonic() - self._pending_send_text_at)
+                                * 1000.0
+                            )
+                            self._pending_send_text_at = None
+
                         await self._audio_queue.put(audio_bytes)
 
                         if audio_chunks_received % 50 == 0:
@@ -237,6 +259,9 @@ class ElevenLabsTTSSession:
 
                     # Check for final message
                     if data.get("isFinal"):
+                        # Clear any unresolved send marker so a follow-up
+                        # send_text() restarts the latency measurement.
+                        self._pending_send_text_at = None
                         self.logger.info(
                             "elevenlabs_stream_complete",
                             total_chunks=audio_chunks_received,

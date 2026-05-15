@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy import select
 
 from app.core.config import settings
+from app.core.metrics import observe_sms_bounce
 from app.db.session import AsyncSessionLocal
 from app.models.phone_number import PhoneNumber
 from app.models.user import User
@@ -183,7 +184,7 @@ async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:  # 
             await sms_service.close()
 
 
-async def handle_delivery_status(payload: dict[str, Any], log: Any) -> None:
+async def handle_delivery_status(payload: dict[str, Any], log: Any) -> None:  # noqa: PLR0915
     """Handle delivery status update with bounce classification."""
     message_id = payload.get("id", "")
     to_info = payload.get("to", [{}])[0] if payload.get("to") else {}
@@ -248,6 +249,20 @@ async def handle_delivery_status(payload: dict[str, Any], log: Any) -> None:
                         await tracker.increment_soft_bounce(message.from_phone_number_id, db)
                     elif bounce_type == "spam_complaint":
                         await tracker.increment_spam_complaint(message.from_phone_number_id, db)
+
+                    # Emit Prometheus counter (workspace_id resolved via the
+                    # phone_number record, which is the canonical owner of
+                    # the from_phone_number_id we already loaded above).
+                    if bounce_type:
+                        from app.models.phone_number import PhoneNumber as _PhoneNumber
+
+                        ws_id = None
+                        phone_row = await db.get(
+                            _PhoneNumber, message.from_phone_number_id
+                        )
+                        if phone_row is not None:
+                            ws_id = phone_row.workspace_id
+                        observe_sms_bounce(ws_id, bounce_type=bounce_type)
 
                     log.info(
                         "bounce_tracked",

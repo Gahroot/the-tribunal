@@ -22,6 +22,7 @@ from app.api.webhooks.telnyx_message_handlers import (
     handle_inbound_message,
 )
 from app.api.webhooks.telnyx_parser import verify_and_parse
+from app.core.metrics import observe_telnyx_webhook
 
 router = APIRouter()
 logger = structlog.get_logger()
@@ -63,6 +64,7 @@ async def telnyx_sms_webhook(request: Request) -> dict[str, str]:
     event_type, event_payload = parsed
     log = log.bind(event_type=event_type)
     log.info("webhook_received")
+    observe_telnyx_webhook(event_type)
 
     handler = _SMS_HANDLERS.get(event_type)
     if handler is not None:
@@ -108,6 +110,7 @@ async def telnyx_voice_webhook(request: Request) -> dict[str, str]:
 
     event_type, event_payload = parsed
     log = log.bind(event_type=event_type)
+    observe_telnyx_webhook(event_type)
     log.info(
         "========== TELNYX VOICE WEBHOOK ==========",
         event_type=event_type,

@@ -12,6 +12,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.metrics import (
+    latency_ms_timer,
+    observe_sms_sent,
+    telnyx_api_latency_ms,
+)
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message, MessageStatus
 from app.services.messaging.link_shortener import shorten_urls_in_text
@@ -148,7 +153,8 @@ class TelnyxSMSService:
                 "type": "SMS",
             }
 
-            response = await self.client.post("/messages", json=payload)
+            with latency_ms_timer(telnyx_api_latency_ms):
+                response = await self.client.post("/messages", json=payload)
             try:
                 response_data = response.json()
             except (ValueError, TypeError):
@@ -165,6 +171,7 @@ class TelnyxSMSService:
                 message.provider_message_id = data.get("id")
                 message.status = MessageStatus.SENT
                 message.sent_at = datetime.now(UTC)
+                observe_sms_sent(workspace_id, direction="outbound")
                 log.info("sms_sent", message_id=message.provider_message_id)
             else:
                 errors = response_data.get("errors", [])
@@ -254,6 +261,7 @@ class TelnyxSMSService:
             status="received",
         )
         db.add(message)
+        observe_sms_sent(workspace_id, direction="inbound")
 
         # Update conversation
         conversation.last_message_preview = body[:255]

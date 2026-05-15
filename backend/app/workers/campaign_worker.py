@@ -217,6 +217,7 @@ class CampaignWorker(BaseCampaignWorker):
                 campaign_contact.messages_sent += 1
                 campaign_contact.first_sent_at = campaign_contact.first_sent_at or datetime.now(UTC)
                 campaign_contact.last_sent_at = datetime.now(UTC)
+                self.record_items_processed()
 
                 # Collect conversation for batch agent assignment after loop
                 if campaign.agent_id and message.conversation_id:
@@ -382,6 +383,7 @@ class CampaignWorker(BaseCampaignWorker):
                 campaign_contact.follow_ups_sent += 1
                 campaign_contact.messages_sent += 1
                 campaign_contact.last_sent_at = datetime.now(UTC)
+                self.record_items_processed()
 
                 if campaign_contact.follow_ups_sent < campaign.max_follow_ups:
                     campaign_contact.next_follow_up_at = datetime.now(UTC) + timedelta(
