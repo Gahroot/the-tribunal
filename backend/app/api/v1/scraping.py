@@ -14,6 +14,7 @@ from app.schemas.scraping import (
     ImportLeadsRequest,
     ImportLeadsResponse,
 )
+from app.services.rate_limiting.scraping_limiter import enforce_scraping_rate_limit
 from app.services.scraping.google_places import GooglePlacesError, GooglePlacesService
 from app.utils.phone import normalize_phone_safe
 
@@ -34,6 +35,9 @@ async def search_businesses(
     """
     # Verify workspace access
     await get_workspace(http_request, workspace_id, current_user, db)
+
+    # Per-workspace cap on paid Google Places calls (raises 429 if exceeded).
+    await enforce_scraping_rate_limit(workspace_id)
 
     service = GooglePlacesService()
     try:

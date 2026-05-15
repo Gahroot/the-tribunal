@@ -22,6 +22,7 @@ from app.schemas.scraping import (
     BusinessSearchRequest,
     BusinessSearchResponse,
 )
+from app.services.rate_limiting.scraping_limiter import enforce_scraping_rate_limit
 from app.services.scraping.enrichment_service import enrich_contact_data
 from app.services.scraping.google_places import GooglePlacesError, GooglePlacesService
 from app.utils.phone import normalize_phone_safe
@@ -42,6 +43,8 @@ async def search_businesses_ai(
     Same as regular Find Leads, but available at the /find-leads-ai endpoint.
     Returns a list of businesses matching the search query with their details.
     """
+    # Per-workspace cap on paid Google Places calls (raises 429 if exceeded).
+    await enforce_scraping_rate_limit(workspace_id)
 
     service = GooglePlacesService()
     try:
