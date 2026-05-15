@@ -19,6 +19,7 @@ import {
   AlertTriangle,
   Plus,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import { toast } from "sonner";
@@ -816,9 +817,9 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
                     className="w-full text-xs"
                     asChild
                   >
-                    <a href="/calendar">
+                    <Link href="/calendar">
                       View all ({contactAppointments.length})
-                    </a>
+                    </Link>
                   </Button>
                 )}
               </div>

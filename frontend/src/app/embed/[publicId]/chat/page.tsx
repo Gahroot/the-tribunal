@@ -180,7 +180,7 @@ function ChatEmbedPageContent({ params }: ChatEmbedPageProps) {
     }
   }, [inputValue, isLoading, config, messages, publicId]);
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void sendMessage();
@@ -355,7 +355,7 @@ function ChatEmbedPageContent({ params }: ChatEmbedPageProps) {
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                onKeyPress={handleKeyPress}
+                onKeyDown={handleKeyDown}
                 placeholder="Type a message..."
                 disabled={isLoading}
                 className="flex-1 rounded-full border px-4 py-2 text-sm outline-none transition-all focus:ring-2"
