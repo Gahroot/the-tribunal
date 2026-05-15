@@ -10,6 +10,12 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from tenacity import (
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential_jitter,
+)
 
 from app.core.config import settings
 from app.core.metrics import (
@@ -24,6 +30,35 @@ from app.utils.phone import normalize_phone_e164, phone_lookup_variants
 from app.utils.pii import mask_phone
 
 logger = structlog.get_logger()
+
+
+def _is_retryable_telnyx_error(exc: BaseException) -> bool:
+    """Return True if the exception is a transient Telnyx/network failure.
+
+    Retries on:
+    - ``httpx.TransportError`` (connect/read/write timeouts, network errors)
+    - ``httpx.HTTPStatusError`` with a 5xx response
+
+    Never retries on 4xx responses — those are client errors (bad request,
+    auth, invalid number, etc.) and re-issuing the request will not help.
+    """
+    if isinstance(exc, httpx.TransportError):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        return 500 <= exc.response.status_code < 600
+    return False
+
+
+# Shared retry decorator for outbound Telnyx HTTP calls.
+# - 3 attempts total (1 initial + 2 retries)
+# - Exponential backoff with jitter starting at 1s, capped at 10s
+# - Only retries on 5xx and network errors; 4xx client errors propagate immediately
+_telnyx_retry = retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential_jitter(initial=1, max=10),
+    retry=retry_if_exception(_is_retryable_telnyx_error),
+    reraise=True,
+)
 
 
 @dataclass
@@ -145,7 +180,9 @@ class TelnyxSMSService:
         )
         message.body = body
 
-        # Send via Telnyx
+        # Send via Telnyx. _post_message handles retry on 5xx/network errors;
+        # 4xx (bad request, invalid number, auth) raises immediately and is
+        # mapped to MessageStatus.FAILED below.
         try:
             payload: dict[str, str] = {
                 "to": to_number,
@@ -153,34 +190,29 @@ class TelnyxSMSService:
                 "text": body,
                 "type": "SMS",
             }
-
-            with latency_ms_timer(telnyx_api_latency_ms):
-                response = await self.client.post("/messages", json=payload)
+            response_data = await self._post_message(payload)
+            data = response_data.get("data", {})
+            message.provider_message_id = data.get("id")
+            message.status = MessageStatus.SENT
+            message.sent_at = datetime.now(UTC)
+            observe_sms_sent(workspace_id, direction="outbound")
+            log.info("sms_sent", message_id=message.provider_message_id)
+        except httpx.HTTPStatusError as e:
             try:
-                response_data = response.json()
+                err_data = e.response.json()
             except (ValueError, TypeError):
-                log.error("telnyx_invalid_json", status_code=response.status_code)
-                response_data = {"errors": [{"detail": "Invalid JSON response"}]}
-
-            log.info(
-                "telnyx_response",
-                status_code=response.status_code,
+                err_data = {}
+            errors = err_data.get("errors", []) if isinstance(err_data, dict) else []
+            first_error = errors[0] if errors else {}
+            error_msg = (
+                first_error.get("detail") if first_error else e.response.text
             )
-
-            if response.status_code in (200, 202):
-                data = response_data.get("data", {})
-                message.provider_message_id = data.get("id")
-                message.status = MessageStatus.SENT
-                message.sent_at = datetime.now(UTC)
-                observe_sms_sent(workspace_id, direction="outbound")
-                log.info("sms_sent", message_id=message.provider_message_id)
-            else:
-                errors = response_data.get("errors", [])
-                first_error = errors[0] if errors else {}
-                error_msg = first_error.get("detail") if first_error else response.text
-                message.status = MessageStatus.FAILED
-                log.error("sms_send_failed", error=error_msg)
-
+            message.status = MessageStatus.FAILED
+            log.error(
+                "sms_send_failed",
+                status_code=e.response.status_code,
+                error=error_msg,
+            )
         except Exception as e:
             message.status = MessageStatus.FAILED
             log.exception("sms_send_exception", error=str(e))
@@ -535,14 +567,74 @@ class TelnyxSMSService:
             )
         return contact
 
+    @_telnyx_retry
+    async def _post_message(self, payload: dict[str, str]) -> dict[str, Any]:
+        """POST to /messages with retry on 5xx/network errors.
+
+        Raises ``httpx.HTTPStatusError`` on 4xx (immediately) or 5xx (after
+        retries are exhausted) and ``httpx.TransportError`` on persistent
+        network failures. The caller maps these to a failed Message row.
+        """
+        with latency_ms_timer(telnyx_api_latency_ms):
+            response = await self.client.post("/messages", json=payload)
+        self.logger.info("telnyx_response", status_code=response.status_code)
+        response.raise_for_status()
+        try:
+            data: dict[str, Any] = response.json()
+            return data
+        except (ValueError, TypeError):
+            self.logger.error(
+                "telnyx_invalid_json", status_code=response.status_code
+            )
+            return {"errors": [{"detail": "Invalid JSON response"}]}
+
+    @_telnyx_retry
+    async def _get_phone_numbers(self) -> dict[str, Any]:
+        response = await self.client.get("/phone_numbers")
+        response.raise_for_status()
+        data: dict[str, Any] = response.json()
+        return data
+
+    @_telnyx_retry
+    async def _get_available_phone_numbers(
+        self, params: dict[str, str | int | bool]
+    ) -> dict[str, Any]:
+        response = await self.client.get("/available_phone_numbers", params=params)
+        response.raise_for_status()
+        data: dict[str, Any] = response.json()
+        return data
+
+    @_telnyx_retry
+    async def _post_number_order(self, phone_number: str) -> dict[str, Any]:
+        response = await self.client.post(
+            "/number_orders",
+            json={"phone_numbers": [{"phone_number": phone_number}]},
+        )
+        response.raise_for_status()
+        data: dict[str, Any] = response.json()
+        return data
+
+    @_telnyx_retry
+    async def _delete_phone_number(self, phone_number_id: str) -> None:
+        response = await self.client.delete(f"/phone_numbers/{phone_number_id}")
+        response.raise_for_status()
+
+    @_telnyx_retry
+    async def _patch_phone_number(
+        self, phone_number_id: str, payload: dict[str, str]
+    ) -> None:
+        response = await self.client.patch(
+            f"/phone_numbers/{phone_number_id}",
+            json=payload,
+        )
+        response.raise_for_status()
+
     async def list_phone_numbers(self) -> list[PhoneNumberInfo]:
         """List all Telnyx phone numbers."""
         self.logger.info("listing_phone_numbers")
 
         numbers = []
-        response = await self.client.get("/phone_numbers")
-        response.raise_for_status()
-        data = response.json()
+        data = await self._get_phone_numbers()
 
         for number in data.get("data", []):
             numbers.append(
@@ -585,9 +677,7 @@ class TelnyxSMSService:
         if contains:
             params["filter[phone_number][contains]"] = contains
 
-        response = await self.client.get("/available_phone_numbers", params=params)
-        response.raise_for_status()
-        data = response.json()
+        data = await self._get_available_phone_numbers(params)
 
         numbers = []
         for number in data.get("data", []):
@@ -612,12 +702,7 @@ class TelnyxSMSService:
         """Purchase a Telnyx phone number."""
         self.logger.info("purchasing_phone_number", phone_number=mask_phone(phone_number))
 
-        response = await self.client.post(
-            "/number_orders",
-            json={"phone_numbers": [{"phone_number": phone_number}]},
-        )
-        response.raise_for_status()
-        order_data = response.json()
+        order_data = await self._post_number_order(phone_number)
 
         phone_numbers = order_data.get("data", {}).get("phone_numbers", [])
         if not phone_numbers:
@@ -638,8 +723,7 @@ class TelnyxSMSService:
         self.logger.info("releasing_phone_number", id=phone_number_id)
 
         try:
-            response = await self.client.delete(f"/phone_numbers/{phone_number_id}")
-            response.raise_for_status()
+            await self._delete_phone_number(phone_number_id)
             return True
         except Exception as e:
             self.logger.exception("release_failed", id=phone_number_id, error=str(e))
@@ -666,11 +750,7 @@ class TelnyxSMSService:
             if messaging_profile_id:
                 payload["messaging_profile_id"] = messaging_profile_id
 
-            response = await self.client.patch(
-                f"/phone_numbers/{phone_number_id}",
-                json=payload,
-            )
-            response.raise_for_status()
+            await self._patch_phone_number(phone_number_id, payload)
             return True
         except Exception as e:
             self.logger.exception("configure_failed", id=phone_number_id, error=str(e))
