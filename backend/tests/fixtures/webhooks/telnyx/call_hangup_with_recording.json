@@ -1,0 +1,27 @@
+{
+  "data": {
+    "event_type": "call.hangup",
+    "id": "f7e7b3f4-1f2f-4f8e-9b22-aaa000000006",
+    "occurred_at": "2026-05-15T18:05:00.000Z",
+    "record_type": "event",
+    "payload": {
+      "call_control_id": "v3:call-control-id-recorded-001",
+      "call_leg_id": "leg-id-recorded-001",
+      "direction": "outgoing",
+      "from": "+12125550100",
+      "to": "+14155552672",
+      "state": "hangup",
+      "hangup_cause": "NORMAL_CLEARING",
+      "hangup_source": "callee",
+      "duration_seconds": 65,
+      "recordings": [
+        {
+          "id": "rec-id-001",
+          "public_url": "https://recordings.telnyx.example/rec-id-001.mp3",
+          "format": "mp3",
+          "duration_millis": 65000
+        }
+      ]
+    }
+  }
+}

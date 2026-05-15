@@ -1,0 +1,20 @@
+{
+  "data": {
+    "event_type": "call.hangup",
+    "id": "f7e7b3f4-1f2f-4f8e-9b22-aaa000000004",
+    "occurred_at": "2026-05-15T18:00:03.000Z",
+    "record_type": "event",
+    "payload": {
+      "call_control_id": "v3:call-control-id-reject-001",
+      "call_leg_id": "leg-id-reject-001",
+      "call_session_id": "session-id-reject-001",
+      "direction": "outgoing",
+      "from": "+12125550100",
+      "to": "+14155552672",
+      "state": "hangup",
+      "hangup_cause": "CALL_REJECTED",
+      "hangup_source": "callee",
+      "duration_seconds": 0
+    }
+  }
+}

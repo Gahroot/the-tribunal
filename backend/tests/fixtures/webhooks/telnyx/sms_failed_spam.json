@@ -1,0 +1,31 @@
+{
+  "data": {
+    "event_type": "message.finalized",
+    "id": "f7e7b3f4-1f2f-4f8e-9b22-bbb000000004",
+    "occurred_at": "2026-05-15T19:02:00.000Z",
+    "record_type": "event",
+    "payload": {
+      "id": "40288a86-msg-outbound-0003",
+      "record_type": "message",
+      "direction": "outbound",
+      "type": "SMS",
+      "text": "Promo!",
+      "from": {
+        "phone_number": "+12125550101"
+      },
+      "to": [
+        {
+          "phone_number": "+14155552671",
+          "status": "delivery_failed"
+        }
+      ],
+      "errors": [
+        {
+          "code": "40001",
+          "title": "Spam block",
+          "detail": "Message flagged as spam by carrier"
+        }
+      ]
+    }
+  }
+}

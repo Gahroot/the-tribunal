@@ -1,0 +1,16 @@
+{
+  "data": {
+    "event_type": "call.machine.detection.ended",
+    "id": "f7e7b3f4-1f2f-4f8e-9b22-aaa000000007",
+    "occurred_at": "2026-05-15T18:00:08.000Z",
+    "record_type": "event",
+    "payload": {
+      "call_control_id": "v3:call-control-id-machine-001",
+      "call_leg_id": "leg-id-machine-001",
+      "direction": "outgoing",
+      "from": "+12125550100",
+      "to": "+14155552672",
+      "result": "machine"
+    }
+  }
+}
