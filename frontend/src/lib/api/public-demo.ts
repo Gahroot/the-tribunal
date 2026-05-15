@@ -1,10 +1,9 @@
 import axios, { AxiosError } from "axios";
 
+import { getBackendUrl } from "@/lib/utils/backend-url";
+
 // Use relative URL in browser (proxied through Next.js), direct URL on server
-const API_URL =
-  typeof window !== "undefined"
-    ? ""
-    : (process.env.NEXT_PUBLIC_API_URL?.replace(/\\n$/, "").replace(/\n$/, "") ?? "http://localhost:8000");
+const API_URL = typeof window !== "undefined" ? "" : getBackendUrl();
 
 // Create a separate axios instance without auth interceptors for public endpoints
 const publicApi = axios.create({

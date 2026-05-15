@@ -1,11 +1,13 @@
 import axios, { type AxiosRequestConfig } from "axios";
 
+import { getBackendUrl } from "@/lib/utils/backend-url";
+
 // Use relative URL so requests are proxied through Next.js rewrites (no CORS issues)
 // Fallback to direct backend URL for non-browser environments (SSR, tests)
 const API_URL =
   typeof window !== "undefined"
     ? "" // Browser: use Next.js proxy
-    : (process.env.NEXT_PUBLIC_API_URL?.replace(/\\n$/, "").replace(/\n$/, "") ?? "http://localhost:8000"); // Server: direct
+    : getBackendUrl(); // Server: direct
 
 export const api = axios.create({
   baseURL: API_URL,

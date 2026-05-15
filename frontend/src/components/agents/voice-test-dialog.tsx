@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { apiPost } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { getBackendWsUrl } from "@/lib/utils/backend-url";
 
 interface VoiceTestDialogProps {
   open: boolean;
@@ -174,8 +175,6 @@ export function VoiceTestDialog({
       // JWT via the cookie-authenticated /auth/ws-ticket endpoint and pass
       // the ticket as a query param. The ticket cannot be used to make
       // arbitrary API calls and expires quickly, limiting blast radius.
-      const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const wsHost = process.env.NEXT_PUBLIC_API_URL?.replace(/^https?:\/\//, "") || "localhost:8000";
       let ticket: string;
       try {
         const resp = await apiPost<{ ticket: string }>("/api/v1/auth/ws-ticket");
@@ -186,7 +185,7 @@ export function VoiceTestDialog({
         disconnect();
         return;
       }
-      const wsUrl = `${wsProtocol}//${wsHost}/voice/test/${workspaceId}/${agentId}?token=${encodeURIComponent(ticket)}`;
+      const wsUrl = `${getBackendWsUrl()}/voice/test/${workspaceId}/${agentId}?token=${encodeURIComponent(ticket)}`;
 
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;

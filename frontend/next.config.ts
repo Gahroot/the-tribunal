@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\\n$/, "").replace(/\n$/, "") ||
-  "http://localhost:8000";
+import { getBackendUrl } from "./src/lib/utils/backend-url";
+
+const BACKEND_URL = getBackendUrl();
 
 const nextConfig: NextConfig = {
   turbopack: { root: __dirname },
