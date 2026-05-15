@@ -41,10 +41,16 @@ class GlobalOptOut(Base):
         String(50), nullable=True
     )  # STOP, UNSUBSCRIBE, etc.
     source_campaign_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
+        UUID(as_uuid=True),
+        ForeignKey("campaigns.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     source_message_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
+        UUID(as_uuid=True),
+        ForeignKey("messages.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
 
     # Timestamps

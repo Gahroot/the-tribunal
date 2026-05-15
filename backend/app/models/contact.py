@@ -99,7 +99,10 @@ class Contact(Base):
         String(100), nullable=True
     )  # campaign, inbound_call, manual, api
     source_campaign_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
+        UUID(as_uuid=True),
+        ForeignKey("campaigns.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
 
     # Engagement tracking

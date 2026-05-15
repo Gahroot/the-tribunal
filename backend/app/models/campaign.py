@@ -317,7 +317,10 @@ class CampaignContact(Base):
     )  # answered, no_answer, busy, voicemail, rejected
     call_duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     call_message_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
+        UUID(as_uuid=True),
+        ForeignKey("messages.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
 
     # SMS fallback tracking (for voice campaigns)
@@ -326,7 +329,10 @@ class CampaignContact(Base):
         DateTime(timezone=True), nullable=True
     )
     sms_fallback_message_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
+        UUID(as_uuid=True),
+        ForeignKey("messages.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
 
     # Error tracking
