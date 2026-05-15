@@ -12,6 +12,7 @@ from app.core.security import get_password_hash
 from app.db.session import AsyncSessionLocal
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMembership
+from app.utils.pii import mask_email
 
 # Hardcoded workspace ID used by frontend
 DEFAULT_WORKSPACE_ID = uuid.UUID("ba0e0e99-c7c9-45ec-9625-567d54d6e9c2")
@@ -42,7 +43,7 @@ async def create_admin_user(
     existing = result.scalar_one_or_none()
 
     if existing:
-        print(f"Admin user {email} already exists (id={existing.id})")
+        print(f"Admin user {mask_email(email)} already exists (id={existing.id})")
         return existing
 
     user = User(
@@ -55,7 +56,7 @@ async def create_admin_user(
     db.add(user)
     await db.commit()
     await db.refresh(user)
-    print(f"Created admin user: {email} (id={user.id})")
+    print(f"Created admin user: {mask_email(email)} (id={user.id})")
     return user
 
 
@@ -99,7 +100,10 @@ async def create_workspace_membership(
     existing = result.scalar_one_or_none()
 
     if existing:
-        print(f"Membership already exists for user {user.email} in {workspace.name}")
+        print(
+            f"Membership already exists for user {mask_email(user.email)} "
+            f"in {workspace.name}"
+        )
         return existing
 
     membership = WorkspaceMembership(
@@ -111,7 +115,10 @@ async def create_workspace_membership(
     db.add(membership)
     await db.commit()
     await db.refresh(membership)
-    print(f"Created membership for {user.email} in {workspace.name} (role=owner)")
+    print(
+        f"Created membership for {mask_email(user.email)} "
+        f"in {workspace.name} (role=owner)"
+    )
     return membership
 
 

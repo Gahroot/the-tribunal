@@ -16,6 +16,7 @@ from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
 from app.services.messaging.link_shortener import shorten_urls_in_text
 from app.utils.phone import normalize_phone_e164, phone_lookup_variants
+from app.utils.pii import mask_phone
 
 logger = structlog.get_logger()
 
@@ -600,7 +601,7 @@ class TelnyxSMSService:
 
     async def purchase_phone_number(self, phone_number: str) -> PhoneNumberInfo:
         """Purchase a Telnyx phone number."""
-        self.logger.info("purchasing_phone_number", phone_number=phone_number)
+        self.logger.info("purchasing_phone_number", phone_number=mask_phone(phone_number))
 
         response = await self.client.post(
             "/number_orders",

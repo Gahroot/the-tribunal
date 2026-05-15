@@ -21,6 +21,7 @@ from app.schemas.demo import (
 )
 from app.services.telephony.telnyx import TelnyxSMSService
 from app.services.telephony.telnyx_voice import TelnyxVoiceService
+from app.utils.pii import mask_phone
 
 router = APIRouter()
 logger = structlog.get_logger()
@@ -264,7 +265,9 @@ async def _trigger_demo_call(lead_request: LeadSubmitRequest, db: DB) -> bool:
         await voice_service.close()
         return True
     except Exception:
-        logger.exception("demo_call_trigger_failed", phone=lead_request.phone_number)
+        logger.exception(
+            "demo_call_trigger_failed", phone=mask_phone(lead_request.phone_number)
+        )
         return False
 
 
@@ -287,7 +290,9 @@ async def _trigger_demo_text(lead_request: LeadSubmitRequest, db: DB) -> bool:
         await sms_service.close()
         return True
     except Exception:
-        logger.exception("demo_text_trigger_failed", phone=lead_request.phone_number)
+        logger.exception(
+            "demo_text_trigger_failed", phone=mask_phone(lead_request.phone_number)
+        )
         return False
 
 
