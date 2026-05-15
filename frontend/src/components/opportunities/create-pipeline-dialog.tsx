@@ -9,6 +9,7 @@ import * as z from "zod";
 import { Loader2 } from "lucide-react";
 
 import { opportunitiesApi, type CreatePipelineRequest } from "@/lib/api/opportunities";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -66,8 +67,7 @@ export function CreatePipelineDialog({ open, onOpenChange, workspaceId }: Create
       onOpenChange(false);
     },
     onError: (error) => {
-      console.error("Failed to create pipeline:", error);
-      toast.error("Failed to create pipeline. Please try again.");
+      toast.error(getApiErrorMessage(error, "Failed to create pipeline. Please try again."));
     },
     onSettled: () => {
       setIsSubmitting(false);

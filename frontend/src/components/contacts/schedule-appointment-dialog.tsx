@@ -11,6 +11,7 @@ import { CalendarIcon, Loader2 } from "lucide-react";
 
 import { appointmentsApi, type CreateAppointmentRequest } from "@/lib/api/appointments";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 import { useAgents } from "@/hooks/useAgents";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -120,8 +121,7 @@ export function ScheduleAppointmentDialog({
       onOpenChange(false);
     },
     onError: (error) => {
-      console.error("Failed to schedule appointment:", error);
-      toast.error("Failed to schedule appointment. Please try again.");
+      toast.error(getApiErrorMessage(error, "Failed to schedule appointment. Please try again."));
     },
     onSettled: () => {
       setIsSubmitting(false);

@@ -29,7 +29,9 @@ export function logout(): void {
   try {
     window.location.href = "/login";
   } catch (navError) {
-    console.error("Failed to redirect to login:", navError);
+    if (process.env.NODE_ENV !== "production") {
+      console.error("Failed to redirect to login:", navError);
+    }
   }
 }
 
@@ -94,7 +96,9 @@ api.interceptors.response.use(
         // Refresh failed, logout
         processQueue(error);
         isRefreshing = false;
-        console.error("Token refresh failed - redirecting to login");
+        if (process.env.NODE_ENV !== "production") {
+          console.error("Token refresh failed - redirecting to login");
+        }
         logout();
         return Promise.reject(refreshError);
       }

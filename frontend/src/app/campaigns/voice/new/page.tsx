@@ -17,6 +17,7 @@ import {
 import { phoneNumbersApi } from "@/lib/api/phone-numbers";
 import { agentsApi } from "@/lib/api/agents";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 import type { VoiceCampaign } from "@/types";
 
 export default function NewVoiceCampaignPage() {
@@ -83,8 +84,7 @@ export default function NewVoiceCampaignPage() {
       router.push(`/campaigns/${campaign.id}`);
     },
     onError: (error) => {
-      toast.error("Failed to create campaign");
-      console.error("Create campaign error:", error);
+      toast.error(getApiErrorMessage(error, "Failed to create campaign"));
     },
   });
 

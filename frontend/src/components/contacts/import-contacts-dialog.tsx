@@ -12,6 +12,7 @@ import {
   type CSVPreviewResult,
 } from "@/lib/api/contacts";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -100,8 +101,7 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
       }
     },
     onError: (error) => {
-      console.error("Import failed:", error);
-      toast.error("Failed to import contacts. Please check your CSV file.");
+      toast.error(getApiErrorMessage(error, "Failed to import contacts. Please check your CSV file."));
       setStep("options");
     },
   });

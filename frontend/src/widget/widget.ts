@@ -362,7 +362,9 @@ class AIAgentElement extends HTMLElement {
 
   private render() {
     if (!this.agentId) {
-      console.error("AIAgent: agent-id attribute is required");
+      if (process.env.NODE_ENV !== "production") {
+        console.error("AIAgent: agent-id attribute is required");
+      }
       return;
     }
 

@@ -15,6 +15,7 @@ import { offersApi } from "@/lib/api/offers";
 import { phoneNumbersApi } from "@/lib/api/phone-numbers";
 import { agentsApi } from "@/lib/api/agents";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 import type { Offer, SMSCampaign } from "@/types";
 
 export default function NewSMSCampaignPage() {
@@ -81,8 +82,7 @@ export default function NewSMSCampaignPage() {
       toast.success("Offer created successfully");
     },
     onError: (error) => {
-      toast.error("Failed to create offer");
-      console.error("Create offer error:", error);
+      toast.error(getApiErrorMessage(error, "Failed to create offer"));
     },
   });
 
@@ -115,8 +115,7 @@ export default function NewSMSCampaignPage() {
       router.push(`/campaigns/${campaign.id}`);
     },
     onError: (error) => {
-      toast.error("Failed to create campaign");
-      console.error("Create campaign error:", error);
+      toast.error(getApiErrorMessage(error, "Failed to create campaign"));
     },
   });
 

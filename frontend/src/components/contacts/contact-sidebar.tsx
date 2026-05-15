@@ -39,6 +39,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 import { useContactStore } from "@/lib/contact-store";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { appointmentsApi } from "@/lib/api/appointments";
@@ -424,8 +425,7 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
       toast.success("Call initiated successfully!");
     },
     onError: (error) => {
-      console.error("Failed to initiate call:", error);
-      toast.error("Failed to initiate call. Please try again.");
+      toast.error(getApiErrorMessage(error, "Failed to initiate call. Please try again."));
     },
   });
 
@@ -507,8 +507,7 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
         onError: (error) => {
           // Revert on error
           setAiEnabled(!newState);
-          console.error("Failed to toggle AI:", error);
-          toast.error("Failed to toggle AI engagement. Please try again.");
+          toast.error(getApiErrorMessage(error, "Failed to toggle AI engagement. Please try again."));
         },
       }
     );
@@ -526,8 +525,7 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
         router.push("/contacts");
       },
       onError: (error) => {
-        console.error("Failed to delete contact:", error);
-        toast.error("Failed to delete contact. Please try again.");
+        toast.error(getApiErrorMessage(error, "Failed to delete contact. Please try again."));
       },
     });
   };

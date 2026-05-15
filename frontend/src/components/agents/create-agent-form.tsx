@@ -10,6 +10,7 @@ import * as z from "zod";
 
 import { agentsApi, type CreateAgentRequest } from "@/lib/api/agents";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 import {
   ArrowLeft,
   ArrowRight,
@@ -101,8 +102,7 @@ export function CreateAgentForm() {
       router.push("/agents");
     },
     onError: (error) => {
-      console.error("Failed to create agent:", error);
-      toast.error("Failed to create agent. Please try again.");
+      toast.error(getApiErrorMessage(error, "Failed to create agent. Please try again."));
       setIsSubmitting(false);
     },
   });

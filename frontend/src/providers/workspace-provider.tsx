@@ -31,7 +31,9 @@ function setStoredWorkspaceId(workspaceId: string): void {
   try {
     localStorage.setItem(WORKSPACE_STORAGE_KEY, workspaceId);
   } catch (error) {
-    console.error("Failed to save workspace ID:", error);
+    if (process.env.NODE_ENV !== "production") {
+      console.error("Failed to save workspace ID:", error);
+    }
   }
 }
 

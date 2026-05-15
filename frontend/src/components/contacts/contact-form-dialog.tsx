@@ -15,6 +15,7 @@ import {
 import { contactQueryKeys } from "@/hooks/useContacts";
 import { useContactStore } from "@/lib/contact-store";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 import {
   contactFormSchema,
   emptyContactFormValues,
@@ -120,8 +121,7 @@ export function ContactFormDialog(props: ContactFormDialogProps) {
       onOpenChange(false);
     },
     onError: (error) => {
-      console.error("Failed to create contact:", error);
-      toast.error("Failed to create contact. Please try again.");
+      toast.error(getApiErrorMessage(error, "Failed to create contact. Please try again."));
     },
     onSettled: () => {
       setIsSubmitting(false);
@@ -146,8 +146,7 @@ export function ContactFormDialog(props: ContactFormDialogProps) {
       onOpenChange(false);
     },
     onError: (error) => {
-      console.error("Failed to update contact:", error);
-      toast.error("Failed to update contact. Please try again.");
+      toast.error(getApiErrorMessage(error, "Failed to update contact. Please try again."));
     },
     onSettled: () => {
       setIsSubmitting(false);

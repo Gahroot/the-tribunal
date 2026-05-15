@@ -246,7 +246,9 @@ export function VoiceTestDialog({
               break;
           }
         } catch (e) {
-          console.error("Failed to parse WebSocket message:", e);
+          if (process.env.NODE_ENV !== "production") {
+            console.error("Failed to parse WebSocket message:", e);
+          }
         }
       };
 
@@ -291,7 +293,9 @@ export function VoiceTestDialog({
       };
 
     } catch (err) {
-      console.error("Connection error:", err);
+      if (process.env.NODE_ENV !== "production") {
+        console.error("Connection error:", err);
+      }
       setError(err instanceof Error ? err.message : "Failed to connect");
       setConnectionStatus("error");
       disconnect();

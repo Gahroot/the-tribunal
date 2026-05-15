@@ -20,6 +20,7 @@ import {
   type ImportLeadsResponse,
 } from "@/lib/api/scraping";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -88,8 +89,7 @@ export function ScrapeLeadsDialog({ open, onOpenChange }: ScrapeLeadsDialogProps
       setStep("results");
     },
     onError: (error) => {
-      console.error("Search failed:", error);
-      toast.error("Failed to search. Please check your API key configuration.");
+      toast.error(getApiErrorMessage(error, "Failed to search. Please check your API key configuration."));
     },
   });
 
@@ -111,8 +111,7 @@ export function ScrapeLeadsDialog({ open, onOpenChange }: ScrapeLeadsDialogProps
       }
     },
     onError: (error) => {
-      console.error("Import failed:", error);
-      toast.error("Failed to import leads");
+      toast.error(getApiErrorMessage(error, "Failed to import leads"));
       setStep("results");
     },
   });

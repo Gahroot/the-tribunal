@@ -22,6 +22,7 @@ import {
   type ImportLeadsResponse,
 } from "@/lib/api/scraping";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -95,8 +96,7 @@ export function FindLeadsPage() {
       toast.success(`Found ${data.results.length} businesses`);
     },
     onError: (error) => {
-      console.error("Search failed:", error);
-      toast.error("Failed to search. Please check your API key configuration.");
+      toast.error(getApiErrorMessage(error, "Failed to search. Please check your API key configuration."));
     },
   });
 
@@ -117,8 +117,7 @@ export function FindLeadsPage() {
       }
     },
     onError: (error) => {
-      console.error("Import failed:", error);
-      toast.error("Failed to import leads");
+      toast.error(getApiErrorMessage(error, "Failed to import leads"));
     },
   });
 
