@@ -112,11 +112,30 @@ navigation-*.html
 generic-component-*.html
 
 # ezcoder-eyes
-.ezcoder/eyes/out/
-.ezcoder/eyes/state/
-.ezcoder/eyes/bin/
-.ezcoder/eyes/recordings/
-.ezcoder/eyes/auth/
-.ezcoder/eyes/remote.json
-.ezcoder/eyes/_lib.sh
-.ezcoder/eyes/_redact.sh
+.ezcoder/eyes/
+.gg/eyes/
+
+# Worktrees / agent scratch
+.claude/worktrees/
+
+# Python caches outside backend
+scripts/__pycache__/
+
+# Deploy / build tool caches
+.railway
+.turbo/
+.parcel-cache/
+
+# Storybook / test artifacts
+storybook-static/
+playwright-report/
+test-results/
+*.lcov
+
+# Local env overrides
+.env.production.local
+.env.development.local
+
+# Local databases
+*.sqlite
+*.db
