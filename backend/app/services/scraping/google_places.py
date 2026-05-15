@@ -62,7 +62,8 @@ class GooglePlacesService:
                     "X-Goog-Api-Key": self.api_key,
                     "Content-Type": "application/json",
                 },
-                timeout=30.0,
+                timeout=httpx.Timeout(connect=5.0, read=30.0, write=10.0, pool=5.0),
+                limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
             )
         return self._client
 
