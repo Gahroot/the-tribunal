@@ -36,11 +36,13 @@ class EmailEvent(Base):
         UUID(as_uuid=True),
         ForeignKey("workspaces.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     message_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("messages.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
     event_type: Mapped[str] = mapped_column(String(50), nullable=False)
     occurred_at: Mapped[datetime] = mapped_column(

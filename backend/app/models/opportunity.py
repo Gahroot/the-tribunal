@@ -36,8 +36,13 @@ opportunity_contact_table = Table(
         "opportunity_id",
         UUID(as_uuid=True),
         ForeignKey("opportunities.id", ondelete="CASCADE"),
+        index=True,
     ),
-    Column("contact_id", ForeignKey("contacts.id", ondelete="CASCADE")),
+    Column(
+        "contact_id",
+        ForeignKey("contacts.id", ondelete="CASCADE"),
+        index=True,
+    ),
 )
 
 
@@ -98,6 +103,7 @@ class Opportunity(Base):
     closed_by_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
     stage_changed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -219,6 +225,7 @@ class OpportunityActivity(Base):
         Integer,
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
 
     # Activity details

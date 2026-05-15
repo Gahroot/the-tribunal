@@ -112,11 +112,13 @@ class MessageTest(Base):
         UUID(as_uuid=True),
         ForeignKey("test_variants.id", ondelete="SET NULL", use_alter=True),
         nullable=True,
+        index=True,
     )
     converted_to_campaign_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("campaigns.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
 
     # Error tracking

@@ -67,6 +67,7 @@ class LeadMagnetLead(Base):
         UUID(as_uuid=True),
         ForeignKey("offers.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
 
     # Timestamps

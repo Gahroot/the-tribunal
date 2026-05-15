@@ -40,6 +40,7 @@ class ImprovementSuggestion(Base):
         UUID(as_uuid=True),
         ForeignKey("prompt_versions.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
 
     # The suggested improvement
@@ -61,7 +62,7 @@ class ImprovementSuggestion(Base):
         DateTime(timezone=True), nullable=True
     )
     reviewed_by_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -70,6 +71,7 @@ class ImprovementSuggestion(Base):
         UUID(as_uuid=True),
         ForeignKey("prompt_versions.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
 
     # Timestamps

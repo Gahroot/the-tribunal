@@ -80,7 +80,7 @@ class HumanNudge(Base):
 
     # Assignment (nullable = all workspace members)
     assigned_to_user_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
     # Deduplication key: prevents duplicate nudges for the same event

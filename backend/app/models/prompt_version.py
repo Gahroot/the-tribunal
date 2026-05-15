@@ -49,6 +49,7 @@ class PromptVersion(Base):
     created_by_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
 
     # Status flags
@@ -60,6 +61,7 @@ class PromptVersion(Base):
         UUID(as_uuid=True),
         ForeignKey("prompt_versions.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
 
     # Denormalized counters (updated by workers)

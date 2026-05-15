@@ -52,7 +52,7 @@ class WorkspaceInvitation(Base):
     )  # pending, accepted, expired, cancelled
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
     invited_by_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=default_expires_at

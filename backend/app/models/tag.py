@@ -66,11 +66,13 @@ class ContactTag(Base):
         BigInteger,
         ForeignKey("contacts.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     tag_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("tags.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(
