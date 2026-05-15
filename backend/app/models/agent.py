@@ -86,7 +86,7 @@ class Agent(Base):
 
     # Tools enabled
     enabled_tools: Mapped[list[str]] = mapped_column(
-        ARRAY(Text), default=["book_appointment"], nullable=False
+        ARRAY(Text), default=lambda: ["book_appointment"], nullable=False
     )
     tool_settings: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
 
