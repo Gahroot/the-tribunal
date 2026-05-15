@@ -1,19 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { motion } from "motion/react";
-import {
-  Bot,
-  Clock,
-  Eye,
-  FileText,
-  MessageSquare,
-  Tag,
-  Users,
-} from "lucide-react";
+import { Bot, MessageSquare, Tag } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
@@ -23,23 +13,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 
-import { AgentSelector } from "./agent-selector";
 import { BaseCampaignWizard } from "./base-campaign-wizard";
-import { OfferSelector } from "./offer-selector";
-import {
-  BasicsStep,
-  ContactsStep,
-  ReviewScheduleCard,
-  ReviewSummaryCard,
-  ScheduleStep,
-} from "./steps";
 import type { WizardStep } from "./wizard-types";
 
-import { insertPlaceholderAtCursor } from "@/lib/utils/placeholder";
+import {
+  type BasicsFields,
+  type ScheduleFields,
+  initialBasicsFields,
+  initialScheduleFields,
+  makeBasicsStep,
+  makeContactsStep,
+  makeReviewStep,
+  makeScheduleStep,
+  mapScheduleToRequest,
+} from "./_shared";
+import {
+  type AgentStepFields,
+  type MessageStepFields,
+  makeAgentStep,
+  makeMessageStep,
+} from "./sms-steps";
 
 import type { CreateSMSCampaignRequest } from "@/lib/api/sms-campaigns";
 import type { Agent, Offer, PhoneNumber, SMSCampaign } from "@/types";
@@ -66,44 +60,23 @@ interface SMSCampaignWizardProps {
   isSubmitting?: boolean;
 }
 
-interface SMSFormData {
-  name: string;
-  description: string;
-  from_phone_number: string;
-  initial_message: string;
-  agent_id?: string;
-  offer_id?: string;
-  ai_enabled: boolean;
-  qualification_criteria: string;
-  scheduled_start?: string;
-  scheduled_end?: string;
-  sending_hours_enabled: boolean;
-  sending_hours_start: string;
-  sending_hours_end: string;
-  sending_days: number[];
-  timezone: string;
+interface SMSFormData
+  extends BasicsFields,
+    ScheduleFields,
+    MessageStepFields,
+    AgentStepFields {
   messages_per_minute: number;
   max_messages_per_contact: number;
-  follow_up_enabled: boolean;
-  follow_up_delay_hours: number;
-  follow_up_message: string;
-  max_follow_ups: number;
 }
 
 const initialFormData: SMSFormData = {
-  name: "",
-  description: "",
-  from_phone_number: "",
+  ...initialBasicsFields,
+  ...initialScheduleFields,
   initial_message: "",
   agent_id: undefined,
   offer_id: undefined,
   ai_enabled: true,
   qualification_criteria: "",
-  sending_hours_enabled: false,
-  sending_hours_start: "09:00",
-  sending_hours_end: "17:00",
-  sending_days: [1, 2, 3, 4, 5],
-  timezone: "America/New_York",
   messages_per_minute: 10,
   max_messages_per_contact: 3,
   follow_up_enabled: false,
@@ -128,393 +101,99 @@ export function SMSCampaignWizard({
 
   const steps = useMemo<ReadonlyArray<WizardStep<StepId, SMSFormData>>>(
     () => [
-      {
+      makeBasicsStep<StepId, SMSFormData>({
         id: "basics",
-        label: "Basics",
-        icon: FileText,
-        validate: (data) => {
-          const errors: Record<string, string> = {};
-          if (!data.name.trim()) errors.name = "Campaign name is required";
-          if (!data.from_phone_number)
-            errors.from_phone_number = "Phone number is required";
-          return errors;
-        },
-        render: ({ formData, errors, updateField }) => (
-          <BasicsStep
-            name={formData.name}
-            description={formData.description}
-            fromPhoneNumber={formData.from_phone_number}
-            phoneNumbers={phoneNumbers}
-            errors={errors}
-            onNameChange={(v) => updateField("name", v)}
-            onDescriptionChange={(v) => updateField("description", v)}
-            onPhoneChange={(v) => updateField("from_phone_number", v)}
-            namePlaceholder="e.g., Summer Sale Outreach"
-            emptyPhoneLabel="No SMS-enabled phone numbers available"
-          />
-        ),
-      },
-      {
+        phoneNumbers,
+        namePlaceholder: "e.g., Summer Sale Outreach",
+        emptyPhoneLabel: "No SMS-enabled phone numbers available",
+      }),
+      makeContactsStep<StepId, SMSFormData>({
         id: "contacts",
-        label: "Contacts",
-        icon: Users,
-        validate: () =>
-          selectedContactIds.size === 0
-            ? { contacts: "Select at least one contact" }
-            : {},
-        render: ({ errors }) => (
-          <ContactsStep
-            workspaceId={workspaceId}
-            selectedIds={selectedContactIds}
-            onSelectionChange={setSelectedContactIds}
-            error={errors.contacts}
-          />
-        ),
-      },
-      {
+        workspaceId,
+        selectedContactIds,
+        setSelectedContactIds,
+      }),
+      makeMessageStep<StepId, SMSFormData>({
         id: "message",
-        label: "Message",
-        icon: MessageSquare,
-        validate: (data) =>
-          !data.initial_message.trim()
-            ? { initial_message: "Message is required" }
-            : {},
-        render: ({ formData, errors, updateField }) => {
-          const insertPlaceholder = (placeholder: string) =>
-            insertPlaceholderAtCursor(
-              "initial-message",
-              placeholder,
-              formData.initial_message,
-              (v) => updateField("initial_message", v)
-            );
-          return (
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="initial-message">Initial Message *</Label>
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-muted-foreground mr-2">
-                      Insert:
-                    </span>
-                    {[
-                      { label: "First Name", value: "{first_name}" },
-                      { label: "Last Name", value: "{last_name}" },
-                      { label: "Company", value: "{company_name}" },
-                    ].map((p) => (
-                      <Button
-                        key={p.value}
-                        variant="outline"
-                        size="sm"
-                        className="text-xs h-7"
-                        onClick={() => insertPlaceholder(p.value)}
-                      >
-                        {p.label}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-                <Textarea
-                  id="initial-message"
-                  placeholder="Hi {first_name}, we have an amazing offer for you..."
-                  value={formData.initial_message}
-                  onChange={(e) =>
-                    updateField("initial_message", e.target.value)
-                  }
-                  rows={4}
-                  className={
-                    errors.initial_message ? "border-destructive" : ""
-                  }
-                />
-                {errors.initial_message && (
-                  <p className="text-sm text-destructive">
-                    {errors.initial_message}
-                  </p>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  {formData.initial_message.length}/160 characters (standard
-                  SMS)
-                </p>
-              </div>
-
-              <Separator />
-
-              <div className="space-y-4">
-                <h4 className="font-medium flex items-center gap-2">
-                  <Tag className="size-4" />
-                  Attach an Offer (Optional)
-                </h4>
-                <OfferSelector
-                  offers={offers}
-                  selectedId={formData.offer_id}
-                  onSelect={(id) => updateField("offer_id", id)}
-                  onCreateOffer={onCreateOffer}
-                />
-              </div>
-
-              <Separator />
-
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-medium">Follow-up Messages</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Automatically send follow-ups if no response
-                    </p>
-                  </div>
-                  <Switch
-                    checked={formData.follow_up_enabled}
-                    onCheckedChange={(v) =>
-                      updateField("follow_up_enabled", v)
-                    }
-                  />
-                </div>
-
-                {formData.follow_up_enabled && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="space-y-4 pl-4 border-l-2 border-muted"
-                  >
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Delay Before Follow-up</Label>
-                        <Select
-                          value={String(formData.follow_up_delay_hours)}
-                          onValueChange={(v) =>
-                            updateField("follow_up_delay_hours", parseInt(v))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="12">12 hours</SelectItem>
-                            <SelectItem value="24">24 hours</SelectItem>
-                            <SelectItem value="48">48 hours</SelectItem>
-                            <SelectItem value="72">72 hours</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Max Follow-ups</Label>
-                        <Select
-                          value={String(formData.max_follow_ups)}
-                          onValueChange={(v) =>
-                            updateField("max_follow_ups", parseInt(v))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="1">1</SelectItem>
-                            <SelectItem value="2">2</SelectItem>
-                            <SelectItem value="3">3</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="follow-up-message">
-                        Follow-up Message
-                      </Label>
-                      <Textarea
-                        id="follow-up-message"
-                        placeholder="Just following up on my previous message..."
-                        value={formData.follow_up_message}
-                        onChange={(e) =>
-                          updateField("follow_up_message", e.target.value)
-                        }
-                        rows={3}
-                      />
-                    </div>
-                  </motion.div>
-                )}
-              </div>
-            </div>
-          );
-        },
-      },
-      {
+        offers,
+        onCreateOffer,
+      }),
+      makeAgentStep<StepId, SMSFormData>({
         id: "agent",
-        label: "AI Agent",
-        icon: Bot,
-        render: ({ formData, updateField }) => (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-              <div>
-                <h4 className="font-medium">Enable AI Responses</h4>
-                <p className="text-sm text-muted-foreground">
-                  Let AI handle conversations automatically
-                </p>
+        agents,
+      }),
+      makeScheduleStep<StepId, SMSFormData>({
+        id: "schedule",
+        sendingHoursLabel: "Restrict Sending Hours",
+        sendingHoursDescription: "Only send messages during specific hours",
+        daysLabel: "Sending Days",
+        renderRateLimiting: ({ formData, updateField }) => (
+          <div className="space-y-4">
+            <h4 className="font-medium">Rate Limiting</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Messages per Minute</Label>
+                <Select
+                  value={String(formData.messages_per_minute)}
+                  onValueChange={(v) =>
+                    updateField("messages_per_minute", parseInt(v))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5">5 / minute</SelectItem>
+                    <SelectItem value="10">10 / minute</SelectItem>
+                    <SelectItem value="20">20 / minute</SelectItem>
+                    <SelectItem value="30">30 / minute</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <Switch
-                checked={formData.ai_enabled}
-                onCheckedChange={(v) => updateField("ai_enabled", v)}
-              />
+              <div className="space-y-2">
+                <Label>Max Messages per Contact</Label>
+                <Select
+                  value={String(formData.max_messages_per_contact)}
+                  onValueChange={(v) =>
+                    updateField("max_messages_per_contact", parseInt(v))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1 message</SelectItem>
+                    <SelectItem value="2">2 messages</SelectItem>
+                    <SelectItem value="3">3 messages</SelectItem>
+                    <SelectItem value="5">5 messages</SelectItem>
+                    <SelectItem value="10">10 messages</SelectItem>
+                    <SelectItem value="0">Unlimited</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-
-            {formData.ai_enabled && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="space-y-6"
-              >
-                <AgentSelector
-                  agents={agents}
-                  selectedId={formData.agent_id}
-                  onSelect={(id) => updateField("agent_id", id)}
-                  showTextAgentsOnly={true}
-                />
-
-                <div className="space-y-2">
-                  <Label htmlFor="qualification-criteria">
-                    Qualification Criteria (Optional)
-                  </Label>
-                  <Textarea
-                    id="qualification-criteria"
-                    placeholder="e.g., Interested in scheduling a demo, Has budget over $1000..."
-                    value={formData.qualification_criteria}
-                    onChange={(e) =>
-                      updateField("qualification_criteria", e.target.value)
-                    }
-                    rows={3}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    The AI will mark contacts as qualified when they meet these
-                    criteria
-                  </p>
-                </div>
-              </motion.div>
-            )}
           </div>
         ),
-      },
-      {
-        id: "schedule",
-        label: "Schedule",
-        icon: Clock,
-        validate: (data) =>
-          data.sending_days.length === 0
-            ? { sending_days: "Select at least one day" }
-            : {},
-        render: ({ formData, errors, updateField }) => (
-          <ScheduleStep
-            scheduledStart={formData.scheduled_start}
-            scheduledEnd={formData.scheduled_end}
-            sendingHoursEnabled={formData.sending_hours_enabled}
-            sendingHoursStart={formData.sending_hours_start}
-            sendingHoursEnd={formData.sending_hours_end}
-            sendingDays={formData.sending_days}
-            timezone={formData.timezone}
-            errors={errors}
-            onScheduledStartChange={(v) => updateField("scheduled_start", v)}
-            onScheduledEndChange={(v) => updateField("scheduled_end", v)}
-            onSendingHoursEnabledChange={(v) =>
-              updateField("sending_hours_enabled", v)
-            }
-            onSendingHoursStartChange={(v) =>
-              updateField("sending_hours_start", v)
-            }
-            onSendingHoursEndChange={(v) =>
-              updateField("sending_hours_end", v)
-            }
-            onSendingDaysChange={(v) => updateField("sending_days", v)}
-            onTimezoneChange={(v) => updateField("timezone", v)}
-            sendingHoursLabel="Restrict Sending Hours"
-            sendingHoursDescription="Only send messages during specific hours"
-            daysLabel="Sending Days"
-            rateLimitingSlot={
-              <div className="space-y-4">
-                <h4 className="font-medium">Rate Limiting</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Messages per Minute</Label>
-                    <Select
-                      value={String(formData.messages_per_minute)}
-                      onValueChange={(v) =>
-                        updateField("messages_per_minute", parseInt(v))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="5">5 / minute</SelectItem>
-                        <SelectItem value="10">10 / minute</SelectItem>
-                        <SelectItem value="20">20 / minute</SelectItem>
-                        <SelectItem value="30">30 / minute</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Max Messages per Contact</Label>
-                    <Select
-                      value={String(formData.max_messages_per_contact)}
-                      onValueChange={(v) =>
-                        updateField("max_messages_per_contact", parseInt(v))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">1 message</SelectItem>
-                        <SelectItem value="2">2 messages</SelectItem>
-                        <SelectItem value="3">3 messages</SelectItem>
-                        <SelectItem value="5">5 messages</SelectItem>
-                        <SelectItem value="10">10 messages</SelectItem>
-                        <SelectItem value="0">Unlimited</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-            }
-          />
-        ),
-      },
-      {
+      }),
+      makeReviewStep<StepId, SMSFormData>({
         id: "review",
-        label: "Review",
-        icon: Eye,
-        render: ({ formData }) => {
+        phoneNumbers,
+        selectedContactIds,
+        recipientsLabel: "contacts selected",
+        scheduleHoursLabel: "Sending hours",
+        renderRateDescription: (formData) => (
+          <>
+            {formData.messages_per_minute} messages/min,{" "}
+            {formData.max_messages_per_contact === 0
+              ? "unlimited messages per contact"
+              : `max ${formData.max_messages_per_contact} per contact`}
+          </>
+        ),
+        renderChannelCards: (formData) => {
           const selectedOffer = offers.find((o) => o.id === formData.offer_id);
           const selectedAgent = agents.find((a) => a.id === formData.agent_id);
-          const selectedPhone = phoneNumbers.find(
-            (p) => p.phone_number === formData.from_phone_number
-          );
           return (
-            <div className="space-y-6">
-              <ReviewSummaryCard
-                name={formData.name}
-                description={formData.description || undefined}
-                fromPhoneDisplay={
-                  selectedPhone?.friendly_name || formData.from_phone_number
-                }
-              />
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Users className="size-5" />
-                    Recipients
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary" className="text-lg px-3 py-1">
-                      {selectedContactIds.size}
-                    </Badge>
-                    <span className="text-muted-foreground">
-                      contacts selected
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-
+            <>
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">
@@ -589,27 +268,10 @@ export function SMSCampaignWizard({
                   )}
                 </CardContent>
               </Card>
-
-              <ReviewScheduleCard
-                sendingHoursEnabled={formData.sending_hours_enabled}
-                sendingHoursStart={formData.sending_hours_start}
-                sendingHoursEnd={formData.sending_hours_end}
-                sendingDays={formData.sending_days}
-                timezone={formData.timezone}
-                hoursLabel="Sending hours"
-                rateDescription={
-                  <>
-                    {formData.messages_per_minute} messages/min,{" "}
-                    {formData.max_messages_per_contact === 0
-                      ? "unlimited messages per contact"
-                      : `max ${formData.max_messages_per_contact} per contact`}
-                  </>
-                }
-              />
-            </div>
+            </>
           );
         },
-      },
+      }),
     ],
     [
       workspaceId,
@@ -631,16 +293,7 @@ export function SMSCampaignWizard({
       offer_id: formData.offer_id,
       ai_enabled: formData.ai_enabled,
       qualification_criteria: formData.qualification_criteria || undefined,
-      scheduled_start: formData.scheduled_start || undefined,
-      scheduled_end: formData.scheduled_end || undefined,
-      sending_hours_start: formData.sending_hours_enabled
-        ? formData.sending_hours_start
-        : "00:00",
-      sending_hours_end: formData.sending_hours_enabled
-        ? formData.sending_hours_end
-        : "23:59",
-      sending_days: formData.sending_days,
-      timezone: formData.timezone,
+      ...mapScheduleToRequest(formData),
       messages_per_minute: formData.messages_per_minute,
       max_messages_per_contact: formData.max_messages_per_contact,
       follow_up_enabled: formData.follow_up_enabled,
