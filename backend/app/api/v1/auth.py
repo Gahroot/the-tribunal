@@ -35,6 +35,10 @@ from app.schemas.user import (
     UserResponse,
     UserWithWorkspace,
 )
+from app.services.rate_limiting.auth_limiter import (
+    enforce_change_password_rate_limit,
+    enforce_ws_ticket_rate_limit,
+)
 
 router = APIRouter()
 
@@ -438,6 +442,11 @@ async def change_password(
     Revokes all existing refresh tokens to force re-authentication
     on all devices.
     """
+    # Per-user rate limit: an authenticated-but-hijacked session shouldn't be
+    # able to brute-force the current password. 5 attempts / hour is plenty
+    # for a human and tight enough to make online brute force impractical.
+    await enforce_change_password_rate_limit(current_user.id)
+
     # Verify current password
     if not verify_password(body.current_password, current_user.hashed_password):
         raise HTTPException(
@@ -472,6 +481,11 @@ async def issue_ws_ticket(current_user: CurrentUser) -> dict[str, str]:
     one minute, limiting the blast radius if it ever leaks via referer or
     server logs.
     """
+    # Per-user rate limit on ticket minting. Each ticket opens a WS budget,
+    # so a hijacked session could otherwise flood the WS layer. 30/min covers
+    # normal reconnect storms (network blips, tab refreshes) comfortably.
+    await enforce_ws_ticket_rate_limit(current_user.id)
+
     ticket = create_access_token(
         data={"sub": str(current_user.id)},
         expires_delta=timedelta(minutes=1),
