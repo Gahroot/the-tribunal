@@ -1,0 +1,27 @@
+# Gitleaks configuration for The Tribunal.
+#
+# Extends the upstream default ruleset shipped with gitleaks so we get every
+# built-in detector for free. Add allowlist entries below as known false
+# positives are discovered.
+#
+# Docs: https://github.com/gitleaks/gitleaks#configuration
+
+[extend]
+useDefault = true
+
+# Known false positives — currently none.
+# To allow an entry, add it under [allowlist] using one of:
+#   paths       = ['''path/regex''']        # ignore matching files
+#   regexes     = ['''secret/regex''']      # ignore matching secret values
+#   commits     = ['''<commit-sha>''']      # ignore specific commits
+#   stopwords   = ['''example''']           # ignore findings containing word
+#
+# Example:
+# [allowlist]
+# description = "Ignore documented dummy keys in tests"
+# paths = ['''backend/tests/fixtures/.*''']
+
+[allowlist]
+description = "Project-wide allowlist (empty for now)"
+paths = []
+regexes = []
