@@ -11,25 +11,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TagBadge } from "@/components/tags/tag-badge";
 import { cn } from "@/lib/utils";
 import { contactStatusColors, contactStatusLabels } from "@/lib/status-colors";
+import { formatPhoneNumber } from "@/lib/utils/phone";
+import { getContactInitials } from "@/lib/utils/initials";
 import type { Contact } from "@/types";
-
-function getInitials(contact: Contact): string {
-  const first = contact.first_name?.[0] ?? "";
-  const last = contact.last_name?.[0] ?? "";
-  return (first + last).toUpperCase() || "?";
-}
-
-function formatPhoneNumber(phone?: string): string {
-  if (!phone) return "";
-  const cleaned = phone.replace(/\D/g, "");
-  if (cleaned.length === 10) {
-    return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
-  }
-  if (cleaned.length === 11 && cleaned[0] === "1") {
-    return `+1 (${cleaned.slice(1, 4)}) ${cleaned.slice(4, 7)}-${cleaned.slice(7)}`;
-  }
-  return phone;
-}
 
 export function ContactCardSkeleton() {
   return (
@@ -93,7 +77,7 @@ export function ContactCard({ contact, isSelected, onSelectChange, isSelectionMo
         <div className="relative">
           <Avatar className="h-12 w-12 shrink-0">
             <AvatarFallback className="bg-primary/10 text-primary text-base font-medium">
-              {getInitials(contact)}
+              {getContactInitials(contact)}
             </AvatarFallback>
           </Avatar>
           {hasUnread && (

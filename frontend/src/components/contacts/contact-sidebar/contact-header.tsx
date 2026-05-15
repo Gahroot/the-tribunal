@@ -4,13 +4,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { contactStatusDotColors } from "@/lib/status-colors";
+import { getContactInitials } from "@/lib/utils/initials";
 import type { Contact } from "@/types";
-
-function getInitials(contact: Contact): string {
-  const first = contact.first_name?.[0] ?? "";
-  const last = contact.last_name?.[0] ?? "";
-  return (first + last).toUpperCase() || "?";
-}
 
 interface ContactHeaderProps {
   contact: Contact;
@@ -23,7 +18,7 @@ export function ContactHeader({ contact }: ContactHeaderProps) {
     <div className="flex flex-col items-center text-center space-y-3">
       <Avatar className="h-20 w-20">
         <AvatarFallback className="bg-primary/10 text-primary text-2xl font-semibold">
-          {getInitials(contact)}
+          {getContactInitials(contact)}
         </AvatarFallback>
       </Avatar>
       <div>

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { formatDate, formatRelative } from "@/lib/utils/date";
+import { getInitialsFromName } from "@/lib/utils/initials";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import {
   Search,
@@ -74,13 +75,6 @@ function formatDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return `${mins}:${secs.toString().padStart(2, "0")}`;
-}
-
-function getInitials(name: string | undefined | null): string {
-  if (!name) return "??";
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
 }
 
 export function CallsList() {
@@ -297,7 +291,7 @@ export function CallsList() {
                           <div className="flex items-center gap-3">
                             <Avatar className="size-8">
                               <AvatarFallback className="text-xs">
-                                {getInitials(call.contact_name || displayNumber)}
+                                {getInitialsFromName(call.contact_name || displayNumber)}
                               </AvatarFallback>
                             </Avatar>
                             <div>

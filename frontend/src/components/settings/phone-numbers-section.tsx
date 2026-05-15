@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { formatPhoneNumber } from "@/lib/utils/phone";
 import {
   Card,
   CardContent,
@@ -168,18 +169,6 @@ export function PhoneNumbersSection() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     searchMutation.mutate();
-  };
-
-  const formatPhoneNumber = (number: string) => {
-    // Format as (XXX) XXX-XXXX for US numbers
-    const cleaned = number.replace(/\D/g, "");
-    if (cleaned.length === 11 && cleaned.startsWith("1")) {
-      const match = cleaned.match(/^1(\d{3})(\d{3})(\d{4})$/);
-      if (match) {
-        return `+1 (${match[1]}) ${match[2]}-${match[3]}`;
-      }
-    }
-    return number;
   };
 
   return (

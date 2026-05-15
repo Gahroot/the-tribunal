@@ -62,17 +62,12 @@ import { ScheduleAppointmentDialog } from "@/components/contacts/schedule-appoin
 import { EngagementSummary } from "@/components/contacts/contact-sidebar/engagement-summary";
 import { TagBadge } from "@/components/tags/tag-badge";
 import { contactStatusDotColors } from "@/lib/status-colors";
+import { getContactInitials } from "@/lib/utils/initials";
 import type { Contact } from "@/types";
 
 interface ContactSidebarProps {
   className?: string;
   onClose?: () => void;
-}
-
-function getInitials(contact: Contact): string {
-  const first = contact.first_name?.[0] ?? "";
-  const last = contact.last_name?.[0] ?? "";
-  return (first + last).toUpperCase() || "?";
 }
 
 interface InfoRowProps {
@@ -579,7 +574,7 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
           <div className="flex flex-col items-center text-center space-y-3">
             <Avatar className="h-20 w-20">
               <AvatarFallback className="bg-primary/10 text-primary text-2xl font-semibold">
-                {getInitials(selectedContact)}
+                {getContactInitials(selectedContact)}
               </AvatarFallback>
             </Avatar>
             <div>

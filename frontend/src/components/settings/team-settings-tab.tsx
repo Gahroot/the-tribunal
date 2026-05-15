@@ -58,17 +58,7 @@ import { invitationsApi } from "@/lib/api/invitations";
 import { TIMEZONE_OPTIONS } from "@/lib/constants";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 import { formatDate } from "@/lib/utils/date";
-
-function getInitials(name: string | null, email: string): string {
-  if (name) {
-    const parts = name.split(" ");
-    if (parts.length >= 2) {
-      return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-    }
-    return name.slice(0, 2).toUpperCase();
-  }
-  return email.slice(0, 2).toUpperCase();
-}
+import { getInitialsFromName } from "@/lib/utils/initials";
 
 export function TeamSettingsTab() {
   const workspaceId = useWorkspaceId();
@@ -629,7 +619,7 @@ export function TeamSettingsTab() {
               >
                 <div className="flex items-center gap-3">
                   <div className="flex size-10 items-center justify-center rounded-full bg-primary/10 text-sm font-medium">
-                    {getInitials(member.full_name, member.email)}
+                    {getInitialsFromName(member.full_name, member.email)}
                   </div>
                   <div>
                     <p className="font-medium">

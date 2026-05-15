@@ -14,29 +14,13 @@ import { contactStatusColors } from "@/lib/status-colors";
 import { useContactStore } from "@/lib/contact-store";
 import { useContactsPaginated } from "@/hooks/useContacts";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { formatPhoneNumber } from "@/lib/utils/phone";
+import { getContactInitials } from "@/lib/utils/initials";
 import { CreateContactDialog } from "./create-contact-dialog";
 import type { Contact } from "@/types";
 
 interface ContactsListProps {
   className?: string;
-}
-
-function getInitials(contact: Contact): string {
-  const first = contact.first_name?.[0] ?? "";
-  const last = contact.last_name?.[0] ?? "";
-  return (first + last).toUpperCase() || "?";
-}
-
-function formatPhoneNumber(phone?: string): string {
-  if (!phone) return "";
-  const cleaned = phone.replace(/\D/g, "");
-  if (cleaned.length === 10) {
-    return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
-  }
-  if (cleaned.length === 11 && cleaned[0] === "1") {
-    return `+1 (${cleaned.slice(1, 4)}) ${cleaned.slice(4, 7)}-${cleaned.slice(7)}`;
-  }
-  return phone;
 }
 
 function ContactItemSkeleton() {
@@ -78,7 +62,7 @@ function ContactItem({ contact, isSelected, onClick }: ContactItemProps) {
       >
         <Avatar className="h-10 w-10 shrink-0">
           <AvatarFallback className="bg-primary/10 text-primary text-sm font-medium">
-            {getInitials(contact)}
+            {getContactInitials(contact)}
           </AvatarFallback>
         </Avatar>
 
