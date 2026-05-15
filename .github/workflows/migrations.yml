@@ -71,6 +71,11 @@ jobs:
       - name: Upgrade to head
         run: uv run alembic upgrade head
 
+      - name: Check for model drift
+        # Fails if SQLAlchemy models have changed without a corresponding
+        # Alembic migration (i.e. autogenerate would produce a non-empty diff).
+        run: uv run alembic check
+
       - name: Downgrade one revision
         run: uv run alembic downgrade -1
 
