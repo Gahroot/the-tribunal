@@ -120,7 +120,7 @@ export function ReminderOffsetsInput({
       {!disabled && (
         <div className="flex items-center gap-2">
           <Select onValueChange={handleSelectPreset} value="">
-            <SelectTrigger className="h-8 w-[200px]">
+            <SelectTrigger className="h-8 w-full sm:w-[200px]">
               <SelectValue placeholder="+ Add reminder time" />
             </SelectTrigger>
             <SelectContent>
@@ -142,7 +142,7 @@ export function ReminderOffsetsInput({
             min={1}
             max={10080}
             placeholder="Minutes (1–10080)"
-            className="h-8 w-[180px]"
+            className="h-8 w-full sm:w-[180px]"
             value={customMinutes}
             onChange={(e) => {
               setCustomMinutes(e.target.value);

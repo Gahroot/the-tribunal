@@ -220,7 +220,7 @@ export function ContactFilterBuilder({
             {rules.length > 0 ? `Filters (${rules.length})` : "Filters"}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[520px] p-4" align="start">
+        <PopoverContent className="w-[min(520px,90vw)] p-4" align="start">
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-medium">Filter contacts</h4>

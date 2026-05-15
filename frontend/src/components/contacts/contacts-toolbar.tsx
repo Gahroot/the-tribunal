@@ -86,7 +86,7 @@ export function ContactsToolbar({
           />
         </div>
         <Select value={sortBy} onValueChange={(value: ContactSortBy) => onSortByChange(value)}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-full sm:w-[180px]">
             <ArrowUpDown className="h-4 w-4 mr-2" />
             <SelectValue placeholder="Sort by" />
           </SelectTrigger>

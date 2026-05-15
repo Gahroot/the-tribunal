@@ -236,7 +236,7 @@ export function FollowupSection() {
               onValueChange={handleDelayChange}
               disabled={isLoadingSettings || isUpdating}
             >
-              <SelectTrigger className="w-[120px] h-8">
+              <SelectTrigger className="w-full sm:w-[120px] h-8">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -257,7 +257,7 @@ export function FollowupSection() {
               onValueChange={handleMaxCountChange}
               disabled={isLoadingSettings || isUpdating}
             >
-              <SelectTrigger className="w-[120px] h-8">
+              <SelectTrigger className="w-full sm:w-[120px] h-8">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

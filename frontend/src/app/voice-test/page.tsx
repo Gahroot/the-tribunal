@@ -487,7 +487,7 @@ export default function VoiceTestPage() {
       </div>
 
       {/* Right - Settings Panel */}
-      <div className="flex w-[320px] shrink-0 flex-col border-l bg-muted/20">
+      <div className="flex w-full md:w-[320px] shrink-0 flex-col border-l bg-muted/20">
         <div className="flex-1 space-y-4 overflow-y-auto p-4">
           {/* Agent Selection */}
           <div className="space-y-2">

@@ -228,7 +228,7 @@ function ChatEmbedPageContent({ params }: ChatEmbedPageProps) {
     >
       {isOpen ? (
         <div
-          className="flex h-[500px] w-[360px] flex-col overflow-hidden rounded-2xl shadow-2xl"
+          className="flex h-[500px] w-full max-w-[360px] sm:w-[360px] flex-col overflow-hidden rounded-2xl shadow-2xl"
           style={{
             backgroundColor: isDark ? "#1f2937" : "#ffffff",
             border: isDark ? "1px solid #374151" : "1px solid #e5e7eb",

@@ -225,7 +225,7 @@ export function CampaignsList() {
           filters={
             <>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[140px]">
+                <SelectTrigger className="w-full sm:w-[140px]">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -238,7 +238,7 @@ export function CampaignsList() {
                 </SelectContent>
               </Select>
               <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="w-[140px]">
+                <SelectTrigger className="w-full sm:w-[140px]">
                   <SelectValue placeholder="Type" />
                 </SelectTrigger>
                 <SelectContent>

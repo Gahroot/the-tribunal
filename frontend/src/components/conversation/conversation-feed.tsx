@@ -323,7 +323,7 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
             <DropdownMenuTrigger asChild>
               <Button size="sm" variant="outline" className="h-8 gap-1.5">
                 <User className="h-3.5 w-3.5" />
-                <span className="text-xs max-w-[100px] truncate">
+                <span className="text-xs max-w-[60vw] sm:max-w-[100px] truncate">
                   {contactConversation?.assigned_agent_id
                     ? agents.find((a) => a.id === contactConversation.assigned_agent_id)?.name ?? "Agent"
                     : "No Agent"}

@@ -600,7 +600,7 @@ export function FindLeadsAIPage() {
                             )}
                           >
                             <Phone className="h-3 w-3" />
-                            <span className="truncate max-w-[120px]">
+                            <span className="truncate max-w-[60vw] sm:max-w-[120px]">
                               {result.phone_number || "No phone"}
                             </span>
                           </div>

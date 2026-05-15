@@ -214,7 +214,7 @@ export function CallsList() {
             </div>
             <div className="flex gap-2">
               <Select value={directionFilter} onValueChange={setDirectionFilter}>
-                <SelectTrigger className="w-[140px]">
+                <SelectTrigger className="w-full sm:w-[140px]">
                   <SelectValue placeholder="Direction" />
                 </SelectTrigger>
                 <SelectContent>
@@ -224,7 +224,7 @@ export function CallsList() {
                 </SelectContent>
               </Select>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[140px]">
+                <SelectTrigger className="w-full sm:w-[140px]">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>

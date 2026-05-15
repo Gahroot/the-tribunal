@@ -134,7 +134,7 @@ function SortableOpportunityCard({
 
 function OpportunityCardOverlay({ opportunity }: { opportunity: Opportunity }) {
   return (
-    <Card className="bg-background shadow-xl ring-2 ring-primary w-[280px]">
+    <Card className="bg-background shadow-xl ring-2 ring-primary w-full max-w-[280px]">
       <CardContent className="p-3 space-y-2">
         <p className="text-sm font-medium line-clamp-2">{opportunity.name}</p>
         {opportunity.amount && (
