@@ -1,0 +1,78 @@
+name: Migrations
+
+on:
+  pull_request:
+    paths:
+      - "backend/alembic/**"
+      - "backend/app/models/**"
+      - ".github/workflows/migrations.yml"
+
+concurrency:
+  group: migrations-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  reversibility:
+    name: Verify migration reversibility
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: aicrm
+          POSTGRES_PASSWORD: aicrm_dev_password
+          POSTGRES_DB: aicrm
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aicrm -d aicrm"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://aicrm:aicrm_dev_password@localhost:5432/aicrm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Wait for Postgres
+        run: |
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5432 -U aicrm -d aicrm; then
+              echo "Postgres is ready"
+              exit 0
+            fi
+            echo "Waiting for Postgres... ($i/30)"
+            sleep 2
+          done
+          echo "Postgres did not become ready in time"
+          exit 1
+
+      - name: Upgrade to head
+        run: uv run alembic upgrade head
+
+      - name: Downgrade one revision
+        run: uv run alembic downgrade -1
+
+      - name: Upgrade to head again
+        run: uv run alembic upgrade head
