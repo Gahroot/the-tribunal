@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table";
 import { appointmentsApi } from "@/lib/api/appointments";
 import { queryKeys } from "@/lib/query-keys";
+import { POLL_60S } from "@/lib/query-options";
 import type {
   AppointmentAgentStat,
   AppointmentCampaignStat,
@@ -186,8 +187,8 @@ export function AppointmentPerformanceCard({
     queryKey: queryKeys.appointments.stats(workspaceId ?? ""),
     queryFn: () => appointmentsApi.getStats(workspaceId),
     enabled: !!workspaceId,
-    // Refresh every 2 minutes — stats don't change that fast
-    refetchInterval: 120_000,
+    // Stats don't change fast; standard 1-min polling is plenty
+    ...POLL_60S,
     placeholderData: (prev) => prev,
   });
 

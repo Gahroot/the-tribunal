@@ -22,6 +22,7 @@ import {
 import { useAgents } from "@/hooks/useAgents";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { queryKeys } from "@/lib/query-keys";
+import { POLL_60S } from "@/lib/query-options";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -110,7 +111,7 @@ function AgentExperimentSection({ agentId, agentName }: { agentId: string; agent
       return promptVersionsApi.compare(workspaceId, agentId);
     },
     enabled: !!workspaceId,
-    refetchInterval: 60000,
+    ...POLL_60S,
   });
 
   const activateMutation = useMutation({

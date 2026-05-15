@@ -13,6 +13,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { queryKeys } from "@/lib/query-keys";
+import { POLL_30S } from "@/lib/query-options";
 import { campaignsApi } from "@/lib/api/campaigns";
 import { formatDate } from "@/lib/utils/date";
 import { voiceCampaignsApi } from "@/lib/api/voice-campaigns";
@@ -36,7 +37,7 @@ export function GuaranteeProgress({ campaignId, campaignType }: GuaranteeProgres
       return campaignsApi.getGuaranteeProgress(workspaceId, campaignId);
     },
     enabled: !!workspaceId,
-    refetchInterval: 30000,
+    ...POLL_30S,
   });
 
   if (isPending || !progress) {

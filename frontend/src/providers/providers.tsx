@@ -8,6 +8,7 @@ import { Toaster } from "sonner";
 import { AuthProvider } from "./auth-provider";
 import { WorkspaceProvider } from "./workspace-provider";
 import { PageErrorBoundary } from "@/components/ui/error-boundary";
+import { POLL_60S } from "@/lib/query-options";
 
 interface ProvidersProps {
   children: React.ReactNode;
@@ -19,7 +20,7 @@ export function Providers({ children }: ProvidersProps) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 60 * 1000,
+            staleTime: POLL_60S.staleTime,
             refetchOnWindowFocus: false,
             throwOnError: (error) => {
               // Propagate server errors to the nearest error boundary (error.tsx)

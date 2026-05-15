@@ -39,6 +39,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { queryKeys } from "@/lib/query-keys";
+import { POLL_30S } from "@/lib/query-options";
 import { messageTestsApi } from "@/lib/api/message-tests";
 import type { VariantAnalytics } from "@/types";
 import { getApiErrorMessage } from "@/lib/utils/errors";
@@ -70,7 +71,7 @@ export function TestAnalytics({ testId }: TestAnalyticsProps) {
       return messageTestsApi.getAnalytics(workspaceId, testId);
     },
     enabled: !!workspaceId && !!testId,
-    refetchInterval: 30000, // Refresh every 30 seconds
+    ...POLL_30S,
   });
 
   const selectWinnerMutation = useMutation({

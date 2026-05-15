@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { conversationsApi } from "@/lib/api/conversations";
 import { queryKeys } from "@/lib/query-keys";
+import { POLL_30S } from "@/lib/query-options";
 
 /**
  * Fetch follow-up settings for a conversation
@@ -10,7 +11,8 @@ export function useFollowupSettings(workspaceId: string, conversationId: string)
     queryKey: queryKeys.conversations.followupSettings(workspaceId, conversationId),
     queryFn: () => conversationsApi.getFollowupSettings(workspaceId, conversationId),
     enabled: !!workspaceId && !!conversationId,
-    refetchInterval: 30000, // Refresh every 30 seconds to update next_followup_at
+    // Refresh to update next_followup_at
+    ...POLL_30S,
   });
 }
 

@@ -36,6 +36,7 @@ import { pendingActionsApi } from "@/lib/api/pending-actions";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 
 import { queryKeys } from "@/lib/query-keys";
+import { POLL_60S } from "@/lib/query-options";
 import {
   Sidebar,
   SidebarContent,
@@ -264,13 +265,13 @@ export function AppSidebar({ children }: AppSidebarProps) {
     queryKey: queryKeys.nudges.stats(workspaceId ?? ""),
     queryFn: () => nudgesApi.getStats(workspaceId!),
     enabled: !!workspaceId,
-    refetchInterval: 60000,
+    ...POLL_60S,
   });
   const { data: pendingActionStats } = useQuery({
     queryKey: queryKeys.pendingActions.stats(workspaceId ?? ""),
     queryFn: () => pendingActionsApi.getStats(workspaceId!),
     enabled: !!workspaceId,
-    refetchInterval: 60000,
+    ...POLL_60S,
   });
   const breadcrumbs = buildBreadcrumbs(pathname);
   const [commandOpen, setCommandOpen] = React.useState(false);

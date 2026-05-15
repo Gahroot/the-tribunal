@@ -8,6 +8,7 @@ import {
 } from "@/lib/api/contacts";
 import { createResourceHooks } from "@/lib/api/create-resource-hooks";
 import { queryKeys } from "@/lib/query-keys";
+import { REALTIME } from "@/lib/query-options";
 import type { Contact, ContactStatus } from "@/types";
 import type { ApiClient } from "@/lib/api/create-api-client";
 
@@ -59,8 +60,7 @@ export function useContactTimeline(workspaceId: string, contactId: number, limit
     queryKey: queryKeys.contacts.timelineLegacy(workspaceId, contactId, limit),
     queryFn: () => contactsApi.getTimeline(workspaceId, contactId, limit),
     enabled: !!workspaceId && !!contactId,
-    // Poll every 3 seconds for real-time updates
-    refetchInterval: 3000,
+    ...REALTIME,
     // Don't poll when the tab is not active
     refetchIntervalInBackground: false,
   });

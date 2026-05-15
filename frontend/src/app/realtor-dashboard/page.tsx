@@ -31,6 +31,7 @@ import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { getRealtorStats, type RealtorStats } from "@/lib/api/realtor";
 import { appointmentsApi } from "@/lib/api/appointments";
 import { queryKeys } from "@/lib/query-keys";
+import { POLL_30S } from "@/lib/query-options";
 import type { Appointment } from "@/types";
 import { formatDateTime } from "@/lib/utils/date";
 import { formatNumber } from "@/lib/utils/number";
@@ -130,7 +131,7 @@ function RealtorDashboardContent() {
     queryKey: queryKeys.realtor.stats(workspaceId ?? ""),
     queryFn: () => getRealtorStats(workspaceId!),
     enabled: !!workspaceId,
-    refetchInterval: 30_000,
+    ...POLL_30S,
   });
 
   // Upcoming appointments (scheduled + completed, soonest first)
@@ -146,7 +147,7 @@ function RealtorDashboardContent() {
         sort: "asc",
       }),
     enabled: !!workspaceId,
-    refetchInterval: 30_000,
+    ...POLL_30S,
   });
 
   const appointments: Appointment[] = React.useMemo(() => {

@@ -19,6 +19,7 @@ import {
 } from "@/lib/api/prompt-versions";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { queryKeys } from "@/lib/query-keys";
+import { POLL_30S } from "@/lib/query-options";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -55,7 +56,7 @@ export function ABTestDashboard({ agentId }: ABTestDashboardProps) {
       return promptVersionsApi.compare(workspaceId, agentId);
     },
     enabled: !!workspaceId,
-    refetchInterval: 30000, // Refresh every 30 seconds
+    ...POLL_30S,
   });
 
   const activateMutation = useMutation({
