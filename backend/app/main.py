@@ -3,16 +3,18 @@
 import math
 import os
 import re
+import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
 import sentry_sdk
 import structlog
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from prometheus_fastapi_instrumentator import Instrumentator
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 from starlette.datastructures import MutableHeaders
@@ -422,6 +424,45 @@ app.include_router(voice_test_router, tags=["voice"])
 
 # Mount static files for lead magnets and other assets
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+# --------------------------------------------------------------------------- #
+# Prometheus metrics
+# --------------------------------------------------------------------------- #
+# Expose default HTTP metrics (request count/latency/size) at /metrics. The
+# endpoint is gated behind a shared-secret bearer token (``settings.metrics_token``)
+# so it can be reached by Prometheus/Grafana scrapers without being publicly
+# scrapable. If ``metrics_token`` is unset the endpoint refuses all requests
+# (returns 503) — we never want unauthenticated metrics in production because
+# they leak request volumes, route names, and latency distributions.
+def _verify_metrics_token(
+    authorization: str | None = Header(default=None, alias="Authorization"),
+) -> None:
+    expected = settings.metrics_token
+    if not expected:
+        # Endpoint is mounted but disabled until a token is configured.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="metrics endpoint is not configured",
+        )
+
+    scheme, _, token = (authorization or "").partition(" ")
+    if scheme.lower() != "bearer" or not token or not secrets.compare_digest(
+        token, expected
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid metrics token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+Instrumentator().instrument(app).expose(
+    app,
+    endpoint="/metrics",
+    include_in_schema=False,
+    dependencies=[Depends(_verify_metrics_token)],
+)
 
 
 _STATUS_CODE_SLUGS: dict[int, str] = {

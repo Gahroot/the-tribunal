@@ -107,6 +107,12 @@ class Settings(BaseSettings):
     # Sentry — error tracking & performance monitoring. Leave DSN unset to disable.
     sentry_dsn: str | None = None
 
+    # Prometheus metrics — shared-secret token required to scrape /metrics.
+    # Leave empty to disable the endpoint entirely (returns 503). Set in Railway
+    # to a strong random value (e.g. `openssl rand -hex 32`) and configure your
+    # scraper with `Authorization: Bearer <metrics_token>`.
+    metrics_token: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:
