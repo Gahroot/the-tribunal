@@ -113,6 +113,11 @@ export function VirtualContactSelector({
     },
   });
 
+  // TanStack Virtual's `useVirtualizer` mutates refs during render and is not
+  // compatible with the React Compiler's memoization. The compiler skips this
+  // file with a `react-hooks/incompatible-library` warning unless we silence
+  // it here. See https://github.com/TanStack/virtual/issues/743.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: contacts.length,
     getScrollElement: () => parentRef.current,
