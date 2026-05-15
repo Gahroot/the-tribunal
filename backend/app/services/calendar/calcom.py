@@ -8,7 +8,9 @@ Handles:
 """
 
 import asyncio
-from datetime import datetime, timedelta
+import random
+from datetime import UTC, datetime, timedelta
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import httpx
@@ -20,6 +22,43 @@ logger = structlog.get_logger()
 MAX_RETRIES = 3
 INITIAL_BACKOFF_SECONDS = 1
 MAX_BACKOFF_SECONDS = 30
+
+
+def _parse_retry_after(value: str | None, fallback: float) -> float:
+    """Parse a Retry-After header value.
+
+    Supports both delta-seconds (integer) and HTTP-date (RFC 7231) formats.
+    Returns ``fallback`` when the header is missing or unparseable.
+
+    Args:
+        value: Raw Retry-After header value.
+        fallback: Seconds to use when parsing fails.
+
+    Returns:
+        Non-negative number of seconds to wait before retrying.
+    """
+    if value is None:
+        return fallback
+
+    stripped = value.strip()
+    if not stripped:
+        return fallback
+
+    # delta-seconds form
+    if stripped.isascii() and stripped.isdigit():
+        return float(stripped)
+
+    # HTTP-date form (RFC 7231)
+    try:
+        parsed_date = parsedate_to_datetime(stripped)
+    except (TypeError, ValueError, IndexError):
+        return fallback
+
+    if parsed_date.tzinfo is None:
+        parsed_date = parsed_date.replace(tzinfo=UTC)
+
+    diff = (parsed_date - datetime.now(UTC)).total_seconds()
+    return max(0.0, diff)
 
 
 class CalComError(Exception):
@@ -155,17 +194,21 @@ class CalComService:
                             # Parse ISO time to extract date and time components
                             iso_time = slot_obj["time"]
                             # Format: "2024-01-15T15:00:00.000Z"
-                            slots.append({
-                                "date": date_key,
-                                "time": iso_time[11:16],  # Extract "15:00" from ISO
-                                "iso": iso_time,
-                            })
+                            slots.append(
+                                {
+                                    "date": date_key,
+                                    "time": iso_time[11:16],  # Extract "15:00" from ISO
+                                    "iso": iso_time,
+                                }
+                            )
                         elif isinstance(slot_obj, str):
                             # Fallback if it's just a time string
-                            slots.append({
-                                "date": date_key,
-                                "time": slot_obj,
-                            })
+                            slots.append(
+                                {
+                                    "date": date_key,
+                                    "time": slot_obj,
+                                }
+                            )
 
             log.info("availability_fetched", slot_count=len(slots))
             return slots
@@ -408,7 +451,12 @@ class CalComService:
         Raises:
             CalComError: If all retries fail
         """
-        backoff_seconds = INITIAL_BACKOFF_SECONDS
+        backoff_seconds: float = float(INITIAL_BACKOFF_SECONDS)
+
+        def _next_backoff(current: float) -> float:
+            """Apply randomized jitter and exponential growth, capped at max."""
+            jittered = current + random.uniform(0, current)
+            return min(jittered, float(MAX_BACKOFF_SECONDS))
 
         for attempt in range(MAX_RETRIES):
             try:
@@ -416,7 +464,10 @@ class CalComService:
 
                 # Handle rate limiting
                 if response.status_code == 429:
-                    retry_after = int(response.headers.get("retry-after", backoff_seconds))
+                    retry_after = _parse_retry_after(
+                        response.headers.get("retry-after"),
+                        fallback=backoff_seconds,
+                    )
                     self.logger.warning(
                         "rate_limit_hit",
                         attempt=attempt + 1,
@@ -425,9 +476,7 @@ class CalComService:
 
                     if attempt < MAX_RETRIES - 1:
                         await asyncio.sleep(retry_after)
-                        backoff_seconds = min(
-                            backoff_seconds * 2, MAX_BACKOFF_SECONDS
-                        )
+                        backoff_seconds = _next_backoff(backoff_seconds)
                         continue
 
                     raise CalComRateLimitError("Rate limit exceeded, max retries reached")
@@ -450,12 +499,10 @@ class CalComService:
                         attempt=attempt + 1,
                     )
 
+                    # Retry only on 5xx; 4xx are terminal (client errors).
                     if attempt < MAX_RETRIES - 1 and response.status_code >= 500:
-                        # Retry on server errors
                         await asyncio.sleep(backoff_seconds)
-                        backoff_seconds = min(
-                            backoff_seconds * 2, MAX_BACKOFF_SECONDS
-                        )
+                        backoff_seconds = _next_backoff(backoff_seconds)
                         continue
 
                     raise CalComError(f"API error: {error_msg}")
@@ -463,7 +510,7 @@ class CalComService:
                 # Success
                 return response.json()  # type: ignore[no-any-return]
 
-            except (TimeoutError, httpx.TimeoutException) as e:
+            except httpx.TimeoutException as e:
                 self.logger.warning(
                     "request_timeout",
                     attempt=attempt + 1,
@@ -472,12 +519,13 @@ class CalComService:
 
                 if attempt < MAX_RETRIES - 1:
                     await asyncio.sleep(backoff_seconds)
-                    backoff_seconds = min(backoff_seconds * 2, MAX_BACKOFF_SECONDS)
+                    backoff_seconds = _next_backoff(backoff_seconds)
                     continue
 
                 raise CalComError(f"Request timeout after {MAX_RETRIES} attempts") from e
 
-            except (httpx.ConnectError, httpx.NetworkError) as e:
+            except httpx.NetworkError as e:
+                # NetworkError covers ConnectError, ReadError, WriteError, etc.
                 self.logger.warning(
                     "network_error",
                     attempt=attempt + 1,
@@ -486,7 +534,7 @@ class CalComService:
 
                 if attempt < MAX_RETRIES - 1:
                     await asyncio.sleep(backoff_seconds)
-                    backoff_seconds = min(backoff_seconds * 2, MAX_BACKOFF_SECONDS)
+                    backoff_seconds = _next_backoff(backoff_seconds)
                     continue
 
                 raise CalComError(f"Network error after {MAX_RETRIES} attempts") from e
