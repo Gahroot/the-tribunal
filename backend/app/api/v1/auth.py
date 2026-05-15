@@ -1,5 +1,6 @@
 """Authentication endpoints."""
 
+import hashlib
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
@@ -40,6 +41,24 @@ router = APIRouter()
 # Max auth attempts per IP per 15-minute window
 _AUTH_RATE_LIMIT = 10
 _AUTH_RATE_WINDOW_MINUTES = 15
+
+# Max failed login attempts per *username* per 15-minute window. The IP-based
+# counter above is insufficient on its own: a distributed attacker can rotate
+# source IPs and brute-force a single account. Tracking failures by hashed
+# username caps the total bad attempts an account can absorb regardless of how
+# many source IPs the attacker controls.
+_USERNAME_LOCKOUT_LIMIT = 10
+_USERNAME_LOCKOUT_WINDOW_MINUTES = 15
+_LOGIN_FAILED_ENDPOINT = "login_failed"
+
+
+def _hash_username(username: str) -> str:
+    """Return a SHA-256 hex digest of the lowercased username.
+
+    Lowercased so case variations of the same email cannot bypass the lockout.
+    Hashed so the rate-limit table never stores plaintext account identifiers.
+    """
+    return hashlib.sha256(username.strip().lower().encode("utf-8")).hexdigest()
 
 _REFRESH_COOKIE_PATH = "/api/v1/auth"
 _REFRESH_COOKIE_MAX_AGE = 7 * 24 * 3600  # 7 days
@@ -130,6 +149,41 @@ async def _check_auth_rate_limit(db: AsyncSession, client_ip: str, endpoint: str
     await db.flush()
 
 
+async def _check_username_lockout(db: AsyncSession, username: str) -> bool:
+    """Return True iff the account is currently locked out.
+
+    Counts ``login_failed`` rows for this username's hash inside the rolling
+    window. The caller MUST treat a True result the same as a wrong-password
+    response (generic 401) so a probe cannot tell whether the account exists.
+    """
+    window_start = datetime.now(UTC) - timedelta(
+        minutes=_USERNAME_LOCKOUT_WINDOW_MINUTES
+    )
+    username_hash = _hash_username(username)
+
+    count_result = await db.execute(
+        select(func.count()).where(
+            AuthRateLimit.username_hash == username_hash,
+            AuthRateLimit.endpoint == _LOGIN_FAILED_ENDPOINT,
+            AuthRateLimit.created_at >= window_start,
+        )
+    )
+    count = count_result.scalar() or 0
+    return count >= _USERNAME_LOCKOUT_LIMIT
+
+
+async def _record_login_failure(db: AsyncSession, username: str, client_ip: str) -> None:
+    """Record a failed login attempt against the username's hash."""
+    db.add(
+        AuthRateLimit(
+            client_ip=client_ip,
+            endpoint=_LOGIN_FAILED_ENDPOINT,
+            username_hash=_hash_username(username),
+        )
+    )
+    await db.flush()
+
+
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(
     user_in: UserCreate,
@@ -178,11 +232,25 @@ async def login(
     client_ip = get_client_ip(request, settings.trusted_proxies)
     await _check_auth_rate_limit(db, client_ip, "login")
 
+    # Per-username lockout: if this account has accumulated too many recent
+    # failures (across any source IPs), short-circuit with a generic 401 even
+    # if the password is correct. This is the only check that defends against
+    # a distributed brute-force rotating through many IPs.
+    if await _check_username_lockout(db, form_data.username):
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     # Find user by email
     result = await db.execute(select(User).where(User.email == form_data.username))
     user = result.scalar_one_or_none()
 
     if user is None or not verify_password(form_data.password, user.hashed_password):
+        await _record_login_failure(db, form_data.username, client_ip)
+        await db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",

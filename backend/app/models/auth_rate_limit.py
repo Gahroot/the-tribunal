@@ -11,7 +11,15 @@ from app.db.base import Base
 
 
 class AuthRateLimit(Base):
-    """Track authentication requests for IP-based rate limiting."""
+    """Track authentication requests for IP- and username-based rate limiting.
+
+    A single row represents one attempt at an auth endpoint. The IP-based limiter
+    counts rows by ``client_ip``; the username-based lockout counts rows by
+    ``username_hash`` to prevent distributed brute-force across many IPs against
+    the same account. ``username_hash`` is only populated for the ``login_failed``
+    endpoint (rows recorded on bad credentials) so successful logins do not
+    consume a user's budget.
+    """
 
     __tablename__ = "auth_rate_limits"
 
@@ -21,7 +29,13 @@ class AuthRateLimit(Base):
     client_ip: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     endpoint: Mapped[str] = mapped_column(
         String(50), nullable=False
-    )  # "login", "register", "refresh"
+    )  # "login", "login_failed", "register", "refresh"
+    # SHA-256 hex digest of the lowercased username, or NULL for non-username
+    # endpoints. Hashed (not stored plaintext) so the table never enumerates
+    # account identifiers on its own.
+    username_hash: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(

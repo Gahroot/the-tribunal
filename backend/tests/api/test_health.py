@@ -91,11 +91,17 @@ class TestAuthEndpointErrors:
 
         mock_result = MagicMock(spec=Result)
         mock_result.scalar_one_or_none.return_value = None
+        # Lockout count query returns 0 (no prior failures) so the lockout
+        # short-circuit isn't tripped and we exercise the wrong-credentials
+        # 401 path.
+        mock_result.scalar.return_value = 0
 
         mock_db = AsyncMock()
         mock_db.execute = AsyncMock(return_value=mock_result)
         mock_db.__aenter__ = AsyncMock(return_value=mock_db)
         mock_db.__aexit__ = AsyncMock(return_value=None)
+        # ``Session.add`` is synchronous on the real AsyncSession.
+        mock_db.add = MagicMock(return_value=None)
 
         # Patch the rate limit check to be a no-op and the DB session
         with (

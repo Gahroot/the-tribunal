@@ -51,6 +51,9 @@ def _mock_db_no_user() -> AsyncMock:
     mock_db.execute = AsyncMock(return_value=mock_result)
     mock_db.__aenter__ = AsyncMock(return_value=mock_db)
     mock_db.__aexit__ = AsyncMock(return_value=None)
+    # ``Session.add`` is synchronous on the real AsyncSession; override the
+    # AsyncMock default so callers don't leak un-awaited coroutines.
+    mock_db.add = MagicMock(return_value=None)
     return mock_db
 
 
