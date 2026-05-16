@@ -26,7 +26,7 @@ After reading all schema files and route files, most of the migration is **alrea
 
 ### `appointments.py` — BROKEN (duplicate definitions + double router init)
 **Issues:**
-- Lines 13–18: First import block from `schemas.appointment` (correct)  
+- Lines 13–18: First import block from `schemas.appointment` (correct)
 - Lines 19–24: **Duplicate** of lines 13–18 (entire import block repeated)
 - Lines 37–38: First `router = APIRouter()` and `logger = structlog.get_logger()`
 - Lines 44–82: **Inline class definitions** (`AppointmentOverallStats`, `AppointmentAgentStat`, `AppointmentCampaignStat`, `AppointmentStatsResponse`) that shadow the imported ones
@@ -54,7 +54,7 @@ All 4 classes already exist identically in `schemas/appointment.py`.
 3. **Line 272**: Leading space before `@router.post` → `IndentationError`
 4. **Lines 754–763**: Corrupted/garbage code appended at end of file
 
-**Fix:** 
+**Fix:**
 - Add all missing schemas to `schemas/contact.py`
 - Completely rewrite `contacts.py` with clean top-level imports and no inline classes
 

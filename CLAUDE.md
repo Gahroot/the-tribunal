@@ -108,9 +108,25 @@ cd backend && uv run pytest                                     # Tests
 The app is deployed on Railway. Use `railway` CLI for logs, deploys, and environment management.
 This is a live, actively used CRM with real contact data. Never run destructive database operations (DROP, TRUNCATE, DELETE without WHERE) against production. Always test migrations locally first and back up data before schema changes that touch contact/lead tables.
 
+## Agent Toolchain
+
+This repo uses a **single canonical agent toolchain rooted at `.ezcoder/`**. Older `.claude/` and `.gg/` toolchain directories have been consolidated — do not recreate them.
+
+| Path | Purpose |
+|---|---|
+| `.ezcoder/commands/` | Slash commands (`commit`, `fix`, `test`, `update`). Authoritative — edit here. |
+| `.ezcoder/plans/` | Saved multi-file plans. |
+| `.ezcoder/skills/` | Reusable skill packages (e.g. `commit-work`). |
+| `.ezcoder/agents/` | Named sub-agent definitions. |
+| `.ezcoder/eyes/` | Perception-probe **metadata** — `manifest.json` + `journal.jsonl` (gitignored runtime state). |
+| `.gg/eyes/` | Perception-probe **shell scripts** (`visual-web.sh`, `http.sh`, `mail.sh`, `logs.sh`). Kept at `.gg/eyes/` because `.ezcoder/eyes/manifest.json` and the Eyes section below reference these paths. Gitignored — scripts are bootstrapped per-checkout. |
+| `.claude/worktrees/` | Agent runtime workspace. Gitignored. Leave alone. |
+
+**Do not create `.claude/commands/`, `.gg/commands/`, or `.gg/plans/`** — they are gitignored to block accidental re-introduction by IDE plugins. If you need a new command/plan, add it under `.ezcoder/`.
+
 ## Eyes
 
-Perception probes live in `.gg/eyes/`. All headless. Artifacts → `.gg/eyes/out/` (gitignored). Invoke probes yourself; don't ask the user to verify what you can verify.
+Perception probes live in `.gg/eyes/` (scripts) with metadata in `.ezcoder/eyes/`. All headless. Artifacts → `.gg/eyes/out/` (gitignored). Invoke probes yourself; don't ask the user to verify what you can verify.
 
 ### Available probes
 

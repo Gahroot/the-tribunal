@@ -114,9 +114,18 @@ card-*.html
 navigation-*.html
 generic-component-*.html
 
-# ezcoder-eyes
+# Agent perception probes — runtime artifacts only.
+# Probe scripts live under .gg/eyes/ (canonical); .ezcoder/eyes/ holds the
+# manifest + journal that point at them. Both contain transient state
+# (screenshots, captured mail, mailpit binary) so the whole tree is ignored.
 .ezcoder/eyes/
 .gg/eyes/
+
+# Legacy agent toolchains — consolidated into .ezcoder/ (see CLAUDE.md).
+# Keep these ignored so stray IDE configs don't re-introduce duplicates.
+.claude/commands/
+.gg/commands/
+.gg/plans/
 
 # Worktrees / agent scratch
 .claude/worktrees/

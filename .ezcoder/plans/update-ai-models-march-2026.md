@@ -103,7 +103,7 @@ Update all AI model references across the codebase to use the latest available m
 - `backend/app/services/ai/grok/constants.py`:
   - Update `GROK_VOICES` descriptions to match latest xAI docs more accurately
   - Update voice descriptions: Eve is "Professional, ideal for business use cases", Ara is "Default voice, balanced for general use", Leo is "Great for engaging, dynamic interactions"
-  
+
 - `frontend/src/lib/voice-constants.ts`:
   - Update `GROK_VOICES` array descriptions to match backend changes
 

@@ -54,7 +54,7 @@ async def send_appointment_reminder(
     """
     Send a manual reminder SMS for an appointment.
     Returns: {"success": bool, "message": str, "sent_to": str}
-    
+
     Does NOT mark offsets as sent (this is a manual send, not a scheduled one).
     DOES update reminder_sent_at on the appointment.
     Respects opt-out (raises ValueError with descriptive message).
@@ -67,7 +67,7 @@ async def send_appointment_reminder(
 3. Check opt-out via `OptOutManager().check_opt_out(workspace.id, contact_phone, db)` — raise `ValueError("Contact has opted out of SMS")`
 4. Call `resolve_from_number(db, contact.id, workspace.id, agent_id)` — raise `ValueError("No SMS-enabled phone number available for this workspace")` if None
 5. Render body with `render_reminder_body(agent.reminder_template if agent else None, contact, appointment, workspace, agent)`
-6. Call `TelnyxSMSService(telnyx_key).send_message(...)` 
+6. Call `TelnyxSMSService(telnyx_key).send_message(...)`
 7. Update `appointment.reminder_sent_at = datetime.now(UTC)` and `await db.commit()`
 8. Return `{"success": True, "message": "Reminder sent", "sent_to": mask_phone(contact_phone)}`
 

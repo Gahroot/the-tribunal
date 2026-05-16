@@ -47,7 +47,7 @@ You already have a working foundation:
 #### 2a. New auto-init widget: `frontend/public/widget/v1/loader.js`
 - Tiny (~2KB) script that:
   1. Reads `data-agent-id` from its own `<script>` tag
-  2. Fetches agent config from `/api/v1/p/embed/{id}/config` 
+  2. Fetches agent config from `/api/v1/p/embed/{id}/config`
   3. Creates the `<ai-agent>` web component with all settings pre-filled
 - Usage becomes: `<script src="https://app.com/widget/v1/loader.js" data-agent-id="ag_xK9mN2pQ" defer></script>`
 - One line. That's it. Auto-detects mode, theme, position, color from saved settings.
@@ -102,7 +102,7 @@ You already have a working foundation:
 - iframe code with `width="100%" height="100%"` or a direct link
 
 #### 5c. Update widget.js for inline mode
-- New attribute: `display="inline"` 
+- New attribute: `display="inline"`
 - Instead of fixed positioning, render directly in the page flow
 - Takes the size of its container element
 

@@ -41,7 +41,7 @@ After thorough exploration of both frontend and backend, I've identified **12 hi
 - `api/v1/dashboard.py` (19.2K) — All stats queries inline with zero service layer
 - `api/v1/prompt_versions.py` (22.6K) — Heavy business logic inline
 - `api/v1/voice_campaigns.py` (19.3K) — Direct DB queries
-- `api/v1/offers.py` (16.3K) — Direct DB queries  
+- `api/v1/offers.py` (16.3K) — Direct DB queries
 - `api/v1/opportunities.py` (16.8K) — Direct DB queries
 - `api/v1/campaigns.py` (15.7K) — Direct DB queries
 - `api/v1/agents.py` (15.7K) — Field-by-field Agent construction (lines 242-283)
@@ -93,7 +93,7 @@ After thorough exploration of both frontend and backend, I've identified **12 hi
 ```python
 # In workers/__init__.py or workers/registry.py
 WORKER_REGISTRIES = [
-    campaign_registry, voice_campaign_registry, followup_registry, 
+    campaign_registry, voice_campaign_registry, followup_registry,
     reminder_registry, message_test_registry, enrichment_registry,
     prompt_stats_registry, prompt_improvement_registry,
     experiment_evaluation_registry, automation_registry,
@@ -120,7 +120,7 @@ The `reputation_worker` is inconsistent — it uses `reputation_worker.start()/s
 
 **Problem:** The `Campaign` type in `types/index.ts` (lines 420-476) has backward-compat fields (`type?`, `sent_count?`, `delivered_count?`, `responded_count?`, `failed_count?`, `sms_template?`, `email_subject?`, etc.) alongside the current field names. There are also separate `SMSCampaign` and `VoiceCampaign` types that overlap heavily with `Campaign`.
 
-**Refactor:** 
+**Refactor:**
 - Remove backward-compat fields from `Campaign` (or confirm they're unused and delete)
 - Consider a discriminated union or shared base for campaign types
 - Audit if `SMSCampaign` / `VoiceCampaign` / `Campaign` can be consolidated
@@ -181,7 +181,7 @@ This pattern should be audited across all route files.
 
 **Problem:**
 - `frontend/src/lib/services/` — Empty directory
-- `frontend/src/lib/utils/placeholder.ts` — One small utility that probably belongs in a component file or a more general utils file  
+- `frontend/src/lib/utils/placeholder.ts` — One small utility that probably belongs in a component file or a more general utils file
 - `backend/app/utils/` — Check if anything is here vs unused
 
 **Refactor:** Remove empty directories and consolidate orphaned utilities.
@@ -209,7 +209,7 @@ This pattern should be audited across all route files.
 
 **Problem:** `useContacts.ts` lines 43-75 — `useAllContacts` loops through all pages to fetch every contact. For large workspaces, this is an unbounded memory and API load.
 
-**Refactor:** 
+**Refactor:**
 - Audit where this is used
 - Replace with server-side search/filter endpoints
 - If needed for bulk operations, use the existing `useContactIds` endpoint instead

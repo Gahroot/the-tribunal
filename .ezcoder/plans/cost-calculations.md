@@ -23,7 +23,7 @@ All data already exists in the `messages` table. No new migrations needed.
 
 ### Telnyx SMS
 - Outbound SMS (10DLC local): **$0.004 / segment**
-- Inbound SMS: **$0.004 / segment**  
+- Inbound SMS: **$0.004 / segment**
   (A segment = 160 chars GSM-7 or 70 chars UCS-2; estimate 1 segment per 160 chars)
 
 ---
@@ -90,7 +90,7 @@ SMS_CHARS_PER_SEGMENT = 160
 
 Add `get_cost_stats(workspace)` method that:
 1. Calculates this-month date range
-2. Queries voice messages (channel='voice') this month scoped to workspace, joins agent to filter `voice_provider='grok'`  
+2. Queries voice messages (channel='voice') this month scoped to workspace, joins agent to filter `voice_provider='grok'`
    — sums `duration_seconds`, counts calls
 3. Queries outbound SMS messages this month, sums `len(body)` via Python (or `func.sum(func.length(Message.body))` in SQL)
 4. Returns `CostStats` with breakdowns
@@ -135,7 +135,7 @@ Add `cost_stats: CostStats` to `DashboardResponse`.
 
 #### 5. `frontend/src/components/dashboard/cost-breakdown-card.tsx` (new file)
 New `CostBreakdownCard` component that receives `CostStats` and renders:
-- Card header: "Cost Breakdown · {period_label}"  
+- Card header: "Cost Breakdown · {period_label}"
 - Two rows: **Voice (Grok + Telnyx)** and **SMS (Telnyx)**
   - Each shows: count (calls or messages), minutes/segments, and cost
   - Inline cost breakdown tooltip showing Grok vs Telnyx split for voice
@@ -145,7 +145,7 @@ Use existing `Card`, `Badge`, `Tooltip` from shadcn/ui. Match dashboard card sty
 
 #### 6. `frontend/src/components/dashboard/dashboard-page.tsx`
 - Import `CostBreakdownCard` and `CostStats`
-- Add a skeleton for cost card  
+- Add a skeleton for cost card
 - Render `<CostBreakdownCard costStats={data?.cost_stats} isLoading={isLoading} />` in the bottom section of the dashboard (below agent stats, in its own row or alongside today's overview)
 
 ---

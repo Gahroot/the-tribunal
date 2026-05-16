@@ -87,7 +87,7 @@ class APIKey(Base):
 
 **New schema:** `app/schemas/api_key.py`
 - `APIKeyCreate(name, expires_in_days: int | None)`
-- `APIKeyResponse(id, name, key_prefix, is_active, last_used_at, created_at)` 
+- `APIKeyResponse(id, name, key_prefix, is_active, last_used_at, created_at)`
 - `APIKeyCreated(id, name, key, key_prefix)` — only returned on create (plaintext key shown once)
 
 **New endpoints:** `app/api/v1/api_keys.py` mounted at `/workspaces/{workspace_id}/api-keys`
@@ -143,7 +143,7 @@ Initialize the Go project, set up the skeleton matching pocket-agent-cli pattern
 
 `internal/contacts/contacts.go` — the biggest command group:
 - `trib contacts list` — with `--page`, `--limit`, `--status`, `--search`, `--tags`, `--sort`, `--qualified`, `--source`, `--score-min`, `--score-max`
-- `trib contacts get [id]` 
+- `trib contacts get [id]`
 - `trib contacts create` — with `--first-name`, `--last-name`, `--email`, `--phone`, `--company`, `--source`, `--notes`
 - `trib contacts update [id]` — same flags as create
 - `trib contacts delete [id]`

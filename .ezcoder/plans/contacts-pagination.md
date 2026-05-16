@@ -26,7 +26,7 @@ interface ResourceListPaginationProps {
 }
 ```
 
-Previous button: disabled when `!onPageChange || page <= 1`  
+Previous button: disabled when `!onPageChange || page <= 1`
 Next button: disabled when `!onPageChange || page >= totalPages`
 
 ---
@@ -125,7 +125,7 @@ Major refactor. Changes:
 
 **Add:**
 - Pull `contactsPage`, `contactsPageSize`, `contactsTotal`, `contactsTotalPages`, `setContactsPage` from store
-- Status counts computed from current page contacts only (per task: "accept current-page counts")  
+- Status counts computed from current page contacts only (per task: "accept current-page counts")
   - Exception: `all` count uses `contactsTotal` from store (the API's total for current filters)
 - `ResourceListPagination` at bottom of scroll area, below the grid, inside the ScrollArea
 - Debounce search input: local `inputValue` state, update `setSearchQuery` after 400ms debounce
