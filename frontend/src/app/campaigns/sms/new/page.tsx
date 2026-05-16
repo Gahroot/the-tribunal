@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { SMSCampaignWizard } from "@/components/campaigns/sms-campaign-wizard";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { Button } from "@/components/ui/button";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { agentsApi } from "@/lib/api/agents";
 import { offersApi } from "@/lib/api/offers";
 import { phoneNumbersApi } from "@/lib/api/phone-numbers";

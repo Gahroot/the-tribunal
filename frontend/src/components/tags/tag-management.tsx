@@ -24,8 +24,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { useTags, useCreateTag, useUpdateTag, useDeleteTag } from "@/hooks/useTags";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { TAG_COLORS, DEFAULT_TAG_COLOR } from "@/lib/tag-colors";
 import type { Tag } from "@/types";
 

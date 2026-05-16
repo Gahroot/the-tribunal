@@ -55,7 +55,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { callsApi } from "@/lib/api/calls";
 import { queryKeys } from "@/lib/query-keys";
 import { callStatusColors } from "@/lib/status-colors";

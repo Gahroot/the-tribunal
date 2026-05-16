@@ -53,7 +53,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { knowledgeDocumentsApi } from "@/lib/api/knowledge-documents";
 import { queryKeys } from "@/lib/query-keys";
 import { formatRelative } from "@/lib/utils/date";

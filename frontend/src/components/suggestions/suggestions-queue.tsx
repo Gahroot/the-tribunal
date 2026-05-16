@@ -39,7 +39,7 @@ import {
 import { PageEmptyState, PageLoadingState } from "@/components/ui/page-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import {
   improvementSuggestionsApi,
   type ImprovementSuggestionResponse,

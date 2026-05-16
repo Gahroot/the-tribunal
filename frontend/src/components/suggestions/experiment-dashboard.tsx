@@ -36,8 +36,8 @@ import {
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { useAgents } from "@/hooks/useAgents";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import {
   promptVersionsApi,
   type VersionComparisonResponse,

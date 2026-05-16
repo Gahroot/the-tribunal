@@ -20,8 +20,8 @@ import { useContactSidebarData } from "@/components/contacts/contact-sidebar/use
 import { ScheduleAppointmentDialog } from "@/components/contacts/schedule-appointment-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { useIsMobile } from "@/hooks/use-mobile";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useIsMobile } from "@/hooks/useMobile";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { useContactStore } from "@/lib/contact-store";
 import { messages } from "@/lib/messages";
 import { cn } from "@/lib/utils";

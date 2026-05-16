@@ -27,7 +27,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { appointmentsApi } from "@/lib/api/appointments";
 import { getRealtorStats, type RealtorStats } from "@/lib/api/realtor";
 import { queryKeys } from "@/lib/query-keys";

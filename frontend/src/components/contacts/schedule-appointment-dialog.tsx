@@ -41,8 +41,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { useAgents } from "@/hooks/useAgents";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { appointmentsApi, type CreateAppointmentRequest } from "@/lib/api/appointments";
 import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";

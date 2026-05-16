@@ -29,8 +29,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { useBulkDeleteContacts, useBulkUpdateStatus, useContactIds, useContactsPaginated } from "@/hooks/useContacts";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import type { ContactIdsParams, ContactsListParams } from "@/lib/api/contacts";
 import { useContactStore } from "@/lib/contact-store";
 import { queryKeys } from "@/lib/query-keys";

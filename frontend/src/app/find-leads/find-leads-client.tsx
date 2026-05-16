@@ -1,7 +1,7 @@
 "use client";
 
 import { FindLeadsPage } from "@/components/contacts/find-leads-page";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 
 export function FindLeadsClient() {
   const workspaceId = useWorkspaceId();

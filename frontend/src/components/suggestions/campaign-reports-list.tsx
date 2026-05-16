@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { BarChart3, Loader2 } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import {
   campaignReportsApi,
   type CampaignReportResponse,

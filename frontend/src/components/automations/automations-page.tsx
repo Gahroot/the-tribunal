@@ -62,7 +62,6 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import {
   useAutomations,
   useCreateAutomation,
@@ -70,6 +69,7 @@ import {
   useDeleteAutomation,
   useToggleAutomation,
 } from "@/hooks/useAutomations";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { automationsApi } from "@/lib/api/automations";
 import { queryKeys } from "@/lib/query-keys";
 import { formatDate } from "@/lib/utils/date";

@@ -19,8 +19,8 @@ import {
 } from "@/components/dashboard/today-overview";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { useDashboard } from "@/hooks/useDashboard";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 
 function ErrorState({ error }: { error: Error }) {
   return (

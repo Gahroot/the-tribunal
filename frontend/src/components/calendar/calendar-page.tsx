@@ -38,8 +38,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { useAppointments, useDeleteAppointment } from "@/hooks/useAppointments";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { appointmentsApi } from "@/lib/api/appointments";
 import { appointmentStatusColors } from "@/lib/status-colors";
 import { formatDate, addDays, startOfWeek, endOfWeek, isSameDay } from "@/lib/utils/date";

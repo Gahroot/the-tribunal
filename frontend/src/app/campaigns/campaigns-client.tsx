@@ -1,7 +1,7 @@
 "use client";
 
 import { CampaignsList } from "@/components/campaigns/campaigns-list";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 
 export function CampaignsClient() {
   const workspaceId = useWorkspaceId();

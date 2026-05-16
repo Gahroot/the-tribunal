@@ -10,7 +10,7 @@ import { ExperimentDashboard } from "@/components/suggestions/experiment-dashboa
 import { SuggestionsQueue } from "@/components/suggestions/suggestions-queue";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { campaignReportsApi } from "@/lib/api/campaign-reports";
 import { improvementSuggestionsApi } from "@/lib/api/improvement-suggestions";
 import { queryKeys } from "@/lib/query-keys";

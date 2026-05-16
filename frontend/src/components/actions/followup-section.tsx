@@ -18,7 +18,6 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import {
   useFollowupSettings,
   useUpdateFollowupSettings,
@@ -26,6 +25,7 @@ import {
   useSendFollowup,
   useResetFollowupCounter,
 } from "@/hooks/useFollowups";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { conversationsApi } from "@/lib/api/conversations";
 import { useContactStore } from "@/lib/contact-store";
 import { queryKeys } from "@/lib/query-keys";

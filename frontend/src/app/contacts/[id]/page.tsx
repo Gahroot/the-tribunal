@@ -5,8 +5,8 @@ import { use, useEffect } from "react";
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { ConversationLayout } from "@/components/layout/conversation-layout";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { useContact } from "@/hooks/useContacts";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { useContactStore } from "@/lib/contact-store";
 
 interface PageProps {

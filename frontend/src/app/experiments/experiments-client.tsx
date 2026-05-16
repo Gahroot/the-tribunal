@@ -1,7 +1,7 @@
 "use client";
 
 import { ExperimentsList } from "@/components/experiments/experiments-list";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 
 export function ExperimentsClient() {
   const workspaceId = useWorkspaceId();

@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   useAssistantHistory,
   useAssistantChat,
-} from "@/hooks/use-assistant";
+} from "@/hooks/useAssistant";
 import type { AssistantMessageResponse } from "@/lib/api/assistant";
 import { cn } from "@/lib/utils";
 import { formatTime } from "@/lib/utils/date";

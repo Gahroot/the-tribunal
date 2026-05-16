@@ -25,8 +25,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { useCampaignAnalytics } from "@/hooks/useCampaigns";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { campaignsApi } from "@/lib/api/campaigns";
 import { queryKeys } from "@/lib/query-keys";
 import { campaignStatusColors } from "@/lib/status-colors";

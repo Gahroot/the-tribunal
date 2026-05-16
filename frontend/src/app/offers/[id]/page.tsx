@@ -10,7 +10,7 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { OfferBuilderWizard } from "@/components/offers/offer-builder-wizard";
 import { Button } from "@/components/ui/button";
 import { PageErrorState, PageLoadingState } from "@/components/ui/page-state";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { offersApi } from "@/lib/api/offers";
 import { queryKeys } from "@/lib/query-keys";
 

@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 
 import { PageErrorState, PageLoadingState } from "@/components/ui/page-state";
-import { useContactEngagement } from "@/hooks/use-contact-engagement";
+import { useContactEngagement } from "@/hooks/useContactEngagement";
 import { formatDate } from "@/lib/utils/date";
 
 interface EngagementSummaryProps {

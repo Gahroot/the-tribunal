@@ -78,7 +78,7 @@ import {
   SidebarTrigger,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { nudgesApi } from "@/lib/api/nudges";
 import { pendingActionsApi } from "@/lib/api/pending-actions";
 import { queryKeys } from "@/lib/query-keys";

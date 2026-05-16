@@ -9,7 +9,7 @@ import { ContactSidebar } from "@/components/contacts/contact-sidebar";
 import { ConversationFeed } from "@/components/conversation/conversation-feed";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { useIsMobile } from "@/hooks/useMobile";
 import { cn } from "@/lib/utils";
 
 interface ConversationLayoutProps {

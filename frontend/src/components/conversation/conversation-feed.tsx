@@ -9,7 +9,6 @@ import { toast } from "sonner";
 import { PageEmptyState } from "@/components/ui/page-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { useAgents } from "@/hooks/useAgents";
 import { useContactTimeline } from "@/hooks/useContacts";
 import {
@@ -18,6 +17,7 @@ import {
   useClearConversationHistory,
 } from "@/hooks/useConversations";
 import { usePhoneNumbers } from "@/hooks/usePhoneNumbers";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { conversationsApi } from "@/lib/api/conversations";
 import { useContactStore } from "@/lib/contact-store";
 import { queryKeys } from "@/lib/query-keys";

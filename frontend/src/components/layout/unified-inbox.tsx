@@ -7,7 +7,7 @@ import { ContactSidebar } from "@/components/contacts/contact-sidebar";
 import { ContactsList } from "@/components/contacts/contacts-list";
 import { ConversationFeed } from "@/components/conversation/conversation-feed";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { useIsMobile } from "@/hooks/useMobile";
 import { useContactStore } from "@/lib/contact-store";
 import { cn } from "@/lib/utils";
 

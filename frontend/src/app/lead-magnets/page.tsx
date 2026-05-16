@@ -66,7 +66,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { leadMagnetsApi, CreateLeadMagnetRequest } from "@/lib/api/lead-magnets";
 import { queryKeys } from "@/lib/query-keys";
 import type { LeadMagnet, LeadMagnetType, DeliveryMethod } from "@/types";

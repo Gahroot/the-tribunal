@@ -22,7 +22,7 @@ import * as z from "zod";
 
 import { Button } from "@/components/ui/button";
 import { Form } from "@/components/ui/form";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { agentsApi, type CreateAgentRequest } from "@/lib/api/agents";
 import { getLanguagesForTier, getFallbackLanguage } from "@/lib/languages";
 import { PRICING_TIERS } from "@/lib/pricing-tiers";

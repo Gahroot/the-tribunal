@@ -9,7 +9,7 @@ import { MessageTestWizard } from "@/components/experiments/message-test-wizard"
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { Button } from "@/components/ui/button";
 import { PageLoadingState } from "@/components/ui/page-state";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { agentsApi } from "@/lib/api/agents";
 import { contactsApi } from "@/lib/api/contacts";
 import {

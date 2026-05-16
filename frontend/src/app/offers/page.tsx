@@ -40,7 +40,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { PageEmptyState } from "@/components/ui/page-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { offersApi } from "@/lib/api/offers";
 import { queryKeys } from "@/lib/query-keys";
 import { formatNumber } from "@/lib/utils/number";

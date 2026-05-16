@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Loader2, TrendingUp } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import {
   promptVersionsApi,
   type PromptVersionResponse,

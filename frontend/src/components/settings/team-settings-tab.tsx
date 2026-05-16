@@ -8,7 +8,7 @@ import { TeamMemberRoleDialog } from "@/components/settings/team/team-member-rol
 import { TeamMembersList } from "@/components/settings/team/team-members-list";
 import { WorkspaceDetailsCard } from "@/components/settings/team/workspace-details-card";
 import { InviteMemberDialog } from "@/components/workspaces/invite-member-dialog";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import type { TeamMember } from "@/lib/api/settings";
 import { useWorkspace } from "@/providers/workspace-provider";
 

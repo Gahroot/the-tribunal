@@ -33,8 +33,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { contactQueryKeys } from "@/hooks/useContacts";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import {
   contactsApi,
   type CreateContactRequest,
