@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Base
+from app.db.scope import apply_workspace_scope
 
 type IdType = uuid.UUID | int
 
@@ -40,7 +41,7 @@ async def get_or_404[ModelT: Base](
     query = select(model).where(model.id == id)  # type: ignore[attr-defined]
 
     if workspace_id is not None:
-        query = query.where(model.workspace_id == workspace_id)  # type: ignore[attr-defined]
+        query = apply_workspace_scope(query, model, workspace_id)
 
     if options:
         for opt in options:

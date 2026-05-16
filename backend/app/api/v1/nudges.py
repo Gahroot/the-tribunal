@@ -10,6 +10,7 @@ from sqlalchemy.orm import joinedload
 
 from app.api.deps import DB, WorkspaceAccess
 from app.db.pagination import paginate
+from app.db.scope import apply_workspace_scope
 from app.models.contact import Contact
 from app.models.human_nudge import HumanNudge
 from app.models.workspace import WorkspaceIntegration
@@ -62,12 +63,11 @@ async def _get_nudge_or_404(
 ) -> HumanNudge:
     """Fetch a nudge by ID, ensuring it belongs to the workspace."""
     result = await db.execute(
-        select(HumanNudge)
-        .options(joinedload(HumanNudge.contact))
-        .where(
-            HumanNudge.id == nudge_id,
-            HumanNudge.workspace_id == workspace_id,
-        )
+        apply_workspace_scope(
+            select(HumanNudge).options(joinedload(HumanNudge.contact)),
+            HumanNudge,
+            workspace_id,
+        ).where(HumanNudge.id == nudge_id)
     )
     nudge = result.unique().scalar_one_or_none()
     if not nudge:
@@ -92,12 +92,11 @@ async def list_nudges(
 
     Defaults to showing pending and sent nudges, ordered by due_date ascending.
     """
-    query = (
-        select(HumanNudge)
-        .options(joinedload(HumanNudge.contact))
-        .where(HumanNudge.workspace_id == workspace.id)
-        .order_by(HumanNudge.due_date.asc())
-    )
+    query = apply_workspace_scope(
+        select(HumanNudge).options(joinedload(HumanNudge.contact)),
+        HumanNudge,
+        workspace.id,
+    ).order_by(HumanNudge.due_date.asc())
 
     if status_filter:
         query = query.where(HumanNudge.status == status_filter)
@@ -128,9 +127,11 @@ async def get_nudge_stats(
 ) -> NudgeStatsResponse:
     """Get nudge counts grouped by status."""
     result = await db.execute(
-        select(HumanNudge.status, func.count(HumanNudge.id))
-        .where(HumanNudge.workspace_id == workspace.id)
-        .group_by(HumanNudge.status)
+        apply_workspace_scope(
+            select(HumanNudge.status, func.count(HumanNudge.id)),
+            HumanNudge,
+            workspace.id,
+        ).group_by(HumanNudge.status)
     )
     counts: dict[str, int] = {row[0]: row[1] for row in result.all()}
 
@@ -156,9 +157,7 @@ async def act_on_nudge(
 
     if body and body.action_taken == "send_card":
         # Load contact for address
-        contact_result = await db.execute(
-            select(Contact).where(Contact.id == nudge.contact_id)
-        )
+        contact_result = await db.execute(select(Contact).where(Contact.id == nudge.contact_id))
         contact = contact_result.scalar_one_or_none()
         if not contact or not contact.has_address:
             raise HTTPException(
@@ -168,9 +167,12 @@ async def act_on_nudge(
 
         # Load Lob integration
         integration_result = await db.execute(
-            select(WorkspaceIntegration).where(
+            apply_workspace_scope(
+                select(WorkspaceIntegration),
+                WorkspaceIntegration,
+                workspace.id,
+            ).where(
                 WorkspaceIntegration.integration_type == "lob",
-                WorkspaceIntegration.workspace_id == workspace.id,
                 WorkspaceIntegration.is_active.is_(True),
             )
         )
@@ -183,9 +185,7 @@ async def act_on_nudge(
 
         # Get sender address from workspace card settings
         card_settings: dict[str, str] = workspace.settings.get("card_service", {})
-        if not card_settings.get("from_name") or not card_settings.get(
-            "from_address_line1"
-        ):
+        if not card_settings.get("from_name") or not card_settings.get("from_address_line1"):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Sender address not configured in card settings.",

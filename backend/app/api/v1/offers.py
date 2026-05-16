@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.api.crud import get_or_404
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.db.pagination import paginate
+from app.db.scope import apply_workspace_scope
 from app.models.contact import Contact
 from app.models.lead_magnet import LeadMagnet
 from app.models.lead_magnet_lead import LeadMagnetLead
@@ -75,7 +76,7 @@ async def list_offers(
     active_only: bool = False,
 ) -> PaginatedOffers:
     """List offers in a workspace."""
-    query = select(Offer).where(Offer.workspace_id == workspace_id)
+    query = apply_workspace_scope(select(Offer), Offer, workspace_id)
 
     if active_only:
         query = query.where(Offer.is_active.is_(True))
@@ -212,9 +213,8 @@ async def attach_lead_magnets(
 
     # Verify all lead magnets exist in this workspace
     result = await db.execute(
-        select(LeadMagnet).where(
+        apply_workspace_scope(select(LeadMagnet), LeadMagnet, workspace_id).where(
             LeadMagnet.id.in_(lead_magnet_ids),
-            LeadMagnet.workspace_id == workspace_id,
         )
     )
     found_magnets = {lm.id for lm in result.scalars().all()}
@@ -228,17 +228,13 @@ async def attach_lead_magnets(
 
     # Get current max sort order
     max_order_result = await db.execute(
-        select(func.max(OfferLeadMagnet.sort_order)).where(
-            OfferLeadMagnet.offer_id == offer_id
-        )
+        select(func.max(OfferLeadMagnet.sort_order)).where(OfferLeadMagnet.offer_id == offer_id)
     )
     max_order: int = max_order_result.scalar() or 0
 
     # Attach lead magnets (skip if already attached)
     result = await db.execute(
-        select(OfferLeadMagnet.lead_magnet_id).where(
-            OfferLeadMagnet.offer_id == offer_id
-        )
+        select(OfferLeadMagnet.lead_magnet_id).where(OfferLeadMagnet.offer_id == offer_id)
     )
     existing_ids = {row[0] for row in result.all()}
 
@@ -345,9 +341,7 @@ async def get_public_offer(
     """Get a public offer by its slug."""
     result = await db.execute(
         select(Offer)
-        .options(
-            selectinload(Offer.offer_lead_magnets).selectinload(OfferLeadMagnet.lead_magnet)
-        )
+        .options(selectinload(Offer.offer_lead_magnets).selectinload(OfferLeadMagnet.lead_magnet))
         .where(
             Offer.public_slug == slug,
             Offer.is_public.is_(True),
@@ -387,9 +381,7 @@ async def get_public_offer(
     # Convert raw dicts to ValueStackItem models
     value_stack: list[ValueStackItem] | None = None
     if offer.value_stack_items:
-        value_stack = [
-            ValueStackItem.model_validate(item) for item in offer.value_stack_items
-        ]
+        value_stack = [ValueStackItem.model_validate(item) for item in offer.value_stack_items]
 
     return PublicOfferResponse(
         name=offer.name,
@@ -460,18 +452,16 @@ async def submit_offer_optin(
     contact: Contact | None = None
     if optin.email:
         contact_result = await db.execute(
-            select(Contact).where(
-                Contact.workspace_id == offer.workspace_id,
-                Contact.email == optin.email,
+            apply_workspace_scope(select(Contact), Contact, offer.workspace_id).where(
+                Contact.email == optin.email
             )
         )
         contact = contact_result.scalar_one_or_none()
 
     if not contact and optin.phone_number:
         contact_result = await db.execute(
-            select(Contact).where(
-                Contact.workspace_id == offer.workspace_id,
-                Contact.phone_number == optin.phone_number,
+            apply_workspace_scope(select(Contact), Contact, offer.workspace_id).where(
+                Contact.phone_number == optin.phone_number
             )
         )
         contact = contact_result.scalar_one_or_none()

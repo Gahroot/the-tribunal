@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.db.pagination import paginate
+from app.db.scope import apply_workspace_scope
 from app.models.campaign import Campaign
 from app.models.campaign_report import CampaignReport
 from app.models.workspace import Workspace
@@ -32,10 +33,8 @@ async def list_reports(
     page_size: int = Query(20, ge=1, le=100),
 ) -> CampaignReportListResponse:
     """List campaign reports for the workspace."""
-    query = (
-        select(CampaignReport)
-        .where(CampaignReport.workspace_id == workspace_id)
-        .order_by(CampaignReport.created_at.desc())
+    query = apply_workspace_scope(select(CampaignReport), CampaignReport, workspace_id).order_by(
+        CampaignReport.created_at.desc()
     )
 
     if status_filter:
@@ -85,10 +84,11 @@ async def get_report_count(
 ) -> dict[str, int]:
     """Get count of completed reports for the workspace."""
     result = await db.execute(
-        select(func.count(CampaignReport.id)).where(
-            CampaignReport.workspace_id == workspace_id,
-            CampaignReport.status == "completed",
-        )
+        apply_workspace_scope(
+            select(func.count(CampaignReport.id)),
+            CampaignReport,
+            workspace_id,
+        ).where(CampaignReport.status == "completed")
     )
     count = result.scalar() or 0
     return {"report_count": count}
@@ -104,9 +104,8 @@ async def get_report_by_campaign(
 ) -> CampaignReportResponse:
     """Get report by campaign ID."""
     result = await db.execute(
-        select(CampaignReport).where(
-            CampaignReport.campaign_id == campaign_id,
-            CampaignReport.workspace_id == workspace_id,
+        apply_workspace_scope(select(CampaignReport), CampaignReport, workspace_id).where(
+            CampaignReport.campaign_id == campaign_id
         )
     )
     report = result.scalar_one_or_none()
@@ -130,9 +129,8 @@ async def get_report(
 ) -> CampaignReportResponse:
     """Get a full campaign report."""
     result = await db.execute(
-        select(CampaignReport).where(
-            CampaignReport.id == report_id,
-            CampaignReport.workspace_id == workspace_id,
+        apply_workspace_scope(select(CampaignReport), CampaignReport, workspace_id).where(
+            CampaignReport.id == report_id
         )
     )
     report = result.scalar_one_or_none()
@@ -161,9 +159,8 @@ async def generate_report(
     """Trigger report generation for a campaign."""
     # Verify campaign belongs to workspace
     camp_result = await db.execute(
-        select(Campaign).where(
-            Campaign.id == campaign_id,
-            Campaign.workspace_id == workspace_id,
+        apply_workspace_scope(select(Campaign), Campaign, workspace_id).where(
+            Campaign.id == campaign_id
         )
     )
     campaign = camp_result.scalar_one_or_none()
@@ -185,14 +182,10 @@ async def generate_report(
         ) from e
 
 
-async def _build_report_response(
-    db: DB, report: CampaignReport
-) -> CampaignReportResponse:
+async def _build_report_response(db: DB, report: CampaignReport) -> CampaignReportResponse:
     """Build a full report response with joined campaign info."""
     camp_result = await db.execute(
-        select(Campaign.name, Campaign.campaign_type).where(
-            Campaign.id == report.campaign_id
-        )
+        select(Campaign.name, Campaign.campaign_type).where(Campaign.id == report.campaign_id)
     )
     camp_row = camp_result.one_or_none()
 

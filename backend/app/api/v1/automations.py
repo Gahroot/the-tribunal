@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.db.pagination import paginate
+from app.db.scope import apply_workspace_scope
 from app.models.automation import Automation
 from app.models.workspace import Workspace
 from app.schemas.automation import (
@@ -32,28 +33,32 @@ async def get_automation_stats(
     """Get automation statistics for a workspace."""
     # Total automations
     total_result = await db.execute(
-        select(func.count()).select_from(Automation).where(
-            Automation.workspace_id == workspace_id,
+        apply_workspace_scope(
+            select(func.count()).select_from(Automation),
+            Automation,
+            workspace_id,
         )
     )
     total = total_result.scalar_one()
 
     # Active automations
     active_result = await db.execute(
-        select(func.count()).select_from(Automation).where(
-            Automation.workspace_id == workspace_id,
-            Automation.is_active.is_(True),
-        )
+        apply_workspace_scope(
+            select(func.count()).select_from(Automation),
+            Automation,
+            workspace_id,
+        ).where(Automation.is_active.is_(True))
     )
     active = active_result.scalar_one()
 
     # Triggered today
     today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     triggered_today_result = await db.execute(
-        select(func.count()).select_from(Automation).where(
-            Automation.workspace_id == workspace_id,
-            Automation.last_triggered_at >= today_start,
-        )
+        apply_workspace_scope(
+            select(func.count()).select_from(Automation),
+            Automation,
+            workspace_id,
+        ).where(Automation.last_triggered_at >= today_start)
     )
     triggered_today = triggered_today_result.scalar_one()
 
@@ -75,7 +80,7 @@ async def list_automations(
     active_only: bool = False,
 ) -> PaginatedAutomations:
     """List automations in a workspace."""
-    query = select(Automation).where(Automation.workspace_id == workspace_id)
+    query = apply_workspace_scope(select(Automation), Automation, workspace_id)
 
     if active_only:
         query = query.where(Automation.is_active.is_(True))
@@ -116,9 +121,8 @@ async def get_automation(
 ) -> Automation:
     """Get an automation by ID."""
     result = await db.execute(
-        select(Automation).where(
-            Automation.id == automation_id,
-            Automation.workspace_id == workspace_id,
+        apply_workspace_scope(select(Automation), Automation, workspace_id).where(
+            Automation.id == automation_id
         )
     )
     automation = result.scalar_one_or_none()
@@ -143,9 +147,8 @@ async def update_automation(
 ) -> Automation:
     """Update an automation."""
     result = await db.execute(
-        select(Automation).where(
-            Automation.id == automation_id,
-            Automation.workspace_id == workspace_id,
+        apply_workspace_scope(select(Automation), Automation, workspace_id).where(
+            Automation.id == automation_id
         )
     )
     automation = result.scalar_one_or_none()
@@ -185,9 +188,8 @@ async def delete_automation(
 ) -> None:
     """Delete an automation."""
     result = await db.execute(
-        select(Automation).where(
-            Automation.id == automation_id,
-            Automation.workspace_id == workspace_id,
+        apply_workspace_scope(select(Automation), Automation, workspace_id).where(
+            Automation.id == automation_id
         )
     )
     automation = result.scalar_one_or_none()
@@ -212,9 +214,8 @@ async def toggle_automation(
 ) -> Automation:
     """Toggle automation active status."""
     result = await db.execute(
-        select(Automation).where(
-            Automation.id == automation_id,
-            Automation.workspace_id == workspace_id,
+        apply_workspace_scope(select(Automation), Automation, workspace_id).where(
+            Automation.id == automation_id
         )
     )
     automation = result.scalar_one_or_none()

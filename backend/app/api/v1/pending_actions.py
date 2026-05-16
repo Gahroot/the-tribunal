@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.db.pagination import paginate
+from app.db.scope import apply_workspace_scope
 from app.models.pending_action import PendingAction
 from app.models.workspace import Workspace
 from app.schemas.pending_action import (
@@ -58,9 +59,11 @@ async def get_stats(
 ) -> dict[str, int]:
     """Get pending action counts grouped by status."""
     result = await db.execute(
-        select(PendingAction.status, func.count(PendingAction.id))
-        .where(PendingAction.workspace_id == workspace_id)
-        .group_by(PendingAction.status)
+        apply_workspace_scope(
+            select(PendingAction.status, func.count(PendingAction.id)),
+            PendingAction,
+            workspace_id,
+        ).group_by(PendingAction.status)
     )
     counts: dict[str, int] = {row[0]: row[1] for row in result.all()}
 
@@ -85,10 +88,8 @@ async def list_actions(
     page_size: int = Query(20, ge=1, le=100),
 ) -> PendingActionListResponse:
     """List pending actions for a workspace with optional filters."""
-    query = (
-        select(PendingAction)
-        .where(PendingAction.workspace_id == workspace_id)
-        .order_by(PendingAction.created_at.desc())
+    query = apply_workspace_scope(select(PendingAction), PendingAction, workspace_id).order_by(
+        PendingAction.created_at.desc()
     )
 
     if status_filter:
@@ -118,9 +119,8 @@ async def get_action(
 ) -> PendingActionResponse:
     """Get a specific pending action."""
     result = await db.execute(
-        select(PendingAction).where(
-            PendingAction.id == action_id,
-            PendingAction.workspace_id == workspace_id,
+        apply_workspace_scope(select(PendingAction), PendingAction, workspace_id).where(
+            PendingAction.id == action_id
         )
     )
     action = result.scalar_one_or_none()
@@ -146,9 +146,8 @@ async def approve_action(
     """Approve a pending action for execution."""
     # Verify action belongs to workspace
     result = await db.execute(
-        select(PendingAction).where(
-            PendingAction.id == action_id,
-            PendingAction.workspace_id == workspace_id,
+        apply_workspace_scope(select(PendingAction), PendingAction, workspace_id).where(
+            PendingAction.id == action_id
         )
     )
     action = result.scalar_one_or_none()
@@ -186,9 +185,8 @@ async def reject_action(
     """Reject a pending action."""
     # Verify action belongs to workspace
     result = await db.execute(
-        select(PendingAction).where(
-            PendingAction.id == action_id,
-            PendingAction.workspace_id == workspace_id,
+        apply_workspace_scope(select(PendingAction), PendingAction, workspace_id).where(
+            PendingAction.id == action_id
         )
     )
     action = result.scalar_one_or_none()

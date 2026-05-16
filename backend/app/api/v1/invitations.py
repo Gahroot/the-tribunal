@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 from app.api.crud import get_nested_or_404
 from app.api.deps import DB, CurrentUser, OptionalCurrentUser
 from app.core.config import settings
+from app.db.scope import apply_workspace_scope
 from app.models.invitation import WorkspaceInvitation
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMembership
@@ -33,9 +34,8 @@ async def verify_workspace_admin(
 ) -> WorkspaceMembership:
     """Verify user has admin access to workspace."""
     result = await db.execute(
-        select(WorkspaceMembership).where(
-            WorkspaceMembership.user_id == current_user.id,
-            WorkspaceMembership.workspace_id == workspace_id,
+        apply_workspace_scope(select(WorkspaceMembership), WorkspaceMembership, workspace_id).where(
+            WorkspaceMembership.user_id == current_user.id
         )
     )
     membership = result.scalar_one_or_none()
@@ -65,12 +65,12 @@ async def list_invitations(
     await verify_workspace_admin(db, current_user, workspace_id)
 
     result = await db.execute(
-        select(WorkspaceInvitation)
-        .options(selectinload(WorkspaceInvitation.invited_by))
-        .where(
-            WorkspaceInvitation.workspace_id == workspace_id,
-            WorkspaceInvitation.status == "pending",
+        apply_workspace_scope(
+            select(WorkspaceInvitation).options(selectinload(WorkspaceInvitation.invited_by)),
+            WorkspaceInvitation,
+            workspace_id,
         )
+        .where(WorkspaceInvitation.status == "pending")
         .order_by(WorkspaceInvitation.created_at.desc())
     )
     invitations = result.scalars().all()
@@ -104,9 +104,7 @@ async def create_invitation(
     await verify_workspace_admin(db, current_user, workspace_id)
 
     # Get workspace details
-    result = await db.execute(
-        select(Workspace).where(Workspace.id == workspace_id)
-    )
+    result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
     workspace = result.scalar_one_or_none()
     if workspace is None:
         raise HTTPException(
@@ -115,17 +113,14 @@ async def create_invitation(
         )
 
     # Check if user is already a member
-    result = await db.execute(
-        select(User).where(User.email == invitation_data.email)
-    )
+    result = await db.execute(select(User).where(User.email == invitation_data.email))
     existing_user = result.scalar_one_or_none()
 
     if existing_user:
         result = await db.execute(
-            select(WorkspaceMembership).where(
-                WorkspaceMembership.user_id == existing_user.id,
-                WorkspaceMembership.workspace_id == workspace_id,
-            )
+            apply_workspace_scope(
+                select(WorkspaceMembership), WorkspaceMembership, workspace_id
+            ).where(WorkspaceMembership.user_id == existing_user.id)
         )
         if result.scalar_one_or_none():
             raise HTTPException(
@@ -135,8 +130,7 @@ async def create_invitation(
 
     # Check for existing pending invitation
     result = await db.execute(
-        select(WorkspaceInvitation).where(
-            WorkspaceInvitation.workspace_id == workspace_id,
+        apply_workspace_scope(select(WorkspaceInvitation), WorkspaceInvitation, workspace_id).where(
             WorkspaceInvitation.email == invitation_data.email,
             WorkspaceInvitation.status == "pending",
         )
@@ -321,10 +315,11 @@ async def accept_invitation(
 
     # Check if already a member
     result = await db.execute(
-        select(WorkspaceMembership).where(
-            WorkspaceMembership.user_id == current_user.id,
-            WorkspaceMembership.workspace_id == invitation.workspace_id,
-        )
+        apply_workspace_scope(
+            select(WorkspaceMembership),
+            WorkspaceMembership,
+            invitation.workspace_id,
+        ).where(WorkspaceMembership.user_id == current_user.id)
     )
     if result.scalar_one_or_none():
         # Already a member, just mark invitation as accepted

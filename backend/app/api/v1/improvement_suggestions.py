@@ -10,6 +10,7 @@ from sqlalchemy import extract, func, select
 from app.api.crud import get_or_404
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.db.pagination import paginate
+from app.db.scope import apply_workspace_scope
 from app.models.agent import Agent
 from app.models.improvement_suggestion import ImprovementSuggestion
 from app.models.prompt_version import PromptVersion
@@ -42,12 +43,11 @@ async def list_suggestions(
     Optionally filter by agent_id and/or status.
     """
     # Build query with workspace filter via agent
-    query = (
-        select(ImprovementSuggestion)
-        .join(Agent, ImprovementSuggestion.agent_id == Agent.id)
-        .where(Agent.workspace_id == workspace_id)
-        .order_by(ImprovementSuggestion.created_at.desc())
-    )
+    query = apply_workspace_scope(
+        select(ImprovementSuggestion).join(Agent, ImprovementSuggestion.agent_id == Agent.id),
+        Agent,
+        workspace_id,
+    ).order_by(ImprovementSuggestion.created_at.desc())
 
     if agent_id:
         query = query.where(ImprovementSuggestion.agent_id == agent_id)
@@ -93,12 +93,13 @@ async def get_pending_count(
 ) -> dict[str, int]:
     """Get count of pending suggestions for the workspace."""
     result = await db.execute(
-        select(func.count(ImprovementSuggestion.id))
-        .join(Agent, ImprovementSuggestion.agent_id == Agent.id)
-        .where(
-            Agent.workspace_id == workspace_id,
-            ImprovementSuggestion.status == "pending",
-        )
+        apply_workspace_scope(
+            select(func.count(ImprovementSuggestion.id)).join(
+                Agent, ImprovementSuggestion.agent_id == Agent.id
+            ),
+            Agent,
+            workspace_id,
+        ).where(ImprovementSuggestion.status == "pending")
     )
     count = result.scalar() or 0
 
@@ -118,33 +119,38 @@ async def get_suggestion_stats(
     """
     # Approved count
     approved_result = await db.execute(
-        select(func.count(ImprovementSuggestion.id))
-        .join(Agent, ImprovementSuggestion.agent_id == Agent.id)
-        .where(
-            Agent.workspace_id == workspace_id,
-            ImprovementSuggestion.status == "approved",
-        )
+        apply_workspace_scope(
+            select(func.count(ImprovementSuggestion.id)).join(
+                Agent, ImprovementSuggestion.agent_id == Agent.id
+            ),
+            Agent,
+            workspace_id,
+        ).where(ImprovementSuggestion.status == "approved")
     )
     approved_count = approved_result.scalar() or 0
 
     # Rejected count
     rejected_result = await db.execute(
-        select(func.count(ImprovementSuggestion.id))
-        .join(Agent, ImprovementSuggestion.agent_id == Agent.id)
-        .where(
-            Agent.workspace_id == workspace_id,
-            ImprovementSuggestion.status == "rejected",
-        )
+        apply_workspace_scope(
+            select(func.count(ImprovementSuggestion.id)).join(
+                Agent, ImprovementSuggestion.agent_id == Agent.id
+            ),
+            Agent,
+            workspace_id,
+        ).where(ImprovementSuggestion.status == "rejected")
     )
     rejected_count = rejected_result.scalar() or 0
 
     # Auto-generated count (current month)
     now = datetime.now(UTC)
     auto_generated_result = await db.execute(
-        select(func.count(ImprovementSuggestion.id))
-        .join(Agent, ImprovementSuggestion.agent_id == Agent.id)
-        .where(
-            Agent.workspace_id == workspace_id,
+        apply_workspace_scope(
+            select(func.count(ImprovementSuggestion.id)).join(
+                Agent, ImprovementSuggestion.agent_id == Agent.id
+            ),
+            Agent,
+            workspace_id,
+        ).where(
             extract("year", ImprovementSuggestion.created_at) == now.year,
             extract("month", ImprovementSuggestion.created_at) == now.month,
         )
@@ -168,12 +174,11 @@ async def get_suggestion(
 ) -> ImprovementSuggestionResponse:
     """Get a specific improvement suggestion."""
     result = await db.execute(
-        select(ImprovementSuggestion)
-        .join(Agent, ImprovementSuggestion.agent_id == Agent.id)
-        .where(
-            ImprovementSuggestion.id == suggestion_id,
-            Agent.workspace_id == workspace_id,
-        )
+        apply_workspace_scope(
+            select(ImprovementSuggestion).join(Agent, ImprovementSuggestion.agent_id == Agent.id),
+            Agent,
+            workspace_id,
+        ).where(ImprovementSuggestion.id == suggestion_id)
     )
     suggestion = result.scalar_one_or_none()
 
@@ -216,12 +221,11 @@ async def approve_suggestion(
     """
     # Verify suggestion belongs to workspace
     result = await db.execute(
-        select(ImprovementSuggestion)
-        .join(Agent, ImprovementSuggestion.agent_id == Agent.id)
-        .where(
-            ImprovementSuggestion.id == suggestion_id,
-            Agent.workspace_id == workspace_id,
-        )
+        apply_workspace_scope(
+            select(ImprovementSuggestion).join(Agent, ImprovementSuggestion.agent_id == Agent.id),
+            Agent,
+            workspace_id,
+        ).where(ImprovementSuggestion.id == suggestion_id)
     )
     suggestion = result.scalar_one_or_none()
 
@@ -280,12 +284,11 @@ async def reject_suggestion(
     """Reject a suggestion with optional reason."""
     # Verify suggestion belongs to workspace
     result = await db.execute(
-        select(ImprovementSuggestion)
-        .join(Agent, ImprovementSuggestion.agent_id == Agent.id)
-        .where(
-            ImprovementSuggestion.id == suggestion_id,
-            Agent.workspace_id == workspace_id,
-        )
+        apply_workspace_scope(
+            select(ImprovementSuggestion).join(Agent, ImprovementSuggestion.agent_id == Agent.id),
+            Agent,
+            workspace_id,
+        ).where(ImprovementSuggestion.id == suggestion_id)
     )
     suggestion = result.scalar_one_or_none()
 

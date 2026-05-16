@@ -6,12 +6,13 @@ from typing import Annotated
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import and_, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.db.pagination import paginate
+from app.db.scope import apply_workspace_scope
 from app.models.agent import Agent
 from app.models.campaign import (
     Campaign,
@@ -44,9 +45,8 @@ async def _get_voice_campaign(
 ) -> Campaign:
     """Fetch a voice campaign by ID, raising 404 if not found."""
     result = await db.execute(
-        select(Campaign).where(
+        apply_workspace_scope(select(Campaign), Campaign, workspace_id).where(
             Campaign.id == campaign_id,
-            Campaign.workspace_id == workspace_id,
             Campaign.campaign_type == CampaignType.VOICE_SMS_FALLBACK,
         )
     )
@@ -72,11 +72,8 @@ async def list_voice_campaigns(
     page_size: int = Query(50, ge=1, le=100),
 ) -> PaginatedVoiceCampaigns:
     """List voice campaigns in a workspace."""
-    query = select(Campaign).where(
-        and_(
-            Campaign.workspace_id == workspace_id,
-            Campaign.campaign_type == CampaignType.VOICE_SMS_FALLBACK,
-        )
+    query = apply_workspace_scope(select(Campaign), Campaign, workspace_id).where(
+        Campaign.campaign_type == CampaignType.VOICE_SMS_FALLBACK,
     )
 
     if status_filter:
@@ -99,9 +96,8 @@ async def create_voice_campaign(
     """Create a new voice campaign with SMS fallback."""
     # Verify voice agent exists and supports voice
     voice_agent_result = await db.execute(
-        select(Agent).where(
+        apply_workspace_scope(select(Agent), Agent, workspace_id).where(
             Agent.id == campaign_in.voice_agent_id,
-            Agent.workspace_id == workspace_id,
         )
     )
     voice_agent = voice_agent_result.scalar_one_or_none()
@@ -121,9 +117,8 @@ async def create_voice_campaign(
     # Verify SMS fallback agent if provided
     if campaign_in.sms_fallback_agent_id:
         sms_agent_result = await db.execute(
-            select(Agent).where(
+            apply_workspace_scope(select(Agent), Agent, workspace_id).where(
                 Agent.id == campaign_in.sms_fallback_agent_id,
-                Agent.workspace_id == workspace_id,
             )
         )
         sms_agent = sms_agent_result.scalar_one_or_none()
@@ -158,9 +153,7 @@ async def create_voice_campaign(
             campaign_data["sending_hours_start"]
         )
     if "sending_hours_end" in campaign_data:
-        campaign_data["sending_hours_end"] = parse_time_string(
-            campaign_data["sending_hours_end"]
-        )
+        campaign_data["sending_hours_end"] = parse_time_string(campaign_data["sending_hours_end"])
 
     campaign = Campaign(
         workspace_id=workspace_id,
@@ -184,14 +177,15 @@ async def get_voice_campaign(
     """Get a voice campaign by ID."""
     # Use direct query for eager loading
     result = await db.execute(
-        select(Campaign)
-        .options(
-            selectinload(Campaign.voice_agent),
-            selectinload(Campaign.sms_fallback_agent),
-        )
-        .where(
+        apply_workspace_scope(
+            select(Campaign).options(
+                selectinload(Campaign.voice_agent),
+                selectinload(Campaign.sms_fallback_agent),
+            ),
+            Campaign,
+            workspace_id,
+        ).where(
             Campaign.id == campaign_id,
-            Campaign.workspace_id == workspace_id,
             Campaign.campaign_type == CampaignType.VOICE_SMS_FALLBACK,
         )
     )
@@ -227,9 +221,8 @@ async def update_voice_campaign(
     # Validate voice agent if provided
     if campaign_in.voice_agent_id:
         voice_agent_result = await db.execute(
-            select(Agent).where(
+            apply_workspace_scope(select(Agent), Agent, workspace_id).where(
                 Agent.id == campaign_in.voice_agent_id,
-                Agent.workspace_id == workspace_id,
             )
         )
         voice_agent = voice_agent_result.scalar_one_or_none()
@@ -249,9 +242,8 @@ async def update_voice_campaign(
     # Validate SMS fallback agent if provided
     if campaign_in.sms_fallback_agent_id:
         sms_agent_result = await db.execute(
-            select(Agent).where(
+            apply_workspace_scope(select(Agent), Agent, workspace_id).where(
                 Agent.id == campaign_in.sms_fallback_agent_id,
-                Agent.workspace_id == workspace_id,
             )
         )
         sms_agent = sms_agent_result.scalar_one_or_none()
@@ -273,13 +265,9 @@ async def update_voice_campaign(
 
     # Convert time strings to datetime.time objects
     if "sending_hours_start" in update_data:
-        update_data["sending_hours_start"] = parse_time_string(
-            update_data["sending_hours_start"]
-        )
+        update_data["sending_hours_start"] = parse_time_string(update_data["sending_hours_start"])
     if "sending_hours_end" in update_data:
-        update_data["sending_hours_end"] = parse_time_string(
-            update_data["sending_hours_end"]
-        )
+        update_data["sending_hours_end"] = parse_time_string(update_data["sending_hours_end"])
 
     for field, value in update_data.items():
         setattr(campaign, field, value)
@@ -309,9 +297,7 @@ async def start_voice_campaign(
 
     # Check if campaign has contacts
     count_result = await db.execute(
-        select(func.count(CampaignContact.id)).where(
-            CampaignContact.campaign_id == campaign_id
-        )
+        select(func.count(CampaignContact.id)).where(CampaignContact.campaign_id == campaign_id)
     )
     contact_count = count_result.scalar() or 0
 
@@ -323,9 +309,7 @@ async def start_voice_campaign(
 
     # Verify voice agent is still valid
     if campaign.voice_agent_id:
-        agent_result = await db.execute(
-            select(Agent).where(Agent.id == campaign.voice_agent_id)
-        )
+        agent_result = await db.execute(select(Agent).where(Agent.id == campaign.voice_agent_id))
         if not agent_result.scalar_one_or_none():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -430,9 +414,8 @@ async def add_contacts_to_voice_campaign(
 
     # Verify contacts belong to workspace and have phone numbers
     contacts_result = await db.execute(
-        select(Contact).where(
+        apply_workspace_scope(select(Contact), Contact, workspace_id).where(
             Contact.id.in_(contacts_in.contact_ids),
-            Contact.workspace_id == workspace_id,
             Contact.phone_number.isnot(None),
         )
     )
@@ -441,9 +424,7 @@ async def add_contacts_to_voice_campaign(
 
     # Get existing campaign contacts
     existing_result = await db.execute(
-        select(CampaignContact.contact_id).where(
-            CampaignContact.campaign_id == campaign_id
-        )
+        select(CampaignContact.contact_id).where(CampaignContact.campaign_id == campaign_id)
     )
     existing_ids = {row[0] for row in existing_result.all()}
 
@@ -509,9 +490,7 @@ async def get_voice_campaign_analytics(
         answer_rate = (campaign.calls_answered / campaign.calls_attempted) * 100
 
     fallback_rate = 0.0
-    failed_calls = (
-        campaign.calls_no_answer + campaign.calls_busy + campaign.calls_voicemail
-    )
+    failed_calls = campaign.calls_no_answer + campaign.calls_busy + campaign.calls_voicemail
     if failed_calls > 0:
         fallback_rate = (campaign.sms_fallbacks_sent / failed_calls) * 100
 

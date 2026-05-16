@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.core.config import settings
 from app.db.pagination import paginate
+from app.db.scope import apply_workspace_scope
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
 from app.models.phone_number import PhoneNumber
@@ -50,8 +51,7 @@ async def initiate_call(
 
     # Verify the from_phone_number belongs to workspace
     result = await db.execute(
-        select(PhoneNumber).where(
-            PhoneNumber.workspace_id == workspace_id,
+        apply_workspace_scope(select(PhoneNumber), PhoneNumber, workspace_id).where(
             PhoneNumber.phone_number == call_data.from_phone_number,
             PhoneNumber.voice_enabled.is_(True),
         )
@@ -179,11 +179,9 @@ async def list_calls(
             joinedload(Message.agent),
         )
         .join(Conversation, Message.conversation_id == Conversation.id)
-        .where(
-            Message.channel == "voice",
-            Conversation.workspace_id == workspace_id,
-        )
+        .where(Message.channel == "voice")
     )
+    query = apply_workspace_scope(query, Conversation, workspace_id)
 
     # Apply direction filter
     if direction:
@@ -196,8 +194,7 @@ async def list_calls(
     # Apply contact name search
     if search:
         query = query.outerjoin(Contact, Conversation.contact_id == Contact.id).where(
-            (Contact.first_name.ilike(f"%{search}%"))
-            | (Contact.last_name.ilike(f"%{search}%"))
+            (Contact.first_name.ilike(f"%{search}%")) | (Contact.last_name.ilike(f"%{search}%"))
         )
 
     query = query.order_by(Message.created_at.desc())
@@ -210,21 +207,16 @@ async def list_calls(
             func.coalesce(func.sum(Message.duration_seconds), 0),
         )
         .join(Conversation, Message.conversation_id == Conversation.id)
-        .where(
-            Message.channel == "voice",
-            Conversation.workspace_id == workspace_id,
-        )
+        .where(Message.channel == "voice")
     )
+    stats_query = apply_workspace_scope(stats_query, Conversation, workspace_id)
     if direction:
         stats_query = stats_query.where(Message.direction == direction)
     if status:
         stats_query = stats_query.where(Message.status == status)
     if search:
-        stats_query = stats_query.outerjoin(
-            Contact, Conversation.contact_id == Contact.id
-        ).where(
-            (Contact.first_name.ilike(f"%{search}%"))
-            | (Contact.last_name.ilike(f"%{search}%"))
+        stats_query = stats_query.outerjoin(Contact, Conversation.contact_id == Contact.id).where(
+            (Contact.first_name.ilike(f"%{search}%")) | (Contact.last_name.ilike(f"%{search}%"))
         )
     stats_result = await db.execute(stats_query)
     completed_count, total_duration = stats_result.one()
@@ -235,11 +227,7 @@ async def list_calls(
                 m,
                 m.conversation,
                 agent_name=m.agent.name if m.agent else None,
-                contact_name=(
-                    m.conversation.contact.full_name
-                    if m.conversation.contact
-                    else None
-                ),
+                contact_name=(m.conversation.contact.full_name if m.conversation.contact else None),
                 contact_id=m.conversation.contact_id,
             )
             for m in result.items
@@ -307,9 +295,7 @@ async def get_call(
         message.conversation,
         agent_name=message.agent.name if message.agent else None,
         contact_name=(
-            message.conversation.contact.full_name
-            if message.conversation.contact
-            else None
+            message.conversation.contact.full_name if message.conversation.contact else None
         ),
         contact_id=message.conversation.contact_id,
     )
@@ -360,9 +346,8 @@ async def hangup_call(
     from app.models.conversation import Conversation
 
     conv_result = await db.execute(
-        select(Conversation).where(
-            Conversation.id == message.conversation_id,
-            Conversation.workspace_id == workspace_id,
+        apply_workspace_scope(select(Conversation), Conversation, workspace_id).where(
+            Conversation.id == message.conversation_id
         )
     )
 

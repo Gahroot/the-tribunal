@@ -13,6 +13,7 @@ from app.api.deps import DB
 from app.core.config import settings
 from app.core.origin_validation import validate_origin
 from app.core.utils import get_client_ip
+from app.db.scope import apply_workspace_scope
 from app.models.campaign import CampaignContact
 from app.models.contact import Contact
 from app.models.conversation import Conversation
@@ -47,15 +48,12 @@ async def _check_lead_form_rate_limit(db: DB, client_ip: str) -> None:
         )
 
 
-async def _action_auto_text(
-    lead_source: LeadSource, contact: Contact, db: DB
-) -> None:
+async def _action_auto_text(lead_source: LeadSource, contact: Contact, db: DB) -> None:
     """Send an automatic text message to the lead."""
     config = lead_source.action_config or {}
     from_number = config.get("from_phone_number", settings.demo_from_phone_number)
     template = config.get("message_template") or (
-        f"Hi {contact.first_name}! Thanks for your interest. "
-        "We'll be in touch shortly."
+        f"Hi {contact.first_name}! Thanks for your interest. " "We'll be in touch shortly."
     )
     # Substitute {first_name} placeholder in custom templates
     template = template.replace("{first_name}", contact.first_name or "")
@@ -81,8 +79,11 @@ async def _action_auto_text(
             norm_from = normalize_phone_safe(from_number) or from_number
             norm_to = normalize_phone_safe(contact.phone_number) or contact.phone_number
             conv_result = await db.execute(
-                select(Conversation).where(
-                    Conversation.workspace_id == lead_source.workspace_id,
+                apply_workspace_scope(
+                    select(Conversation),
+                    Conversation,
+                    lead_source.workspace_id,
+                ).where(
                     Conversation.workspace_phone == norm_from,
                     Conversation.contact_phone == norm_to,
                 )
@@ -97,9 +98,7 @@ async def _action_auto_text(
         await sms_service.close()
 
 
-async def _action_auto_call(
-    lead_source: LeadSource, contact: Contact, db: DB
-) -> None:
+async def _action_auto_call(lead_source: LeadSource, contact: Contact, db: DB) -> None:
     """Initiate an automatic call to the lead."""
     config = lead_source.action_config or {}
     from_number = config.get("from_phone_number", settings.demo_from_phone_number)
@@ -126,9 +125,7 @@ async def _action_auto_call(
         await voice_service.close()
 
 
-async def _action_enroll_campaign(
-    lead_source: LeadSource, contact: Contact, db: DB
-) -> None:
+async def _action_enroll_campaign(lead_source: LeadSource, contact: Contact, db: DB) -> None:
     """Enroll the lead in a campaign."""
     config = lead_source.action_config or {}
     campaign_id_str = config.get("campaign_id")
@@ -172,9 +169,7 @@ async def _execute_action(
         await handler(lead_source, contact, db)
 
 
-async def _notify_new_lead(
-    lead_source: LeadSource, contact: Contact, db: DB
-) -> None:
+async def _notify_new_lead(lead_source: LeadSource, contact: Contact, db: DB) -> None:
     """Send SMS and push notifications to workspace members about a new lead."""
     config = lead_source.action_config or {}
     from_number = config.get("from_phone_number", settings.demo_from_phone_number)
@@ -205,9 +200,11 @@ async def _notify_new_lead(
         return
 
     result = await db.execute(
-        select(WorkspaceMembership)
-        .options(selectinload(WorkspaceMembership.user))
-        .where(WorkspaceMembership.workspace_id == lead_source.workspace_id)
+        apply_workspace_scope(
+            select(WorkspaceMembership).options(selectinload(WorkspaceMembership.user)),
+            WorkspaceMembership,
+            lead_source.workspace_id,
+        )
     )
     members = result.scalars().all()
 
@@ -279,9 +276,7 @@ async def submit_lead(
     Public endpoint secured by origin whitelist and rate limiting.
     """
     # Look up lead source
-    result = await db.execute(
-        select(LeadSource).where(LeadSource.public_key == public_key)
-    )
+    result = await db.execute(select(LeadSource).where(LeadSource.public_key == public_key))
     lead_source = result.scalar_one_or_none()
 
     if not lead_source:
@@ -308,9 +303,8 @@ async def submit_lead(
 
     # Deduplicate: find existing contact by phone in workspace
     existing_result = await db.execute(
-        select(Contact).where(
-            Contact.workspace_id == lead_source.workspace_id,
-            Contact.phone_number == body.phone_number,
+        apply_workspace_scope(select(Contact), Contact, lead_source.workspace_id).where(
+            Contact.phone_number == body.phone_number
         )
     )
     existing_contact = existing_result.scalar_one_or_none()

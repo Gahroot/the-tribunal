@@ -20,6 +20,7 @@ from app.api.deps import DB, CurrentUser, get_workspace
 from app.api.v1.integrations.followupboss import upsert_fub_integration
 from app.core.config import settings
 from app.core.encryption import decrypt_json, encrypt_json
+from app.db.scope import apply_workspace_scope
 from app.models.agent import Agent
 from app.models.appointment import Appointment, AppointmentStatus
 from app.models.campaign import Campaign, CampaignContact, CampaignStatus
@@ -109,8 +110,11 @@ async def _get_workspace_calcom_api_key(
 ) -> str | None:
     """Return the stored Cal.com API key for the workspace, or None if not set."""
     result = await db.execute(
-        select(WorkspaceIntegration).where(
-            WorkspaceIntegration.workspace_id == workspace_id,
+        apply_workspace_scope(
+            select(WorkspaceIntegration),
+            WorkspaceIntegration,
+            workspace_id,
+        ).where(
             WorkspaceIntegration.integration_type == "calcom",
             WorkspaceIntegration.is_active.is_(True),
         )
@@ -141,18 +145,22 @@ async def get_realtor_stats(
     - appointments_booked: confirmed or completed appointments
     """
     leads_result = await db.execute(
-        select(func.count()).select_from(Contact).where(
-            Contact.workspace_id == workspace_id
+        apply_workspace_scope(
+            select(func.count()).select_from(Contact),
+            Contact,
+            workspace_id,
         )
     )
     leads_uploaded = leads_result.scalar() or 0
 
-    workspace_conversations = select(Conversation.id).where(
-        Conversation.workspace_id == workspace_id
+    workspace_conversations = apply_workspace_scope(
+        select(Conversation.id), Conversation, workspace_id
     )
 
     texts_sent_result = await db.execute(
-        select(func.count()).select_from(Message).where(
+        select(func.count())
+        .select_from(Message)
+        .where(
             Message.conversation_id.in_(workspace_conversations),
             Message.direction == MessageDirection.OUTBOUND,
         )
@@ -160,7 +168,9 @@ async def get_realtor_stats(
     texts_sent = texts_sent_result.scalar() or 0
 
     replies_result = await db.execute(
-        select(func.count()).select_from(Message).where(
+        select(func.count())
+        .select_from(Message)
+        .where(
             Message.conversation_id.in_(workspace_conversations),
             Message.direction == MessageDirection.INBOUND,
         )
@@ -168,12 +178,17 @@ async def get_realtor_stats(
     replies_received = replies_result.scalar() or 0
 
     appointments_result = await db.execute(
-        select(func.count()).select_from(Appointment).where(
-            Appointment.workspace_id == workspace_id,
-            Appointment.status.in_([
-                AppointmentStatus.SCHEDULED,
-                AppointmentStatus.COMPLETED,
-            ]),
+        apply_workspace_scope(
+            select(func.count()).select_from(Appointment),
+            Appointment,
+            workspace_id,
+        ).where(
+            Appointment.status.in_(
+                [
+                    AppointmentStatus.SCHEDULED,
+                    AppointmentStatus.COMPLETED,
+                ]
+            ),
         )
     )
     appointments_booked = appointments_result.scalar() or 0
@@ -225,10 +240,11 @@ async def realtor_onboard(
 
     # 2. Store the Cal.com integration (upsert).
     calcom_result = await db.execute(
-        select(WorkspaceIntegration).where(
-            WorkspaceIntegration.workspace_id == workspace_id,
-            WorkspaceIntegration.integration_type == "calcom",
-        )
+        apply_workspace_scope(
+            select(WorkspaceIntegration),
+            WorkspaceIntegration,
+            workspace_id,
+        ).where(WorkspaceIntegration.integration_type == "calcom")
     )
     existing_integration = calcom_result.scalar_one_or_none()
 
@@ -405,22 +421,16 @@ async def create_realtor_campaign(
 
     # 3. Find the realtor agent
     agent_result = await db.execute(
-        select(Agent)
-        .where(
-            Agent.workspace_id == workspace_id,
-            Agent.name == "Realtor Lead Reactivation Agent",
-        )
+        apply_workspace_scope(select(Agent), Agent, workspace_id)
+        .where(Agent.name == "Realtor Lead Reactivation Agent")
         .limit(1)
     )
     agent = agent_result.scalar_one_or_none()
 
     if agent is None:
         fallback_result = await db.execute(
-            select(Agent)
-            .where(
-                Agent.workspace_id == workspace_id,
-                Agent.channel_mode == "text",
-            )
+            apply_workspace_scope(select(Agent), Agent, workspace_id)
+            .where(Agent.channel_mode == "text")
             .order_by(Agent.created_at.asc())
             .limit(1)
         )
@@ -437,9 +447,8 @@ async def create_realtor_campaign(
 
     # 4. Find the workspace's active phone number
     phone_result = await db.execute(
-        select(PhoneNumber)
+        apply_workspace_scope(select(PhoneNumber), PhoneNumber, workspace_id)
         .where(
-            PhoneNumber.workspace_id == workspace_id,
             PhoneNumber.is_active.is_(True),
             PhoneNumber.sms_enabled.is_(True),
         )
