@@ -42,9 +42,57 @@ The dev server runs on http://localhost:3000.
 | `npm run test` | Run the Vitest suite once |
 | `npm run test:watch` | Vitest in watch mode |
 | `npm run test:coverage` | Vitest with coverage report |
+| `npm run codegen` | Regenerate `src/lib/api/_generated.ts` from `backend/openapi.json` |
 | `npx tsc --noEmit` | Type-check without emitting (no dedicated script) |
 
 > Type checking and formatting are not separate scripts today — `npm run build` enforces types, and ESLint covers stylistic rules.
+
+## OpenAPI-Typed API Client
+
+The frontend talks to the backend through a thin axios wrapper that derives request and response types directly from the backend's OpenAPI schema. This means a backend route rename, query-param change, or schema tweak surfaces as a frontend type error at build time — no more drift between hand-rolled interfaces and the real wire contract.
+
+### Files
+
+- **`backend/openapi.json`** — source of truth. Exported by `cd backend && uv run python scripts/export_openapi.py`. CI fails if it drifts from the live FastAPI routers.
+- **`src/lib/api/_generated.ts`** — generated TypeScript types (`paths`, `components`, `operations`). Produced by `openapi-typescript`. **Do not edit by hand.** It's git-tracked so reviewers see API surface changes in the diff, and ESLint ignores it.
+- **`src/lib/api/_client.ts`** — the typed axios wrapper. Re-exports `Paths`, `Components`, `Schemas`, and helper types (`ResponseOf`, `PathParamsOf`, `QueryParamsOf`, `RequestBodyOf`). Exposes `apiClient.get/post/put/patch/del` whose URL argument is constrained to spec paths that actually expose that verb.
+- **`src/lib/api/contacts.ts`** — proof-of-concept resource client using `apiClient`. Other resource modules under `src/lib/api/` will migrate incrementally.
+
+### Regenerating types after a backend change
+
+```bash
+cd backend && uv run python scripts/export_openapi.py   # refresh openapi.json
+cd ../frontend && npm run codegen                       # regenerate _generated.ts
+npx tsc --noEmit                                        # catch any consumer breakage
+```
+
+Commit both `backend/openapi.json` and `frontend/src/lib/api/_generated.ts` together with the backend change.
+
+### Using `apiClient` in a resource module
+
+```ts
+import { apiClient, type Schemas } from "@/lib/api/_client";
+
+export type ContactListResponse = Schemas["ContactListResponse"];
+
+export async function listContacts(workspaceId: string, page = 1) {
+  // URL, path params, query params, and the return type are all checked
+  // against the spec. A typo in the URL or a removed query param fails to compile.
+  return apiClient.get("/api/v1/workspaces/{workspace_id}/contacts", {
+    path: { workspace_id: workspaceId },
+    query: { page, page_size: 50 },
+  });
+}
+```
+
+For `multipart/form-data` endpoints (which the JSON-typed `body` slot can't express), pass the `FormData` through `config.data`:
+
+```ts
+apiClient.post("/api/v1/workspaces/{workspace_id}/contacts/import", {
+  path: { workspace_id: workspaceId },
+  config: { data: formData, headers: { "Content-Type": "multipart/form-data" } },
+});
+```
 
 ## Environment Variables
 

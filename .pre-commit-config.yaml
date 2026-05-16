@@ -18,7 +18,10 @@ repos:
         # schema (~1 MB) committed as the source of truth for the CI
         # freshness gate (see .github/workflows/backend-ci.yml). It must be
         # tracked so ``git diff --exit-code`` can detect drift.
-        exclude: ^backend/openapi\.json$
+        # ``frontend/src/lib/api/_generated.ts`` is the openapi-typescript
+        # output for that same schema — also generated, also tracked so the
+        # diff is reviewable. Same exemption applies.
+        exclude: ^(backend/openapi\.json|frontend/src/lib/api/_generated\.ts)$
 
   - repo: https://github.com/charliermarsh/ruff-pre-commit
     rev: v0.8.6

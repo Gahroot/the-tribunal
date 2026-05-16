@@ -1,37 +1,64 @@
-import { apiGet, apiPost } from "@/lib/api";
+/**
+ * Contacts API client.
+ *
+ * Proof-of-concept migration to the OpenAPI-typed `apiClient` from
+ * `./_client.ts`. Endpoint URLs, path/query params, request bodies, and
+ * response shapes are all checked against the generated `Paths` types —
+ * if the backend renames or drops a route, `npm run typecheck` fails.
+ *
+ * The public `contactsApi` surface (method names + argument shapes) is
+ * preserved so existing hooks/components don't need to change.
+ */
+
+import { apiClient, type Schemas } from "@/lib/api/_client";
 import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
 import type { Contact, ContactStatus, TimelineItem } from "@/types";
 
 export type ContactSortBy = "created_at" | "last_conversation" | "unread_first";
 
-export interface ContactsListParams {
-  page?: number;
-  page_size?: number;
-  search?: string;
-  status?: ContactStatus;
-  sort_by?: ContactSortBy;
-  // Advanced filters
-  tags?: string;
-  tags_match?: "any" | "all" | "none";
-  lead_score_min?: number;
-  lead_score_max?: number;
-  is_qualified?: boolean;
-  source?: string;
-  company_name?: string;
-  created_after?: string;
-  created_before?: string;
-  enrichment_status?: string;
-  filters?: string; // JSON FilterDefinition
-  [key: string]: unknown;
+// ---------------------------------------------------------------------------
+// Re-exported schemas (canonical types from the OpenAPI spec).
+//
+// These replace the hand-rolled interfaces that previously lived in this
+// file. Other modules should pull request/response shapes from here so a
+// schema change in the backend ripples through automatically.
+// ---------------------------------------------------------------------------
+
+export type ContactCreatePayload = Schemas["ContactCreate"];
+export type ContactUpdatePayload = Schemas["ContactUpdate"];
+export type ContactResponse = Schemas["ContactResponse"];
+export type ContactListResponse = Schemas["ContactListResponse"];
+/** Back-compat alias — prefer `ContactListResponse`. */
+export type ContactsListResponse = ContactListResponse;
+export type ContactIdsResponse = Schemas["ContactIdsResponse"];
+export type ContactEngagementSummary = Schemas["ContactEngagementSummary"];
+export type BulkDeleteResponse = Schemas["BulkDeleteResponse"];
+export type BulkUpdateStatusResponse = Schemas["BulkStatusUpdateResponse"];
+export type AIToggleResponse = Schemas["AIToggleResponse"];
+
+// The OpenAPI spec models `ImportResult.errors` and `CSVPreviewResponse
+// .contact_fields` as loose `unknown[]`/`{ [k: string]: unknown }[]` — the
+// backend hasn't pinned them down yet. We narrow them at the boundary so UI
+// code can treat the fields as the structured records they actually are.
+export interface ContactFieldDef {
+  name: string;
+  label: string;
+  required: boolean;
 }
 
-export interface ContactsListResponse {
-  items: Contact[];
-  total: number;
-  page: number;
-  page_size: number;
-  pages: number;
-}
+export type CSVPreviewResult = Omit<Schemas["CSVPreviewResponse"], "contact_fields"> & {
+  contact_fields: ContactFieldDef[];
+};
+
+export type ImportResult = Omit<Schemas["ImportResult"], "errors"> & {
+  errors: ImportErrorDetail[];
+};
+
+// ---------------------------------------------------------------------------
+// Legacy request types — kept for backwards compatibility with existing
+// callers (e.g. forms that don't yet use the schema-derived types).
+// New code should prefer `ContactCreatePayload` / `ContactUpdatePayload`.
+// ---------------------------------------------------------------------------
 
 export interface ImportantDates {
   birthday?: string;
@@ -80,15 +107,6 @@ export interface ImportErrorDetail {
   error: string;
 }
 
-export interface ImportResult {
-  total_rows: number;
-  successful: number;
-  failed: number;
-  skipped_duplicates: number;
-  errors: ImportErrorDetail[];
-  created_contacts: Contact[];
-}
-
 export interface ImportOptions {
   skip_duplicates?: boolean;
   default_status?: string;
@@ -96,57 +114,29 @@ export interface ImportOptions {
   column_mapping?: Record<string, string>;
 }
 
-export interface ContactFieldDef {
-  name: string;
-  label: string;
-  required: boolean;
-}
-
-export interface CSVPreviewResult {
-  headers: string[];
-  sample_rows: Record<string, string>[];
-  suggested_mapping: Record<string, string | null>;
-  contact_fields: ContactFieldDef[];
-}
-
-export interface BulkDeleteResponse {
-  deleted: number;
-  failed: number;
-  errors: string[];
-}
-
-export interface BulkUpdateStatusRequest {
-  ids: number[];
-  status: ContactStatus;
-}
-
-export interface BulkUpdateStatusResponse {
-  updated: number;
-  failed: number;
-  errors: string[];
-}
-
-export interface ContactIdsResponse {
-  ids: number[];
-  total: number;
-}
-
-export interface ContactEngagementSummary {
-  total_messages_sent: number;
-  total_messages_received: number;
-  total_calls: number;
-  total_calls_answered: number;
-  total_appointments: number;
-  events_last_7d: number;
-  events_last_30d: number;
-  last_activity_at: string | null;
-  channels_used: string[];
+export interface ContactsListParams {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  status?: ContactStatus;
+  sort_by?: ContactSortBy;
+  tags?: string;
+  tags_match?: "any" | "all" | "none";
+  lead_score_min?: number;
+  lead_score_max?: number;
+  is_qualified?: boolean;
+  source?: string;
+  company_name?: string;
+  created_after?: string;
+  created_before?: string;
+  enrichment_status?: string;
+  filters?: string; // JSON FilterDefinition
+  [key: string]: unknown;
 }
 
 export interface ContactIdsParams {
   search?: string;
   status?: ContactStatus;
-  // Advanced filters
   tags?: string;
   tags_match?: "any" | "all" | "none";
   lead_score_min?: number;
@@ -160,6 +150,12 @@ export interface ContactIdsParams {
   filters?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Generic CRUD via the existing factory (preserves `.list/.get/.create/...`).
+// The factory still uses the untyped axios instance internally; the typed
+// surface area below covers the bespoke endpoints.
+// ---------------------------------------------------------------------------
+
 const baseApi = createApiClient<Contact, CreateContactRequest, UpdateContactRequest>({
   resourcePath: "contacts",
 }) as FullApiClient<Contact, CreateContactRequest, UpdateContactRequest>;
@@ -168,79 +164,94 @@ export const contactsApi = {
   ...baseApi,
 
   listIds: async (workspaceId: string, params: ContactIdsParams = {}): Promise<ContactIdsResponse> => {
-    return apiGet<ContactIdsResponse>(
-      `/api/v1/workspaces/${workspaceId}/contacts/ids`,
-      { params }
-    );
+    return apiClient.get("/api/v1/workspaces/{workspace_id}/contacts/ids", {
+      path: { workspace_id: workspaceId },
+      query: params,
+    });
   },
 
   bulkDelete: async (workspaceId: string, ids: number[]): Promise<BulkDeleteResponse> => {
-    return apiPost<BulkDeleteResponse>(
-      `/api/v1/workspaces/${workspaceId}/contacts/bulk-delete`,
-      { ids }
-    );
+    return apiClient.post("/api/v1/workspaces/{workspace_id}/contacts/bulk-delete", {
+      path: { workspace_id: workspaceId },
+      body: { ids },
+    });
   },
 
-  bulkUpdateStatus: async (workspaceId: string, ids: number[], status: ContactStatus): Promise<BulkUpdateStatusResponse> => {
-    return apiPost<BulkUpdateStatusResponse>(
-      `/api/v1/workspaces/${workspaceId}/contacts/bulk-update-status`,
-      { ids, status }
-    );
+  bulkUpdateStatus: async (
+    workspaceId: string,
+    ids: number[],
+    status: ContactStatus,
+  ): Promise<BulkUpdateStatusResponse> => {
+    return apiClient.post("/api/v1/workspaces/{workspace_id}/contacts/bulk-update-status", {
+      path: { workspace_id: workspaceId },
+      body: { ids, status },
+    });
   },
 
   getTimeline: async (
     workspaceId: string,
     contactId: number,
-    limit: number = 100
+    limit: number = 100,
   ): Promise<TimelineItem[]> => {
-    return apiGet<TimelineItem[]>(
-      `/api/v1/workspaces/${workspaceId}/contacts/${contactId}/timeline`,
-      { params: { limit } }
+    const response = await apiClient.get(
+      "/api/v1/workspaces/{workspace_id}/contacts/{contact_id}/timeline",
+      {
+        path: { workspace_id: workspaceId, contact_id: contactId },
+        query: { limit },
+      },
     );
+    // The OpenAPI schema models timeline items as a loose object; the
+    // frontend type `TimelineItem` is the canonical consumer-facing shape.
+    return response as unknown as TimelineItem[];
   },
 
   getEngagementSummary: async (
     workspaceId: string,
-    contactId: number
+    contactId: number,
   ): Promise<ContactEngagementSummary> => {
-    return apiGet<ContactEngagementSummary>(
-      `/api/v1/workspaces/${workspaceId}/contacts/${contactId}/engagement-summary`
+    return apiClient.get(
+      "/api/v1/workspaces/{workspace_id}/contacts/{contact_id}/engagement-summary",
+      {
+        path: { workspace_id: workspaceId, contact_id: contactId },
+      },
     );
   },
 
   toggleAI: async (
     workspaceId: string,
     contactId: number,
-    enabled: boolean
-  ): Promise<{ ai_enabled: boolean; conversation_id: string }> => {
-    return apiPost<{ ai_enabled: boolean; conversation_id: string }>(
-      `/api/v1/workspaces/${workspaceId}/contacts/${contactId}/ai/toggle`,
-      { enabled }
+    enabled: boolean,
+  ): Promise<AIToggleResponse> => {
+    return apiClient.post(
+      "/api/v1/workspaces/{workspace_id}/contacts/{contact_id}/ai/toggle",
+      {
+        path: { workspace_id: workspaceId, contact_id: contactId },
+        body: { enabled },
+      },
     );
   },
 
-  previewCSV: async (
-    workspaceId: string,
-    file: File,
-  ): Promise<CSVPreviewResult> => {
+  previewCSV: async (workspaceId: string, file: File): Promise<CSVPreviewResult> => {
     const formData = new FormData();
     formData.append("file", file);
 
-    return apiPost<CSVPreviewResult>(
-      `/api/v1/workspaces/${workspaceId}/contacts/import/preview`,
-      formData,
+    const response = await apiClient.post(
+      "/api/v1/workspaces/{workspace_id}/contacts/import/preview",
       {
-        headers: {
-          "Content-Type": "multipart/form-data",
+        path: { workspace_id: workspaceId },
+        config: {
+          data: formData,
+          headers: { "Content-Type": "multipart/form-data" },
         },
-      }
+      },
     );
+    return response as unknown as CSVPreviewResult;
   },
 
   importCSV: async (
     workspaceId: string,
     file: File,
-    options: ImportOptions = {}
+    options: ImportOptions = {},
   ): Promise<ImportResult> => {
     const formData = new FormData();
     formData.append("file", file);
@@ -257,14 +268,16 @@ export const contactsApi = {
       formData.append("column_mapping", JSON.stringify(options.column_mapping));
     }
 
-    return apiPost<ImportResult>(
-      `/api/v1/workspaces/${workspaceId}/contacts/import`,
-      formData,
+    const response = await apiClient.post(
+      "/api/v1/workspaces/{workspace_id}/contacts/import",
       {
-        headers: {
-          "Content-Type": "multipart/form-data",
+        path: { workspace_id: workspaceId },
+        config: {
+          data: formData,
+          headers: { "Content-Type": "multipart/form-data" },
         },
-      }
+      },
     );
+    return response as unknown as ImportResult;
   },
 };
