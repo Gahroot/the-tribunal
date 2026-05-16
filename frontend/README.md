@@ -131,7 +131,7 @@ src/
   test/           # Vitest setup and shared test helpers
 ```
 
-See the root [`CLAUDE.md`](../CLAUDE.md) for organization rules and shared primitives (`PageLoadingState`, query-key factory, etc.).
+See the root [`CLAUDE.md`](../CLAUDE.md) for organization rules and shared primitives (`PageLoadingState`, query-key factory, etc.). In dev, visit <http://localhost:3000/dev/components> for a living style guide that renders every `@/components/ui/*` primitive — including `PageLoadingState`, `PageErrorState`, and `PageEmptyState` — side-by-side with canonical usage. Reach for these before rolling a new spinner, error screen, or empty state by hand. The route is gated to `NODE_ENV !== "production"` and is unreachable on deployed builds.
 
 ## Deployment
 

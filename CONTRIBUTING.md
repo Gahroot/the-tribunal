@@ -33,6 +33,10 @@ npm run dev                       # Dev server on :3000
 
 The app will be available at <http://localhost:3000>.
 
+## Shared UI Primitives — Discover Before You Build
+
+Before adding a new loading spinner, error screen, empty state, or button variant in the frontend, check the canonical primitives under [`frontend/src/components/ui/`](./frontend/src/components/ui) — especially `PageLoadingState`, `PageErrorState`, and `PageEmptyState` in [`page-state.tsx`](./frontend/src/components/ui/page-state.tsx), which are the canonical loading / error / empty surfaces for every page. Run `npm run dev` in `frontend/` and visit <http://localhost:3000/dev/components> for a living style guide that renders every shared primitive side-by-side with idiomatic usage. The route is gated to `NODE_ENV !== "production"` and is unreachable on deployed builds.
+
 ## Branch Naming
 
 Create a branch off `main` using one of the following prefixes:
@@ -347,6 +351,92 @@ Review the generated migration by hand — autogenerate is a starting point, not
 - Include screenshots or screen recordings for any user-visible frontend change.
 - Link the issue you're closing with `Closes #123`.
 - Request review from a code owner (see `.github/CODEOWNERS`).
+
+## Release Process
+
+Releases are cut from `main` using [Semantic Versioning](https://semver.org/spec/v2.0.0.html) — `MAJOR.MINOR.PATCH`. Every release has three artifacts that must agree:
+
+1. A `CHANGELOG.md` entry describing what changed.
+2. A Git tag `vX.Y.Z` pointing at the release commit.
+3. A GitHub Release tied to that tag.
+
+At deploy time, Railway sets `RAILWAY_GIT_COMMIT_SHA` to the commit being deployed, and both the backend (`backend/app/main.py`) and frontend (`frontend/sentry.*.config.ts`) Sentry initializations forward that SHA as the Sentry `release`. The Sentry release for a deploy therefore equals the tagged commit SHA — events filed in Sentry can be traced back to the exact `vX.Y.Z` release and CHANGELOG entry without manual bookkeeping.
+
+### Updating `CHANGELOG.md` on every PR
+
+Every user-visible or operationally relevant change must add a bullet under `## [Unreleased]` in [`CHANGELOG.md`](./CHANGELOG.md). Pick the section that fits:
+
+| Section      | Use for                                                         |
+| ------------ | --------------------------------------------------------------- |
+| `Added`      | New features, endpoints, components, configuration knobs.        |
+| `Changed`    | Behavioral changes to existing functionality.                    |
+| `Deprecated` | Features still working but slated for removal.                   |
+| `Removed`    | Features deleted in this release.                                |
+| `Fixed`      | Bug fixes.                                                       |
+| `Security`   | Vulnerability fixes — link the CVE/advisory when public.         |
+
+Guidelines:
+
+- Write entries in the **past tense, third-person** so they read cleanly when promoted to a version section ("Added weekday-only sending window for SMS campaigns."; not "add" or "adds").
+- Reference the user-facing surface, not the implementation detail. "Fixed contact filter pagination beyond page 10" beats "Refactored `apply_contact_filters`".
+- Link the PR or issue when context is useful (`(#123)`).
+- Pure refactors, test-only changes, and CI/tooling tweaks usually do **not** need an entry — use judgement. If a refactor changes observable behavior or performance, it does.
+
+If you prefer not to hand-edit `CHANGELOG.md`, you can rely entirely on the `release-please` automation (see below) — it will populate the file from your conventional-commit messages on the next release PR. Either way, do not duplicate an entry the automation will generate.
+
+### Semantic-version tagging
+
+We bump versions according to the change types in the release:
+
+| Change                                              | Bump      |
+| --------------------------------------------------- | --------- |
+| `BREAKING CHANGE:` footer or `feat!:` / `fix!:`     | `MAJOR`   |
+| `feat:` (new functionality, backwards compatible)   | `MINOR`   |
+| `fix:`, `perf:`, `refactor:` with user impact       | `PATCH`   |
+| `chore:`, `docs:`, `test:`, `ci:`, `build:`, `style:` | no bump |
+
+Tags are always prefixed with `v` (e.g. `v1.4.0`, not `1.4.0`). Tag the **merge commit on `main`**, never a branch commit:
+
+```bash
+git checkout main && git pull
+git tag -a v1.4.0 -m "v1.4.0"
+git push origin v1.4.0
+```
+
+Once a tag is pushed, the same SHA flows through Railway → `RAILWAY_GIT_COMMIT_SHA` → Sentry `release`, so the Sentry UI's release filter is automatically populated for the new version.
+
+### Creating the GitHub Release
+
+After the tag is on `main`:
+
+1. Promote the `## [Unreleased]` section in `CHANGELOG.md` to a new `## [X.Y.Z] - YYYY-MM-DD` section. Reset `## [Unreleased]` to empty subsection stubs.
+2. Update the compare links at the bottom of the file (`[X.Y.Z]: .../compare/vA.B.C...vX.Y.Z`, `[Unreleased]: .../compare/vX.Y.Z...HEAD`).
+3. Open a GitHub Release against the tag: **Releases → Draft a new release → choose tag `vX.Y.Z`**. Title: `vX.Y.Z`. Body: paste the matching CHANGELOG section.
+4. Publish. CI runs the deploy from the tag; Sentry will start seeing events under `release: <tag-sha>`.
+
+Or with the `gh` CLI:
+
+```bash
+gh release create v1.4.0 \
+  --title "v1.4.0" \
+  --notes-file <(awk '/^## \[1\.4\.0\]/,/^## \[/' CHANGELOG.md | sed '$d')
+```
+
+### Automation: `release-please`
+
+For everything above, [`.github/workflows/release-please.yml`](./.github/workflows/release-please.yml) automates the heavy lifting from our conventional commits:
+
+- On every push to `main`, [`googleapis/release-please-action`](https://github.com/googleapis/release-please-action) opens (or updates) a single rolling **release PR** titled `chore(main): release vX.Y.Z`. The PR contains the version bump (computed from commit types since the last tag), the new `CHANGELOG.md` section, and the manifest update in `.release-please-manifest.json`.
+- Merging that PR creates the Git tag `vX.Y.Z` **and** a matching GitHub Release whose body is the new CHANGELOG section.
+- The tag's commit is what Railway deploys, so `RAILWAY_GIT_COMMIT_SHA` and the Sentry `release` are automatically aligned with the GitHub Release.
+
+If you are using the automation:
+
+- Keep commit subjects compliant — see [Commit Style — Conventional Commits](#commit-style--conventional-commits). Releases generated by release-please are only as good as the commit log.
+- You do **not** need to hand-edit `## [Unreleased]` for changes already described by your conventional-commit subject. Add a hand-written entry only when the commit subject is too terse to be useful in a release note.
+- Never rebase or amend a tag once release-please has pushed it. To correct a botched release, cut a new patch (`vX.Y.(Z+1)`) — never re-point an existing tag.
+
+If the automation is paused (token expired, action disabled, etc.), fall back to the manual procedure described in the previous three subsections.
 
 ## Code of Conduct
 
