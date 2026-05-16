@@ -17,6 +17,7 @@ class ContactCreate(BaseModel):
     email: EmailStr | None = None
     phone_number: str = Field(..., min_length=10, max_length=20)
     company_name: str | None = Field(None, max_length=255)
+    avatar_url: str | None = Field(None, max_length=1024)
     address_line1: str | None = Field(None, max_length=255)
     address_line2: str | None = Field(None, max_length=255)
     address_city: str | None = Field(None, max_length=100)
@@ -37,6 +38,7 @@ class ContactUpdate(BaseModel):
     email: EmailStr | None = None
     phone_number: str | None = Field(None, min_length=10, max_length=20)
     company_name: str | None = Field(None, max_length=255)
+    avatar_url: str | None = Field(None, max_length=1024)
     address_line1: str | None = Field(None, max_length=255)
     address_line2: str | None = Field(None, max_length=255)
     address_city: str | None = Field(None, max_length=100)
@@ -82,6 +84,7 @@ class ContactResponse(BaseModel):
     email: str | None
     phone_number: str
     company_name: str | None
+    avatar_url: str | None = None
     address_line1: str | None = None
     address_line2: str | None = None
     address_city: str | None = None

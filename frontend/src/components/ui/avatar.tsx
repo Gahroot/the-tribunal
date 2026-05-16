@@ -1,6 +1,7 @@
 "use client"
 
 import * as AvatarPrimitive from "@radix-ui/react-avatar"
+import Image from "next/image"
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
@@ -21,16 +22,34 @@ function Avatar({
   )
 }
 
-function AvatarImage({
-  className,
-  ...props
-}: React.ComponentProps<typeof AvatarPrimitive.Image>) {
+interface AvatarImageProps
+  extends Omit<React.ComponentProps<typeof AvatarPrimitive.Image>, "src" | "alt"> {
+  src: string | null | undefined
+  alt: string
+  /** Pixel size hint for next/image. Defaults to 96 (covers up to ~size-20). */
+  size?: number
+}
+
+/**
+ * Image slot for {@link Avatar}. Renders a next/image inside Radix's
+ * `Avatar.Image` so we still get its load/error-driven fallback behaviour.
+ *
+ * Pass `src={null}` (or `undefined`) to skip rendering entirely — Radix will
+ * then fall through to {@link AvatarFallback}.
+ */
+function AvatarImage({ className, src, alt, size = 96, ...props }: AvatarImageProps) {
+  if (!src) return null
   return (
-    <AvatarPrimitive.Image
-      data-slot="avatar-image"
-      className={cn("aspect-square size-full", className)}
-      {...props}
-    />
+    <AvatarPrimitive.Image asChild {...props}>
+      <Image
+        data-slot="avatar-image"
+        src={src}
+        alt={alt}
+        width={size}
+        height={size}
+        className={cn("aspect-square size-full object-cover", className)}
+      />
+    </AvatarPrimitive.Image>
   )
 }
 

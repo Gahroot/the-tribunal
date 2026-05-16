@@ -7,6 +7,7 @@ export interface UserProfile {
   full_name: string | null;
   phone_number: string | null;
   timezone: string;
+  avatar_url: string | null;
   created_at: string;
 }
 
@@ -14,6 +15,7 @@ export interface UpdateProfileRequest {
   full_name?: string | null;
   phone_number?: string | null;
   timezone?: string | null;
+  avatar_url?: string | null;
 }
 
 // Notification types
@@ -46,6 +48,7 @@ export interface TeamMember {
   id: number;
   email: string;
   full_name: string | null;
+  avatar_url: string | null;
   role: string;
   created_at: string;
 }

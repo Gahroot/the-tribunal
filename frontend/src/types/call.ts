@@ -10,6 +10,7 @@ export interface CallRecord {
   to_number?: string;
   contact_name?: string;
   contact_id?: number;
+  contact_avatar_url?: string | null;
   duration_seconds?: number;
   recording_url?: string;
   transcript?: string;

@@ -110,6 +110,7 @@ def _build_call_response(
     agent_name: str | None = None,
     contact_name: str | None = None,
     contact_id: int | None = None,
+    contact_avatar_url: str | None = None,
 ) -> CallResponse:
     """Build CallResponse with phone numbers from conversation."""
     # Determine from/to based on direction
@@ -134,6 +135,7 @@ def _build_call_response(
         to_number=to_number,
         contact_name=contact_name,
         contact_id=contact_id,
+        contact_avatar_url=contact_avatar_url,
         agent_id=message.agent_id,
         agent_name=agent_name,
         is_ai=message.is_ai,
@@ -229,6 +231,9 @@ async def list_calls(
                 agent_name=m.agent.name if m.agent else None,
                 contact_name=(m.conversation.contact.full_name if m.conversation.contact else None),
                 contact_id=m.conversation.contact_id,
+                contact_avatar_url=(
+                    m.conversation.contact.avatar_url if m.conversation.contact else None
+                ),
             )
             for m in result.items
         ],
@@ -298,6 +303,9 @@ async def get_call(
             message.conversation.contact.full_name if message.conversation.contact else None
         ),
         contact_id=message.conversation.contact_id,
+        contact_avatar_url=(
+            message.conversation.contact.avatar_url if message.conversation.contact else None
+        ),
     )
 
 

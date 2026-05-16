@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.encryption import EncryptedString, LookupHash
 from app.db.base import Base
 
 if TYPE_CHECKING:
@@ -18,11 +19,20 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    # PII at rest — ``email`` and ``phone_number`` are Fernet-encrypted. The
+    # ``email_hash`` column carries both the unique constraint (formerly on
+    # ``email``) and the lookup index. ``phone_hash`` is non-unique because
+    # multiple users may share a number (admin + assistant).
+    email: Mapped[str] = mapped_column(EncryptedString(), nullable=False)
+    email_hash: Mapped[str] = mapped_column(LookupHash(), unique=True, nullable=False, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    phone_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    phone_number: Mapped[str | None] = mapped_column(EncryptedString(), nullable=True)
+    phone_hash: Mapped[str | None] = mapped_column(LookupHash(), nullable=True, index=True)
     timezone: Mapped[str] = mapped_column(String(100), default="America/New_York", nullable=False)
+    # Optional profile image URL. Non-PII — stored as plain text since the
+    # URL itself (Gravatar hash, uploaded asset URL) is not sensitive.
+    avatar_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
@@ -53,4 +63,4 @@ class User(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<User(id={self.id}, email={self.email})>"
+        return f"<User(id={self.id}, email_hash={self.email_hash[:8]}...)>"

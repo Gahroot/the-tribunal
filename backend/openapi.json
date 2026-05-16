@@ -4068,6 +4068,17 @@
             "title": "Channel",
             "type": "string"
           },
+          "contact_avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Avatar Url"
+          },
           "contact_id": {
             "anyOf": [
               {
@@ -5522,6 +5533,18 @@
             ],
             "title": "Address Zip"
           },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
           "company_name": {
             "anyOf": [
               {
@@ -5812,6 +5835,17 @@
               }
             ],
             "title": "Address Zip"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
           },
           "business_intel": {
             "anyOf": [
@@ -6199,6 +6233,18 @@
             ],
             "title": "Address Zip"
           },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
           "company_name": {
             "anyOf": [
               {
@@ -6381,6 +6427,17 @@
               }
             ],
             "title": "Address Zip"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
           },
           "business_intel": {
             "anyOf": [
@@ -17492,6 +17549,17 @@
       "TeamMemberResponse": {
         "description": "Schema for team member response.",
         "properties": {
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -18156,6 +18224,17 @@
       "UserProfileResponse": {
         "description": "Schema for user profile response.",
         "properties": {
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -18210,6 +18289,18 @@
       "UserProfileUpdate": {
         "description": "Schema for updating user profile.",
         "properties": {
+          "avatar_url": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
           "full_name": {
             "anyOf": [
               {

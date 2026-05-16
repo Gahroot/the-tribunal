@@ -7,6 +7,24 @@ const BACKEND_URL = getBackendUrl();
 
 const nextConfig: NextConfig = {
   turbopack: { root: __dirname },
+  // Avatar image sources. Any host that may legitimately serve a user-supplied
+  // avatar URL needs to be allow-listed for next/image. Add new hosts here
+  // (rather than reaching for `unoptimized`) so we still get optimization +
+  // CSP protection.
+  images: {
+    remotePatterns: [
+      { protocol: "https", hostname: "www.gravatar.com", pathname: "/avatar/**" },
+      { protocol: "https", hostname: "secure.gravatar.com", pathname: "/avatar/**" },
+      { protocol: "https", hostname: "gravatar.com", pathname: "/avatar/**" },
+      // Google profile images (used by OAuth login flows)
+      { protocol: "https", hostname: "lh3.googleusercontent.com" },
+      // Generic CDN-uploaded avatars
+      { protocol: "https", hostname: "avatars.githubusercontent.com" },
+      { protocol: "https", hostname: "*.public.blob.vercel-storage.com" },
+      { protocol: "https", hostname: "*.amazonaws.com" },
+      { protocol: "https", hostname: "*.r2.cloudflarestorage.com" },
+    ],
+  },
   async rewrites() {
     return [
       {

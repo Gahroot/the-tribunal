@@ -33,6 +33,7 @@ class CallResponse(BaseModel):
     # Contact info
     contact_name: str | None = None
     contact_id: int | None = None
+    contact_avatar_url: str | None = None
     # Agent info
     agent_id: uuid.UUID | None = None
     agent_name: str | None = None

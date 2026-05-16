@@ -6824,6 +6824,8 @@ export interface components {
             booking_outcome?: string | null;
             /** Channel */
             channel: string;
+            /** Contact Avatar Url */
+            contact_avatar_url?: string | null;
             /** Contact Id */
             contact_id?: number | null;
             /** Contact Name */
@@ -7332,6 +7334,8 @@ export interface components {
             address_state?: string | null;
             /** Address Zip */
             address_zip?: string | null;
+            /** Avatar Url */
+            avatar_url?: string | null;
             /** Company Name */
             company_name?: string | null;
             /** Email */
@@ -7423,6 +7427,8 @@ export interface components {
             address_state?: string | null;
             /** Address Zip */
             address_zip?: string | null;
+            /** Avatar Url */
+            avatar_url?: string | null;
             /** Business Intel */
             business_intel?: {
                 [key: string]: unknown;
@@ -7531,6 +7537,8 @@ export interface components {
             address_state?: string | null;
             /** Address Zip */
             address_zip?: string | null;
+            /** Avatar Url */
+            avatar_url?: string | null;
             /** Company Name */
             company_name?: string | null;
             /** Email */
@@ -7569,6 +7577,8 @@ export interface components {
             address_state?: string | null;
             /** Address Zip */
             address_zip?: string | null;
+            /** Avatar Url */
+            avatar_url?: string | null;
             /** Business Intel */
             business_intel?: {
                 [key: string]: unknown;
@@ -11803,6 +11813,8 @@ export interface components {
          * @description Schema for team member response.
          */
         TeamMemberResponse: {
+            /** Avatar Url */
+            avatar_url?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -12111,6 +12123,8 @@ export interface components {
          * @description Schema for user profile response.
          */
         UserProfileResponse: {
+            /** Avatar Url */
+            avatar_url?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -12132,6 +12146,8 @@ export interface components {
          * @description Schema for updating user profile.
          */
         UserProfileUpdate: {
+            /** Avatar Url */
+            avatar_url?: string | null;
             /** Full Name */
             full_name?: string | null;
             /** Phone Number */

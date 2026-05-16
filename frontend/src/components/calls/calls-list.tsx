@@ -20,7 +20,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
 import { TranscriptViewer } from "@/components/calls/transcript-viewer";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -285,6 +285,11 @@ export function CallsList() {
                         <TableCell>
                           <div className="flex items-center gap-3">
                             <Avatar className="size-8">
+                              <AvatarImage
+                                src={call.contact_avatar_url}
+                                alt={call.contact_name || displayNumber}
+                                size={64}
+                              />
                               <AvatarFallback className="text-xs">
                                 {getInitialsFromName(call.contact_name || displayNumber)}
                               </AvatarFallback>

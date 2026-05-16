@@ -8,6 +8,7 @@ from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, Strin
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.encryption import EncryptedString, LookupHash
 from app.db.base import Base
 
 if TYPE_CHECKING:
@@ -33,18 +34,28 @@ class Contact(Base):
     )
 
     # Basic info
+    # PII at rest — ``email`` and ``phone_number`` are Fernet-encrypted via
+    # :class:`EncryptedString`. Their sibling ``*_hash`` columns hold the
+    # BLAKE2b-keyed deterministic hash and carry the index used for
+    # equality lookups. Always write both together via
+    # :func:`app.core.encryption.hash_value`.
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
-    phone_number: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    email: Mapped[str | None] = mapped_column(EncryptedString(), nullable=True)
+    email_hash: Mapped[str | None] = mapped_column(LookupHash(), nullable=True, index=True)
+    phone_number: Mapped[str] = mapped_column(EncryptedString(), nullable=False)
+    phone_hash: Mapped[str] = mapped_column(LookupHash(), nullable=False, index=True)
     company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Optional profile/company image URL. Non-PII — stored as plain text since
+    # the URL itself (Gravatar hash, uploaded asset URL) is not sensitive.
+    avatar_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
 
-    # Mailing address (for physical cards/mail)
-    address_line1: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    address_line2: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    address_city: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    address_state: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    address_zip: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Mailing address (PII — Fernet-encrypted, no lookup hash needed)
+    address_line1: Mapped[str | None] = mapped_column(EncryptedString(), nullable=True)
+    address_line2: Mapped[str | None] = mapped_column(EncryptedString(), nullable=True)
+    address_city: Mapped[str | None] = mapped_column(EncryptedString(), nullable=True)
+    address_state: Mapped[str | None] = mapped_column(EncryptedString(), nullable=True)
+    address_zip: Mapped[str | None] = mapped_column(EncryptedString(), nullable=True)
 
     # Lifecycle
     status: Mapped[str] = mapped_column(
@@ -171,4 +182,4 @@ class Contact(Base):
         )
 
     def __repr__(self) -> str:
-        return f"<Contact(id={self.id}, phone={self.phone_number}, status={self.status})>"
+        return f"<Contact(id={self.id}, phone_hash={self.phone_hash[:8]}..., status={self.status})>"

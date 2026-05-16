@@ -4,7 +4,7 @@ import { Search, Plus, User, Phone, Mail, Building2, Sparkles } from "lucide-rea
 import { motion, AnimatePresence } from "motion/react";
 import * as React from "react";
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,6 +64,7 @@ function ContactItem({ contact, isSelected, onClick }: ContactItemProps) {
         )}
       >
         <Avatar className="h-10 w-10 shrink-0">
+          <AvatarImage src={contact.avatar_url} alt={displayName} size={80} />
           <AvatarFallback className="bg-primary/10 text-primary text-sm font-medium">
             {getContactInitials(contact)}
           </AvatarFallback>

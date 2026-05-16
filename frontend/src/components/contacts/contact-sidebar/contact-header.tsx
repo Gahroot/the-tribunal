@@ -1,4 +1,4 @@
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { contactStatusDotColors } from "@/lib/status-colors";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,11 @@ export function ContactHeader({ contact }: ContactHeaderProps) {
   return (
     <div className="flex flex-col items-center text-center space-y-3">
       <Avatar className="h-20 w-20">
+        <AvatarImage
+          src={contact.avatar_url}
+          alt={displayName || "Contact"}
+          size={160}
+        />
         <AvatarFallback className="bg-primary/10 text-primary text-2xl font-semibold">
           {getContactInitials(contact)}
         </AvatarFallback>

@@ -70,6 +70,7 @@ export interface Contact {
   email?: string;
   phone_number?: string;
   company_name?: string;
+  avatar_url?: string | null;
   status: ContactStatus;
   tags?: string[] | string;
   tag_objects?: Tag[];

@@ -6,7 +6,7 @@ import Link from "next/link";
 import * as React from "react";
 
 import { TagBadge } from "@/components/tags/tag-badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -81,6 +81,7 @@ export function ContactCard({ contact, isSelected, onSelectChange, isSelectionMo
         )}
         <div className="relative">
           <Avatar className="h-12 w-12 shrink-0">
+            <AvatarImage src={contact.avatar_url} alt={displayName} size={96} />
             <AvatarFallback className="bg-primary/10 text-primary text-base font-medium">
               {getContactInitials(contact)}
             </AvatarFallback>

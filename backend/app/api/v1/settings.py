@@ -62,6 +62,7 @@ async def get_profile(current_user: CurrentUser) -> UserProfileResponse:
         full_name=current_user.full_name,
         phone_number=current_user.phone_number,
         timezone=current_user.timezone,
+        avatar_url=current_user.avatar_url,
         created_at=current_user.created_at,
     )
 
@@ -79,6 +80,8 @@ async def update_profile(
         current_user.phone_number = profile_update.phone_number
     if profile_update.timezone is not None:
         current_user.timezone = profile_update.timezone
+    if profile_update.avatar_url is not None:
+        current_user.avatar_url = profile_update.avatar_url
 
     await db.commit()
     await db.refresh(current_user)
@@ -89,6 +92,7 @@ async def update_profile(
         full_name=current_user.full_name,
         phone_number=current_user.phone_number,
         timezone=current_user.timezone,
+        avatar_url=current_user.avatar_url,
         created_at=current_user.created_at,
     )
 
@@ -157,9 +161,7 @@ async def get_integrations(
             WorkspaceIntegration.is_active.is_(True),
         )
     )
-    existing_integrations = {
-        wi.integration_type for wi in integrations_result.scalars().all()
-    }
+    existing_integrations = {wi.integration_type for wi in integrations_result.scalars().all()}
 
     # Build response with known integrations
     integrations = []
@@ -194,6 +196,7 @@ async def get_team_members(
             id=m.user.id,
             email=m.user.email,
             full_name=m.user.full_name,
+            avatar_url=m.user.avatar_url,
             role=m.role,
             created_at=m.created_at,
         )
@@ -268,7 +271,8 @@ async def update_call_forwarding(
 
 @router.get("/workspaces/{workspace_id}/card-settings")
 async def get_card_settings(
-    workspace: WorkspaceAccess, db: DB  # noqa: ARG001
+    workspace: WorkspaceAccess,
+    db: DB,  # noqa: ARG001
 ) -> dict[str, str]:
     """Get card service sender address settings."""
     result: dict[str, str] = workspace.settings.get("card_service", {})

@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, UserPlus } from "lucide-react";
 
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -72,9 +73,16 @@ export function TeamMembersList({
               className="flex items-center justify-between p-3 rounded-lg border"
             >
               <div className="flex items-center gap-3">
-                <div className="flex size-10 items-center justify-center rounded-full bg-primary/10 text-sm font-medium">
-                  {getInitialsFromName(member.full_name, member.email)}
-                </div>
+                <Avatar className="size-10">
+                  <AvatarImage
+                    src={member.avatar_url}
+                    alt={member.full_name || member.email}
+                    size={80}
+                  />
+                  <AvatarFallback className="bg-primary/10 text-sm font-medium">
+                    {getInitialsFromName(member.full_name, member.email)}
+                  </AvatarFallback>
+                </Avatar>
                 <div>
                   <p className="font-medium">
                     {member.full_name || member.email}

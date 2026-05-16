@@ -54,6 +54,7 @@ class UserProfileResponse(BaseModel):
     full_name: str | None
     phone_number: str | None
     timezone: str
+    avatar_url: str | None = None
     created_at: datetime
 
 
@@ -63,6 +64,7 @@ class UserProfileUpdate(BaseModel):
     full_name: str | None = None
     phone_number: str | None = None
     timezone: str | None = None
+    avatar_url: str | None = Field(None, max_length=1024)
 
 
 class NotificationSettings(BaseModel):
@@ -110,6 +112,7 @@ class TeamMemberResponse(BaseModel):
     id: int
     email: str
     full_name: str | None
+    avatar_url: str | None = None
     role: str
     created_at: datetime
 
