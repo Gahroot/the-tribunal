@@ -12,6 +12,7 @@ import { agentsApi, type UpdateAgentRequest } from "@/lib/api/agents";
 import { useAgent } from "@/hooks/useAgents";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { queryKeys } from "@/lib/query-keys";
+import { messages } from "@/lib/messages";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form } from "@/components/ui/form";
@@ -93,7 +94,7 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
     if (error && typeof error === "object" && "response" in error) {
       const axiosError = error as { response?: { status?: number } };
       if (axiosError.response?.status === 404) {
-        toast.error("Agent not found or has been deleted");
+        toast.error(messages.agents.notFound);
         router.replace("/agents");
       }
     }
@@ -232,7 +233,7 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
   // Handle delete — custom logic with query cancellation before navigation
   const handleDeleteAgent = async () => {
     if (!workspaceId) {
-      toast.error("Workspace not loaded");
+      toast.error(messages.workspace.notLoaded);
       return;
     }
 
@@ -244,17 +245,17 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
 
     try {
       await agentsApi.delete(workspaceId, agentId);
-      toast.success("Agent deleted successfully");
+      toast.success(messages.agents.deleted);
       router.replace("/agents");
     } catch {
-      toast.error("Failed to delete agent");
+      toast.error(messages.agents.deleteFailed);
       router.replace("/agents");
     }
   };
 
   async function onSubmit(data: EditAgentFormValues) {
     if (!workspaceId) {
-      toast.error("Workspace not loaded");
+      toast.error(messages.workspace.notLoaded);
       return;
     }
 
@@ -302,12 +303,12 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
     setIsSaving(true);
     try {
       await agentsApi.update(workspaceId, agentId, request);
-      toast.success("Agent updated successfully");
+      toast.success(messages.agents.updated);
       await queryClient.invalidateQueries({ queryKey: queryKeys.agents.bare(workspaceId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.agents.get(workspaceId, agentId) });
       router.push("/agents");
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to update agent";
+      const errorMessage = err instanceof Error ? err.message : messages.agents.updateFailed;
       toast.error(errorMessage);
     } finally {
       setIsSaving(false);

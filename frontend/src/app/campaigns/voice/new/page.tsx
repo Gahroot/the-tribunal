@@ -19,6 +19,7 @@ import { agentsApi } from "@/lib/api/agents";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { queryKeys } from "@/lib/query-keys";
 import { getApiErrorMessage } from "@/lib/utils/errors";
+import { messages } from "@/lib/messages";
 import type { VoiceCampaign } from "@/types";
 
 export default function NewVoiceCampaignPage() {
@@ -75,7 +76,7 @@ export default function NewVoiceCampaignPage() {
       return campaign;
     },
     onSuccess: (campaign) => {
-      toast.success("Voice campaign created successfully!");
+      toast.success(messages.campaigns.voiceCreated);
       if (workspaceId) {
         queryClient.invalidateQueries({ queryKey: queryKeys.campaigns.bare(workspaceId) });
         queryClient.invalidateQueries({
@@ -85,7 +86,7 @@ export default function NewVoiceCampaignPage() {
       router.push(`/campaigns/${campaign.id}`);
     },
     onError: (error) => {
-      toast.error(getApiErrorMessage(error, "Failed to create campaign"));
+      toast.error(getApiErrorMessage(error, messages.campaigns.voiceCreateFailed));
     },
   });
 

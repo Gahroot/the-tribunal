@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { getApiErrorMessage } from "@/lib/utils/errors";
+import { messages } from "@/lib/messages";
 import { useContactStore } from "@/lib/contact-store";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
@@ -81,13 +82,13 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
 
   const handleCall = () => {
     if (!selectedContact?.phone_number) {
-      toast.error("Contact has no phone number");
+      toast.error(messages.contacts.noPhoneNumber);
       return;
     }
 
     const voiceEnabledNumbers = phoneNumbers.filter((p) => p.voice_enabled);
     if (voiceEnabledNumbers.length === 0) {
-      toast.error("No voice-enabled phone numbers available");
+      toast.error(messages.phoneNumbers.noneVoiceEnabled);
       return;
     }
 
@@ -110,16 +111,13 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
       {
         onSuccess: (data) => {
           toast.success(
-            data.ai_enabled ? "AI engagement enabled!" : "AI engagement disabled!",
+            data.ai_enabled ? messages.contacts.aiEnabled : messages.contacts.aiDisabled,
           );
         },
         onError: (error) => {
           setAiEnabled(!newState);
           toast.error(
-            getApiErrorMessage(
-              error,
-              "Failed to toggle AI engagement. Please try again.",
-            ),
+            getApiErrorMessage(error, messages.contacts.aiToggleFailed),
           );
         },
       },
@@ -131,17 +129,14 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
 
     deleteContactMutation.mutate(selectedContact.id, {
       onSuccess: () => {
-        toast.success("Contact deleted successfully");
+        toast.success(messages.contacts.deleted);
         setSelectedContact(null);
         setDeleteDialogOpen(false);
         router.push("/contacts");
       },
       onError: (error) => {
         toast.error(
-          getApiErrorMessage(
-            error,
-            "Failed to delete contact. Please try again.",
-          ),
+          getApiErrorMessage(error, messages.contacts.deleteFailed),
         );
       },
     });

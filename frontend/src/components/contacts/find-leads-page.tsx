@@ -14,6 +14,7 @@ import {
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { useLeadImport } from "@/hooks/useLeadImport";
 import { getApiErrorMessage } from "@/lib/utils/errors";
+import { messages } from "@/lib/messages";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -66,12 +67,10 @@ export function FindLeadsPage() {
         data.results.filter((r) => r.has_phone).map((r) => r.place_id)
       );
       setSelectedIds(withPhone);
-      toast.success(`Found ${data.results.length} businesses`);
+      toast.success(messages.findLeads.found(data.results.length));
     },
     onError: (error) => {
-      toast.error(
-        getApiErrorMessage(error, "Failed to search. Please check your API key configuration.")
-      );
+      toast.error(getApiErrorMessage(error, messages.findLeads.searchFailed));
     },
   });
 
@@ -82,7 +81,7 @@ export function FindLeadsPage() {
 
   const handleSearch = () => {
     if (!query.trim()) {
-      toast.error("Please enter a search query");
+      toast.error(messages.findLeads.queryRequired);
       return;
     }
     searchMutation.mutate();
@@ -90,7 +89,7 @@ export function FindLeadsPage() {
 
   const handleImport = () => {
     if (selectedIds.size === 0) {
-      toast.error("Please select at least one lead to import");
+      toast.error(messages.findLeads.selectionRequired);
       return;
     }
     const selectedLeads = results.filter((r) => selectedIds.has(r.place_id));

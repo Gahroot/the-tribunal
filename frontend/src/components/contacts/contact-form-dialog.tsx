@@ -17,6 +17,7 @@ import { useContactStore } from "@/lib/contact-store";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { queryKeys } from "@/lib/query-keys";
 import { getApiErrorMessage } from "@/lib/utils/errors";
+import { messages } from "@/lib/messages";
 import {
   contactFormSchema,
   emptyContactFormValues,
@@ -117,12 +118,12 @@ export function ContactFormDialog(props: ContactFormDialogProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.contacts.bare(workspaceId ?? "") });
-      toast.success("Contact created successfully!");
+      toast.success(messages.contacts.created);
       form.reset();
       onOpenChange(false);
     },
     onError: (error) => {
-      toast.error(getApiErrorMessage(error, "Failed to create contact. Please try again."));
+      toast.error(getApiErrorMessage(error, messages.contacts.createFailed));
     },
     onSettled: () => {
       setIsSubmitting(false);
@@ -143,11 +144,11 @@ export function ContactFormDialog(props: ContactFormDialogProps) {
         });
       }
       setSelectedContact(updatedContact);
-      toast.success("Contact updated successfully!");
+      toast.success(messages.contacts.updated);
       onOpenChange(false);
     },
     onError: (error) => {
-      toast.error(getApiErrorMessage(error, "Failed to update contact. Please try again."));
+      toast.error(getApiErrorMessage(error, messages.contacts.updateFailed));
     },
     onSettled: () => {
       setIsSubmitting(false);

@@ -17,6 +17,7 @@ import { agentsApi } from "@/lib/api/agents";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { queryKeys } from "@/lib/query-keys";
 import { getApiErrorMessage } from "@/lib/utils/errors";
+import { messages } from "@/lib/messages";
 import type { Offer, SMSCampaign } from "@/types";
 
 export default function NewSMSCampaignPage() {
@@ -80,10 +81,10 @@ export default function NewSMSCampaignPage() {
       if (workspaceId) {
         queryClient.invalidateQueries({ queryKey: queryKeys.offers.bare(workspaceId) });
       }
-      toast.success("Offer created successfully");
+      toast.success(messages.offers.created);
     },
     onError: (error) => {
-      toast.error(getApiErrorMessage(error, "Failed to create offer"));
+      toast.error(getApiErrorMessage(error, messages.offers.createFailed));
     },
   });
 
@@ -109,14 +110,14 @@ export default function NewSMSCampaignPage() {
       return campaign;
     },
     onSuccess: (campaign) => {
-      toast.success("Campaign created successfully!");
+      toast.success(messages.campaigns.smsCreated);
       if (workspaceId) {
         queryClient.invalidateQueries({ queryKey: queryKeys.campaigns.bare(workspaceId) });
       }
       router.push(`/campaigns/${campaign.id}`);
     },
     onError: (error) => {
-      toast.error(getApiErrorMessage(error, "Failed to create campaign"));
+      toast.error(getApiErrorMessage(error, messages.campaigns.smsCreateFailed));
     },
   });
 
