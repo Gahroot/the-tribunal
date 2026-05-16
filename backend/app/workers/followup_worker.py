@@ -29,6 +29,8 @@ class FollowupWorker(RetryableWorker, BaseWorker):
 
     POLL_INTERVAL_SECONDS = 60
     COMPONENT_NAME = "followup_worker"
+    # Per-conversation follow-up sends; conservative to protect the DB pool.
+    MAX_CONCURRENCY = 5
     max_retries = 3
     backoff_base_seconds = 2.0
 

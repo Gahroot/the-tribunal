@@ -31,6 +31,8 @@ class ExperimentEvaluationWorker(RetryableWorker, BaseWorker):
 
     POLL_INTERVAL_SECONDS = 3600  # Hourly
     COMPONENT_NAME = "experiment_evaluation"
+    # Per-experiment evaluation is DB-bound stat computation; modest.
+    MAX_CONCURRENCY = 3
     max_retries = 3
     backoff_base_seconds = 2.0
 

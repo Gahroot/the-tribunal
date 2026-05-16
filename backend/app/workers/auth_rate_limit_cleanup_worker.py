@@ -41,6 +41,8 @@ class AuthRateLimitCleanupWorker(BaseWorker):
 
     POLL_INTERVAL_SECONDS = POLL_INTERVAL_SECONDS
     COMPONENT_NAME = "auth_rate_limit_cleanup"
+    # One bulk DELETE per cycle — no fan-out, no concurrency needed.
+    MAX_CONCURRENCY = 1
 
     async def _process_items(self) -> None:
         cutoff = datetime.now(UTC) - timedelta(hours=RETENTION_HOURS)

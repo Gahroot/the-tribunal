@@ -25,6 +25,10 @@ class TranscriptAnalysisWorker(RetryableWorker, BaseWorker):
 
     POLL_INTERVAL_SECONDS = 30
     COMPONENT_NAME = "transcript_analysis_worker"
+    # Each cycle pulls up to BATCH_SIZE messages and runs them through the
+    # transcript analysis service concurrently; cap matches BATCH_SIZE so a
+    # full batch can fan out without bursting beyond the OpenAI rate budget.
+    MAX_CONCURRENCY = BATCH_SIZE
     max_retries = 3
     backoff_base_seconds = 2.0
 

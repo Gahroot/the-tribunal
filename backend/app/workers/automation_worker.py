@@ -64,6 +64,8 @@ class AutomationWorker(RetryableWorker, BaseWorker):
 
     POLL_INTERVAL_SECONDS = 60
     COMPONENT_NAME = "automation_worker"
+    # Per-(automation, contact) executions mix DB writes with SMS sends.
+    MAX_CONCURRENCY = 5
     max_retries = 3
     backoff_base_seconds = 2.0
 

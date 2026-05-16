@@ -23,6 +23,8 @@ class ReputationWorker(RetryableWorker, BaseWorker):
 
     POLL_INTERVAL_SECONDS = getattr(settings, "reputation_poll_interval", 300)
     COMPONENT_NAME = "reputation_worker"
+    # Per-phone updates are small DB writes — modest concurrency is fine.
+    MAX_CONCURRENCY = 5
     max_retries = 3
     backoff_base_seconds = 2.0
 

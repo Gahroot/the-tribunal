@@ -49,6 +49,8 @@ class NoshowReengagementWorker(RetryableWorker, BaseWorker):
 
     POLL_INTERVAL_SECONDS = 3600  # once per hour
     COMPONENT_NAME = "noshow_reengagement_worker"
+    # Per-contact SMS step in a re-engagement sequence.
+    MAX_CONCURRENCY = 5
     max_retries = 3
     backoff_base_seconds = 2.0
 

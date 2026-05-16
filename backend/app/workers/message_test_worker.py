@@ -43,6 +43,8 @@ class MessageTestWorker(RetryableWorker, BaseWorker):
 
     POLL_INTERVAL_SECONDS = settings.campaign_poll_interval
     COMPONENT_NAME = "message_test_worker"
+    # Same shape as CampaignWorker — fan-out for batched SMS sends.
+    MAX_CONCURRENCY = 10
     max_retries = 3
     backoff_base_seconds = 2.0
 

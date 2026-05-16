@@ -14,6 +14,8 @@ class DripCampaignWorker(RetryableWorker, BaseWorker):
 
     POLL_INTERVAL_SECONDS = 900  # 15 minutes
     COMPONENT_NAME = "drip_campaign_worker"
+    # Single conceptual job per cycle (process_active_drip_campaigns).
+    MAX_CONCURRENCY = 1
     max_retries = 3
     backoff_base_seconds = 2.0
 

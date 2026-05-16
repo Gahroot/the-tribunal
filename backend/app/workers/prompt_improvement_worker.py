@@ -26,6 +26,9 @@ class PromptImprovementWorker(RetryableWorker, BaseWorker):
 
     POLL_INTERVAL_SECONDS = 86400  # Daily
     COMPONENT_NAME = "prompt_improvement"
+    # Per-agent suggestion generation hits OpenAI — keep concurrency low
+    # so a single cycle can't burst through the org rate limit.
+    MAX_CONCURRENCY = 3
     max_retries = 3
     backoff_base_seconds = 2.0
 

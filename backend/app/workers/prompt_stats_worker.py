@@ -26,6 +26,8 @@ class PromptStatsWorker(RetryableWorker, BaseWorker):
 
     POLL_INTERVAL_SECONDS = 3600  # Hourly
     COMPONENT_NAME = "prompt_stats"
+    # Single daily aggregation per cycle — no parallel fan-out.
+    MAX_CONCURRENCY = 1
     max_retries = 3
     backoff_base_seconds = 2.0
 

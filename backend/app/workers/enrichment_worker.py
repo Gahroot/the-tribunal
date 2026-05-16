@@ -32,6 +32,9 @@ class EnrichmentWorker(RetryableWorker, BaseWorker):
 
     POLL_INTERVAL_SECONDS = getattr(settings, "enrichment_poll_interval", 30)
     COMPONENT_NAME = "enrichment_worker"
+    # HTTP-bound (website fetches); a modest fan-out hides per-site latency
+    # without hammering any single domain.
+    MAX_CONCURRENCY = 5
     max_retries = 3
     backoff_base_seconds = 2.0
 

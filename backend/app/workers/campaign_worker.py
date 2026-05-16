@@ -50,6 +50,10 @@ class CampaignWorker(BaseCampaignWorker):
 
     POLL_INTERVAL_SECONDS = settings.campaign_poll_interval
     COMPONENT_NAME = "campaign_worker"
+    # Per-cycle the worker sends up to MAX_MESSAGES_PER_TICK SMS; cap matches
+    # so a full tick can fan out without exceeding the per-number rate limit
+    # enforced downstream by the rate-limiting service.
+    MAX_CONCURRENCY = 10
     max_retries = 3
     backoff_base_seconds = 2.0
 

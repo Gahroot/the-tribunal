@@ -47,6 +47,8 @@ class NeverBookedWorker(RetryableWorker, BaseWorker):
 
     POLL_INTERVAL_SECONDS = 3600  # once per hour
     COMPONENT_NAME = "never_booked_worker"
+    # Per-lead SMS sends; conservative to avoid spiking shared rate budgets.
+    MAX_CONCURRENCY = 5
     max_retries = 3
     backoff_base_seconds = 2.0
 

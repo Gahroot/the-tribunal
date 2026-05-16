@@ -54,6 +54,9 @@ class ReminderWorker(RetryableWorker, BaseWorker):
 
     POLL_INTERVAL_SECONDS = 60
     COMPONENT_NAME = "reminder_worker"
+    # SMS sends per appointment; modest cap so a backlog burst stays under
+    # the per-number rate ceiling enforced downstream.
+    MAX_CONCURRENCY = 5
     max_retries = 3
     backoff_base_seconds = 2.0
 

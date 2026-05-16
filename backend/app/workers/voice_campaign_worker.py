@@ -35,6 +35,9 @@ class VoiceCampaignWorker(BaseCampaignWorker):
 
     POLL_INTERVAL_SECONDS = 10
     COMPONENT_NAME = "voice_campaign_worker"
+    # Voice calls are expensive and rate-limited per phone number; stay
+    # conservative — MAX_CALLS_PER_TICK gates the upper bound anyway.
+    MAX_CONCURRENCY = 5
     max_retries = 3
     backoff_base_seconds = 2.0
 

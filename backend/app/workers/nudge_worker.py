@@ -25,6 +25,9 @@ class NudgeWorker(RetryableWorker, BaseWorker):
 
     POLL_INTERVAL_SECONDS = 3600  # 1 hour
     COMPONENT_NAME = "nudge_worker"
+    # One generation + delivery pass per workspace; modest concurrency so
+    # nudge SMS sends don't burst across all workspaces simultaneously.
+    MAX_CONCURRENCY = 3
 
     def __init__(self) -> None:
         super().__init__()
