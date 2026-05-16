@@ -1,14 +1,28 @@
 import "@testing-library/jest-dom/vitest";
-import { vi, afterEach } from "vitest";
+import { vi, afterAll, afterEach, beforeAll } from "vitest";
 import { cleanup } from "@testing-library/react";
+
+import { server } from "@/test/msw/server";
+
+// MSW lifecycle — start once, reset handlers between tests, close at teardown.
+// `onUnhandledRequest: "error"` makes accidental network calls a loud test
+// failure instead of a silent timeout. Override per-test with `server.use(...)`.
+beforeAll(() => {
+  server.listen({ onUnhandledRequest: "error" });
+});
+
+afterAll(() => {
+  server.close();
+});
 
 // Tell React we're inside an act() environment so state updates triggered
 // outside React (e.g. userEvent.click before async resolution) don't warn.
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-// Clean up the DOM between tests so RTL queries don't see stale renders.
+// Clean up the DOM and any per-test MSW handler overrides between tests.
 afterEach(() => {
   cleanup();
+  server.resetHandlers();
 });
 
 // Mock next/navigation — App Router hooks throw outside a Next runtime.

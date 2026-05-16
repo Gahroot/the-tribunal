@@ -1,0 +1,119 @@
+/**
+ * MSW request handlers — default stubs for the most-used backend endpoints.
+ *
+ * These provide a "happy-path" baseline so a component test that doesn't care
+ * about API details can render without exploding on an unhandled fetch.
+ * Individual tests should override a specific endpoint with `server.use(...)`
+ * rather than editing this file.
+ *
+ * URL conventions
+ * ---------------
+ * The axios client uses a relative baseURL in the browser (jsdom), so requests
+ * resolve against `http://localhost:3000` and we match by absolute pattern
+ * `http://localhost:3000/api/v1/...`. We also register the direct backend
+ * origin (`http://localhost:8000`) so SSR/Node code paths that bypass the
+ * Next.js proxy are covered.
+ */
+import { http, HttpResponse } from "msw";
+
+import type { AgentsListResponse } from "@/lib/api/agents";
+import type { ContactsListResponse } from "@/lib/api/contacts";
+import type { DashboardResponse } from "@/lib/api/dashboard";
+import type { WorkspaceWithMembership } from "@/lib/api/workspaces";
+
+// ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
+
+const FIXED_NOW = "2026-01-01T00:00:00.000Z";
+
+export const stubWorkspace: WorkspaceWithMembership = {
+  workspace: {
+    id: "ws_test_default",
+    name: "Test Workspace",
+    slug: "test-workspace",
+    description: null,
+    settings: {},
+    is_active: true,
+    created_at: FIXED_NOW,
+    updated_at: FIXED_NOW,
+  },
+  role: "owner",
+  is_default: true,
+};
+
+export const stubContactsList: ContactsListResponse = {
+  items: [],
+  total: 0,
+  page: 1,
+  page_size: 50,
+  pages: 0,
+};
+
+export const stubAgentsList: AgentsListResponse = {
+  items: [],
+  total: 0,
+  page: 1,
+  page_size: 50,
+  pages: 0,
+};
+
+export const stubDashboard: DashboardResponse = {
+  stats: {
+    total_contacts: 0,
+    active_campaigns: 0,
+    calls_today: 0,
+    messages_sent: 0,
+    contacts_change: "+0%",
+    campaigns_change: "+0%",
+    calls_change: "+0%",
+    messages_change: "+0%",
+  },
+  recent_activity: [],
+  campaign_stats: [],
+  agent_stats: [],
+  today_overview: { completed: 0, pending: 0, failed: 0 },
+  appointment_stats: {
+    appointments_today: 0,
+    appointments_this_week: 0,
+    show_up_rate_30d: null,
+    no_shows_30d: 0,
+    completed_30d: 0,
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Origin matrix — register the same path on both origins the app may hit.
+// ---------------------------------------------------------------------------
+
+const ORIGINS = ["http://localhost:3000", "http://localhost:8000"] as const;
+
+function both<TPath extends string>(path: TPath): readonly [string, string] {
+  return [`${ORIGINS[0]}${path}`, `${ORIGINS[1]}${path}`] as const;
+}
+
+// ---------------------------------------------------------------------------
+// Handlers
+// ---------------------------------------------------------------------------
+
+export const handlers = [
+  // Workspaces
+  ...both("/api/v1/workspaces").map((url) =>
+    http.get(url, () => HttpResponse.json([stubWorkspace])),
+  ),
+
+  // Contacts list
+  ...both("/api/v1/workspaces/:workspaceId/contacts").map((url) =>
+    http.get(url, () => HttpResponse.json(stubContactsList)),
+  ),
+
+  // Agents list
+  ...both("/api/v1/workspaces/:workspaceId/agents").map((url) =>
+    http.get(url, () => HttpResponse.json(stubAgentsList)),
+  ),
+
+  // Dashboard stats
+  ...both("/api/v1/workspaces/:workspaceId/dashboard/stats").map((url) =>
+    http.get(url, () => HttpResponse.json(stubDashboard)),
+  ),
+];
