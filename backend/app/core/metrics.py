@@ -123,6 +123,16 @@ elevenlabs_tts_latency_ms = Histogram(
     buckets=_LATENCY_MS_BUCKETS,
 )
 
+elevenlabs_reconnect_total = Counter(
+    "elevenlabs_reconnect_total",
+    "ElevenLabs WebSocket reconnect attempts, labelled by reason. "
+    "``reason`` is a bounded enum: ``connection_closed`` (peer closed cleanly), "
+    "``connection_closed_error`` (peer closed abnormally), ``success`` (a reconnect "
+    "attempt succeeded), ``exhausted`` (max attempts hit without recovery), "
+    "``circuit_open`` (skipped because the breaker rejected the probe).",
+    labelnames=("reason",),
+)
+
 telnyx_api_latency_ms = Histogram(
     "telnyx_api_latency_ms",
     "Latency of Telnyx REST API calls (per request).",
@@ -267,9 +277,7 @@ def worker_loop_timer(worker: str) -> Iterator[None]:
         worker_errors_total.labels(worker=worker).inc()
         raise
     finally:
-        worker_loop_duration_seconds.labels(worker=worker).observe(
-            time.monotonic() - start
-        )
+        worker_loop_duration_seconds.labels(worker=worker).observe(time.monotonic() - start)
 
 
 @contextmanager

@@ -12,11 +12,13 @@ import time
 from collections.abc import AsyncIterator
 from typing import Any
 
+import pybreaker
 import structlog
 from websockets.asyncio.client import ClientConnection, connect
-from websockets.exceptions import ConnectionClosed
+from websockets.exceptions import ConnectionClosed, ConnectionClosedError
 
-from app.core.metrics import elevenlabs_tts_latency_ms
+from app.core.circuit_breakers import ElevenLabsUnavailableError, elevenlabs_breaker
+from app.core.metrics import elevenlabs_reconnect_total, elevenlabs_tts_latency_ms
 
 logger = structlog.get_logger()
 
@@ -25,7 +27,9 @@ ELEVENLABS_VOICES = {
     "ava": {"id": "gJx1vCzNCD1EQHT212Ls", "name": "Ava", "description": "Natural female"},
     "lisa": {"id": "lRS76KmLyt8TypvcyLlV", "name": "Lisa", "description": "Friendly female"},
     "sarah_eve": {
-        "id": "nf4MCGNSdM0hxM95ZBQR", "name": "Sarah Eve", "description": "Expressive female"
+        "id": "nf4MCGNSdM0hxM95ZBQR",
+        "name": "Sarah Eve",
+        "description": "Expressive female",
     },
     "rachel": {"id": "21m00Tcm4TlvDq8ikWAM", "name": "Rachel", "description": "Calm female"},
     "bella": {"id": "EXAVITQu4vr4xnSDxMaL", "name": "Bella", "description": "Soft female"},
@@ -38,7 +42,9 @@ ELEVENLABS_VOICES = {
     "callum": {"id": "N2lVS1w4EtoT3dr4eOWO", "name": "Callum", "description": "Transatlantic male"},
     "charlie": {"id": "IKne3meq5aSn9XLyUdCD", "name": "Charlie", "description": "Casual male"},
     "charlotte": {
-        "id": "XB0fDUnXU5powFXDhCwa", "name": "Charlotte", "description": "Swedish female"
+        "id": "XB0fDUnXU5powFXDhCwa",
+        "name": "Charlotte",
+        "description": "Swedish female",
     },
     "clyde": {"id": "2EiwWnXFnvU5JabPnv8n", "name": "Clyde", "description": "War veteran male"},
     "daniel": {"id": "onwK4e9ZLuTAKqWW03F9", "name": "Daniel", "description": "British male"},
@@ -105,6 +111,18 @@ class ElevenLabsTTSSession:
         # on first audio chunk so we measure first-byte TTS latency without
         # double-counting subsequent chunks of the same utterance.
         self._pending_send_text_at: float | None = None
+        # Output format retained so a reconnect can re-open with the same
+        # negotiated audio encoding. Populated by ``connect()``.
+        self._output_format: str = "ulaw_8000"
+        # Session-scoped reconnect attempt counter. Increments on every
+        # reconnect attempt and resets to 0 on a successful reconnect, so the
+        # value visible mid-loop is the number of attempts spent on the
+        # *current* outage rather than a lifetime total.
+        self._reconnect_attempts: int = 0
+
+    # Exponential backoff delays (seconds) between reconnect attempts.
+    # 1s -> 2s -> 4s, 3 attempts total before surfacing the error.
+    _RECONNECT_BACKOFFS: tuple[float, ...] = (1.0, 2.0, 4.0)
 
     async def connect(self, output_format: str = "ulaw_8000") -> bool:
         """Connect to ElevenLabs WebSocket API.
@@ -121,43 +139,146 @@ class ElevenLabsTTSSession:
             output_format=output_format,
         )
 
+        self._output_format = output_format
         try:
-            # Build WebSocket URL with parameters
-            url = (
-                f"{self.BASE_URL}/{self.voice_id}/stream-input"
-                f"?model_id={self.model_id}"
-                f"&output_format={output_format}"
+            await elevenlabs_breaker.call_async(self._open_websocket, output_format)
+        except ElevenLabsUnavailableError as e:
+            self.logger.warning(
+                "elevenlabs_circuit_open",
+                voice_id=self.voice_id,
+                error=str(e),
             )
-
-            self.ws = await connect(
-                url,
-                additional_headers={
-                    "xi-api-key": self.api_key,
-                },
-            )
-
-            # Send initial configuration (Beginning of Stream - BOS)
-            bos_message = {
-                "text": " ",  # Required space to start
-                "voice_settings": {
-                    "stability": 0.5,
-                    "similarity_boost": 0.75,
-                },
-                "xi_api_key": self.api_key,
-            }
-            await self.ws.send(json.dumps(bos_message))
-
-            self._connected = True
-            self.logger.info("connected_to_elevenlabs")
-
-            # Start background task to receive audio
-            self._receive_task = asyncio.create_task(self._receive_audio_loop())
-
-            return True
-
+            return False
         except Exception as e:
             self.logger.exception("elevenlabs_connection_failed", error=str(e))
             return False
+
+        self._connected = True
+        self.logger.info("connected_to_elevenlabs")
+        # Start background task to receive audio
+        self._receive_task = asyncio.create_task(self._receive_audio_loop())
+        return True
+
+    async def _reconnect(self, reason: str) -> bool:
+        """Attempt to re-open the ElevenLabs WebSocket with exponential backoff.
+
+        Runs up to ``len(self._RECONNECT_BACKOFFS)`` attempts (3 by default)
+        with delays 1s, 2s, 4s. Before each attempt, the ElevenLabs circuit
+        breaker is consulted: if it is in the ``open`` state we skip the
+        attempt entirely, emit ``elevenlabs_reconnect_total{reason=circuit_open}``,
+        and return ``False`` so the caller surfaces the error to its caller
+        rather than burning the remaining attempts on a known-bad provider.
+
+        On success, ``self.ws`` is replaced with the new connection, the
+        session-scoped attempt counter is reset to 0, and ``True`` is
+        returned. On exhaustion the counter is left at its final value so
+        observability surfaces show the full attempt history for the
+        incident, and ``False`` is returned.
+
+        Args:
+            reason: Bounded enum describing why the reconnect was triggered
+                (``connection_closed`` / ``connection_closed_error``). Used
+                as the metric label for the trigger event and propagated to
+                structured logs.
+
+        Returns:
+            True if a reconnect attempt succeeded, False otherwise.
+        """
+        # Record the trigger that prompted the reconnect attempt loop. This
+        # increments once per outage (not per attempt) so the counter
+        # measures *incidents* by root cause, and per-attempt outcomes
+        # (``success`` / ``exhausted`` / ``circuit_open``) are emitted below.
+        elevenlabs_reconnect_total.labels(reason=reason).inc()
+
+        for delay in self._RECONNECT_BACKOFFS:
+            self._reconnect_attempts += 1
+            attempt = self._reconnect_attempts
+
+            # Circuit-breaker gate: if the breaker tripped while we were
+            # disconnected, don't waste an attempt — surface the failure so
+            # the caller can fall back. We read ``current_state`` directly
+            # rather than calling through the breaker so the gate itself
+            # doesn't burn a probe slot.
+            if elevenlabs_breaker.current_state == pybreaker.STATE_OPEN:
+                self.logger.warning(
+                    "elevenlabs_reconnect_skipped_circuit_open",
+                    attempt=attempt,
+                    voice_id=self.voice_id,
+                )
+                elevenlabs_reconnect_total.labels(reason="circuit_open").inc()
+                return False
+
+            self.logger.info(
+                "elevenlabs_reconnect_attempt",
+                attempt=attempt,
+                delay_seconds=delay,
+                voice_id=self.voice_id,
+            )
+            await asyncio.sleep(delay)
+
+            try:
+                await elevenlabs_breaker.call_async(self._open_websocket, self._output_format)
+            except ElevenLabsUnavailableError as e:
+                # Breaker tripped mid-loop; treat the same as the pre-check.
+                self.logger.warning(
+                    "elevenlabs_reconnect_circuit_open",
+                    attempt=attempt,
+                    error=str(e),
+                )
+                elevenlabs_reconnect_total.labels(reason="circuit_open").inc()
+                return False
+            except Exception as e:
+                self.logger.warning(
+                    "elevenlabs_reconnect_failed",
+                    attempt=attempt,
+                    error=str(e),
+                )
+                continue
+
+            # Success — connection is live again.
+            self.logger.info(
+                "elevenlabs_reconnect_succeeded",
+                attempt=attempt,
+                voice_id=self.voice_id,
+            )
+            elevenlabs_reconnect_total.labels(reason="success").inc()
+            self._connected = True
+            self._reconnect_attempts = 0
+            return True
+
+        self.logger.error(
+            "elevenlabs_reconnect_exhausted",
+            attempts=self._reconnect_attempts,
+            voice_id=self.voice_id,
+        )
+        elevenlabs_reconnect_total.labels(reason="exhausted").inc()
+        return False
+
+    async def _open_websocket(self, output_format: str) -> None:
+        """Open the WebSocket and send the BOS message.
+
+        Extracted so the circuit breaker can observe raw exceptions —
+        :meth:`connect`'s ``try/except`` would otherwise swallow them
+        before the breaker increments its failure counter.
+        """
+        url = (
+            f"{self.BASE_URL}/{self.voice_id}/stream-input"
+            f"?model_id={self.model_id}"
+            f"&output_format={output_format}"
+        )
+        self.ws = await connect(
+            url,
+            additional_headers={"xi-api-key": self.api_key},
+        )
+        bos_message = {
+            "text": " ",  # Required space to start
+            "voice_settings": {
+                "stability": 0.5,
+                "similarity_boost": 0.75,
+            },
+            "xi_api_key": self.api_key,
+        }
+        await self.ws.send(json.dumps(bos_message))
 
     async def disconnect(self) -> None:
         """Disconnect from ElevenLabs WebSocket API."""
@@ -220,73 +341,118 @@ class ElevenLabsTTSSession:
         except Exception as e:
             self.logger.exception("elevenlabs_send_text_error", error=str(e))
 
+    async def _handle_message(
+        self,
+        message: str | bytes,
+        stats: dict[str, int],
+    ) -> None:
+        """Decode a single ElevenLabs WS message and route it.
+
+        Extracted from :meth:`_receive_audio_loop` so the loop body stays
+        small enough to read — the loop's job is connection lifecycle
+        (disconnect detection + reconnect), not per-chunk audio handling.
+
+        ``stats`` is a mutable counters dict (``chunks``, ``bytes``) shared
+        with the loop so the progress log lines and ``isFinal`` summary
+        survive reconnects within the same session.
+        """
+        try:
+            data = json.loads(message)
+        except json.JSONDecodeError as e:
+            self.logger.warning("elevenlabs_invalid_json", error=str(e))
+            return
+
+        # Audio chunk received
+        if "audio" in data and data["audio"]:
+            audio_bytes = base64.b64decode(data["audio"])
+            stats["chunks"] += 1
+            stats["bytes"] += len(audio_bytes)
+
+            # Observe TTS first-byte latency on the first chunk
+            # following a send_text() call.
+            if self._pending_send_text_at is not None:
+                elevenlabs_tts_latency_ms.observe(
+                    (time.monotonic() - self._pending_send_text_at) * 1000.0
+                )
+                self._pending_send_text_at = None
+
+            await self._audio_queue.put(audio_bytes)
+
+            if stats["chunks"] % 50 == 0:
+                self.logger.debug(
+                    "elevenlabs_audio_progress",
+                    chunks=stats["chunks"],
+                    total_bytes=stats["bytes"],
+                )
+
+        # Check for final message
+        if data.get("isFinal"):
+            # Clear any unresolved send marker so a follow-up send_text()
+            # restarts the latency measurement.
+            self._pending_send_text_at = None
+            self.logger.info(
+                "elevenlabs_stream_complete",
+                total_chunks=stats["chunks"],
+                total_bytes=stats["bytes"],
+            )
+
+        # Handle errors
+        if "error" in data:
+            self.logger.error("elevenlabs_error", error=data["error"])
+
     async def _receive_audio_loop(self) -> None:
-        """Background task to receive audio from ElevenLabs."""
+        """Background task to receive audio from ElevenLabs.
+
+        The outer ``while`` loop owns reconnection: when the inner async-for
+        terminates because the peer closed the socket, we delegate to
+        :meth:`_reconnect` and resume from a fresh ``self.ws`` if it
+        succeeds. Exhaustion (or a tripped circuit breaker) breaks out and
+        signals end-of-stream to consumers via ``None`` on the audio queue.
+        """
         if not self.ws:
             return
 
-        audio_chunks_received = 0
-        total_audio_bytes = 0
+        stats: dict[str, int] = {"chunks": 0, "bytes": 0}
 
         try:
-            async for message in self.ws:
+            while self._connected and self.ws is not None:
+                disconnect_reason: str | None = None
                 try:
-                    data = json.loads(message)
-
-                    # Audio chunk received
-                    if "audio" in data and data["audio"]:
-                        audio_bytes = base64.b64decode(data["audio"])
-                        audio_chunks_received += 1
-                        total_audio_bytes += len(audio_bytes)
-
-                        # Observe TTS first-byte latency on the first chunk
-                        # following a send_text() call.
-                        if self._pending_send_text_at is not None:
-                            elevenlabs_tts_latency_ms.observe(
-                                (time.monotonic() - self._pending_send_text_at)
-                                * 1000.0
-                            )
-                            self._pending_send_text_at = None
-
-                        await self._audio_queue.put(audio_bytes)
-
-                        if audio_chunks_received % 50 == 0:
-                            self.logger.debug(
-                                "elevenlabs_audio_progress",
-                                chunks=audio_chunks_received,
-                                total_bytes=total_audio_bytes,
-                            )
-
-                    # Check for final message
-                    if data.get("isFinal"):
-                        # Clear any unresolved send marker so a follow-up
-                        # send_text() restarts the latency measurement.
-                        self._pending_send_text_at = None
-                        self.logger.info(
-                            "elevenlabs_stream_complete",
-                            total_chunks=audio_chunks_received,
-                            total_bytes=total_audio_bytes,
-                        )
-
-                    # Handle errors
-                    if "error" in data:
-                        self.logger.error(
-                            "elevenlabs_error",
-                            error=data["error"],
-                        )
-
-                except json.JSONDecodeError as e:
+                    async for message in self.ws:
+                        await self._handle_message(message, stats)
+                    # async-for exited cleanly — peer closed without an
+                    # exception (rare with the websockets library, but
+                    # treat it as a clean disconnect).
+                    disconnect_reason = "connection_closed"
+                except ConnectionClosedError as e:
+                    # ``rcvd`` is the peer-sent close frame (None if the
+                    # peer just dropped); newer websockets versions
+                    # deprecate the top-level ``e.code``/``e.reason``
+                    # accessors in favour of ``e.rcvd``.
+                    rcvd = e.rcvd
                     self.logger.warning(
-                        "elevenlabs_invalid_json",
-                        error=str(e),
+                        "elevenlabs_connection_closed_error",
+                        code=rcvd.code if rcvd is not None else None,
+                        reason=rcvd.reason if rcvd is not None else None,
                     )
+                    disconnect_reason = "connection_closed_error"
+                except ConnectionClosed as e:
+                    rcvd = e.rcvd
+                    self.logger.warning(
+                        "elevenlabs_connection_closed",
+                        code=rcvd.code if rcvd is not None else None,
+                        reason=rcvd.reason if rcvd is not None else None,
+                    )
+                    disconnect_reason = "connection_closed"
 
-        except ConnectionClosed as e:
-            self.logger.warning(
-                "elevenlabs_connection_closed",
-                code=e.code,
-                reason=e.reason,
-            )
+                # Disconnected — try to reconnect. If reconnect fails (or
+                # is gated by the breaker), surface end-of-stream to the
+                # caller by breaking out.
+                if not await self._reconnect(disconnect_reason):
+                    self._connected = False
+                    break
+                # Reconnect succeeded: loop back and resume reading from
+                # the new ``self.ws``.
         except asyncio.CancelledError:
             self.logger.info("elevenlabs_receive_cancelled")
         except Exception as e:
