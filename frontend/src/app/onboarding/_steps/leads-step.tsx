@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useId, useRef, useState } from "react";
+import { useCallback, useId, useState } from "react";
 import { useFormContext } from "react-hook-form";
 import { toast } from "sonner";
 import {
@@ -9,7 +9,6 @@ import {
   FileSpreadsheet,
   Loader2,
   Phone,
-  Upload,
   Users,
 } from "lucide-react";
 
@@ -17,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FileDropzone } from "@/components/shared/file-dropzone";
 import { importFubContacts } from "@/lib/api/realtor";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 import { formatNumber } from "@/lib/utils/number";
@@ -39,17 +39,11 @@ export function LeadsStep() {
     setLeadsError,
   } = useOnboardingExtras();
 
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
   const [fubImporting, setFubImporting] = useState(false);
   const areaCodeId = useId();
 
   const processFile = useCallback(
-    (selected: File | null) => {
-      if (!selected) {
-        setCsvFile(null, null);
-        return;
-      }
+    (selected: File) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const text = e.target?.result as string;
@@ -61,28 +55,6 @@ export function LeadsStep() {
     },
     [setCsvFile]
   );
-
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    processFile(e.target.files?.[0] ?? null);
-  };
-
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const dropped = e.dataTransfer.files[0];
-    if (dropped?.name.endsWith(".csv")) {
-      processFile(dropped);
-    } else {
-      toast.error("Please drop a .csv file.");
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = () => setIsDragging(false);
 
   const handleFubImport = useCallback(async () => {
     if (!currentWorkspaceId) {
@@ -169,38 +141,14 @@ export function LeadsStep() {
         </Card>
       </div>
 
-      <div
-        role="button"
-        tabIndex={0}
-        aria-label="Upload CSV file"
-        className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center gap-3 cursor-pointer transition-colors ${
-          isDragging
-            ? "border-primary bg-primary/5"
-            : "border-border hover:border-primary/50 hover:bg-muted/30"
-        }`}
-        onClick={() => inputRef.current?.click()}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") inputRef.current?.click();
-        }}
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-      >
-        <Upload className="size-8 text-muted-foreground" />
-        <div className="text-center">
-          <p className="font-medium">Drop your CSV here or click to browse</p>
-          <p className="text-sm text-muted-foreground mt-1">
-            Accepts .csv files
-          </p>
-        </div>
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".csv"
-          className="hidden"
-          onChange={handleFileInput}
-        />
-      </div>
+      <FileDropzone
+        accept=".csv"
+        onFile={processFile}
+        onReject={(reason) => toast.error(reason)}
+        placeholder="Drop your CSV here or click to browse"
+        subtext="Accepts .csv files"
+        ariaLabel="Upload CSV file"
+      />
 
       {csvFile && (
         <Card className="bg-muted/30">

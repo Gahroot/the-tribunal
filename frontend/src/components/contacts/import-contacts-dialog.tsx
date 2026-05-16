@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Upload, FileText, AlertCircle, CheckCircle2, X, Download, Loader2 } from "lucide-react";
+import { FileText, AlertCircle, CheckCircle2, X, Download, Loader2 } from "lucide-react";
 
 import {
   contactsApi,
@@ -15,6 +15,7 @@ import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { queryKeys } from "@/lib/query-keys";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 import { Button } from "@/components/ui/button";
+import { FileDropzone } from "@/components/shared/file-dropzone";
 import {
   Dialog,
   DialogContent,
@@ -56,7 +57,6 @@ const SKIP_VALUE = "__skip__";
 export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialogProps) {
   const queryClient = useQueryClient();
   const workspaceId = useWorkspaceId();
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [step, setStep] = useState<ImportStep>("upload");
   const [file, setFile] = useState<File | null>(null);
@@ -66,7 +66,6 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
     source: "csv_import",
   });
   const [result, setResult] = useState<ImportResult | null>(null);
-  const [dragActive, setDragActive] = useState(false);
   const [preview, setPreview] = useState<CSVPreviewResult | null>(null);
   const [columnMapping, setColumnMapping] = useState<Record<string, string | null>>({});
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -108,10 +107,6 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
   });
 
   const handleFileSelect = async (selectedFile: File) => {
-    if (!selectedFile.name.toLowerCase().endsWith(".csv")) {
-      toast.error("Please select a CSV file");
-      return;
-    }
     setFile(selectedFile);
 
     if (!workspaceId) return;
@@ -128,32 +123,6 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
       setFile(null);
     } finally {
       setPreviewLoading(false);
-    }
-  };
-
-  const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true);
-    } else if (e.type === "dragleave") {
-      setDragActive(false);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFileSelect(e.dataTransfer.files[0]);
-    }
-  };
-
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      handleFileSelect(e.target.files[0]);
     }
   };
 
@@ -231,35 +200,16 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
         {/* Upload Step */}
         {step === "upload" && (
           <div className="space-y-4">
-            <div
-              className={cn(
-                "border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer",
-                dragActive ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50"
-              )}
-              onDragEnter={handleDrag}
-              onDragLeave={handleDrag}
-              onDragOver={handleDrag}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv"
-                className="hidden"
-                onChange={handleFileInputChange}
-              />
-              <Upload className="h-10 w-10 mx-auto mb-4 text-muted-foreground" />
-              <p className="text-sm font-medium mb-1">
-                Drag and drop your CSV file here
-              </p>
-              <p className="text-xs text-muted-foreground mb-4">
-                or click to browse
-              </p>
-              <Button type="button" variant="outline" size="sm">
-                Select File
-              </Button>
-            </div>
+            <FileDropzone
+              accept=".csv"
+              onFile={(f) => {
+                void handleFileSelect(f);
+              }}
+              onReject={(reason) => toast.error(reason)}
+              placeholder="Drag and drop your CSV file here"
+              subtext="or click to browse"
+              ariaLabel="Upload CSV file"
+            />
 
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Need a template?</span>
