@@ -7,6 +7,9 @@ import structlog
 
 # Import all worker registries
 from app.workers.approval_worker import _registry as approval_registry
+from app.workers.auth_rate_limit_cleanup_worker import (
+    _registry as auth_rate_limit_cleanup_registry,
+)
 from app.workers.automation_worker import _registry as automation_registry
 from app.workers.base import BaseWorker, WorkerRegistry
 from app.workers.campaign_worker import _registry as campaign_registry
@@ -46,6 +49,7 @@ ALL_REGISTRIES: list[WorkerRegistry[BaseWorker]] = [
     approval_registry,
     drip_campaign_registry,
     transcript_analysis_registry,
+    auth_rate_limit_cleanup_registry,
 ]
 
 

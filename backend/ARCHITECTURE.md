@@ -302,6 +302,7 @@ during FastAPI `lifespan` startup.
 | `nudge_worker` | — | Deliver `HumanNudge`s to the operator |
 | `approval_worker` | 30 s | HITL: notify, execute, expire `PendingAction` |
 | `transcript_analysis_worker` | — | Post-call transcript analysis + outcomes |
+| `auth_rate_limit_cleanup_worker` | 1 h | Prune `auth_rate_limits` rows older than 24 h |
 
 Shared infrastructure:
 - `base_campaign_worker.py` — common loop for SMS and voice campaign workers
