@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "isolatedModules": false,
+    "jsx": "preserve",
+    "plugins": []
+  },
+  "include": ["**/*.ts"],
+  "exclude": []
+}
