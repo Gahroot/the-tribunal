@@ -3,6 +3,8 @@
 Provides a reusable base class that extracts common worker patterns:
 - Start/stop lifecycle management
 - Async run loop with configurable poll interval
+- Bounded per-item concurrency via an ``asyncio.Semaphore``
+- Graceful shutdown that drains in-flight work (with timeout)
 - Logging with component name binding
 - Singleton registry for global worker instances
 - Redis heartbeat keys so ``/readyz`` can verify per-worker liveness
@@ -13,7 +15,8 @@ import contextlib
 import random
 import time
 from abc import ABC, abstractmethod
-from typing import ClassVar
+from collections.abc import Awaitable, Iterable
+from typing import Any, ClassVar, TypeVar
 
 import structlog
 
@@ -33,6 +36,16 @@ HEARTBEAT_TTL_MULTIPLIER = 3
 # Jitter is bounded to 10% of the poll interval. Enough to desynchronise
 # workers across processes without materially shifting effective throughput.
 _JITTER_FRACTION = 0.1
+
+# Default max number of items a single worker may process concurrently.
+# Conservative; subclasses bump this when their items are I/O-bound and the
+# downstream resources (DB pool, external API rate limits) can absorb it.
+_DEFAULT_MAX_CONCURRENCY = 5
+
+# Default grace window for draining in-flight items on shutdown.
+_DEFAULT_DRAIN_TIMEOUT_SECONDS = 30.0
+
+_T = TypeVar("_T")
 
 
 def heartbeat_key(component_name: str) -> str:
@@ -67,11 +80,31 @@ class BaseWorker(ABC):
     POLL_INTERVAL_SECONDS: ClassVar[int] = 60
     COMPONENT_NAME: ClassVar[str | None] = None
 
-    def __init__(self, poll_interval: int | None = None) -> None:
+    # Max number of items processed concurrently via :meth:`run_concurrently`.
+    # Per-worker override expected — defaults are intentionally low so a
+    # subclass that forgets to tune it can't accidentally fan out 1k tasks.
+    MAX_CONCURRENCY: ClassVar[int] = _DEFAULT_MAX_CONCURRENCY
+
+    # Grace window (seconds) for in-flight items to finish on :meth:`stop`
+    # before the run-loop task is cancelled. Items that exceed this window
+    # are cancelled too — better to drop one item than block a deploy.
+    DRAIN_TIMEOUT_SECONDS: ClassVar[float] = _DEFAULT_DRAIN_TIMEOUT_SECONDS
+
+    def __init__(
+        self,
+        poll_interval: int | None = None,
+        *,
+        max_concurrency: int | None = None,
+        drain_timeout: float | None = None,
+    ) -> None:
         """Initialize the worker.
 
         Args:
             poll_interval: Optional override for poll interval in seconds.
+            max_concurrency: Optional override for the per-worker semaphore.
+                Defaults to ``MAX_CONCURRENCY``.
+            drain_timeout: Optional override for the shutdown drain window.
+                Defaults to ``DRAIN_TIMEOUT_SECONDS``.
         """
         self.running = False
         self._task: asyncio.Task[None] | None = None
@@ -79,6 +112,30 @@ class BaseWorker(ABC):
         self._worker_label = self.COMPONENT_NAME or self.__class__.__name__.lower()
         self._items_this_cycle = 0
         self.logger = logger.bind(component=self._worker_label)
+
+        resolved_concurrency = (
+            max_concurrency if max_concurrency is not None else self.MAX_CONCURRENCY
+        )
+        if resolved_concurrency < 1:
+            raise ValueError(
+                f"max_concurrency must be >= 1, got {resolved_concurrency}"
+            )
+        self._max_concurrency = resolved_concurrency
+        self._semaphore = asyncio.Semaphore(resolved_concurrency)
+
+        resolved_drain = (
+            drain_timeout if drain_timeout is not None else self.DRAIN_TIMEOUT_SECONDS
+        )
+        if resolved_drain < 0:
+            raise ValueError(
+                f"drain_timeout must be >= 0, got {resolved_drain}"
+            )
+        self._drain_timeout = float(resolved_drain)
+
+        # Tracks per-item tasks spawned via :meth:`run_concurrently` so
+        # :meth:`stop` can wait for them to finish before cancelling the
+        # run-loop task. Using a set so completed tasks are easy to discard.
+        self._inflight: set[asyncio.Task[Any]] = set()
 
     async def start(self) -> None:
         """Start the worker background task."""
@@ -89,11 +146,28 @@ class BaseWorker(ABC):
         self.running = True
         await self._on_start()
         self._task = asyncio.create_task(self._run_loop())
-        self.logger.info("Worker started")
+        self.logger.info(
+            "Worker started",
+            max_concurrency=self._max_concurrency,
+            drain_timeout=self._drain_timeout,
+        )
 
     async def stop(self) -> None:
-        """Stop the worker."""
+        """Stop the worker, draining in-flight items first.
+
+        Shutdown sequence:
+
+        1. Flip ``self.running`` to ``False`` so the run loop exits at the
+           next safe point and ``_process_items`` can observe the shutdown.
+        2. Wait up to ``_drain_timeout`` seconds for items already accepted
+           via :meth:`run_concurrently` to finish. This avoids interrupting
+           mid-item work (DB writes, external API calls) on deploys.
+        3. Cancel any items still running after the grace window — better to
+           drop one job than block a rollout indefinitely.
+        4. Cancel the run-loop task and await it.
+        """
         self.running = False
+        await self._drain_inflight()
         if self._task:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -101,6 +175,86 @@ class BaseWorker(ABC):
             self._task = None
         await self._on_stop()
         self.logger.info("Worker stopped")
+
+    async def _drain_inflight(self) -> None:
+        """Wait for in-flight per-item tasks to finish, bounded by timeout.
+
+        Logged at INFO so deploys leave a paper trail of how long shutdown
+        actually took. Cancellations are also logged so dropped work is
+        visible in the journal.
+        """
+        # Snapshot — _inflight may shrink concurrently as tasks complete.
+        pending = {t for t in self._inflight if not t.done()}
+        if not pending:
+            return
+
+        started = time.monotonic()
+        self.logger.info(
+            "drain_started",
+            inflight=len(pending),
+            timeout=self._drain_timeout,
+        )
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*pending, return_exceptions=True),
+                timeout=self._drain_timeout,
+            )
+            self.logger.info(
+                "drain_completed",
+                duration_ms=round((time.monotonic() - started) * 1000.0, 2),
+            )
+        except TimeoutError:
+            still_running = [t for t in pending if not t.done()]
+            self.logger.warning(
+                "drain_timeout_exceeded",
+                cancelled=len(still_running),
+                timeout=self._drain_timeout,
+            )
+            for task in still_running:
+                task.cancel()
+            # Let cancellations propagate so the event loop reclaims them.
+            await asyncio.gather(*still_running, return_exceptions=True)
+
+    async def run_concurrently(
+        self,
+        coros: Iterable[Awaitable[_T]],
+    ) -> list[_T | BaseException]:
+        """Run ``coros`` concurrently, capped by the per-worker semaphore.
+
+        Each coroutine is wrapped in a task that acquires ``self._semaphore``
+        before running, so at most ``max_concurrency`` items execute at once.
+        Tasks are tracked in ``self._inflight`` so :meth:`stop` can drain
+        them on shutdown rather than killing in-progress work.
+
+        Exceptions are captured (``return_exceptions=True``) so a single
+        failed item doesn't abort the rest of the batch — callers decide
+        how to handle errors per item (typically via ``RetryableWorker``).
+
+        Args:
+            coros: Iterable of awaitables, one per work item.
+
+        Returns:
+            List of results (or ``BaseException`` instances), positionally
+            aligned with the input iterable.
+        """
+        coros_list = list(coros)
+        if not coros_list:
+            return []
+
+        async def _bounded(coro: Awaitable[_T]) -> _T:
+            async with self._semaphore:
+                return await coro
+
+        tasks: list[asyncio.Task[_T]] = [
+            asyncio.create_task(_bounded(coro)) for coro in coros_list
+        ]
+        # Track for graceful shutdown. ``discard`` so already-removed tasks
+        # don't raise on the completion callback.
+        for task in tasks:
+            self._inflight.add(task)
+            task.add_done_callback(self._inflight.discard)
+
+        return await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _run_loop(self) -> None:
         """Main worker loop that polls for items to process.

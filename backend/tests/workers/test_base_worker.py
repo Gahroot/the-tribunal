@@ -6,7 +6,10 @@ No external services, databases, or Redis required.
 """
 
 import asyncio
+import time
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from app.workers.base import (
     HEARTBEAT_TTL_MULTIPLIER,
@@ -22,8 +25,18 @@ class ConcreteWorker(BaseWorker):
     POLL_INTERVAL_SECONDS = 1
     COMPONENT_NAME = "test_worker"
 
-    def __init__(self, poll_interval: int | None = None) -> None:
-        super().__init__(poll_interval=poll_interval)
+    def __init__(
+        self,
+        poll_interval: int | None = None,
+        *,
+        max_concurrency: int | None = None,
+        drain_timeout: float | None = None,
+    ) -> None:
+        super().__init__(
+            poll_interval=poll_interval,
+            max_concurrency=max_concurrency,
+            drain_timeout=drain_timeout,
+        )
         self.process_count = 0
 
     async def _process_items(self) -> None:
@@ -333,3 +346,238 @@ class TestWorkerRegistry:
             assert worker.running is True
         finally:
             await registry.stop()
+
+
+class TestBaseWorkerConcurrency:
+    """Tests for the per-worker concurrency cap (asyncio.Semaphore)."""
+
+    def test_default_max_concurrency(self) -> None:
+        """Default ``MAX_CONCURRENCY`` is 5 when subclass doesn't override."""
+        worker = ConcreteWorker()
+        assert worker._max_concurrency == 5
+        # Semaphore is constructed with the same value (private attribute on
+        # asyncio.Semaphore, but stable across the supported CPython range).
+        assert worker._semaphore._value == 5
+
+    def test_class_attribute_overrides_default(self) -> None:
+        """A subclass setting ``MAX_CONCURRENCY`` is honoured."""
+
+        class FastWorker(BaseWorker):
+            COMPONENT_NAME = "fast_worker"
+            MAX_CONCURRENCY = 20
+
+            async def _process_items(self) -> None:
+                return None
+
+        worker = FastWorker()
+        assert worker._max_concurrency == 20
+
+    def test_constructor_overrides_class_attribute(self) -> None:
+        """``max_concurrency=`` constructor arg wins over the class attribute."""
+        worker = ConcreteWorker(max_concurrency=2)
+        assert worker._max_concurrency == 2
+
+    def test_zero_concurrency_rejected(self) -> None:
+        """``max_concurrency`` must be >= 1; zero is a config error."""
+        with pytest.raises(ValueError, match="max_concurrency"):
+            ConcreteWorker(max_concurrency=0)
+
+    async def test_run_concurrently_caps_parallelism(self) -> None:
+        """At most ``max_concurrency`` items run concurrently."""
+        observed_peak = 0
+        live = 0
+        lock = asyncio.Lock()
+
+        async def slow_item() -> None:
+            nonlocal live, observed_peak
+            async with lock:
+                live += 1
+                observed_peak = max(observed_peak, live)
+            await asyncio.sleep(0.02)
+            async with lock:
+                live -= 1
+
+        worker = ConcreteWorker(max_concurrency=3)
+        results = await worker.run_concurrently(slow_item() for _ in range(10))
+
+        assert len(results) == 10
+        assert all(r is None for r in results)
+        assert observed_peak <= 3, f"saw {observed_peak} concurrent items, cap was 3"
+
+    async def test_run_concurrently_returns_results_in_order(self) -> None:
+        """Results are positionally aligned with the input iterable."""
+
+        async def returning(n: int) -> int:
+            # Stagger so completion order != submission order.
+            await asyncio.sleep((5 - n) * 0.005)
+            return n * 10
+
+        worker = ConcreteWorker(max_concurrency=5)
+        results = await worker.run_concurrently(returning(i) for i in range(5))
+
+        assert results == [0, 10, 20, 30, 40]
+
+    async def test_run_concurrently_captures_exceptions(self) -> None:
+        """A failing item doesn't abort siblings — it's returned as-is."""
+
+        async def succeed() -> str:
+            return "ok"
+
+        async def fail() -> str:
+            raise RuntimeError("boom")
+
+        worker = ConcreteWorker(max_concurrency=2)
+        results = await worker.run_concurrently([succeed(), fail(), succeed()])
+
+        assert results[0] == "ok"
+        assert isinstance(results[1], RuntimeError)
+        assert results[2] == "ok"
+
+    async def test_run_concurrently_empty_iterable(self) -> None:
+        """An empty input returns ``[]`` without spawning tasks."""
+        worker = ConcreteWorker()
+        assert await worker.run_concurrently([]) == []
+        assert worker._inflight == set()
+
+    async def test_inflight_cleared_after_run(self) -> None:
+        """Completed tasks are discarded from the in-flight set."""
+
+        async def quick() -> int:
+            return 1
+
+        worker = ConcreteWorker(max_concurrency=2)
+        await worker.run_concurrently([quick() for _ in range(4)])
+        # done_callback runs on the same loop iteration after gather resolves,
+        # so the set must be empty here.
+        assert worker._inflight == set()
+
+
+class TestBaseWorkerGracefulShutdown:
+    """Tests for graceful shutdown that drains in-flight items."""
+
+    def test_default_drain_timeout(self) -> None:
+        """Default ``DRAIN_TIMEOUT_SECONDS`` is 30s."""
+        worker = ConcreteWorker()
+        assert worker._drain_timeout == 30.0
+
+    def test_class_attribute_overrides_drain_timeout(self) -> None:
+        """Subclass override of ``DRAIN_TIMEOUT_SECONDS`` is honoured."""
+
+        class PatientWorker(BaseWorker):
+            COMPONENT_NAME = "patient_worker"
+            DRAIN_TIMEOUT_SECONDS = 5.0
+
+            async def _process_items(self) -> None:
+                return None
+
+        worker = PatientWorker()
+        assert worker._drain_timeout == 5.0
+
+    def test_constructor_overrides_drain_timeout(self) -> None:
+        """``drain_timeout=`` constructor arg wins over the class attribute."""
+        worker = ConcreteWorker(drain_timeout=1.5)
+        assert worker._drain_timeout == 1.5
+
+    def test_negative_drain_timeout_rejected(self) -> None:
+        """``drain_timeout`` must be >= 0."""
+        with pytest.raises(ValueError, match="drain_timeout"):
+            ConcreteWorker(drain_timeout=-1.0)
+
+    async def test_stop_waits_for_inflight_items(self) -> None:
+        """``stop()`` waits for in-flight items to finish before returning."""
+        completed: list[int] = []
+
+        async def slow(n: int) -> None:
+            await asyncio.sleep(0.05)
+            completed.append(n)
+
+        worker = ConcreteWorker(drain_timeout=5.0)
+        # Seed in-flight tasks directly so we can prove stop() actually
+        # drains — no need to also exercise the run-loop here.
+        for n in range(3):
+            task = asyncio.create_task(slow(n))
+            worker._inflight.add(task)
+            task.add_done_callback(worker._inflight.discard)
+
+        await asyncio.sleep(0)  # let tasks actually start
+        await worker.stop()
+
+        assert sorted(completed) == [0, 1, 2]
+        assert worker._inflight == set()
+
+    async def test_stop_drains_real_run_concurrently_tasks(self) -> None:
+        """End-to-end: in-flight ``run_concurrently`` tasks finish before stop returns."""
+        completed: list[int] = []
+
+        async def slow(n: int) -> None:
+            await asyncio.sleep(0.05)
+            completed.append(n)
+
+        worker = ConcreteWorker(drain_timeout=5.0)
+        # Run concurrently in a fire-and-forget task so we can interleave stop().
+        runner = asyncio.create_task(
+            worker.run_concurrently([slow(0), slow(1), slow(2)])
+        )
+        await asyncio.sleep(0)  # let tasks register in _inflight
+        assert worker._inflight, "tasks should be tracked"
+
+        await worker.stop()
+        # Drain finished, so the runner gather has all results.
+        results = await runner
+        assert len(results) == 3
+        assert sorted(completed) == [0, 1, 2]
+
+    async def test_stop_cancels_items_that_exceed_drain_timeout(self) -> None:
+        """Items still running after the drain window are cancelled."""
+        cancelled_at: list[float] = []
+
+        async def forever() -> None:
+            try:
+                await asyncio.sleep(10.0)
+            except asyncio.CancelledError:
+                cancelled_at.append(time.monotonic())
+                raise
+
+        worker = ConcreteWorker(drain_timeout=0.05)
+        task = asyncio.create_task(forever())
+        worker._inflight.add(task)
+        task.add_done_callback(worker._inflight.discard)
+
+        started = time.monotonic()
+        await worker.stop()
+        elapsed = time.monotonic() - started
+
+        # Drain timeout was 50ms; stop should have given up well before the
+        # 10-second forever sleep would otherwise have completed.
+        assert elapsed < 1.0
+        assert cancelled_at, "forever() should have been cancelled"
+        assert task.cancelled() or task.done()
+
+    async def test_stop_drain_completes_when_no_inflight(self) -> None:
+        """Stop returns immediately when no items are in flight."""
+        worker = ConcreteWorker()
+        await worker.start()
+        # No run_concurrently was ever called.
+        started = time.monotonic()
+        await worker.stop()
+        elapsed = time.monotonic() - started
+        # Should be essentially instantaneous (allow generous slack for CI).
+        assert elapsed < 1.0
+
+    async def test_stop_drain_does_not_resurrect_cancelled_run_loop(self) -> None:
+        """After stop(), running=False and the run loop is fully cancelled."""
+
+        async def slow() -> None:
+            await asyncio.sleep(0.02)
+
+        worker = ConcreteWorker(drain_timeout=1.0)
+        await worker.start()
+        # Submit work that's in flight at shutdown.
+        runner = asyncio.create_task(worker.run_concurrently([slow() for _ in range(3)]))
+        await asyncio.sleep(0)
+
+        await worker.stop()
+        await runner  # drain made it finish cleanly
+
+        assert worker.running is False
+        assert worker._task is None
