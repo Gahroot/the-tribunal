@@ -1,8 +1,11 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
+import * as z from "zod";
 import { Play, Square, Loader2 } from "lucide-react";
 
 import { agentsApi } from "@/lib/api/agents";
@@ -10,13 +13,19 @@ import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+} from "@/components/ui/form";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PageEmptyState } from "@/components/ui/page-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -45,6 +54,24 @@ const VOICES = [
   { id: "sage", name: "Sage" },
   { id: "shimmer", name: "Shimmer" },
 ];
+
+const voiceTestSettingsSchema = z.object({
+  selected_agent_id: z.string(),
+  voice: z.string().min(1),
+  threshold: z.number().min(0).max(1),
+  silence_duration: z.number().int().min(100).max(2000),
+  system_prompt: z.string(),
+});
+
+type VoiceTestSettings = z.infer<typeof voiceTestSettingsSchema>;
+
+const defaultVoiceTestSettings: VoiceTestSettings = {
+  selected_agent_id: "",
+  voice: "marin",
+  threshold: 0.5,
+  silence_duration: 500,
+  system_prompt: "",
+};
 
 // Audio visualizer component using Web Audio API for real-time frequency analysis
 /* eslint-disable react-hooks/set-state-in-effect -- Intentional pattern for animation frames */
@@ -137,17 +164,21 @@ function AudioVisualizer({
 
 export default function VoiceTestPage() {
   const workspaceId = useWorkspaceId();
-  const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("idle");
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
   const [callDuration, setCallDuration] = useState(0);
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
 
-  // Settings state
-  const [voice, setVoice] = useState("marin");
-  const [threshold, setThreshold] = useState(0.5);
-  const [silenceDuration, setSilenceDuration] = useState(500);
-  const [editedSystemPrompt, setEditedSystemPrompt] = useState("");
+  const form = useForm<VoiceTestSettings>({
+    resolver: zodResolver(voiceTestSettingsSchema),
+    defaultValues: defaultVoiceTestSettings,
+  });
+
+  const selectedAgentId = form.watch("selected_agent_id");
+  const voice = form.watch("voice");
+  const threshold = form.watch("threshold");
+  const silenceDuration = form.watch("silence_duration");
+  const editedSystemPrompt = form.watch("system_prompt");
 
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const callTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -178,10 +209,10 @@ export default function VoiceTestPage() {
   // Update settings when agent changes
   useEffect(() => {
     if (selectedAgent) {
-      setEditedSystemPrompt(selectedAgent.system_prompt ?? "");
-      setVoice(selectedAgent.voice_id ?? "marin");
+      form.setValue("system_prompt", selectedAgent.system_prompt ?? "");
+      form.setValue("voice", selectedAgent.voice_id ?? "marin");
     }
-  }, [selectedAgent]);
+  }, [selectedAgent, form]);
 
   const addTranscript = useCallback(
     (speaker: "user" | "assistant" | "system", text: string) => {
@@ -489,95 +520,138 @@ export default function VoiceTestPage() {
       {/* Right - Settings Panel */}
       <div className="flex w-full md:w-[320px] shrink-0 flex-col border-l bg-muted/20">
         <div className="flex-1 space-y-4 overflow-y-auto p-4">
-          {/* Agent Selection */}
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Agent</Label>
-            <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select an agent" />
-              </SelectTrigger>
-              <SelectContent>
-                {voiceAgents?.map((agent) => (
-                  <SelectItem key={agent.id} value={agent.id}>
-                    {agent.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <Separator />
-
-          {/* System Instructions */}
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">System instructions</Label>
-            {selectedAgentId ? (
-              <Textarea
-                value={editedSystemPrompt}
-                onChange={(e) => setEditedSystemPrompt(e.target.value)}
-                className="h-[120px] resize-none text-xs"
-                placeholder="Enter system instructions..."
+          <Form {...form}>
+            <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
+              {/* Agent Selection */}
+              <FormField
+                control={form.control}
+                name="selected_agent_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">Agent</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select an agent" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {voiceAgents?.map((agent) => (
+                          <SelectItem key={agent.id} value={agent.id}>
+                            {agent.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )}
               />
-            ) : (
-              <div className="flex h-[120px] items-center justify-center rounded-md border bg-muted/50 text-xs text-muted-foreground">
-                Select an agent to edit
-              </div>
-            )}
-          </div>
 
-          <Separator />
+              <Separator />
 
-          {/* Voice */}
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Voice</Label>
-            <Select value={voice} onValueChange={setVoice}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {VOICES.map((v) => (
-                  <SelectItem key={v.id} value={v.id}>
-                    {v.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <Separator />
-
-          {/* Turn Detection */}
-          <div className="space-y-3">
-            <Label className="text-sm font-medium">Turn detection</Label>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Threshold</span>
-                <span>{threshold.toFixed(2)}</span>
-              </div>
-              <Slider
-                value={[threshold]}
-                onValueChange={(v) => setThreshold(v[0] ?? 0.5)}
-                min={0}
-                max={1}
-                step={0.01}
+              {/* System Instructions */}
+              <FormField
+                control={form.control}
+                name="system_prompt"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">System instructions</FormLabel>
+                    {selectedAgentId ? (
+                      <FormControl>
+                        <Textarea
+                          {...field}
+                          className="h-[120px] resize-none text-xs"
+                          placeholder="Enter system instructions..."
+                        />
+                      </FormControl>
+                    ) : (
+                      <div className="flex h-[120px] items-center justify-center rounded-md border bg-muted/50 text-xs text-muted-foreground">
+                        Select an agent to edit
+                      </div>
+                    )}
+                  </FormItem>
+                )}
               />
-            </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Silence duration</span>
-                <span>{silenceDuration} ms</span>
-              </div>
-              <Slider
-                value={[silenceDuration]}
-                onValueChange={(v) => setSilenceDuration(v[0] ?? 500)}
-                min={100}
-                max={2000}
-                step={50}
+              <Separator />
+
+              {/* Voice */}
+              <FormField
+                control={form.control}
+                name="voice"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium">Voice</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {VOICES.map((v) => (
+                          <SelectItem key={v.id} value={v.id}>
+                            {v.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )}
               />
-            </div>
-          </div>
+
+              <Separator />
+
+              {/* Turn Detection */}
+              <div className="space-y-3">
+                <FormLabel className="text-sm font-medium">Turn detection</FormLabel>
+
+                <FormField
+                  control={form.control}
+                  name="threshold"
+                  render={({ field }) => (
+                    <FormItem className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Threshold</span>
+                        <span>{field.value.toFixed(2)}</span>
+                      </div>
+                      <FormControl>
+                        <Slider
+                          value={[field.value]}
+                          onValueChange={(v) => field.onChange(v[0] ?? 0.5)}
+                          min={0}
+                          max={1}
+                          step={0.01}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="silence_duration"
+                  render={({ field }) => (
+                    <FormItem className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Silence duration</span>
+                        <span>{field.value} ms</span>
+                      </div>
+                      <FormControl>
+                        <Slider
+                          value={[field.value]}
+                          onValueChange={(v) => field.onChange(v[0] ?? 500)}
+                          min={100}
+                          max={2000}
+                          step={50}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </form>
+          </Form>
         </div>
       </div>
     </div>

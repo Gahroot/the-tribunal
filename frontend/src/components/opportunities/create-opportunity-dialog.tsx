@@ -1,11 +1,23 @@
 "use client";
 
 import * as React from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import * as z from "zod";
+import { Loader2 } from "lucide-react";
+
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -14,9 +26,49 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { opportunitiesApi } from "@/lib/api/opportunities";
 import { queryKeys } from "@/lib/query-keys";
-import { useQueryClient } from "@tanstack/react-query";
+import { getApiErrorMessage } from "@/lib/utils/errors";
+
+const opportunityFormSchema = z.object({
+  name: z
+    .string()
+    .min(1, { error: "Opportunity name is required" })
+    .max(255, { error: "Name must be 255 characters or less" }),
+  description: z
+    .string()
+    .max(2000, { error: "Description must be 2000 characters or less" })
+    .optional()
+    .or(z.literal("")),
+  amount: z
+    .string()
+    .refine(
+      (val) => val === "" || (!isNaN(parseFloat(val)) && parseFloat(val) >= 0),
+      { error: "Amount must be a non-negative number" },
+    ),
+  currency: z.string().min(1),
+  pipeline_id: z.string().min(1, { error: "Pipeline is required" }),
+  stage_id: z.string().optional().or(z.literal("")),
+});
+
+type OpportunityFormValues = z.infer<typeof opportunityFormSchema>;
+
+const defaultValues: OpportunityFormValues = {
+  name: "",
+  description: "",
+  amount: "",
+  currency: "USD",
+  pipeline_id: "",
+  stage_id: "",
+};
 
 interface CreateOpportunityDialogProps {
   open: boolean;
@@ -30,14 +82,13 @@ export function CreateOpportunityDialog({
   workspaceId,
 }: CreateOpportunityDialogProps) {
   const queryClient = useQueryClient();
-  const [formData, setFormData] = React.useState({
-    name: "",
-    description: "",
-    amount: "",
-    currency: "USD",
-    pipeline_id: "",
-    stage_id: "",
+
+  const form = useForm<OpportunityFormValues>({
+    resolver: zodResolver(opportunityFormSchema),
+    defaultValues,
   });
+
+  const pipelineId = form.watch("pipeline_id");
 
   const { data: pipelines } = useQuery({
     queryKey: queryKeys.opportunities.pipelines(workspaceId ?? ""),
@@ -45,36 +96,29 @@ export function CreateOpportunityDialog({
     enabled: !!workspaceId && open,
   });
 
-  const selectedPipeline = pipelines?.find((p) => p.id === formData.pipeline_id);
+  const selectedPipeline = pipelines?.find((p) => p.id === pipelineId);
 
   const createMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (data: OpportunityFormValues) =>
       opportunitiesApi.create(workspaceId, {
-        name: formData.name,
-        description: formData.description || undefined,
-        amount: formData.amount ? parseFloat(formData.amount) : undefined,
-        currency: formData.currency,
-        pipeline_id: formData.pipeline_id,
-        stage_id: formData.stage_id || undefined,
+        name: data.name,
+        description: data.description || undefined,
+        amount: data.amount ? parseFloat(data.amount) : undefined,
+        currency: data.currency,
+        pipeline_id: data.pipeline_id,
+        stage_id: data.stage_id || undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.opportunities.bare(workspaceId ?? "") });
-      setFormData({
-        name: "",
-        description: "",
-        amount: "",
-        currency: "USD",
-        pipeline_id: "",
-        stage_id: "",
-      });
+      toast.success("Opportunity created");
+      form.reset(defaultValues);
       onOpenChange(false);
     },
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to create opportunity")),
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.name || !formData.pipeline_id) return;
-    createMutation.mutate();
+  const handleSubmit = (data: OpportunityFormValues) => {
+    createMutation.mutate(data);
   };
 
   return (
@@ -87,108 +131,160 @@ export function CreateOpportunityDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Opportunity Name *</Label>
-            <Input
-              id="name"
-              placeholder="e.g., ABC Corp Contract"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              required
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Opportunity Name *</FormLabel>
+                  <FormControl>
+                    <Input placeholder="e.g., ABC Corp Contract" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
-            <Textarea
-              id="description"
-              placeholder="Add details about this opportunity..."
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              rows={3}
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Description</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Add details about this opportunity..."
+                      rows={3}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="amount">Amount</Label>
-              <Input
-                id="amount"
-                type="number"
-                placeholder="0.00"
-                value={formData.amount}
-                onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                step="0.01"
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="amount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Amount</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        placeholder="0.00"
+                        step="0.01"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="currency"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Currency</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="USD">USD</SelectItem>
+                        <SelectItem value="EUR">EUR</SelectItem>
+                        <SelectItem value="GBP">GBP</SelectItem>
+                        <SelectItem value="CAD">CAD</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="currency">Currency</Label>
-              <Select value={formData.currency} onValueChange={(value) => setFormData({ ...formData, currency: value })}>
-                <SelectTrigger id="currency">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="USD">USD</SelectItem>
-                  <SelectItem value="EUR">EUR</SelectItem>
-                  <SelectItem value="GBP">GBP</SelectItem>
-                  <SelectItem value="CAD">CAD</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+            <FormField
+              control={form.control}
+              name="pipeline_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Pipeline *</FormLabel>
+                  <Select
+                    value={field.value}
+                    onValueChange={(value) => {
+                      field.onChange(value);
+                      form.setValue("stage_id", "");
+                    }}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a pipeline" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {pipelines?.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-          <div className="space-y-2">
-            <Label htmlFor="pipeline">Pipeline *</Label>
-            <Select value={formData.pipeline_id} onValueChange={(value) => setFormData({ ...formData, pipeline_id: value, stage_id: "" })}>
-              <SelectTrigger id="pipeline">
-                <SelectValue placeholder="Select a pipeline" />
-              </SelectTrigger>
-              <SelectContent>
-                {pipelines?.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+            {selectedPipeline && (
+              <FormField
+                control={form.control}
+                name="stage_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Stage</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a stage" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {selectedPipeline.stages.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
-          {selectedPipeline && (
-            <div className="space-y-2">
-              <Label htmlFor="stage">Stage</Label>
-              <Select value={formData.stage_id} onValueChange={(value) => setFormData({ ...formData, stage_id: value })}>
-                <SelectTrigger id="stage">
-                  <SelectValue placeholder="Select a stage" />
-                </SelectTrigger>
-                <SelectContent>
-                  {selectedPipeline.stages.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          <div className="flex justify-end gap-3 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={!formData.name || !formData.pipeline_id || createMutation.isPending}
-            >
-              {createMutation.isPending ? "Creating..." : "Create"}
-            </Button>
-          </div>
-        </form>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createMutation.isPending}>
+                {createMutation.isPending && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                {createMutation.isPending ? "Creating..." : "Create"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );

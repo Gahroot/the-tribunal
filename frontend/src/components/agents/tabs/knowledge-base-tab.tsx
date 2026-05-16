@@ -1,8 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import * as z from "zod";
 import { formatRelative } from "@/lib/utils/date";
 import { formatNumber } from "@/lib/utils/number";
 import { Loader2, Plus, Trash2, BookOpen, FileText } from "lucide-react";
@@ -14,7 +17,6 @@ import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Card,
@@ -31,6 +33,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import {
   Select,
   SelectContent,
@@ -58,7 +68,7 @@ const DOC_TYPES = [
   { value: "script", label: "Script" },
   { value: "product", label: "Product Info" },
   { value: "persona", label: "Persona" },
-];
+] as const;
 
 const DOC_TYPE_STYLES: Record<string, string> = {
   general: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
@@ -69,6 +79,26 @@ const DOC_TYPE_STYLES: Record<string, string> = {
   persona: "bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200",
 };
 
+const docFormSchema = z.object({
+  title: z.string().min(1, { error: "Title is required" }).max(255),
+  content: z.string().min(1, { error: "Content is required" }),
+  doc_type: z.enum(["general", "faq", "policy", "script", "product", "persona"]),
+  priority: z
+    .number()
+    .int()
+    .min(0, { error: "Priority must be at least 0" })
+    .max(100, { error: "Priority must be at most 100" }),
+});
+
+type DocFormValues = z.infer<typeof docFormSchema>;
+
+const defaultDocValues: DocFormValues = {
+  title: "",
+  content: "",
+  doc_type: "general",
+  priority: 0,
+};
+
 interface KnowledgeBaseTabProps {
   agentId: string;
 }
@@ -77,10 +107,11 @@ export function KnowledgeBaseTab({ agentId }: KnowledgeBaseTabProps) {
   const workspaceId = useWorkspaceId();
   const queryClient = useQueryClient();
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
-  const [newContent, setNewContent] = useState("");
-  const [newDocType, setNewDocType] = useState("general");
-  const [newPriority, setNewPriority] = useState(0);
+
+  const form = useForm<DocFormValues>({
+    resolver: zodResolver(docFormSchema),
+    defaultValues: defaultDocValues,
+  });
 
   const { data: docList, isPending } = useQuery({
     queryKey: queryKeys.agents.knowledgeDocs(workspaceId ?? "", agentId),
@@ -101,7 +132,7 @@ export function KnowledgeBaseTab({ agentId }: KnowledgeBaseTabProps) {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.agents.knowledgeDocs(workspaceId ?? "", agentId),
       });
-      resetForm();
+      closeDialog();
     },
     onError: (err: unknown) =>
       toast.error(getApiErrorMessage(err, "Failed to add document")),
@@ -122,24 +153,17 @@ export function KnowledgeBaseTab({ agentId }: KnowledgeBaseTabProps) {
       toast.error(getApiErrorMessage(err, "Failed to delete document")),
   });
 
-  const resetForm = () => {
+  const closeDialog = () => {
     setShowAddDialog(false);
-    setNewTitle("");
-    setNewContent("");
-    setNewDocType("general");
-    setNewPriority(0);
+    form.reset(defaultDocValues);
   };
 
-  const handleCreate = () => {
-    if (!newTitle.trim() || !newContent.trim()) {
-      toast.error("Title and content are required");
-      return;
-    }
+  const handleCreate = (data: DocFormValues) => {
     createMutation.mutate({
-      title: newTitle,
-      content: newContent,
-      doc_type: newDocType,
-      priority: newPriority,
+      title: data.title,
+      content: data.content,
+      doc_type: data.doc_type,
+      priority: data.priority,
     });
   };
 
@@ -279,7 +303,13 @@ export function KnowledgeBaseTab({ agentId }: KnowledgeBaseTabProps) {
       )}
 
       {/* Add Document Dialog */}
-      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+      <Dialog
+        open={showAddDialog}
+        onOpenChange={(open) => {
+          if (!open) closeDialog();
+          else setShowAddDialog(true);
+        }}
+      >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Add Knowledge Document</DialogTitle>
@@ -288,73 +318,103 @@ export function KnowledgeBaseTab({ agentId }: KnowledgeBaseTabProps) {
               during conversations.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="doc-title">Title</Label>
-              <Input
-                id="doc-title"
-                value={newTitle}
-                onChange={(e) => setNewTitle(e.target.value)}
-                placeholder="e.g. Company FAQ"
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleCreate)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="title"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Title</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g. Company FAQ" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Document Type</Label>
-                <Select value={newDocType} onValueChange={setNewDocType}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {DOC_TYPES.map((dt) => (
-                      <SelectItem key={dt.value} value={dt.value}>
-                        {dt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="doc-priority">Priority (0 = default)</Label>
-                <Input
-                  id="doc-priority"
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={newPriority}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (!isNaN(val)) setNewPriority(val);
-                  }}
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="doc_type"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Document Type</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {DOC_TYPES.map((dt) => (
+                            <SelectItem key={dt.value} value={dt.value}>
+                              {dt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="priority"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Priority (0 = default)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={field.value}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value, 10);
+                            field.onChange(isNaN(val) ? 0 : val);
+                          }}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="doc-content">Content</Label>
-              <Textarea
-                id="doc-content"
-                value={newContent}
-                onChange={(e) => setNewContent(e.target.value)}
-                placeholder="Enter the document content..."
-                rows={10}
+              <FormField
+                control={form.control}
+                name="content"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Content</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Enter the document content..."
+                        rows={10}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={resetForm}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreate} disabled={createMutation.isPending}>
-              {createMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Adding...
-                </>
-              ) : (
-                "Add Document"
-              )}
-            </Button>
-          </DialogFooter>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={closeDialog}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={createMutation.isPending}>
+                  {createMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Adding...
+                    </>
+                  ) : (
+                    "Add Document"
+                  )}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
         </DialogContent>
       </Dialog>
     </div>

@@ -1,8 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import * as z from "zod";
 import {
   Trophy,
   TrendingUp,
@@ -34,8 +37,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { queryKeys } from "@/lib/query-keys";
@@ -44,6 +54,23 @@ import { messageTestsApi } from "@/lib/api/message-tests";
 import type { VariantAnalytics } from "@/types";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 import { formatNumber } from "@/lib/utils/number";
+
+const convertCampaignSchema = z.object({
+  campaign_name: z
+    .string()
+    .min(1, { error: "Campaign name is required" })
+    .max(255, { error: "Name must be 255 characters or less" }),
+  use_winning_message: z.boolean(),
+  include_remaining_contacts: z.boolean(),
+});
+
+type ConvertCampaignValues = z.infer<typeof convertCampaignSchema>;
+
+const defaultConvertValues: ConvertCampaignValues = {
+  campaign_name: "",
+  use_winning_message: true,
+  include_remaining_contacts: true,
+};
 
 interface TestAnalyticsProps {
   testId: string;
@@ -56,9 +83,11 @@ export function TestAnalytics({ testId }: TestAnalyticsProps) {
   const [showWinnerDialog, setShowWinnerDialog] = useState(false);
   const [showConvertDialog, setShowConvertDialog] = useState(false);
   const [selectedWinnerId, setSelectedWinnerId] = useState<string | null>(null);
-  const [campaignName, setCampaignName] = useState("");
-  const [useWinningMessage, setUseWinningMessage] = useState(true);
-  const [includeRemainingContacts, setIncludeRemainingContacts] = useState(true);
+
+  const convertForm = useForm<ConvertCampaignValues>({
+    resolver: zodResolver(convertCampaignSchema),
+    defaultValues: defaultConvertValues,
+  });
 
   const {
     data: analytics,
@@ -95,13 +124,9 @@ export function TestAnalytics({ testId }: TestAnalyticsProps) {
   });
 
   const convertToCampaignMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: (data: ConvertCampaignValues) => {
       if (!workspaceId) throw new Error("Workspace not loaded");
-      return messageTestsApi.convertToCampaign(workspaceId, testId, {
-        campaign_name: campaignName,
-        use_winning_message: useWinningMessage,
-        include_remaining_contacts: includeRemainingContacts,
-      });
+      return messageTestsApi.convertToCampaign(workspaceId, testId, data);
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({
@@ -110,9 +135,14 @@ export function TestAnalytics({ testId }: TestAnalyticsProps) {
       queryClient.invalidateQueries({ queryKey: queryKeys.campaigns.bare(workspaceId ?? "") });
       toast.success(data.message);
       setShowConvertDialog(false);
+      convertForm.reset(defaultConvertValues);
     },
     onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to convert to campaign")),
   });
+
+  const handleConvert = (data: ConvertCampaignValues) => {
+    convertToCampaignMutation.mutate(data);
+  };
 
   if (isPending) {
     return (
@@ -414,65 +444,92 @@ export function TestAnalytics({ testId }: TestAnalyticsProps) {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="campaign-name">Campaign Name</Label>
-              <Input
-                id="campaign-name"
-                value={campaignName}
-                onChange={(e) => setCampaignName(e.target.value)}
-                placeholder="e.g., Summer Outreach Campaign"
-              />
-            </div>
-
-            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-              <div>
-                <p className="font-medium text-sm">Use Winning Message</p>
-                <p className="text-xs text-muted-foreground">
-                  Use the winning variant&apos;s message template
-                </p>
-              </div>
-              <Switch
-                checked={useWinningMessage}
-                onCheckedChange={setUseWinningMessage}
-              />
-            </div>
-
-            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-              <div>
-                <p className="font-medium text-sm">
-                  Include Remaining Contacts
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Add contacts that haven&apos;t been messaged yet
-                </p>
-              </div>
-              <Switch
-                checked={includeRemainingContacts}
-                onCheckedChange={setIncludeRemainingContacts}
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowConvertDialog(false)}
+          <Form {...convertForm}>
+            <form
+              onSubmit={convertForm.handleSubmit(handleConvert)}
+              className="space-y-4"
             >
-              Cancel
-            </Button>
-            <Button
-              onClick={() => convertToCampaignMutation.mutate()}
-              disabled={
-                convertToCampaignMutation.isPending || !campaignName.trim()
-              }
-            >
-              {convertToCampaignMutation.isPending && (
-                <Loader2 className="size-4 mr-2 animate-spin" />
-              )}
-              Create Campaign
-            </Button>
-          </DialogFooter>
+              <FormField
+                control={convertForm.control}
+                name="campaign_name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Campaign Name</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="e.g., Summer Outreach Campaign"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={convertForm.control}
+                name="use_winning_message"
+                render={({ field }) => (
+                  <FormItem className="flex items-center justify-between p-3 bg-muted/50 rounded-lg space-y-0">
+                    <div>
+                      <p className="font-medium text-sm">Use Winning Message</p>
+                      <p className="text-xs text-muted-foreground">
+                        Use the winning variant&apos;s message template
+                      </p>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={convertForm.control}
+                name="include_remaining_contacts"
+                render={({ field }) => (
+                  <FormItem className="flex items-center justify-between p-3 bg-muted/50 rounded-lg space-y-0">
+                    <div>
+                      <p className="font-medium text-sm">
+                        Include Remaining Contacts
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Add contacts that haven&apos;t been messaged yet
+                      </p>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowConvertDialog(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={convertToCampaignMutation.isPending}
+                >
+                  {convertToCampaignMutation.isPending && (
+                    <Loader2 className="size-4 mr-2 animate-spin" />
+                  )}
+                  Create Campaign
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
         </DialogContent>
       </Dialog>
     </div>

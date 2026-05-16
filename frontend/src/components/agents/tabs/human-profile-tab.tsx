@@ -1,17 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import * as z from "zod";
 import { Loader2, Save } from "lucide-react";
 
 import { humanProfilesApi } from "@/lib/api/human-profiles";
-import type { HumanProfileCreate } from "@/types/human-profile";
+import type { HumanProfile, HumanProfileCreate } from "@/types/human-profile";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Card,
@@ -20,6 +21,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import {
   Select,
   SelectContent,
@@ -50,7 +59,37 @@ const ACTION_TYPES = [
   { key: "send_sms", label: "Send SMS" },
   { key: "enroll_campaign", label: "Enroll in Campaign" },
   { key: "apply_tag", label: "Apply Tag" },
-];
+] as const;
+
+const policyEnum = z.enum(["auto", "ask", "never"]);
+
+const humanProfileFormSchema = z.object({
+  display_name: z.string().min(1, { error: "Display name is required" }).max(255),
+  role_title: z.string().max(255).optional().or(z.literal("")),
+  phone_number: z.string().max(50).optional().or(z.literal("")),
+  email: z
+    .union([z.literal(""), z.email({ error: "Invalid email address" })])
+    .optional(),
+  timezone: z.string().min(1),
+  bio: z.string().max(2000).optional().or(z.literal("")),
+  default_policy: policyEnum,
+  auto_approve_timeout_minutes: z
+    .number()
+    .int()
+    .min(1, { error: "Must be at least 1 minute" })
+    .max(10080, { error: "Must be at most 10080 minutes" }),
+  auto_reject_timeout_minutes: z
+    .number()
+    .int()
+    .min(1, { error: "Must be at least 1 minute" })
+    .max(10080, { error: "Must be at most 10080 minutes" }),
+  book_appointment_policy: policyEnum,
+  send_sms_policy: policyEnum,
+  enroll_campaign_policy: policyEnum,
+  apply_tag_policy: policyEnum,
+});
+
+type HumanProfileFormValues = z.infer<typeof humanProfileFormSchema>;
 
 interface HumanProfileTabProps {
   agentId: string;
@@ -103,28 +142,45 @@ export function HumanProfileTab({ agentId }: HumanProfileTabProps) {
 interface HumanProfileFormProps {
   agentId: string;
   workspaceId: string | null;
-  profile: import("@/types/human-profile").HumanProfile | null;
+  profile: HumanProfile | null;
   is404: boolean;
+}
+
+function profileToFormValues(profile: HumanProfile | null): HumanProfileFormValues {
+  const policies = profile?.action_policies ?? {};
+  const readPolicy = (key: string, fallback: "auto" | "ask" | "never"): "auto" | "ask" | "never" => {
+    const v = policies[key];
+    return v === "auto" || v === "ask" || v === "never" ? v : fallback;
+  };
+  const defaultPolicy = (profile?.default_policy === "auto" ||
+    profile?.default_policy === "ask" ||
+    profile?.default_policy === "never")
+    ? profile.default_policy
+    : "ask";
+
+  return {
+    display_name: profile?.display_name ?? "",
+    role_title: profile?.role_title ?? "",
+    phone_number: profile?.phone_number ?? "",
+    email: profile?.email ?? "",
+    timezone: profile?.timezone ?? "America/New_York",
+    bio: profile?.bio ?? "",
+    default_policy: defaultPolicy,
+    auto_approve_timeout_minutes: profile?.auto_approve_timeout_minutes ?? 60,
+    auto_reject_timeout_minutes: profile?.auto_reject_timeout_minutes ?? 1440,
+    book_appointment_policy: readPolicy("book_appointment", "ask"),
+    send_sms_policy: readPolicy("send_sms", "ask"),
+    enroll_campaign_policy: readPolicy("enroll_campaign", "ask"),
+    apply_tag_policy: readPolicy("apply_tag", "auto"),
+  };
 }
 
 function HumanProfileForm({ agentId, workspaceId, profile, is404 }: HumanProfileFormProps) {
   const queryClient = useQueryClient();
 
-  const [displayName, setDisplayName] = useState(profile?.display_name ?? "");
-  const [roleTitle, setRoleTitle] = useState(profile?.role_title ?? "");
-  const [phoneNumber, setPhoneNumber] = useState(profile?.phone_number ?? "");
-  const [email, setEmail] = useState(profile?.email ?? "");
-  const [timezone, setTimezone] = useState(profile?.timezone ?? "America/New_York");
-  const [bio, setBio] = useState(profile?.bio ?? "");
-  const [defaultPolicy, setDefaultPolicy] = useState(profile?.default_policy ?? "ask");
-  const [autoApproveTimeout, setAutoApproveTimeout] = useState(profile?.auto_approve_timeout_minutes ?? 60);
-  const [autoRejectTimeout, setAutoRejectTimeout] = useState(profile?.auto_reject_timeout_minutes ?? 1440);
-  const [actionPolicies, setActionPolicies] = useState<Record<string, string>>({
-    book_appointment: "ask",
-    send_sms: "ask",
-    enroll_campaign: "ask",
-    apply_tag: "auto",
-    ...profile?.action_policies,
+  const form = useForm<HumanProfileFormValues>({
+    resolver: zodResolver(humanProfileFormSchema),
+    defaultValues: profileToFormValues(profile),
   });
 
   const saveMutation = useMutation({
@@ -142,225 +198,295 @@ function HumanProfileForm({ agentId, workspaceId, profile, is404 }: HumanProfile
       toast.error(getApiErrorMessage(err, "Failed to save profile")),
   });
 
-  const handleSave = () => {
-    if (!displayName.trim()) {
-      toast.error("Display name is required");
-      return;
-    }
+  const handleSave = (data: HumanProfileFormValues) => {
     saveMutation.mutate({
-      display_name: displayName,
-      role_title: roleTitle || undefined,
-      phone_number: phoneNumber || undefined,
-      email: email || undefined,
-      timezone,
-      bio: bio || undefined,
-      action_policies: actionPolicies,
-      default_policy: defaultPolicy,
-      auto_approve_timeout_minutes: autoApproveTimeout,
-      auto_reject_timeout_minutes: autoRejectTimeout,
+      display_name: data.display_name,
+      role_title: data.role_title || undefined,
+      phone_number: data.phone_number || undefined,
+      email: data.email || undefined,
+      timezone: data.timezone,
+      bio: data.bio || undefined,
+      action_policies: {
+        book_appointment: data.book_appointment_policy,
+        send_sms: data.send_sms_policy,
+        enroll_campaign: data.enroll_campaign_policy,
+        apply_tag: data.apply_tag_policy,
+      },
+      default_policy: data.default_policy,
+      auto_approve_timeout_minutes: data.auto_approve_timeout_minutes,
+      auto_reject_timeout_minutes: data.auto_reject_timeout_minutes,
     });
   };
 
+  const actionFieldNames = {
+    book_appointment: "book_appointment_policy",
+    send_sms: "send_sms_policy",
+    enroll_campaign: "enroll_campaign_policy",
+    apply_tag: "apply_tag_policy",
+  } as const;
+
   return (
-    <div className="space-y-6">
-      {is404 && (
-        <Card className="border-dashed">
-          <CardContent className="py-4">
-            <p className="text-sm text-muted-foreground">
-              No human profile exists for this agent yet. Fill in the details below to create one.
-            </p>
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(handleSave)} className="space-y-6">
+        {is404 && (
+          <Card className="border-dashed">
+            <CardContent className="py-4">
+              <p className="text-sm text-muted-foreground">
+                No human profile exists for this agent yet. Fill in the details below to create one.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Basic Info */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Profile Details</CardTitle>
+            <CardDescription>
+              The human persona your AI agent will represent when interacting with leads
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="display_name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Display Name *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g. Sarah Johnson" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="role_title"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Role Title</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g. Senior Realtor" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="phone_number"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone Number</FormLabel>
+                    <FormControl>
+                      <Input placeholder="+1 (555) 123-4567" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input type="email" placeholder="sarah@example.com" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+            <FormField
+              control={form.control}
+              name="timezone"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Timezone</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {TIMEZONES.map((tz) => (
+                        <SelectItem key={tz.value} value={tz.value}>
+                          {tz.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="bio"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Bio</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="A short bio that helps the AI understand who this person is..."
+                      rows={3}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           </CardContent>
         </Card>
-      )}
 
-      {/* Basic Info */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Profile Details</CardTitle>
-          <CardDescription>
-            The human persona your AI agent will represent when interacting with leads
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="display-name">Display Name *</Label>
-              <Input
-                id="display-name"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="e.g. Sarah Johnson"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="role-title">Role Title</Label>
-              <Input
-                id="role-title"
-                value={roleTitle}
-                onChange={(e) => setRoleTitle(e.target.value)}
-                placeholder="e.g. Senior Realtor"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="phone-number">Phone Number</Label>
-              <Input
-                id="phone-number"
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-                placeholder="+1 (555) 123-4567"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="sarah@example.com"
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="timezone">Timezone</Label>
-            <Select value={timezone} onValueChange={setTimezone}>
-              <SelectTrigger id="timezone">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {TIMEZONES.map((tz) => (
-                  <SelectItem key={tz.value} value={tz.value}>
-                    {tz.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="bio">Bio</Label>
-            <Textarea
-              id="bio"
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              placeholder="A short bio that helps the AI understand who this person is..."
-              rows={3}
+        {/* Action Policies */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Action Policies</CardTitle>
+            <CardDescription>
+              Control which actions the AI can take automatically vs. needing human approval
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <FormField
+              control={form.control}
+              name="default_policy"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Default Policy</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger className="w-48">
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {POLICY_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Applied to any action type not explicitly configured below
+                  </p>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
-        </CardContent>
-      </Card>
 
-      {/* Action Policies */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Action Policies</CardTitle>
-          <CardDescription>
-            Control which actions the AI can take automatically vs. needing human approval
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>Default Policy</Label>
-            <Select value={defaultPolicy} onValueChange={setDefaultPolicy}>
-              <SelectTrigger className="w-48">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {POLICY_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Applied to any action type not explicitly configured below
-            </p>
-          </div>
+            <div className="space-y-3">
+              {ACTION_TYPES.map((at) => (
+                <FormField
+                  key={at.key}
+                  control={form.control}
+                  name={actionFieldNames[at.key]}
+                  render={({ field }) => (
+                    <FormItem className="flex items-center justify-between space-y-0">
+                      <FormLabel>{at.label}</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger className="w-48">
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {POLICY_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FormItem>
+                  )}
+                />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
 
-          <div className="space-y-3">
-            {ACTION_TYPES.map((at) => (
-              <div key={at.key} className="flex items-center justify-between">
-                <Label>{at.label}</Label>
-                <Select
-                  value={actionPolicies[at.key] ?? defaultPolicy}
-                  onValueChange={(v) =>
-                    setActionPolicies((prev) => ({ ...prev, [at.key]: v }))
-                  }
-                >
-                  <SelectTrigger className="w-48">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {POLICY_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Timeouts */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Timeout Settings</CardTitle>
-          <CardDescription>
-            How long to wait before auto-approving or expiring pending actions
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="auto-approve">Auto-approve timeout (minutes)</Label>
-              <Input
-                id="auto-approve"
-                type="number"
-                min={1}
-                max={10080}
-                className="w-32"
-                value={autoApproveTimeout}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  if (!isNaN(val) && val >= 1) setAutoApproveTimeout(val);
-                }}
+        {/* Timeouts */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Timeout Settings</CardTitle>
+            <CardDescription>
+              How long to wait before auto-approving or expiring pending actions
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="auto_approve_timeout_minutes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Auto-approve timeout (minutes)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={10080}
+                        className="w-32"
+                        value={field.value}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          field.onChange(isNaN(val) ? field.value : val);
+                        }}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="auto_reject_timeout_minutes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Auto-reject timeout (minutes)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={10080}
+                        className="w-32"
+                        value={field.value}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          field.onChange(isNaN(val) ? field.value : val);
+                        }}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="auto-reject">Auto-reject timeout (minutes)</Label>
-              <Input
-                id="auto-reject"
-                type="number"
-                min={1}
-                max={10080}
-                className="w-32"
-                value={autoRejectTimeout}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  if (!isNaN(val) && val >= 1) setAutoRejectTimeout(val);
-                }}
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      {/* Save */}
-      <div className="flex justify-end">
-        <Button onClick={handleSave} disabled={saveMutation.isPending}>
-          {saveMutation.isPending ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Save className="mr-2 h-4 w-4" />
-          )}
-          {profile !== null && !is404 ? "Update Profile" : "Create Profile"}
-        </Button>
-      </div>
-    </div>
+        {/* Save */}
+        <div className="flex justify-end">
+          <Button type="submit" disabled={saveMutation.isPending}>
+            {saveMutation.isPending ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="mr-2 h-4 w-4" />
+            )}
+            {profile !== null && !is404 ? "Update Profile" : "Create Profile"}
+          </Button>
+        </div>
+      </form>
+    </Form>
   );
 }
