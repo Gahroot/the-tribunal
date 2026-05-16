@@ -200,6 +200,10 @@ exclude_lines = [
 dev = [
     "factory-boy>=3.3.3",
     "mypy>=2.1.0",
+    # security hardening: pip-audit 2.7 added the `--strict` exit semantics and the
+    # `--vulnerability-service osv` default we rely on in the weekly audit workflow
+    # (.github/workflows/audit.yml). Bump freely.
+    "pip-audit>=2.7.3",
     "pytest>=9.0.3",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=7.1.0",

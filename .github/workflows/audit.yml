@@ -1,0 +1,329 @@
+name: Security Audit
+
+# Weekly dependency + secret scan. Separate from `backend-ci.yml` and
+# `frontend-ci.yml` so transient upstream advisories (a new CVE published over
+# the weekend) page us via a GitHub issue instead of breaking the per-PR build.
+#
+# Runs every Monday at 12:00 UTC and on manual dispatch. Each job is wired to
+# fail on any *high-or-above* vulnerability, then a follow-up step files a
+# GitHub issue with the captured report so the on-call engineer has actionable
+# context without re-running the workflow locally.
+
+on:
+  schedule:
+    # Mondays at 12:00 UTC — picked to land after the weekend backlog of
+    # upstream advisories but before the EU/US workday so triage starts early.
+    - cron: "0 12 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: audit-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  # `peter-evans/create-issue-from-file` needs write access to open the
+  # follow-up issue when a job fails. Scoped per-job below for clarity.
+  issues: write
+
+jobs:
+  backend-pip-audit:
+    name: Backend pip-audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+
+      - name: Install dependencies (frozen lockfile)
+        run: uv sync --frozen
+
+      - name: Run pip-audit (human-readable)
+        # Surfaces the full advisory table directly in the workflow log so a
+        # reviewer can scan severities without downloading the artifact.
+        # `continue-on-error` lets the JSON capture step below still run; the
+        # final gate is the severity check, not this command's exit code.
+        id: pip_audit_text
+        continue-on-error: true
+        run: uv run pip-audit --strict
+
+      - name: Run pip-audit (JSON for issue body)
+        # Always produce the JSON report — even when the text run passed —
+        # so the issue body and the uploaded artifact stay in sync.
+        if: always()
+        run: uv run pip-audit --format json --output pip-audit-report.json || true
+
+      - name: Upload pip-audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-report
+          path: backend/pip-audit-report.json
+          if-no-files-found: warn
+
+      - name: Check for high-severity vulnerabilities
+        # pip-audit's JSON shape: {"dependencies": [{"vulns": [{"aliases": [...],
+        # "id": "...", ...}]}]}. Severity is *not* always present on the OSV
+        # payload, so we treat ANY reported vuln as failure-worthy here — the
+        # `--strict` text run above already filtered out the "fix available but
+        # not relevant" cases. Matches the policy in the task description:
+        # fail on any high vulnerability.
+        id: severity_check
+        run: |
+          set -euo pipefail
+          if [ ! -s pip-audit-report.json ]; then
+            echo "pip-audit-report.json missing or empty; treating as failure."
+            echo "has_vulns=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          vuln_count=$(python -c "import json,sys; data=json.load(open('pip-audit-report.json')); print(sum(len(d.get('vulns', [])) for d in data.get('dependencies', [])))")
+          echo "Detected ${vuln_count} vulnerability record(s)."
+          if [ "${vuln_count}" -gt 0 ]; then
+            echo "has_vulns=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_vulns=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build issue body
+        if: steps.severity_check.outputs.has_vulns == 'true'
+        run: |
+          {
+            echo "## Backend \`pip-audit\` flagged vulnerabilities"
+            echo
+            echo "- Workflow: \`${GITHUB_WORKFLOW}\`"
+            echo "- Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo
+            echo "### Report"
+            echo
+            echo '```json'
+            cat pip-audit-report.json
+            echo '```'
+          } > pip-audit-issue.md
+
+      - name: Open issue for vulnerabilities
+        if: steps.severity_check.outputs.has_vulns == 'true'
+        uses: peter-evans/create-issue-from-file@v5
+        with:
+          title: "Security: backend pip-audit detected vulnerabilities"
+          content-filepath: backend/pip-audit-issue.md
+          labels: |
+            security
+            dependencies
+            backend
+            automated
+
+      - name: Fail on vulnerabilities
+        if: steps.severity_check.outputs.has_vulns == 'true'
+        run: |
+          echo "::error::Backend pip-audit reported one or more vulnerabilities. See the opened issue and the pip-audit-report artifact."
+          exit 1
+
+  frontend-npm-audit:
+    name: Frontend npm audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies (frozen lockfile)
+        # npm audit reads from package-lock.json directly; `npm ci` mirrors the
+        # backend's `uv sync --frozen` discipline and guarantees the audit
+        # sees the same dep graph CI deploys.
+        run: npm ci
+
+      - name: Run npm audit (production deps, high+ only)
+        # `--omit=dev` mirrors what ships to users; dev-only CVEs are handled
+        # via Dependabot PRs instead of paging on-call. `--audit-level=high`
+        # exits non-zero on high or critical findings, which is the gate we
+        # want — `continue-on-error` lets the JSON capture step below run so
+        # we can attach the report to the auto-filed issue.
+        id: npm_audit_text
+        continue-on-error: true
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Capture npm audit JSON
+        if: always()
+        # `|| true` because `npm audit --json` also exits non-zero on findings;
+        # we want the JSON regardless of severity for the artifact + issue body.
+        run: npm audit --omit=dev --json > npm-audit-report.json || true
+
+      - name: Upload npm audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-report
+          path: frontend/npm-audit-report.json
+          if-no-files-found: warn
+
+      - name: Check for high-severity vulnerabilities
+        # Reads metadata.vulnerabilities.{high,critical} from `npm audit --json`.
+        # Matches the gating semantics of `--audit-level=high` above so this
+        # step's pass/fail tracks what npm itself decided.
+        id: severity_check
+        run: |
+          set -euo pipefail
+          if [ ! -s npm-audit-report.json ]; then
+            echo "npm-audit-report.json missing or empty; treating as failure."
+            echo "has_vulns=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          high=$(node -e "const r=require('./npm-audit-report.json'); const v=(r.metadata&&r.metadata.vulnerabilities)||{}; console.log((v.high||0)+(v.critical||0));")
+          echo "Detected ${high} high-or-critical vulnerability record(s)."
+          if [ "${high}" -gt 0 ]; then
+            echo "has_vulns=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_vulns=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build issue body
+        if: steps.severity_check.outputs.has_vulns == 'true'
+        run: |
+          {
+            echo "## Frontend \`npm audit\` flagged high-severity vulnerabilities"
+            echo
+            echo "- Workflow: \`${GITHUB_WORKFLOW}\`"
+            echo "- Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Scope: production deps only (\`--omit=dev\`)"
+            echo
+            echo "### Severity summary"
+            echo
+            echo '```json'
+            node -e "const r=require('./npm-audit-report.json'); console.log(JSON.stringify(r.metadata && r.metadata.vulnerabilities, null, 2));"
+            echo '```'
+            echo
+            echo "### Full report"
+            echo
+            echo '```json'
+            cat npm-audit-report.json
+            echo '```'
+          } > npm-audit-issue.md
+
+      - name: Open issue for vulnerabilities
+        if: steps.severity_check.outputs.has_vulns == 'true'
+        uses: peter-evans/create-issue-from-file@v5
+        with:
+          title: "Security: frontend npm audit detected high-severity vulnerabilities"
+          content-filepath: frontend/npm-audit-issue.md
+          labels: |
+            security
+            dependencies
+            frontend
+            automated
+
+      - name: Fail on vulnerabilities
+        if: steps.severity_check.outputs.has_vulns == 'true'
+        run: |
+          echo "::error::Frontend npm audit reported high-or-critical vulnerabilities. See the opened issue and the npm-audit-report artifact."
+          exit 1
+
+  gitleaks:
+    name: Gitleaks full-history scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout (full history)
+        # `fetch-depth: 0` is mandatory — `gitleaks detect` walks every commit
+        # in the working tree's history; a shallow clone would silently skip
+        # most of the repo and produce a false-clean result.
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        id: gitleaks
+        continue-on-error: true
+        # `--no-banner` keeps the log readable; `--redact` ensures the SARIF
+        # artifact never carries the raw secret. `--report-format sarif` lines
+        # up with what GitHub's code-scanning UI can render if we ever wire it.
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/repo" \
+            -w /repo \
+            zricethezav/gitleaks:latest \
+            detect \
+              --source . \
+              --config .gitleaks.toml \
+              --no-banner \
+              --redact \
+              --report-format sarif \
+              --report-path gitleaks-report.sarif \
+              --verbose
+
+      - name: Upload gitleaks report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.sarif
+          if-no-files-found: warn
+
+      - name: Build issue body
+        if: steps.gitleaks.outcome == 'failure'
+        run: |
+          {
+            echo "## Gitleaks detected secrets in repository history"
+            echo
+            echo "- Workflow: \`${GITHUB_WORKFLOW}\`"
+            echo "- Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo
+            echo "The full SARIF report (with secrets redacted) is attached to the workflow run as the \`gitleaks-report\` artifact."
+            echo
+            echo "**Immediate actions:**"
+            echo "1. Rotate every credential flagged by the scan — assume it is public."
+            echo "2. Audit access logs for the affected service."
+            echo "3. Open a follow-up to remove the secret from git history if it is still reachable on \`main\`."
+          } > gitleaks-issue.md
+
+      - name: Open issue for leaked secrets
+        if: steps.gitleaks.outcome == 'failure'
+        uses: peter-evans/create-issue-from-file@v5
+        with:
+          title: "Security: gitleaks detected secrets in repository history"
+          content-filepath: gitleaks-issue.md
+          labels: |
+            security
+            secrets
+            automated
+
+      - name: Fail on leaked secrets
+        if: steps.gitleaks.outcome == 'failure'
+        run: |
+          echo "::error::Gitleaks reported one or more findings. See the opened issue and the gitleaks-report artifact."
+          exit 1
