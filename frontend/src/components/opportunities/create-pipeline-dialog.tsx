@@ -1,16 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
-import { Loader2 } from "lucide-react";
 
-import { opportunitiesApi, type CreatePipelineRequest } from "@/lib/api/opportunities";
-import { queryKeys } from "@/lib/query-keys";
-import { getApiErrorMessage } from "@/lib/utils/errors";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -30,6 +27,9 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { opportunitiesApi, type CreatePipelineRequest } from "@/lib/api/opportunities";
+import { queryKeys } from "@/lib/query-keys";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 
 const pipelineFormSchema = z.object({
   name: z.string().min(1, { error: "Pipeline name is required" }).max(255, { error: "Name must be 255 characters or less" }),

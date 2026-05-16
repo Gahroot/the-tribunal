@@ -3,13 +3,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { BarChart3, Loader2 } from "lucide-react";
 
+import { Card, CardContent } from "@/components/ui/card";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import {
   campaignReportsApi,
   type CampaignReportResponse,
 } from "@/lib/api/campaign-reports";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { queryKeys } from "@/lib/query-keys";
-import { Card, CardContent } from "@/components/ui/card";
+
 import { CampaignReportCard } from "./campaign-report-card";
 
 export function CampaignReportsList() {

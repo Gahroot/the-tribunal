@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
 import { Search } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import type { ReactNode } from "react";
+
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 
 interface ResourceListSearchProps {
   searchQuery: string;

@@ -1,5 +1,5 @@
-import { memo } from "react";
 import { Calendar, Megaphone, MessageSquare, Phone } from "lucide-react";
+import { memo } from "react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {

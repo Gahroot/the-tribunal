@@ -1,8 +1,8 @@
 "use client";
 
+import Link from "@tiptap/extension-link";
 import { useEditor, EditorContent, Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import Link from "@tiptap/extension-link";
 import {
   Bold,
   Italic,
@@ -17,19 +17,19 @@ import {
   Quote,
   Code,
 } from "lucide-react";
+import { useState, useCallback, useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Toggle } from "@/components/ui/toggle";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
+import { Toggle } from "@/components/ui/toggle";
 import { cn } from "@/lib/utils";
-import { useState, useCallback, useEffect } from "react";
 import type { RichTextContent } from "@/types";
 
 interface RichTextEditorProps {

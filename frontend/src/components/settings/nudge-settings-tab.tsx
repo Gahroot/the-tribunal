@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Info } from "lucide-react";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Card,
   CardContent,
@@ -10,12 +11,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { nudgesApi } from "@/lib/api/nudges";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { nudgesApi } from "@/lib/api/nudges";
 import { queryKeys } from "@/lib/query-keys";
 import type { UpdateNudgeSettings, NudgeType } from "@/types/nudge";
 

@@ -1,6 +1,5 @@
 "use client";
 
-import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Users,
@@ -12,13 +11,14 @@ import {
   CalendarX,
   type LucideIcon,
 } from "lucide-react";
+import * as React from "react";
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageEmptyState } from "@/components/ui/page-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -28,13 +28,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { getRealtorStats, type RealtorStats } from "@/lib/api/realtor";
 import { appointmentsApi } from "@/lib/api/appointments";
+import { getRealtorStats, type RealtorStats } from "@/lib/api/realtor";
 import { queryKeys } from "@/lib/query-keys";
 import { POLL_30S } from "@/lib/query-options";
-import type { Appointment } from "@/types";
 import { formatDateTime } from "@/lib/utils/date";
 import { formatNumber } from "@/lib/utils/number";
+import type { Appointment } from "@/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

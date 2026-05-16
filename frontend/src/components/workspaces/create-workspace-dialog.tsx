@@ -1,15 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
-import { Loader2 } from "lucide-react";
 
-import { workspacesApi, type CreateWorkspaceRequest } from "@/lib/api/workspaces";
-import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -30,6 +28,8 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { workspacesApi, type CreateWorkspaceRequest } from "@/lib/api/workspaces";
+import { queryKeys } from "@/lib/query-keys";
 
 const workspaceFormSchema = z.object({
   name: z.string().min(1, { error: "Name is required" }).max(200, { error: "Name must be 200 characters or less" }),

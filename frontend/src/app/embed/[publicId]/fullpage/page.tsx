@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, use, Suspense } from "react";
 import { Mic, MicOff, Loader2, MessageSquare } from "lucide-react";
 import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useRef, useState, use, Suspense } from "react";
 
 import { ChatInput, MessageList, type ChatMessage } from "../_chat-ui";
 import {

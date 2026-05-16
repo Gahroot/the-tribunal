@@ -1,5 +1,3 @@
-import { memo } from "react";
-import Link from "next/link";
 import {
   ArrowUpRight,
   Bot,
@@ -9,6 +7,8 @@ import {
   TrendingUp,
   UserX,
 } from "lucide-react";
+import Link from "next/link";
+import { memo } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

@@ -1,12 +1,13 @@
 "use client";
 
-import { useFormContext } from "react-hook-form";
 import { AlertCircle, CheckCircle2, Phone, Users } from "lucide-react";
+import { useFormContext } from "react-hook-form";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { formatNumber } from "@/lib/utils/number";
 
 import type { OnboardingFormValues } from "../_state";
+
 import { useOnboardingExtras } from "./onboarding-context";
 
 export function ReviewStep() {

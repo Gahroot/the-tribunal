@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { motion } from "motion/react";
+import { useMutation } from "@tanstack/react-query";
 import {
   FileText,
   Users,
@@ -12,12 +11,15 @@ import {
   AlertCircle,
   FlaskConical,
 } from "lucide-react";
+import { motion } from "motion/react";
+import { useState, useCallback } from "react";
 
+import { SegmentPicker } from "@/components/segments/segment-picker";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -26,21 +28,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-
-import { useMutation } from "@tanstack/react-query";
-
-import { ContactSelector } from "../campaigns/contact-selector";
-import { AgentSelector } from "../campaigns/agent-selector";
-import { VariantEditor, type VariantFormData } from "./variant-editor";
-import { SegmentPicker } from "@/components/segments/segment-picker";
-import { segmentsApi } from "@/lib/api/segments";
-
-import { useWizard } from "@/hooks/useWizard";
+import { Textarea } from "@/components/ui/textarea";
 import { WizardContainer } from "@/components/wizard";
-
-import type { Contact, Agent, PhoneNumber, MessageTest } from "@/types";
+import { useWizard } from "@/hooks/useWizard";
 import type { CreateMessageTestRequest } from "@/lib/api/message-tests";
+import { segmentsApi } from "@/lib/api/segments";
+import type { Contact, Agent, PhoneNumber, MessageTest } from "@/types";
+
+import { AgentSelector } from "../campaigns/agent-selector";
+import { ContactSelector } from "../campaigns/contact-selector";
+
+import { VariantEditor, type VariantFormData } from "./variant-editor";
+
 
 const STEPS = [
   { id: "basics", label: "Basics", icon: FileText },

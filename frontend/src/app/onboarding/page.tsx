@@ -1,21 +1,21 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { FormProvider, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { toast } from "sonner";
 import { Calendar, Database, Rocket, Upload } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useMemo, useState } from "react";
+import { FormProvider, useForm } from "react-hook-form";
+import { toast } from "sonner";
 
 import { WizardContainer } from "@/components/wizard/wizard-container";
 import type { WizardStepDef } from "@/hooks/useWizard";
-import { useWorkspace } from "@/providers/workspace-provider";
 import {
   createCampaignFromCsv,
   onboard,
   parseCalcomUrl,
 } from "@/lib/api/realtor";
 import { getApiErrorMessage } from "@/lib/utils/errors";
+import { useWorkspace } from "@/providers/workspace-provider";
 
 import {
   ONBOARDING_DEFAULTS,
@@ -24,13 +24,13 @@ import {
   type OnboardingFormValues,
   type OnboardingStepId,
 } from "./_state";
+import { CalcomStep } from "./_steps/calcom-step";
+import { FubStep } from "./_steps/fub-step";
+import { LeadsStep } from "./_steps/leads-step";
 import {
   OnboardingExtrasProvider,
   useOnboardingExtras,
 } from "./_steps/onboarding-context";
-import { CalcomStep } from "./_steps/calcom-step";
-import { FubStep } from "./_steps/fub-step";
-import { LeadsStep } from "./_steps/leads-step";
 import { ReviewStep } from "./_steps/review-step";
 
 const STEPS = [

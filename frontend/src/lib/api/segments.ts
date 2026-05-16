@@ -1,6 +1,6 @@
 import { apiGet, apiPost } from "@/lib/api";
-import type { Segment, FilterDefinition } from "@/types";
 import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
+import type { Segment, FilterDefinition } from "@/types";
 
 export interface SegmentListResponse {
   items: Segment[];

@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
+
 import { POLL_60S } from "@/lib/query-options";
 
 export default function LandingLayout({

@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+
 import { createResourceHooks } from "@/lib/api/create-resource-hooks";
 import { segmentsApi } from "@/lib/api/segments";
 import { queryKeys } from "@/lib/query-keys";

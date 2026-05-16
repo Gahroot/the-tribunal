@@ -1,5 +1,5 @@
-import { AppSidebar } from "@/components/layout/app-sidebar";
 import { CampaignDetail } from "@/components/campaigns/campaign-detail";
+import { AppSidebar } from "@/components/layout/app-sidebar";
 
 interface CampaignDetailPageProps {
   params: Promise<{ id: string }>;

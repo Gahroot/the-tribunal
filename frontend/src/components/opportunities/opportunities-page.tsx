@@ -1,18 +1,19 @@
 "use client";
 
-import * as React from "react";
-import dynamic from "next/dynamic";
 import { Plus, ListIcon, LayoutGrid } from "lucide-react";
+import dynamic from "next/dynamic";
+import * as React from "react";
+
+import { CreateOpportunityDialog } from "@/components/opportunities/create-opportunity-dialog";
+import { CreatePipelineDialog } from "@/components/opportunities/create-pipeline-dialog";
+import { OpportunitiesList } from "@/components/opportunities/opportunities-list";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { OpportunitiesList } from "@/components/opportunities/opportunities-list";
 
 const OpportunitiesBoard = dynamic(
   () => import("@/components/opportunities/opportunities-board").then((m) => m.OpportunitiesBoard),
   { ssr: false, loading: () => <div className="h-full w-full animate-pulse bg-muted/20" /> },
 );
-import { CreateOpportunityDialog } from "@/components/opportunities/create-opportunity-dialog";
-import { CreatePipelineDialog } from "@/components/opportunities/create-pipeline-dialog";
 
 interface OpportunitiesPageProps {
   workspaceId: string;

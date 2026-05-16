@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef, use, Suspense } from "react";
 import { Send, X, MessageSquare, Loader2 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
+import { useEffect, useState, useCallback, useRef, use, Suspense } from "react";
 
 interface AgentConfig {
   public_id: string;

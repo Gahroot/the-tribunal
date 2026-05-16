@@ -1,4 +1,5 @@
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
+import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
 import type {
   Offer,
   DiscountType,
@@ -6,7 +7,6 @@ import type {
   UrgencyType,
   ValueStackItem,
 } from "@/types";
-import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
 
 // Request/Response Types
 export interface OffersListParams {

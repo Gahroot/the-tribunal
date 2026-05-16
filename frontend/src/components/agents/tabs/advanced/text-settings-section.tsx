@@ -1,4 +1,6 @@
 import type { Control } from "react-hook-form";
+
+import type { EditAgentFormValues } from "@/components/agents/agent-edit-schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   FormControl,
@@ -9,7 +11,6 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Slider } from "@/components/ui/slider";
-import type { EditAgentFormValues } from "@/components/agents/agent-edit-schema";
 
 interface TextSettingsSectionProps {
   control: Control<EditAgentFormValues>;

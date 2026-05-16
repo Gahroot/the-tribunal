@@ -1,7 +1,5 @@
 "use client";
 
-import * as React from "react";
-import { motion } from "motion/react";
 import {
   Phone,
   MessageSquare,
@@ -12,9 +10,12 @@ import {
   Calendar,
   FileText,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { motion } from "motion/react";
+import * as React from "react";
+
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { formatTime } from "@/lib/utils/date";
 import type { TimelineItem } from "@/types";
 

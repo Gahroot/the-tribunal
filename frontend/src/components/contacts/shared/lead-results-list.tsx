@@ -3,7 +3,6 @@
 import { AlertCircle, Globe, MapPin, Phone, Star } from "lucide-react";
 import type { ReactNode } from "react";
 
-import type { BusinessResult } from "@/lib/api/scraping";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -14,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import type { BusinessResult } from "@/lib/api/scraping";
 import { cn } from "@/lib/utils";
 
 interface LeadResultsListProps {
@@ -186,11 +186,20 @@ interface LeadRowProps {
 function LeadRow({ result, selected, onToggle, maxTypes }: LeadRowProps) {
   return (
     <div
+      role="checkbox"
+      aria-checked={selected}
+      tabIndex={0}
       className={cn(
         "p-3 rounded-lg border cursor-pointer transition-colors",
         selected ? "bg-primary/5 border-primary" : "hover:bg-muted/50",
       )}
       onClick={onToggle}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onToggle();
+        }
+      }}
     >
       <div className="flex items-start gap-3">
         <Checkbox checked={selected} onCheckedChange={onToggle} className="mt-1" />

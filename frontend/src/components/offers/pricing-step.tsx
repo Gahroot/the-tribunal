@@ -10,9 +10,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import type { DiscountType } from "@/types";
 
 import type { OfferFormData } from "./offer-builder-wizard";
-import type { DiscountType } from "@/types";
 
 interface PricingStepProps {
   formData: OfferFormData;

@@ -1,9 +1,6 @@
 "use client";
 
-import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { formatRelative } from "@/lib/utils/date";
 import {
   Check,
   X,
@@ -14,23 +11,17 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
-import {
-  improvementSuggestionsApi,
-  type ImprovementSuggestionResponse,
-} from "@/lib/api/improvement-suggestions";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { queryKeys } from "@/lib/query-keys";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { PageEmptyState, PageLoadingState } from "@/components/ui/page-state";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -39,14 +30,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { PageEmptyState, PageLoadingState } from "@/components/ui/page-state";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Textarea } from "@/components/ui/textarea";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import {
+  improvementSuggestionsApi,
+  type ImprovementSuggestionResponse,
+} from "@/lib/api/improvement-suggestions";
+import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
+import { formatRelative } from "@/lib/utils/date";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 
 interface SuggestionsQueueProps {

@@ -1,13 +1,15 @@
 "use client";
 
 import type { UseFormReturn } from "react-hook-form";
-import type { AgentFormValues } from "./create-agent-form";
 
-import { Card, CardContent } from "@/components/ui/card";
+
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { Card, CardContent } from "@/components/ui/card";
 import { PRICING_TIERS } from "@/lib/pricing-tiers";
+import { cn } from "@/lib/utils";
+
 import { getTierIcon } from "./agent-form-utils";
+import type { AgentFormValues } from "./create-agent-form";
 
 interface PricingTierStepProps {
   form: UseFormReturn<AgentFormValues>;

@@ -3,13 +3,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, TrendingUp } from "lucide-react";
 
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import {
   promptVersionsApi,
   type PromptVersionResponse,
 } from "@/lib/api/prompt-versions";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { queryKeys } from "@/lib/query-keys";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { formatNumber } from "@/lib/utils/number";
 
 interface PromptPerformanceChartProps {

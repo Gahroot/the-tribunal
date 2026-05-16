@@ -1,9 +1,9 @@
 "use client";
 
-import type { UseFormReturn } from "react-hook-form";
-import type { AgentFormValues } from "./create-agent-form";
 
 import { Wand2 } from "lucide-react";
+import type { UseFormReturn } from "react-hook-form";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -17,6 +17,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { BEST_PRACTICES_PROMPT } from "@/lib/voice-constants";
+
+import type { AgentFormValues } from "./create-agent-form";
 
 interface SystemPromptStepProps {
   form: UseFormReturn<AgentFormValues>;

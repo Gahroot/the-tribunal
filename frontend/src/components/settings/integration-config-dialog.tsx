@@ -1,19 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { AxiosError } from "axios";
+import { Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
-import { Loader2, CheckCircle2, XCircle } from "lucide-react";
-import { AxiosError } from "axios";
 
-import {
-  integrationsApi,
-  type CreateIntegrationRequest,
-  type IntegrationWithMaskedCredentials,
-} from "@/lib/api/integrations";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -34,7 +29,11 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
-
+import {
+  integrationsApi,
+  type CreateIntegrationRequest,
+  type IntegrationWithMaskedCredentials,
+} from "@/lib/api/integrations";
 import { queryKeys } from "@/lib/query-keys";
 type IntegrationType = "calcom" | "telnyx" | "openai" | "resend" | "lob";
 

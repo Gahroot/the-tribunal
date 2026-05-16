@@ -1,16 +1,17 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { Calendar, Loader2, Bell } from "lucide-react";
+import Link from "next/link";
+import { useState } from "react";
+import { toast } from "sonner";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatDate } from "@/lib/utils/date";
-import { getApiErrorMessage } from "@/lib/utils/errors";
 import { appointmentsApi } from "@/lib/api/appointments";
 import { queryKeys } from "@/lib/query-keys";
+import { formatDate } from "@/lib/utils/date";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 import type { Appointment } from "@/types";
 
 interface ContactAppointmentsProps {

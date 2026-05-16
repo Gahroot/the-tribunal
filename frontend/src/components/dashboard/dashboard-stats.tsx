@@ -1,7 +1,3 @@
-import type React from "react";
-import { memo } from "react";
-import Link from "next/link";
-import { motion } from "motion/react";
 import {
   Megaphone,
   MessageSquare,
@@ -10,7 +6,17 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
+import { motion } from "motion/react";
+import Link from "next/link";
+import type React from "react";
+import { memo } from "react";
 
+import {
+  AnimatedNumber,
+  containerVariants,
+  isTrendUp,
+  itemVariants,
+} from "@/components/dashboard/animations";
 import {
   Card,
   CardContent,
@@ -18,12 +24,6 @@ import {
   CardHeader,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  AnimatedNumber,
-  containerVariants,
-  isTrendUp,
-  itemVariants,
-} from "@/components/dashboard/animations";
 import type { DashboardStats } from "@/lib/api/dashboard";
 
 interface StatCardProps {

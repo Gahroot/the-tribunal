@@ -1,11 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import * as z from "zod";
 import {
   Trophy,
   TrendingUp,
@@ -18,9 +14,13 @@ import {
   Loader2,
   AlertCircle,
 } from "lucide-react";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { toast } from "sonner";
+import * as z from "zod";
 
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -28,7 +28,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -46,14 +45,15 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { messageTestsApi } from "@/lib/api/message-tests";
 import { queryKeys } from "@/lib/query-keys";
 import { POLL_30S } from "@/lib/query-options";
-import { messageTestsApi } from "@/lib/api/message-tests";
-import type { VariantAnalytics } from "@/types";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 import { formatNumber } from "@/lib/utils/number";
+import type { VariantAnalytics } from "@/types";
 
 const convertCampaignSchema = z.object({
   campaign_name: z

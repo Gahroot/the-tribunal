@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Plus,
   Search,
@@ -22,10 +21,11 @@ import {
   Loader2,
   type LucideIcon,
 } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Card,
   CardContent,
@@ -35,13 +35,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -50,7 +43,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PageEmptyState, PageErrorState } from "@/components/ui/page-state";
 import {
   Select,
   SelectContent,
@@ -58,12 +60,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { PageEmptyState, PageErrorState } from "@/components/ui/page-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useQuery } from "@tanstack/react-query";
+import { Switch } from "@/components/ui/switch";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { queryKeys } from "@/lib/query-keys";
 import {
   useAutomations,
   useCreateAutomation,
@@ -72,8 +71,9 @@ import {
   useToggleAutomation,
 } from "@/hooks/useAutomations";
 import { automationsApi } from "@/lib/api/automations";
-import type { Automation, AutomationTriggerType, AutomationActionType } from "@/types";
+import { queryKeys } from "@/lib/query-keys";
 import { formatDate } from "@/lib/utils/date";
+import type { Automation, AutomationTriggerType, AutomationActionType } from "@/types";
 
 const triggerTypeConfig: Record<AutomationTriggerType, { label: string; icon: LucideIcon; color: string }> = {
   event: { label: "Event", icon: Zap, color: "text-warning" },

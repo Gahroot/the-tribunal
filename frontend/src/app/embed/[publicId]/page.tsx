@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, use, Suspense } from "react";
 import { Mic, MicOff, X, Phone } from "lucide-react";
 import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useRef, useState, use, Suspense } from "react";
 
 import {
   DEFAULT_PRIMARY_COLOR,

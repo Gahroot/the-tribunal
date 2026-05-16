@@ -1,6 +1,7 @@
 "use client";
 
 import { X, Square, Tags, Trash2, RefreshCw } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -9,8 +10,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
 import { contactStatusLabels, contactStatusDotColors } from "@/lib/status-colors";
+import { cn } from "@/lib/utils";
 import type { ContactStatus } from "@/types";
 
 const ALL_STATUSES: ContactStatus[] = ["new", "contacted", "qualified", "converted", "lost"];

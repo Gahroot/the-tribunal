@@ -13,10 +13,10 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import type { Agent } from "@/types";
 
 import { AgentSelector } from "../agent-selector";
 import type { WizardStep } from "../wizard-types";
-import type { Agent } from "@/types";
 
 export interface VoiceAgentStepFields {
   voice_agent_id?: string;

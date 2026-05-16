@@ -1,13 +1,13 @@
 "use client";
 
-import { formatRelative } from "@/lib/utils/date";
 import { Check, X, Clock, Loader2 } from "lucide-react";
 
-import type { PendingAction } from "@/types/pending-action";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { formatRelative } from "@/lib/utils/date";
+import type { PendingAction } from "@/types/pending-action";
 
 const URGENCY_STYLES: Record<string, string> = {
   high: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",

@@ -1,10 +1,6 @@
 "use client";
 
-import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { formatRelative } from "@/lib/utils/date";
-import { formatNumber } from "@/lib/utils/number";
 import {
   Play,
   Pause,
@@ -17,15 +13,26 @@ import {
   FlaskConical,
   Loader2,
 } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
-import {
-  promptVersionsApi,
-  type PromptVersionResponse,
-} from "@/lib/api/prompt-versions";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { queryKeys } from "@/lib/query-keys";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Table,
   TableBody,
@@ -34,23 +41,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
+  promptVersionsApi,
+  type PromptVersionResponse,
+} from "@/lib/api/prompt-versions";
+import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
+import { formatRelative } from "@/lib/utils/date";
 import { getApiErrorMessage } from "@/lib/utils/errors";
+import { formatNumber } from "@/lib/utils/number";
 
 interface PromptVersionHistoryProps {
   agentId: string;

@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-import { motion } from "motion/react";
 import {
   FileText,
   Video,
@@ -24,10 +22,11 @@ import {
   FileEdit,
   Clapperboard,
 } from "lucide-react";
+import { motion } from "motion/react";
+import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -38,7 +37,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -46,6 +45,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import type { LeadMagnet, LeadMagnetType, DeliveryMethod } from "@/types";
 
 interface LeadMagnetSelectorProps {

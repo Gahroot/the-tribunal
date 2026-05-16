@@ -1,19 +1,20 @@
 "use client";
 
-import { useState } from "react";
 import { Check, Plus, Loader2 } from "lucide-react";
+import { useState } from "react";
+
+import { TagBadge } from "@/components/tags/tag-badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { TagBadge } from "@/components/tags/tag-badge";
 import { useTags, useCreateTag } from "@/hooks/useTags";
-import { cn } from "@/lib/utils";
 import { TAG_COLORS } from "@/lib/tag-colors";
+import { cn } from "@/lib/utils";
 import type { Tag } from "@/types";
 
 interface TagPickerProps {

@@ -1,8 +1,8 @@
 // Campaign Types
 
+import type { CallRecord } from "./call";
 import type { Contact } from "./contact";
 import type { MessageStatus } from "./conversation";
-import type { CallRecord } from "./call";
 
 export type CampaignStatus = "draft" | "scheduled" | "running" | "paused" | "completed" | "cancelled";
 export type CampaignType = "sms" | "email" | "voice" | "voice_sms_fallback" | "multi_channel";

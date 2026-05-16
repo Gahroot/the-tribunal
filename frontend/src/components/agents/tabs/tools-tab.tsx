@@ -1,22 +1,23 @@
+import { ChevronDown, Globe, Search } from "lucide-react";
 import type { UseFormReturn } from "react-hook-form";
+
+import type { EditAgentFormValues } from "@/components/agents/agent-edit-schema";
+import {
+  INTEGRATIONS_WITH_TOOLS,
+  getRiskLevelBadge,
+} from "@/components/agents/agent-form-utils";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FormField } from "@/components/ui/form";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { ChevronDown, Globe, Search } from "lucide-react";
+import { FormField } from "@/components/ui/form";
 import { cn } from "@/lib/utils";
 import { GROK_BUILTIN_TOOLS } from "@/lib/voice-constants";
-import {
-  INTEGRATIONS_WITH_TOOLS,
-  getRiskLevelBadge,
-} from "@/components/agents/agent-form-utils";
-import type { EditAgentFormValues } from "@/components/agents/agent-edit-schema";
 
 interface ToolsTabProps {
   form: UseFormReturn<EditAgentFormValues>;

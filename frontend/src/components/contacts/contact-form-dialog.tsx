@@ -1,28 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 
-import {
-  contactsApi,
-  type CreateContactRequest,
-  type UpdateContactRequest,
-} from "@/lib/api/contacts";
-import { contactQueryKeys } from "@/hooks/useContacts";
-import { useContactStore } from "@/lib/contact-store";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { queryKeys } from "@/lib/query-keys";
-import { getApiErrorMessage } from "@/lib/utils/errors";
-import { messages } from "@/lib/messages";
-import {
-  contactFormSchema,
-  emptyContactFormValues,
-  type ContactFormValues,
-} from "@/lib/schemas/contact";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -41,7 +25,6 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -49,6 +32,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { contactQueryKeys } from "@/hooks/useContacts";
+import {
+  contactsApi,
+  type CreateContactRequest,
+  type UpdateContactRequest,
+} from "@/lib/api/contacts";
+import { useContactStore } from "@/lib/contact-store";
+import { messages } from "@/lib/messages";
+import { queryKeys } from "@/lib/query-keys";
+import {
+  contactFormSchema,
+  emptyContactFormValues,
+  type ContactFormValues,
+} from "@/lib/schemas/contact";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 import type { Contact, ContactStatus } from "@/types";
 
 type ContactFormDialogProps =

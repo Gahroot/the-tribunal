@@ -1,6 +1,5 @@
 "use client";
 
-import { useState, use } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Check,
@@ -11,16 +10,16 @@ import {
   CheckCircle2,
   AlertCircle,
 } from "lucide-react";
+import { useState, use } from "react";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { PageErrorState, PageLoadingState } from "@/components/ui/page-state";
-
+import { Separator } from "@/components/ui/separator";
 import { publicOffersApi, OptInRequest } from "@/lib/api/public-offers";
 import { queryKeys } from "@/lib/query-keys";
 import { formatNumber } from "@/lib/utils/number";

@@ -1,16 +1,13 @@
 "use client";
 
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Loader2, XCircle, Clock, Users } from "lucide-react";
+import { useRouter } from "next/navigation";
 import * as React from "react";
 import { use } from "react";
-import { useRouter } from "next/navigation";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Loader2, XCircle, Clock, Users } from "lucide-react";
 
-import { PageLoadingState } from "@/components/ui/page-state";
-import { invitationsApi } from "@/lib/api/invitations";
-import { queryKeys } from "@/lib/query-keys";
-import { useAuth } from "@/providers/auth-provider";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -20,7 +17,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { PageLoadingState } from "@/components/ui/page-state";
+import { invitationsApi } from "@/lib/api/invitations";
+import { queryKeys } from "@/lib/query-keys";
+import { useAuth } from "@/providers/auth-provider";
 
 interface PageProps {
   params: Promise<{ token: string }>;

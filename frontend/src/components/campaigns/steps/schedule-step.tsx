@@ -1,8 +1,8 @@
 "use client";
 
-import type React from "react";
-import { motion } from "motion/react";
 import { Clock, Calendar } from "lucide-react";
+import { motion } from "motion/react";
+import type React from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,9 +14,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-
+import { Switch } from "@/components/ui/switch";
 import { DAYS_OF_WEEK, TIMEZONES } from "@/lib/constants";
 
 interface ScheduleStepProps {

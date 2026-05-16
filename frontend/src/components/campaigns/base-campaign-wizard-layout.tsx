@@ -1,8 +1,9 @@
 "use client";
 
-import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Send } from "lucide-react";
+import type { ReactNode } from "react";
+
 import { WizardContainer } from "@/components/wizard";
 import type { UseWizardReturn, WizardStepDef } from "@/hooks/useWizard";
 

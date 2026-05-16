@@ -1,17 +1,10 @@
 "use client";
 
-import { useState } from "react";
 import { Plus, Pencil, Trash2, Loader2, Tags } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
+
+import { TagBadge } from "@/components/tags/tag-badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,9 +15,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { TagBadge } from "@/components/tags/tag-badge";
-import { useTags, useCreateTag, useUpdateTag, useDeleteTag } from "@/hooks/useTags";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useTags, useCreateTag, useUpdateTag, useDeleteTag } from "@/hooks/useTags";
 import { TAG_COLORS, DEFAULT_TAG_COLOR } from "@/lib/tag-colors";
 import type { Tag } from "@/types";
 

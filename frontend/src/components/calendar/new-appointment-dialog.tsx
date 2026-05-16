@@ -1,20 +1,13 @@
 "use client";
 
-import { useState, useMemo } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { CalendarIcon, Loader2, Search } from "lucide-react";
+import { useState, useMemo } from "react";
+import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
-import { formatDate } from "@/lib/utils/date";
-import { CalendarIcon, Loader2, Search } from "lucide-react";
 
-import { appointmentsApi, type CreateAppointmentRequest } from "@/lib/api/appointments";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { queryKeys } from "@/lib/query-keys";
-import { getApiErrorMessage } from "@/lib/utils/errors";
-import { useAgents } from "@/hooks/useAgents";
-import { useContacts } from "@/hooks/useContacts";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar-lazy";
 import {
@@ -35,7 +28,6 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Popover,
   PopoverContent,
@@ -48,7 +40,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useAgents } from "@/hooks/useAgents";
+import { useContacts } from "@/hooks/useContacts";
+import { appointmentsApi, type CreateAppointmentRequest } from "@/lib/api/appointments";
+import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
+import { formatDate } from "@/lib/utils/date";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 
 const appointmentFormSchema = z.object({
   contact_id: z.string().min(1, { error: "Please select a contact" }),

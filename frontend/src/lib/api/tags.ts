@@ -1,6 +1,6 @@
 import { apiPost } from "@/lib/api";
-import type { Tag } from "@/types";
 import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
+import type { Tag } from "@/types";
 
 export interface TagListResponse {
   items: Tag[];

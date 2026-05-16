@@ -1,8 +1,6 @@
 "use client";
 
-import * as React from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
   Bell,
   LayoutDashboard,
@@ -28,15 +26,39 @@ import {
   Search,
   ClipboardCheck,
 } from "lucide-react";
+import dynamic from "next/dynamic";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
-import { useQuery } from "@tanstack/react-query";
-import { useAuth } from "@/providers/auth-provider";
-import { nudgesApi } from "@/lib/api/nudges";
-import { pendingActionsApi } from "@/lib/api/pending-actions";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import * as React from "react";
 
-import { queryKeys } from "@/lib/query-keys";
-import { POLL_60S } from "@/lib/query-options";
+const CommandPalette = dynamic(
+  () => import("./command-palette").then((m) => m.CommandPalette),
+  { ssr: false },
+);
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Separator } from "@/components/ui/separator";
 import {
   Sidebar,
   SidebarContent,
@@ -56,36 +78,14 @@ import {
   SidebarTrigger,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
-import { WorkspaceSwitcher } from "./workspace-switcher";
-import dynamic from "next/dynamic";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { nudgesApi } from "@/lib/api/nudges";
+import { pendingActionsApi } from "@/lib/api/pending-actions";
+import { queryKeys } from "@/lib/query-keys";
+import { POLL_60S } from "@/lib/query-options";
+import { useAuth } from "@/providers/auth-provider";
 
-const CommandPalette = dynamic(
-  () => import("./command-palette").then((m) => m.CommandPalette),
-  { ssr: false },
-);
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Breadcrumb,
-  BreadcrumbList,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
-import { Separator } from "@/components/ui/separator";
-import { Button } from "@/components/ui/button";
+import { WorkspaceSwitcher } from "./workspace-switcher";
 
 const mainNavItems = [
   {

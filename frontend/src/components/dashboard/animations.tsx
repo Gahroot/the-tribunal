@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+
 import { formatNumber as formatExact } from "@/lib/utils/number";
 
 export const containerVariants = {

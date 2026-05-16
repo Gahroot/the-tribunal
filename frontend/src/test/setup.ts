@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
-import { vi, afterAll, afterEach, beforeAll } from "vitest";
 import { cleanup } from "@testing-library/react";
+import { vi, afterAll, afterEach, beforeAll } from "vitest";
 
 import { server } from "@/test/msw/server";
 

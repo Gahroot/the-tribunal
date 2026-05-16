@@ -1,13 +1,21 @@
 "use client";
 
-import * as React from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import { AnimatePresence } from "motion/react";
-import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import { Users, CheckSquare, X, Plus, Upload } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
+import { AnimatePresence } from "motion/react";
+import { useSearchParams, useRouter } from "next/navigation";
+import * as React from "react";
+import { toast } from "sonner";
+
+import { BulkTagDialog } from "@/components/contacts/bulk-tag-dialog";
+import { ContactCard, ContactCardSkeleton } from "@/components/contacts/contact-card";
+import { ContactFormDialog } from "@/components/contacts/contact-form-dialog";
+import { ContactsBulkActions } from "@/components/contacts/contacts-bulk-actions";
+import { ContactsEmptyState } from "@/components/contacts/contacts-empty-state";
+import { ContactsToolbar } from "@/components/contacts/contacts-toolbar";
+import { ImportContactsDialog } from "@/components/contacts/import-contacts-dialog";
+import { ScrapeLeadsDialog } from "@/components/contacts/scrape-leads-dialog";
+import { ResourceListPagination } from "@/components/resource-list/resource-list-pagination";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,22 +26,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useContactStore } from "@/lib/contact-store";
-import { ContactFormDialog } from "@/components/contacts/contact-form-dialog";
-import { ImportContactsDialog } from "@/components/contacts/import-contacts-dialog";
-import { ScrapeLeadsDialog } from "@/components/contacts/scrape-leads-dialog";
-import { BulkTagDialog } from "@/components/contacts/bulk-tag-dialog";
-import { ResourceListPagination } from "@/components/resource-list/resource-list-pagination";
-import { ContactCard, ContactCardSkeleton } from "@/components/contacts/contact-card";
-import { ContactsToolbar } from "@/components/contacts/contacts-toolbar";
-import { ContactsBulkActions } from "@/components/contacts/contacts-bulk-actions";
-import { ContactsEmptyState } from "@/components/contacts/contacts-empty-state";
-import { useQueryClient } from "@tanstack/react-query";
-import { useBulkDeleteContacts, useBulkUpdateStatus, useContactIds, useContactsPaginated } from "@/hooks/useContacts";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useBulkDeleteContacts, useBulkUpdateStatus, useContactIds, useContactsPaginated } from "@/hooks/useContacts";
+import type { ContactIdsParams, ContactsListParams } from "@/lib/api/contacts";
+import { useContactStore } from "@/lib/contact-store";
 import { queryKeys } from "@/lib/query-keys";
 import type { Contact, ContactStatus } from "@/types";
-import type { ContactIdsParams, ContactsListParams } from "@/lib/api/contacts";
 
 export function ContactsPage() {
   const searchParams = useSearchParams();

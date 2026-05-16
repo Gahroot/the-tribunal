@@ -1,19 +1,18 @@
 "use client";
 
-import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { AlertCircle, CheckCircle2, Loader2, Search } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 import {
-  scrapingApi,
-  type BusinessResult,
-  type ImportLeadsResponse,
-} from "@/lib/api/scraping";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { useLeadImport } from "@/hooks/useLeadImport";
-import { getApiErrorMessage } from "@/lib/utils/errors";
+  applyLeadFilters,
+  LeadFilters,
+  type LeadFilterState,
+} from "@/components/contacts/shared/lead-filters";
+import { LeadResultsList } from "@/components/contacts/shared/lead-results-list";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -24,9 +23,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -34,12 +32,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useLeadImport } from "@/hooks/useLeadImport";
 import {
-  applyLeadFilters,
-  LeadFilters,
-  type LeadFilterState,
-} from "@/components/contacts/shared/lead-filters";
-import { LeadResultsList } from "@/components/contacts/shared/lead-results-list";
+  scrapingApi,
+  type BusinessResult,
+  type ImportLeadsResponse,
+} from "@/lib/api/scraping";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 
 interface ScrapeLeadsDialogProps {
   open: boolean;

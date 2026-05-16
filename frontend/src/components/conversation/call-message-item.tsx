@@ -1,6 +1,5 @@
 "use client";
 
-import * as React from "react";
 import {
   Phone,
   PhoneIncoming,
@@ -12,10 +11,12 @@ import {
   PhoneMissed,
   PlayCircle,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
-import { AudioPlayer } from "@/components/ui/audio-player";
+import * as React from "react";
+
 import { TranscriptViewer } from "@/components/calls/transcript-viewer";
+import { AudioPlayer } from "@/components/ui/audio-player";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import type { TimelineItem } from "@/types";
 
 interface CallMessageItemProps {

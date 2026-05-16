@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-import { formatRelative } from "@/lib/utils/date";
 import {
   ChevronDown,
   ChevronUp,
@@ -15,13 +13,8 @@ import {
   Loader2,
   ArrowRight,
 } from "lucide-react";
+import { useState } from "react";
 
-import type {
-  CampaignReportResponse,
-  CampaignReportFinding,
-  CampaignReportEvidence,
-  CampaignReportRecommendation,
-} from "@/lib/api/campaign-reports";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,7 +29,14 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import type {
+  CampaignReportResponse,
+  CampaignReportFinding,
+  CampaignReportEvidence,
+  CampaignReportRecommendation,
+} from "@/lib/api/campaign-reports";
 import { cn } from "@/lib/utils";
+import { formatRelative } from "@/lib/utils/date";
 
 interface CampaignReportCardProps {
   report: CampaignReportResponse;

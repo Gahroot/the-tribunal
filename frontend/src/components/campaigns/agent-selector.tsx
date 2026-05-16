@@ -1,7 +1,7 @@
 "use client";
 
-import { motion } from "motion/react";
 import { Bot, MessageSquare, Phone, Sparkles, Check } from "lucide-react";
+import { motion } from "motion/react";
 
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";

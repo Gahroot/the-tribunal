@@ -1,9 +1,11 @@
 "use client";
 
 import * as React from "react";
+
+import type { TimelineItem } from "@/types";
+
 import { InboundMessageItem } from "./inbound-message-item";
 import { OutboundMessageItem } from "./outbound-message-item";
-import type { TimelineItem } from "@/types";
 
 interface MessageItemProps {
   item: TimelineItem;

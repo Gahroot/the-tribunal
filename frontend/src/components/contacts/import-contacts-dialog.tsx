@@ -1,21 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { FileText, AlertCircle, CheckCircle2, X, Download, Loader2 } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
-import {
-  contactsApi,
-  type ImportResult,
-  type ImportOptions,
-  type CSVPreviewResult,
-} from "@/lib/api/contacts";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { queryKeys } from "@/lib/query-keys";
-import { getApiErrorMessage } from "@/lib/utils/errors";
-import { Button } from "@/components/ui/button";
 import { FileDropzone } from "@/components/shared/file-dropzone";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -25,7 +16,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+import { Progress } from "@/components/ui/progress";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -33,8 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Progress } from "@/components/ui/progress";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -43,7 +34,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import {
+  contactsApi,
+  type ImportResult,
+  type ImportOptions,
+  type CSVPreviewResult,
+} from "@/lib/api/contacts";
+import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 
 interface ImportContactsDialogProps {
   open: boolean;

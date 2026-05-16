@@ -1,5 +1,5 @@
-import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AssistantChat } from "@/components/assistant/assistant-chat";
+import { AppSidebar } from "@/components/layout/app-sidebar";
 
 export default function AssistantPage() {
   return (

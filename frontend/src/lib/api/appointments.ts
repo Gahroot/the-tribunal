@@ -1,6 +1,6 @@
-import type { Appointment } from "@/types";
 import { apiGet, apiPost } from "@/lib/api";
 import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
+import type { Appointment } from "@/types";
 
 // Request/Response Types
 export interface AppointmentsListParams {

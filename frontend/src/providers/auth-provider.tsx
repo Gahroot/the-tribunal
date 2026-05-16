@@ -1,7 +1,8 @@
 "use client";
 
-import * as React from "react";
 import { useRouter, usePathname } from "next/navigation";
+import * as React from "react";
+
 import { api } from "@/lib/api";
 import { getCurrentUser, login as loginApi, type User, type LoginCredentials } from "@/lib/api/auth";
 

@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import { Check, Copy, ExternalLink, Link2 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -9,8 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-import { QRCode } from "./qr-code";
 import { getModePath, type EmbedFormValues } from "./embed-types";
+import { QRCode } from "./qr-code";
 
 interface EmbedCodeBlockProps {
   values: EmbedFormValues;

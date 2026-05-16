@@ -1,13 +1,12 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Loader2 } from "lucide-react";
 import * as React from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Form,
   FormControl,
@@ -16,8 +15,9 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { useAuth } from "@/providers/auth-provider";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/providers/auth-provider";
 
 const loginSchema = z.object({
   email: z.email({ error: "Please enter a valid email address" }),

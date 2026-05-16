@@ -1,17 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
 import { Check, Loader2, Save, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,6 +19,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -31,17 +28,20 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { workspacesApi } from "@/lib/api/workspaces";
 import { queryKeys } from "@/lib/query-keys";
-import { useWorkspace } from "@/providers/workspace-provider";
-import { getApiErrorMessage } from "@/lib/utils/errors";
 import {
   emptyWorkspaceFormValues,
   workspaceFormSchema,
   type WorkspaceFormValues,
 } from "@/lib/schemas/team-settings";
+import { getApiErrorMessage } from "@/lib/utils/errors";
+import { useWorkspace } from "@/providers/workspace-provider";
 
 interface WorkspaceDetailsCardProps {
   workspaceId: string | null;

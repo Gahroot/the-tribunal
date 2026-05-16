@@ -1,10 +1,10 @@
 "use client";
 
-import type { UseFormReturn } from "react-hook-form";
-import type { AgentFormValues } from "./create-agent-form";
-import type { PRICING_TIERS } from "@/lib/pricing-tiers";
 
 import { Phone, ChevronDown } from "lucide-react";
+import type { UseFormReturn } from "react-hook-form";
+
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -21,10 +21,12 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
-import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import type { PRICING_TIERS } from "@/lib/pricing-tiers";
 import { formatNumber } from "@/lib/utils/number";
+
+import type { AgentFormValues } from "./create-agent-form";
 
 interface SettingsReviewStepProps {
   form: UseFormReturn<AgentFormValues>;

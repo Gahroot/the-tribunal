@@ -1,6 +1,6 @@
 import { apiGet, apiPost } from "@/lib/api";
-import type { Contact, ContactStatus, TimelineItem } from "@/types";
 import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
+import type { Contact, ContactStatus, TimelineItem } from "@/types";
 
 export type ContactSortBy = "created_at" | "last_conversation" | "unread_first";
 

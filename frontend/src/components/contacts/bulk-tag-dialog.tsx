@@ -1,8 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import { Loader2, Tags } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
+
+import { TagBadge } from "@/components/tags/tag-badge";
+import { TagPicker } from "@/components/tags/tag-picker";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -10,10 +14,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { TagPicker } from "@/components/tags/tag-picker";
-import { TagBadge } from "@/components/tags/tag-badge";
 import { useTags, useBulkTagContacts } from "@/hooks/useTags";
 
 interface BulkTagDialogProps {

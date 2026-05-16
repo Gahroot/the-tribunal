@@ -1,4 +1,5 @@
 import * as React from "react";
+
 import { ContactsPage } from "@/components/contacts/contacts-page";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 

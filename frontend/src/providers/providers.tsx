@@ -1,14 +1,16 @@
 "use client";
 
-import * as React from "react";
-import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
+import * as React from "react";
+import { useState } from "react";
 import { Toaster } from "sonner";
-import { AuthProvider } from "./auth-provider";
-import { WorkspaceProvider } from "./workspace-provider";
+
 import { PageErrorBoundary } from "@/components/ui/error-boundary";
 import { POLL_60S } from "@/lib/query-options";
+
+import { AuthProvider } from "./auth-provider";
+import { WorkspaceProvider } from "./workspace-provider";
 
 interface ProvidersProps {
   children: React.ReactNode;

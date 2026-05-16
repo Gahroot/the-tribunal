@@ -1,8 +1,5 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "motion/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   FileText,
@@ -18,22 +15,15 @@ import {
   Loader2,
   Globe,
 } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { useRouter } from "next/navigation";
+import { useState, useCallback } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-import { BasicsStep } from "./basics-step";
-import { PricingStep } from "./pricing-step";
-import { ValueStackStep } from "./value-stack-step";
-import { LeadMagnetsStep } from "./lead-magnets-step";
-import { GuaranteeStep } from "./guarantee-step";
-import { UrgencyStep } from "./urgency-step";
-import { PublishStep } from "./publish-step";
-import { ReviewStep } from "./review-step";
-
+import { leadMagnetsApi } from "@/lib/api/lead-magnets";
 import { offersApi, CreateOfferRequest } from "@/lib/api/offers";
 import { queryKeys } from "@/lib/query-keys";
-import { leadMagnetsApi } from "@/lib/api/lead-magnets";
 import type {
   Offer,
   DiscountType,
@@ -42,6 +32,16 @@ import type {
   ValueStackItem,
   LeadMagnet,
 } from "@/types";
+
+import { BasicsStep } from "./basics-step";
+import { GuaranteeStep } from "./guarantee-step";
+import { LeadMagnetsStep } from "./lead-magnets-step";
+import { PricingStep } from "./pricing-step";
+import { PublishStep } from "./publish-step";
+import { ReviewStep } from "./review-step";
+import { UrgencyStep } from "./urgency-step";
+import { ValueStackStep } from "./value-stack-step";
+
 
 interface OfferBuilderWizardProps {
   workspaceId: string;

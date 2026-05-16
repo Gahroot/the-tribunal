@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
-import { motion } from "motion/react";
 import { Search, X, Loader2 } from "lucide-react";
+import { motion } from "motion/react";
+import { useMemo, useState, type ReactNode } from "react";
 
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useDebounce } from "@/hooks/useDebounce";
 
@@ -167,7 +167,16 @@ export function GenericResourceSelector<T>({
                 return (
                   <div
                     key={String(id)}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={isSelected}
                     onClick={() => handleSelect(item)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        handleSelect(item);
+                      }
+                    }}
                     className={rowClass}
                   >
                     {renderItem(item, isSelected)}

@@ -1,9 +1,5 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { motion, AnimatePresence } from "motion/react";
-import { formatDate, formatRelative } from "@/lib/utils/date";
-import { getInitialsFromName } from "@/lib/utils/initials";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import {
   Search,
@@ -20,16 +16,30 @@ import {
   CalendarCheck,
   type LucideIcon,
 } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { TranscriptViewer } from "@/components/calls/transcript-viewer";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { PageEmptyState, PageErrorState, PageLoadingState } from "@/components/ui/page-state";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -45,22 +55,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { PageEmptyState, PageErrorState, PageLoadingState } from "@/components/ui/page-state";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { TranscriptViewer } from "@/components/calls/transcript-viewer";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { callsApi } from "@/lib/api/calls";
 import { queryKeys } from "@/lib/query-keys";
 import { callStatusColors } from "@/lib/status-colors";
-import { callsApi } from "@/lib/api/calls";
+import { formatDate, formatRelative } from "@/lib/utils/date";
+import { getInitialsFromName } from "@/lib/utils/initials";
 
 const statusConfig: Record<string, { label: string; color: string; icon: LucideIcon }> = {
   completed: { label: "Completed", color: callStatusColors.completed, icon: Phone },
@@ -450,6 +450,8 @@ export function CallsList() {
                                   {call.recording_url && (
                                     <div className="space-y-2">
                                       <h4 className="font-medium">Recording</h4>
+                                      {/* Call recordings: no caption track is available from the provider. */}
+                                      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
                                       <audio controls className="w-full">
                                         <source
                                           src={call.recording_url}

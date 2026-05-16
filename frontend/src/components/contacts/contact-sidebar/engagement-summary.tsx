@@ -1,6 +1,5 @@
 "use client";
 
-import { formatDate } from "@/lib/utils/date";
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -10,8 +9,9 @@ import {
   TrendingUp,
 } from "lucide-react";
 
-import { useContactEngagement } from "@/hooks/use-contact-engagement";
 import { PageErrorState, PageLoadingState } from "@/components/ui/page-state";
+import { useContactEngagement } from "@/hooks/use-contact-engagement";
+import { formatDate } from "@/lib/utils/date";
 
 interface EngagementSummaryProps {
   workspaceId: string;

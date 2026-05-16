@@ -1,23 +1,26 @@
 "use client";
 
-import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Loader2, Plus, Trash2, BookOpen, FileText } from "lucide-react";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
-import { formatRelative } from "@/lib/utils/date";
-import { formatNumber } from "@/lib/utils/number";
-import { Loader2, Plus, Trash2, BookOpen, FileText } from "lucide-react";
 
-import { knowledgeDocumentsApi } from "@/lib/api/knowledge-documents";
-import type { KnowledgeDocumentCreate } from "@/types/knowledge-document";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { queryKeys } from "@/lib/query-keys";
-import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -41,6 +44,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -48,18 +52,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { knowledgeDocumentsApi } from "@/lib/api/knowledge-documents";
+import { queryKeys } from "@/lib/query-keys";
+import { formatRelative } from "@/lib/utils/date";
 import { getApiErrorMessage } from "@/lib/utils/errors";
+import { formatNumber } from "@/lib/utils/number";
+import type { KnowledgeDocumentCreate } from "@/types/knowledge-document";
 
 const DOC_TYPES = [
   { value: "general", label: "General" },

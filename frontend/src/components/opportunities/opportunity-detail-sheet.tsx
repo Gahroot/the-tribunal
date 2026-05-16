@@ -1,40 +1,6 @@
 "use client";
 
-import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { opportunitiesApi } from "@/lib/api/opportunities";
-import { queryKeys } from "@/lib/query-keys";
-import { opportunityStatusColors } from "@/lib/status-colors";
-import type { Opportunity, OpportunityStatus, OpportunityActivity } from "@/types";
-import { cn } from "@/lib/utils";
-import { formatDate, formatDateTime } from "@/lib/utils/date";
 import {
   DollarSign,
   Calendar,
@@ -50,6 +16,42 @@ import {
   XCircle,
   Archive,
 } from "lucide-react";
+import * as React from "react";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
+import { opportunitiesApi } from "@/lib/api/opportunities";
+import { queryKeys } from "@/lib/query-keys";
+import { opportunityStatusColors } from "@/lib/status-colors";
+import { cn } from "@/lib/utils";
+import { formatDate, formatDateTime } from "@/lib/utils/date";
+import type { Opportunity, OpportunityStatus, OpportunityActivity } from "@/types";
+
 
 interface OpportunityDetailSheetProps {
   open: boolean;

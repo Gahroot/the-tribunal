@@ -1,16 +1,17 @@
 "use client";
 
-import * as React from "react";
 import { Bot, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import * as React from "react";
+
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { cn } from "@/lib/utils";
-import { useContactStore } from "@/lib/contact-store";
-import { useAgents } from "@/hooks/useAgents";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useAgents } from "@/hooks/useAgents";
+import { useContactStore } from "@/lib/contact-store";
+import { cn } from "@/lib/utils";
 import type { Agent } from "@/types";
 
 const channelIcons: Record<string, string> = {

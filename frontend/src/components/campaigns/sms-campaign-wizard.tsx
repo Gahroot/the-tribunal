@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import { Bot, MessageSquare, Tag } from "lucide-react";
+import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,9 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-import { BaseCampaignWizard } from "./base-campaign-wizard";
-import type { WizardStep } from "./wizard-types";
+import type { CreateSMSCampaignRequest } from "@/lib/api/sms-campaigns";
+import type { Agent, Offer, PhoneNumber, SMSCampaign } from "@/types";
 
 import {
   type BasicsFields,
@@ -28,15 +27,16 @@ import {
   makeScheduleStep,
   mapScheduleToRequest,
 } from "./_shared";
+import { BaseCampaignWizard } from "./base-campaign-wizard";
 import {
   type AgentStepFields,
   type MessageStepFields,
   makeAgentStep,
   makeMessageStep,
 } from "./sms-steps";
+import type { WizardStep } from "./wizard-types";
 
-import type { CreateSMSCampaignRequest } from "@/lib/api/sms-campaigns";
-import type { Agent, Offer, PhoneNumber, SMSCampaign } from "@/types";
+
 
 type StepId =
   | "basics"

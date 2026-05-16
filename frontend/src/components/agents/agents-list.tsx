@@ -1,9 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import {
   Plus,
   MoreHorizontal,
@@ -21,41 +18,11 @@ import {
   Copy,
   type LucideIcon,
 } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 import Link from "next/link";
+import { useState } from "react";
+import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
-import { PageEmptyState } from "@/components/ui/page-state";
 import { PhoneInput } from "@/components/landing/phone-input";
 import {
   ResourceListHeader,
@@ -65,13 +32,46 @@ import {
   ResourceListError,
   ResourceListLayout,
 } from "@/components/resource-list";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Label } from "@/components/ui/label";
+import { PageEmptyState } from "@/components/ui/page-state";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { queryKeys } from "@/lib/query-keys";
 import { agentsApi } from "@/lib/api/agents";
 import { callsApi } from "@/lib/api/calls";
 import { phoneNumbersApi } from "@/lib/api/phone-numbers";
-import type { Agent } from "@/types";
+import { queryKeys } from "@/lib/query-keys";
 import { getApiErrorMessage } from "@/lib/utils/errors";
+import type { Agent } from "@/types";
 
 const channelModeIcons: Record<string, LucideIcon> = {
   voice: Phone,

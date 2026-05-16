@@ -1,5 +1,18 @@
+import { ChevronDown, Phone } from "lucide-react";
 import { type UseFormReturn, useWatch } from "react-hook-form";
+
+import type { EditAgentFormValues } from "@/components/agents/agent-edit-schema";
+import { PostMeetingSmsSection } from "@/components/agents/tabs/advanced/post-meeting-sms-section";
+import { RemindersSection } from "@/components/agents/tabs/advanced/reminders-section";
+import { TextSettingsSection } from "@/components/agents/tabs/advanced/text-settings-section";
+import { ValueReinforcementSection } from "@/components/agents/tabs/advanced/value-reinforcement-section";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   FormControl,
   FormDescription,
@@ -9,23 +22,11 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
-import { Button } from "@/components/ui/button";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { ChevronDown, Phone } from "lucide-react";
-import type { Agent } from "@/types/agent";
-import type { EditAgentFormValues } from "@/components/agents/agent-edit-schema";
-import { TextSettingsSection } from "@/components/agents/tabs/advanced/text-settings-section";
-import { RemindersSection } from "@/components/agents/tabs/advanced/reminders-section";
-import { ValueReinforcementSection } from "@/components/agents/tabs/advanced/value-reinforcement-section";
-import { PostMeetingSmsSection } from "@/components/agents/tabs/advanced/post-meeting-sms-section";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { formatDate } from "@/lib/utils/date";
+import type { Agent } from "@/types/agent";
 
 interface AdvancedTabProps {
   form: UseFormReturn<EditAgentFormValues>;

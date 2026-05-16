@@ -1,6 +1,5 @@
 "use client";
 
-import * as React from "react";
 import {
   Phone,
   MoreVertical,
@@ -9,14 +8,8 @@ import {
   User,
   Trash2,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import * as React from "react";
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,8 +20,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import type { Agent } from "@/types/agent";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { Conversation } from "@/types";
+import type { Agent } from "@/types/agent";
 
 interface ChatHeaderProps {
   contactName?: string;

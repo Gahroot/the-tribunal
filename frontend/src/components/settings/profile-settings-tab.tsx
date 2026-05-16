@@ -1,13 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { useTheme } from "next-themes";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Save, Check, Loader2 } from "lucide-react";
+import { useTheme } from "next-themes";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
@@ -16,6 +14,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -23,11 +23,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import { settingsApi } from "@/lib/api/settings";
-import { queryKeys } from "@/lib/query-keys";
 import { TIMEZONE_OPTIONS } from "@/lib/constants";
+import { queryKeys } from "@/lib/query-keys";
 
 export function ProfileSettingsTab() {
   const queryClient = useQueryClient();

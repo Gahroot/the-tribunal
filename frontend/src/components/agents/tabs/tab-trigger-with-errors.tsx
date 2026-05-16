@@ -1,8 +1,9 @@
 import type { UseFormReturn } from "react-hook-form";
-import { TabsTrigger } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
+
 import type { EditAgentFormValues } from "@/components/agents/agent-edit-schema";
 import { TAB_FIELDS } from "@/components/agents/agent-edit-schema";
+import { TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 
 interface TabTriggerWithErrorsProps {
   value: string;

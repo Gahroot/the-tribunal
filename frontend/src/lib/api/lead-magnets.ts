@@ -1,4 +1,5 @@
 import { apiPost } from "@/lib/api";
+import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
 import type {
   LeadMagnet,
   LeadMagnetType,
@@ -7,7 +8,6 @@ import type {
   CalculatorContent,
   RichTextContent,
 } from "@/types";
-import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
 
 // Request/Response Types
 export interface LeadMagnetsListParams {

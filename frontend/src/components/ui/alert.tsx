@@ -1,5 +1,5 @@
-import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
+import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
@@ -46,6 +46,8 @@ function AlertTitle({
   ref?: React.Ref<HTMLParagraphElement>;
 }) {
   return (
+    // Content is supplied by the consumer via {...props} children.
+    // eslint-disable-next-line jsx-a11y/heading-has-content
     <h5
       ref={ref}
       className={cn("mb-1 font-medium leading-none tracking-tight", className)}

@@ -1,7 +1,8 @@
 "use client";
 
-import { ValueStackBuilder } from "./value-stack-builder";
 import type { ValueStackItem } from "@/types";
+
+import { ValueStackBuilder } from "./value-stack-builder";
 
 interface ValueStackStepProps {
   items: ValueStackItem[];

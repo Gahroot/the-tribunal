@@ -1,17 +1,7 @@
 "use client";
 
-import { useState, useMemo, useEffect, Fragment } from "react";
-import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm, useWatch } from "react-hook-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import * as z from "zod";
-
-import { agentsApi, type CreateAgentRequest } from "@/lib/api/agents";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { queryKeys } from "@/lib/query-keys";
-import { getApiErrorMessage } from "@/lib/utils/errors";
 import {
   ArrowLeft,
   ArrowRight,
@@ -24,13 +14,21 @@ import {
   Sparkles,
   Wrench,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useState, useMemo, useEffect, Fragment } from "react";
+import { useForm, useWatch } from "react-hook-form";
+import { toast } from "sonner";
+import * as z from "zod";
 
 import { Button } from "@/components/ui/button";
 import { Form } from "@/components/ui/form";
-
-import { PRICING_TIERS } from "@/lib/pricing-tiers";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { agentsApi, type CreateAgentRequest } from "@/lib/api/agents";
 import { getLanguagesForTier, getFallbackLanguage } from "@/lib/languages";
+import { PRICING_TIERS } from "@/lib/pricing-tiers";
+import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 import {
   REALTIME_VOICES,
   HUME_VOICES,
@@ -38,11 +36,11 @@ import {
   ELEVENLABS_VOICES,
 } from "@/lib/voice-constants";
 
-import { PricingTierStep } from "./pricing-tier-step";
 import { BasicInfoStep } from "./basic-info-step";
+import { PricingTierStep } from "./pricing-tier-step";
+import { SettingsReviewStep } from "./settings-review-step";
 import { SystemPromptStep } from "./system-prompt-step";
 import { ToolsIntegrationsStep } from "./tools-integrations-step";
-import { SettingsReviewStep } from "./settings-review-step";
 
 const WIZARD_STEPS = [
   { id: 1, label: "Pricing", icon: Sparkles },

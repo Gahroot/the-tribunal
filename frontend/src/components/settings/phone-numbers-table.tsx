@@ -1,8 +1,6 @@
 "use client";
 
-import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import {
   Phone,
   Search,
@@ -14,26 +12,9 @@ import {
   Plus,
   Check,
 } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { formatPhoneNumber } from "@/lib/utils/phone";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,6 +26,29 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  PageEmptyState,
+  PageErrorState,
+  PageLoadingState,
+} from "@/components/ui/page-state";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import {
   Table,
@@ -54,17 +58,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  PageEmptyState,
-  PageErrorState,
-  PageLoadingState,
-} from "@/components/ui/page-state";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { queryKeys } from "@/lib/query-keys";
 import {
   phoneNumbersApi,
   type PhoneNumberSearchResult,
 } from "@/lib/api/phone-numbers";
+import { queryKeys } from "@/lib/query-keys";
+import { formatPhoneNumber } from "@/lib/utils/phone";
 import type { PhoneNumber } from "@/types";
 
 const COUNTRIES = [

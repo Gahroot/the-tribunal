@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { createResourceHooks } from "@/lib/api/create-resource-hooks";
+
 import { campaignsApi, type CreateCampaignRequest, type UpdateCampaignRequest } from "@/lib/api/campaigns";
+import type { ApiClient } from "@/lib/api/create-api-client";
+import { createResourceHooks } from "@/lib/api/create-resource-hooks";
 import { queryKeys } from "@/lib/query-keys";
 import type { Campaign } from "@/types";
-import type { ApiClient } from "@/lib/api/create-api-client";
 
 const {
   queryKeys: campaignQueryKeys,

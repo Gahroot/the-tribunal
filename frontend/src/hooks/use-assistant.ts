@@ -2,9 +2,9 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { assistantApi } from "@/lib/api/assistant";
 import { queryKeys } from "@/lib/query-keys";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
 
 export function useAssistantHistory() {
   const workspaceId = useWorkspaceId();

@@ -1,11 +1,9 @@
 "use client";
 
-import Link from "next/link";
-import { motion } from "motion/react";
 import { AlertCircle, Loader2, Users } from "lucide-react";
+import { motion } from "motion/react";
+import Link from "next/link";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { AppointmentPerformanceCard } from "@/components/dashboard/appointment-performance-card";
 import { DashboardStatsGrid } from "@/components/dashboard/dashboard-stats";
 import {
@@ -19,8 +17,10 @@ import {
   QuickActionsCard,
   TodayOverviewCard,
 } from "@/components/dashboard/today-overview";
-import { useDashboard } from "@/hooks/useDashboard";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useDashboard } from "@/hooks/useDashboard";
 
 function ErrorState({ error }: { error: Error }) {
   return (

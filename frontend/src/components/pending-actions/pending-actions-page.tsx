@@ -1,8 +1,6 @@
 "use client";
 
-import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import {
   ClipboardCheck,
   Clock,
@@ -11,16 +9,11 @@ import {
   AlertTriangle,
   Zap,
 } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
-import { pendingActionsApi } from "@/lib/api/pending-actions";
-import type { PendingActionStatus } from "@/types/pending-action";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PageEmptyState } from "@/components/ui/page-state";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -29,8 +22,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { PageEmptyState } from "@/components/ui/page-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { pendingActionsApi } from "@/lib/api/pending-actions";
+import { queryKeys } from "@/lib/query-keys";
 import { getApiErrorMessage } from "@/lib/utils/errors";
+import type { PendingActionStatus } from "@/types/pending-action";
+
 import { PendingActionCard } from "./pending-action-card";
 
 type TabStatus = PendingActionStatus | "all";

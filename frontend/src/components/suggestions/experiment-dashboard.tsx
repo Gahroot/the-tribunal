@@ -1,8 +1,6 @@
 "use client";
 
-import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
 import {
   Trophy,
   TrendingUp,
@@ -13,26 +11,10 @@ import {
   FlaskConical,
   ExternalLink,
 } from "lucide-react";
+import Link from "next/link";
+import { useState } from "react";
 import { toast } from "sonner";
 
-import {
-  promptVersionsApi,
-  type VersionComparisonResponse,
-} from "@/lib/api/prompt-versions";
-import { useAgents } from "@/hooks/useAgents";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { queryKeys } from "@/lib/query-keys";
-import { POLL_60S } from "@/lib/query-options";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,7 +25,25 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useAgents } from "@/hooks/useAgents";
+import {
+  promptVersionsApi,
+  type VersionComparisonResponse,
+} from "@/lib/api/prompt-versions";
+import { queryKeys } from "@/lib/query-keys";
+import { POLL_60S } from "@/lib/query-options";
 import { cn } from "@/lib/utils";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 import { formatNumber } from "@/lib/utils/number";

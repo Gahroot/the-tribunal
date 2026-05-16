@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { motion } from "motion/react";
 import { Phone, MessageSquare, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { motion } from "motion/react";
+import { useState } from "react";
+
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { PhoneInput, normalizeToE164 } from "./phone-input";
+import { Button } from "@/components/ui/button";
 import { publicDemoApi } from "@/lib/api/public-demo";
+
+import { PhoneInput, normalizeToE164 } from "./phone-input";
 
 const containerVariants = {
   hidden: { opacity: 0 },

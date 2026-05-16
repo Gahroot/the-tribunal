@@ -1,12 +1,14 @@
 "use client";
 
-import { type ReactNode } from "react";
-import { motion, AnimatePresence } from "motion/react";
 import type { LucideIcon } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { type ReactNode } from "react";
+
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { WizardStepIndicator } from "./wizard-step-indicator";
-import { WizardFooter } from "./wizard-footer";
 import type { WizardStepDef } from "@/hooks/useWizard";
+
+import { WizardFooter } from "./wizard-footer";
+import { WizardStepIndicator } from "./wizard-step-indicator";
 
 interface WizardContainerProps<TStepId extends string> {
   steps: readonly WizardStepDef<TStepId>[];

@@ -1,19 +1,20 @@
 "use client";
 
-import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { toast } from "sonner";
+
+import {
+  useContactTimeline,
+  useToggleContactAI,
+  useDeleteContact,
+} from "@/hooks/useContacts";
 import { appointmentsApi } from "@/lib/api/appointments";
 import { callsApi, type InitiateCallRequest } from "@/lib/api/calls";
 import { conversationsApi } from "@/lib/api/conversations";
 import { phoneNumbersApi } from "@/lib/api/phone-numbers";
 import { queryKeys } from "@/lib/query-keys";
 import { getApiErrorMessage } from "@/lib/utils/errors";
-import {
-  useContactTimeline,
-  useToggleContactAI,
-  useDeleteContact,
-} from "@/hooks/useContacts";
 import type { Contact } from "@/types";
 
 interface UseContactSidebarDataArgs {

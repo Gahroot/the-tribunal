@@ -1,33 +1,35 @@
 "use client";
 
-import * as React from "react";
-import { AnimatePresence } from "motion/react";
-import { isSameDay } from "@/lib/utils/date";
-import { MessageSquare } from "lucide-react";
-import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { MessageSquare } from "lucide-react";
+import { AnimatePresence } from "motion/react";
+import * as React from "react";
+import { toast } from "sonner";
+
 import { PageEmptyState } from "@/components/ui/page-state";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
-import { usePhoneNumbers } from "@/hooks/usePhoneNumbers";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { useAgents } from "@/hooks/useAgents";
+import { useContactTimeline } from "@/hooks/useContacts";
 import {
   useToggleConversationAI,
   useAssignAgent,
   useClearConversationHistory,
 } from "@/hooks/useConversations";
-import { useContactStore } from "@/lib/contact-store";
-import { useContactTimeline } from "@/hooks/useContacts";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { queryKeys } from "@/lib/query-keys";
+import { usePhoneNumbers } from "@/hooks/usePhoneNumbers";
 import { conversationsApi } from "@/lib/api/conversations";
-import { MessageItem } from "./message-item";
-import { ChatHeader } from "./chat-header";
-import { MessageComposer } from "./message-composer";
-import { DateSeparator } from "./date-separator";
-import type { Conversation } from "@/types";
+import { useContactStore } from "@/lib/contact-store";
+import { queryKeys } from "@/lib/query-keys";
+import { cn } from "@/lib/utils";
+import { isSameDay } from "@/lib/utils/date";
 import { getApiErrorMessage } from "@/lib/utils/errors";
+import type { Conversation } from "@/types";
+
+import { ChatHeader } from "./chat-header";
+import { DateSeparator } from "./date-separator";
+import { MessageComposer } from "./message-composer";
+import { MessageItem } from "./message-item";
 
 interface ConversationFeedProps {
   className?: string;

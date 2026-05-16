@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import {
   ArrowLeft,
   Loader2,
@@ -15,23 +14,24 @@ import {
   Phone,
 } from "lucide-react";
 import Link from "next/link";
+import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
+import { GuaranteeProgress } from "@/components/campaigns/guarantee-progress";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { campaignStatusColors } from "@/lib/status-colors";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { queryKeys } from "@/lib/query-keys";
-import { campaignsApi } from "@/lib/api/campaigns";
 import { useCampaignAnalytics } from "@/hooks/useCampaigns";
-import { GuaranteeProgress } from "@/components/campaigns/guarantee-progress";
-import { getApiErrorMessage } from "@/lib/utils/errors";
+import { campaignsApi } from "@/lib/api/campaigns";
+import { queryKeys } from "@/lib/query-keys";
+import { campaignStatusColors } from "@/lib/status-colors";
 import { formatDate } from "@/lib/utils/date";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 
 interface CampaignDetailProps {
   campaignId: string;

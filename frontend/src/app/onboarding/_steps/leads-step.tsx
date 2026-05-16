@@ -1,8 +1,5 @@
 "use client";
 
-import { useCallback, useId, useState } from "react";
-import { useFormContext } from "react-hook-form";
-import { toast } from "sonner";
 import {
   CheckCircle2,
   Database,
@@ -11,18 +8,22 @@ import {
   Phone,
   Users,
 } from "lucide-react";
+import { useCallback, useId, useState } from "react";
+import { useFormContext } from "react-hook-form";
+import { toast } from "sonner";
 
+import { FileDropzone } from "@/components/shared/file-dropzone";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FileDropzone } from "@/components/shared/file-dropzone";
 import { importFubContacts } from "@/lib/api/realtor";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 import { formatNumber } from "@/lib/utils/number";
 import { useWorkspace } from "@/providers/workspace-provider";
 
 import type { OnboardingFormValues } from "../_state";
+
 import { useOnboardingExtras } from "./onboarding-context";
 
 export function LeadsStep() {

@@ -1,12 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { AlertCircle, CheckCircle2, XCircle } from "lucide-react";
+import Link from "next/link";
 
-import type { AIImportLeadsResponse } from "@/lib/api/find-leads-ai";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import type { AIImportLeadsResponse } from "@/lib/api/find-leads-ai";
 import { cn } from "@/lib/utils";
 
 interface AIImportResultBannerProps {

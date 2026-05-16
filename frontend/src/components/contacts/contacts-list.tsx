@@ -1,24 +1,26 @@
 "use client";
 
-import * as React from "react";
-import { motion, AnimatePresence } from "motion/react";
 import { Search, Plus, User, Phone, Mail, Building2, Sparkles } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { motion, AnimatePresence } from "motion/react";
+import * as React from "react";
+
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { PageEmptyState } from "@/components/ui/page-state";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
-import { contactStatusColors } from "@/lib/status-colors";
-import { useContactStore } from "@/lib/contact-store";
-import { useContactsPaginated } from "@/hooks/useContacts";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { formatPhoneNumber } from "@/lib/utils/phone";
+import { useContactsPaginated } from "@/hooks/useContacts";
+import { useContactStore } from "@/lib/contact-store";
+import { contactStatusColors } from "@/lib/status-colors";
+import { cn } from "@/lib/utils";
 import { getContactInitials } from "@/lib/utils/initials";
-import { ContactFormDialog } from "./contact-form-dialog";
+import { formatPhoneNumber } from "@/lib/utils/phone";
 import type { Contact } from "@/types";
+
+import { ContactFormDialog } from "./contact-form-dialog";
 
 interface ContactsListProps {
   className?: string;

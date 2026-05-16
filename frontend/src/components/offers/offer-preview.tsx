@@ -1,6 +1,5 @@
 "use client";
 
-import { motion } from "motion/react";
 import {
   CheckCircle,
   Gift,
@@ -9,13 +8,14 @@ import {
   AlertTriangle,
   Sparkles,
 } from "lucide-react";
+import { motion } from "motion/react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import type { LeadMagnet, ValueStackItem, GuaranteeType, UrgencyType, DiscountType } from "@/types";
 import { formatNumber } from "@/lib/utils/number";
+import type { LeadMagnet, ValueStackItem, GuaranteeType, UrgencyType, DiscountType } from "@/types";
 
 // More flexible type to support wizard form data with empty string defaults
 interface OfferPreviewData {

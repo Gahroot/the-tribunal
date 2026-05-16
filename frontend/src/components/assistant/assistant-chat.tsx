@@ -1,17 +1,18 @@
 "use client";
 
-import * as React from "react";
 import { Send, Loader2, Bot, User, Sparkles } from "lucide-react";
-import { formatTime } from "@/lib/utils/date";
-import { cn } from "@/lib/utils";
+import * as React from "react";
+
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Textarea } from "@/components/ui/textarea";
 import {
   useAssistantHistory,
   useAssistantChat,
 } from "@/hooks/use-assistant";
 import type { AssistantMessageResponse } from "@/lib/api/assistant";
+import { cn } from "@/lib/utils";
+import { formatTime } from "@/lib/utils/date";
 
 export function AssistantChat({ className }: { className?: string }) {
   const { data: history } = useAssistantHistory();

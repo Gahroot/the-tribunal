@@ -1,13 +1,15 @@
 "use client";
 
-import * as React from "react";
-import { useRouter } from "next/navigation";
 import { Command } from "cmdk";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   LayoutDashboard, Users, Megaphone, Phone, Bot, Settings,
   Calendar, Zap, Gift, Lightbulb, MapPin, Sparkles, Search,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import * as React from "react";
+
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+
 
 const navItems = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, group: "Navigate" },

@@ -1,7 +1,5 @@
 "use client";
 
-import { memo } from "react";
-import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowUpRight,
@@ -15,6 +13,8 @@ import {
   Users,
   XCircle,
 } from "lucide-react";
+import Link from "next/link";
+import { memo } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -31,10 +31,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import type { TodayOverview } from "@/lib/api/dashboard";
 import { nudgesApi } from "@/lib/api/nudges";
 import { queryKeys } from "@/lib/query-keys";
 import { POLL_60S } from "@/lib/query-options";
-import type { TodayOverview } from "@/lib/api/dashboard";
 
 interface TodayOverviewCardProps {
   overview: TodayOverview | undefined;

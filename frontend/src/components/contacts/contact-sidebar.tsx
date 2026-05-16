@@ -1,30 +1,31 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+
+import { ContactFormDialog } from "@/components/contacts/contact-form-dialog";
+import { ContactActions } from "@/components/contacts/contact-sidebar/contact-actions";
+import { ContactAppointments } from "@/components/contacts/contact-sidebar/contact-appointments";
+import { ContactHeader } from "@/components/contacts/contact-sidebar/contact-header";
+import { ContactInfoSection } from "@/components/contacts/contact-sidebar/contact-info-section";
+import { ContactNotesMeta } from "@/components/contacts/contact-sidebar/contact-notes-meta";
+import { ContactTimeline } from "@/components/contacts/contact-sidebar/contact-timeline";
+import { DeleteContactDialog } from "@/components/contacts/contact-sidebar/delete-contact-dialog";
+import { EngagementSummary } from "@/components/contacts/contact-sidebar/engagement-summary";
+import { ImportantDatesSection } from "@/components/contacts/contact-sidebar/important-dates";
+import { MobileOverlayHeader } from "@/components/contacts/contact-sidebar/mobile-overlay-header";
+import { useContactSidebarData } from "@/components/contacts/contact-sidebar/use-contact-sidebar-data";
+import { ScheduleAppointmentDialog } from "@/components/contacts/schedule-appointment-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { cn } from "@/lib/utils";
-import { getApiErrorMessage } from "@/lib/utils/errors";
-import { messages } from "@/lib/messages";
-import { useContactStore } from "@/lib/contact-store";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { ContactFormDialog } from "@/components/contacts/contact-form-dialog";
-import { ScheduleAppointmentDialog } from "@/components/contacts/schedule-appointment-dialog";
-import { ContactHeader } from "@/components/contacts/contact-sidebar/contact-header";
-import { ContactActions } from "@/components/contacts/contact-sidebar/contact-actions";
-import { ContactInfoSection } from "@/components/contacts/contact-sidebar/contact-info-section";
-import { ImportantDatesSection } from "@/components/contacts/contact-sidebar/important-dates";
-import { EngagementSummary } from "@/components/contacts/contact-sidebar/engagement-summary";
-import { ContactTimeline } from "@/components/contacts/contact-sidebar/contact-timeline";
-import { ContactAppointments } from "@/components/contacts/contact-sidebar/contact-appointments";
-import { ContactNotesMeta } from "@/components/contacts/contact-sidebar/contact-notes-meta";
-import { MobileOverlayHeader } from "@/components/contacts/contact-sidebar/mobile-overlay-header";
-import { DeleteContactDialog } from "@/components/contacts/contact-sidebar/delete-contact-dialog";
-import { useContactSidebarData } from "@/components/contacts/contact-sidebar/use-contact-sidebar-data";
+import { useContactStore } from "@/lib/contact-store";
+import { messages } from "@/lib/messages";
+import { cn } from "@/lib/utils";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 
 interface ContactSidebarProps {
   className?: string;

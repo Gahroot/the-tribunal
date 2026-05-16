@@ -1,25 +1,7 @@
 "use client";
 
-import { use, useState, useEffect, useRef, useMemo } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm, useWatch } from "react-hook-form";
-import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import Link from "next/link";
-
-import { agentsApi, type UpdateAgentRequest } from "@/lib/api/agents";
-import { useAgent } from "@/hooks/useAgents";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { queryKeys } from "@/lib/query-keys";
-import { messages } from "@/lib/messages";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Form } from "@/components/ui/form";
-import { PageErrorState, PageLoadingState } from "@/components/ui/page-state";
-import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft,
   Code2,
@@ -28,6 +10,32 @@ import {
   UserCircle,
   BookOpen,
 } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { use, useState, useEffect, useRef, useMemo } from "react";
+import { useForm, useWatch } from "react-hook-form";
+import { toast } from "sonner";
+
+import { ABTestDashboard } from "@/components/agents/ab-test-dashboard";
+import {
+  editAgentFormSchema,
+  type EditAgentFormValues,
+} from "@/components/agents/agent-edit-schema";
+import { EmbedAgentDialog } from "@/components/agents/embed-agent-dialog";
+import { PromptImprovementDialog } from "@/components/agents/prompt-improvement-dialog";
+import { PromptPerformanceChart } from "@/components/agents/prompt-performance-chart";
+import { PromptVersionHistory } from "@/components/agents/prompt-version-history";
+import {
+  TabTriggerWithErrors,
+  BasicTab,
+  VoiceTab,
+  PromptTab,
+  ToolsTab,
+  AdvancedTab,
+  HumanProfileTab,
+  KnowledgeBaseTab,
+} from "@/components/agents/tabs";
+import { VoiceTestDialog } from "@/components/agents/voice-test-dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,33 +47,25 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Form } from "@/components/ui/form";
+import { PageErrorState, PageLoadingState } from "@/components/ui/page-state";
+import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useAgent } from "@/hooks/useAgents";
+import { agentsApi, type UpdateAgentRequest } from "@/lib/api/agents";
 import { getLanguagesForTier } from "@/lib/languages";
+import { messages } from "@/lib/messages";
+import { queryKeys } from "@/lib/query-keys";
 import {
   REALTIME_VOICES,
   HUME_VOICES,
   GROK_VOICES,
   ELEVENLABS_VOICES,
 } from "@/lib/voice-constants";
-import { VoiceTestDialog } from "@/components/agents/voice-test-dialog";
-import { EmbedAgentDialog } from "@/components/agents/embed-agent-dialog";
-import { PromptVersionHistory } from "@/components/agents/prompt-version-history";
-import { ABTestDashboard } from "@/components/agents/ab-test-dashboard";
-import { PromptPerformanceChart } from "@/components/agents/prompt-performance-chart";
-import { PromptImprovementDialog } from "@/components/agents/prompt-improvement-dialog";
-import {
-  editAgentFormSchema,
-  type EditAgentFormValues,
-} from "@/components/agents/agent-edit-schema";
-import {
-  TabTriggerWithErrors,
-  BasicTab,
-  VoiceTab,
-  PromptTab,
-  ToolsTab,
-  AdvancedTab,
-  HumanProfileTab,
-  KnowledgeBaseTab,
-} from "@/components/agents/tabs";
 
 interface EditAgentPageProps {
   params: Promise<{ id: string }>;

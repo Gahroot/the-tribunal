@@ -1,8 +1,7 @@
-import type React from "react";
 import { Clock } from "lucide-react";
+import type React from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
 import { DAYS_OF_WEEK } from "@/lib/constants";
 
 interface ReviewScheduleCardProps {

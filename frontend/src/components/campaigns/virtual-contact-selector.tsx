@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { useMutation } from "@tanstack/react-query";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Search,
   Users,
@@ -12,10 +11,13 @@ import {
   X,
   Loader2,
 } from "lucide-react";
+import { useState, useRef, useCallback, useEffect } from "react";
 
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { ContactFilterBuilder } from "@/components/filters/contact-filter-builder";
+import { SegmentPicker } from "@/components/segments/segment-picker";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -23,16 +25,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
 import { useDebounce } from "@/hooks/useDebounce";
 import { useInfiniteContacts } from "@/hooks/useInfiniteContacts";
 import { contactsApi } from "@/lib/api/contacts";
 import { segmentsApi } from "@/lib/api/segments";
-import { ContactFilterBuilder } from "@/components/filters/contact-filter-builder";
-import { SegmentPicker } from "@/components/segments/segment-picker";
 import { contactStatusColors } from "@/lib/status-colors";
-import type { Contact, ContactStatus, FilterDefinition } from "@/types";
 import { formatNumber } from "@/lib/utils/number";
+import type { Contact, ContactStatus, FilterDefinition } from "@/types";
 
 const ROW_HEIGHT = 72;
 const OVERSCAN = 5;
@@ -187,7 +186,16 @@ export function VirtualContactSelector({
 
     return (
       <div
+        role="checkbox"
+        aria-checked={isSelected}
+        tabIndex={0}
         onClick={() => toggleContact(contact.id)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            toggleContact(contact.id);
+          }
+        }}
         className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors h-[${ROW_HEIGHT}px] ${
           isSelected
             ? "bg-primary/10 border border-primary/30"

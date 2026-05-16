@@ -1,16 +1,17 @@
 "use client";
 
-import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import * as React from "react";
+
 import { Badge } from "@/components/ui/badge";
 import { PageEmptyState } from "@/components/ui/page-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { opportunityStatusColors } from "@/lib/status-colors";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { opportunitiesApi } from "@/lib/api/opportunities";
 import { queryKeys } from "@/lib/query-keys";
-import type { OpportunityStatus } from "@/types";
+import { opportunityStatusColors } from "@/lib/status-colors";
 import { formatDate } from "@/lib/utils/date";
+import type { OpportunityStatus } from "@/types";
 
 interface OpportunitiesListProps {
   workspaceId: string;

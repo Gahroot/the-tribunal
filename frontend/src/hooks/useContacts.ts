@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+
 import {
   contactsApi,
   type ContactsListParams,
@@ -6,11 +7,11 @@ import {
   type CreateContactRequest,
   type UpdateContactRequest,
 } from "@/lib/api/contacts";
+import type { ApiClient } from "@/lib/api/create-api-client";
 import { createResourceHooks } from "@/lib/api/create-resource-hooks";
 import { queryKeys } from "@/lib/query-keys";
 import { REALTIME } from "@/lib/query-options";
 import type { Contact, ContactStatus } from "@/types";
-import type { ApiClient } from "@/lib/api/create-api-client";
 
 const {
   queryKeys: contactQueryKeys,

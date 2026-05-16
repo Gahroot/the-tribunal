@@ -1,4 +1,7 @@
+import { Phone, MessageSquare, MessagesSquare } from "lucide-react";
 import type { UseFormReturn } from "react-hook-form";
+
+import type { EditAgentFormValues } from "@/components/agents/agent-edit-schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   FormControl,
@@ -9,7 +12,6 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -18,8 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Phone, MessageSquare, MessagesSquare } from "lucide-react";
-import type { EditAgentFormValues } from "@/components/agents/agent-edit-schema";
+import { Textarea } from "@/components/ui/textarea";
 
 interface BasicTabProps {
   form: UseFormReturn<EditAgentFormValues>;

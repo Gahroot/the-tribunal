@@ -1,8 +1,9 @@
 "use client";
 
 import { X } from "lucide-react";
-import { cn } from "@/lib/utils";
+
 import { DEFAULT_TAG_COLOR } from "@/lib/tag-colors";
+import { cn } from "@/lib/utils";
 
 interface TagBadgeProps {
   name: string;

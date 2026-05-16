@@ -1,4 +1,5 @@
 import { apiPost } from "@/lib/api";
+
 import type { BusinessResult, BusinessSearchResponse } from "./scraping";
 
 export interface LeadImportDetail {

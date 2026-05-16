@@ -1,6 +1,6 @@
 import { apiGet, apiPost } from "@/lib/api";
-import type { SMSCampaign, CampaignStatus } from "@/types";
 import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
+import type { SMSCampaign, CampaignStatus } from "@/types";
 
 // Request/Response Types
 export interface SMSCampaignsListParams {

@@ -1,9 +1,6 @@
 "use client";
 
-import { useState, use } from "react";
-import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import {
   ArrowLeft,
   Play,
@@ -14,15 +11,18 @@ import {
   Users,
   Save,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useState, use } from "react";
+import { toast } from "sonner";
 
+import { SaveTemplateDialog } from "@/components/experiments/save-template-dialog";
+import { TestAnalytics } from "@/components/experiments/test-analytics";
 import { AppSidebar } from "@/components/layout/app-sidebar";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageErrorState, PageLoadingState } from "@/components/ui/page-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TestAnalytics } from "@/components/experiments/test-analytics";
-import { SaveTemplateDialog } from "@/components/experiments/save-template-dialog";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
 import { messageTestsApi } from "@/lib/api/message-tests";
 import { queryKeys } from "@/lib/query-keys";

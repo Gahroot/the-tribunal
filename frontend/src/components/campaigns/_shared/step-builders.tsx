@@ -1,10 +1,11 @@
 "use client";
 
-import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { Clock, Eye, FileText, Users } from "lucide-react";
+import type { Dispatch, ReactNode, SetStateAction } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { PhoneNumber } from "@/types";
 
 import {
   BasicsStep,
@@ -14,7 +15,6 @@ import {
   ScheduleStep,
 } from "../steps";
 import type { WizardStep } from "../wizard-types";
-import type { PhoneNumber } from "@/types";
 
 import {
   type BasicsFields,

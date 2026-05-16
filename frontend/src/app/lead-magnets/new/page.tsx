@@ -1,8 +1,5 @@
 "use client";
 
-import { useState } from "react";
-import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   FileText,
@@ -18,12 +15,17 @@ import {
   Check,
   Loader2,
 } from "lucide-react";
+import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 
+import { CalculatorBuilder } from "@/components/lead-magnets/calculator-builder";
+import { QuizBuilder } from "@/components/lead-magnets/quiz-builder";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { PageEmptyState } from "@/components/ui/page-state";
 import {
   Select,
   SelectContent,
@@ -32,20 +34,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { PageEmptyState } from "@/components/ui/page-state";
-
-import { QuizBuilder } from "@/components/lead-magnets/quiz-builder";
-import { CalculatorBuilder } from "@/components/lead-magnets/calculator-builder";
-
-const RichTextEditor = dynamic(
-  () => import("@/components/lead-magnets/rich-text-editor").then((m) => m.RichTextEditor),
-  { ssr: false, loading: () => <div className="h-64 rounded-md border bg-muted/30 animate-pulse" /> },
-);
-
-import { useWorkspace } from "@/providers/workspace-provider";
+import { Textarea } from "@/components/ui/textarea";
 import { leadMagnetsApi, CreateLeadMagnetRequest } from "@/lib/api/lead-magnets";
 import { queryKeys } from "@/lib/query-keys";
 import { formatNumber } from "@/lib/utils/number";
+import { useWorkspace } from "@/providers/workspace-provider";
 import type {
   LeadMagnetType,
   DeliveryMethod,
@@ -53,6 +46,11 @@ import type {
   CalculatorContent,
   RichTextContent,
 } from "@/types";
+
+const RichTextEditor = dynamic(
+  () => import("@/components/lead-magnets/rich-text-editor").then((m) => m.RichTextEditor),
+  { ssr: false, loading: () => <div className="h-64 rounded-md border bg-muted/30 animate-pulse" /> },
+);
 
 interface TypeOption {
   type: LeadMagnetType;

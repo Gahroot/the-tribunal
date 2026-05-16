@@ -1,5 +1,6 @@
-import { OpportunitiesClient } from "./opportunities-client";
 import { AppSidebar } from "@/components/layout/app-sidebar";
+
+import { OpportunitiesClient } from "./opportunities-client";
 
 export default function Page() {
   return (

@@ -2,13 +2,67 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 import eslintConfigPrettier from "eslint-config-prettier";
+import jsxA11y from "eslint-plugin-jsx-a11y";
+import unusedImports from "eslint-plugin-unused-imports";
 
+// `eslint-config-next` already registers the `import` and `jsx-a11y` plugins.
+// Re-registering them in a flat config errors with "Cannot redefine plugin",
+// so we only register plugins it doesn't ship (unused-imports) and merge the
+// recommended jsx-a11y rules in directly.
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   {
+    plugins: {
+      "unused-imports": unusedImports,
+    },
     rules: {
-      "no-console": ["error", { allow: ["warn", "error"] }],
+      ...jsxA11y.flatConfigs.recommended.rules,
+    },
+  },
+  {
+    settings: {
+      // Help eslint-plugin-import resolve TS path aliases (e.g. "@/...").
+      "import/resolver": {
+        typescript: {
+          alwaysTryTypes: true,
+          project: "./tsconfig.json",
+        },
+        node: true,
+      },
+    },
+    rules: {
+      // Project rules
+
+      "no-console": ["warn", { allow: ["warn", "error"] }],
+      "@typescript-eslint/no-explicit-any": "error",
+      "@next/next/no-img-element": "error",
+      "@next/next/no-html-link-for-pages": "error",
+
+      // Drop unused imports automatically (autofixable).
+      "unused-imports/no-unused-imports": "error",
+
+      // Enforce a consistent, alphabetized import order grouped by origin.
+      "import/order": [
+        "error",
+        {
+          groups: [
+            "builtin",
+            "external",
+            "internal",
+            "parent",
+            "sibling",
+            "index",
+          ],
+          "newlines-between": "always",
+          alphabetize: { order: "asc", caseInsensitive: true },
+          pathGroups: [
+            { pattern: "@/**", group: "internal", position: "before" },
+          ],
+          pathGroupsExcludedImportTypes: ["builtin"],
+        },
+      ],
+
       // Require an accessible label on interactive controls. Icon-only buttons
       // must supply `aria-label` (or wrap a labelled child like an <a aria-label>)
       // so screen readers can announce them.
@@ -47,8 +101,7 @@ const eslintConfig = defineConfig([
       "no-restricted-syntax": [
         "error",
         {
-          selector:
-            "Property[key.name='queryKey'] > ArrayExpression",
+          selector: "Property[key.name='queryKey'] > ArrayExpression",
           message:
             "Inline `queryKey: [...]` literals are not allowed. Use `queryKeys.<resource>.<scope>(...)` from '@/lib/query-keys' instead. Add a new builder there if needed.",
         },

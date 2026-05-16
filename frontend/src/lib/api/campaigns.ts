@@ -1,4 +1,5 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api";
+import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
 import type {
   Campaign,
   CampaignContact,
@@ -7,7 +8,6 @@ import type {
   CampaignContactStatus,
   GuaranteeProgress,
 } from "@/types";
-import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
 
 // Request/Response Types
 export interface CampaignsListParams {

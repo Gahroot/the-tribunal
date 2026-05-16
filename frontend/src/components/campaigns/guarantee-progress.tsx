@@ -12,11 +12,11 @@ import {
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { campaignsApi } from "@/lib/api/campaigns";
+import { voiceCampaignsApi } from "@/lib/api/voice-campaigns";
 import { queryKeys } from "@/lib/query-keys";
 import { POLL_30S } from "@/lib/query-options";
-import { campaignsApi } from "@/lib/api/campaigns";
 import { formatDate } from "@/lib/utils/date";
-import { voiceCampaignsApi } from "@/lib/api/voice-campaigns";
 import type { GuaranteeProgress as GuaranteeProgressType } from "@/types";
 
 interface GuaranteeProgressProps {

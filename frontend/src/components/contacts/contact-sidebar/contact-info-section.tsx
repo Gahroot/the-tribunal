@@ -1,10 +1,11 @@
 "use client";
 
 import { Phone, Mail, Building2 } from "lucide-react";
+
+import { InfoRow } from "@/components/contacts/contact-sidebar/info-row";
+import { TagBadge } from "@/components/tags/tag-badge";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { TagBadge } from "@/components/tags/tag-badge";
-import { InfoRow } from "@/components/contacts/contact-sidebar/info-row";
 import type { Contact } from "@/types";
 
 interface ContactInfoSectionProps {

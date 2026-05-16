@@ -1,18 +1,18 @@
 "use client";
 
-import { useState } from "react";
 import { Plus, Trash2, GripVertical, Star, MessageSquare, FileText } from "lucide-react";
 import { motion, AnimatePresence, Reorder } from "motion/react";
+import { useState } from "react";
 
+import { LoadTemplateDialog } from "@/components/experiments/load-template-dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { LoadTemplateDialog } from "@/components/experiments/load-template-dialog";
+import { Textarea } from "@/components/ui/textarea";
 import type { MessageTemplate } from "@/types";
 
 export interface VariantFormData {

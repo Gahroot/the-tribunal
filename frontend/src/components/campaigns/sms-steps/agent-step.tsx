@@ -1,15 +1,15 @@
 "use client";
 
-import { motion } from "motion/react";
 import { Bot } from "lucide-react";
+import { motion } from "motion/react";
 
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import type { Agent } from "@/types";
 
 import { AgentSelector } from "../agent-selector";
 import type { WizardStep } from "../wizard-types";
-import type { Agent } from "@/types";
 
 export interface AgentStepFields {
   agent_id?: string;

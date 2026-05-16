@@ -1,6 +1,7 @@
 import { create } from "zustand";
-import type { Contact, ContactAgent, FilterDefinition } from "@/types";
+
 import type { ContactSortBy } from "@/lib/api/contacts";
+import type { Contact, ContactAgent, FilterDefinition } from "@/types";
 
 interface ContactStore {
   // Selected contact

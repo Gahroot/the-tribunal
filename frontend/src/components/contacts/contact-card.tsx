@@ -1,18 +1,19 @@
 "use client";
 
-import * as React from "react";
-import Link from "next/link";
-import { motion } from "motion/react";
 import { Phone, Mail } from "lucide-react";
+import { motion } from "motion/react";
+import Link from "next/link";
+import * as React from "react";
+
+import { TagBadge } from "@/components/tags/tag-badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TagBadge } from "@/components/tags/tag-badge";
-import { cn } from "@/lib/utils";
 import { contactStatusColors, contactStatusLabels } from "@/lib/status-colors";
-import { formatPhoneNumber } from "@/lib/utils/phone";
+import { cn } from "@/lib/utils";
 import { getContactInitials } from "@/lib/utils/initials";
+import { formatPhoneNumber } from "@/lib/utils/phone";
 import type { Contact } from "@/types";
 
 export function ContactCardSkeleton() {
@@ -67,6 +68,10 @@ export function ContactCard({ contact, isSelected, onSelectChange, isSelectionMo
     >
       <div className="flex items-start gap-3">
         {isSelectionMode && (
+          // Wrapper exists solely to stop click events from bubbling to the
+          // outer card/link. Keyboard activation is handled by the Checkbox
+          // itself, so no keyboard listener is needed on the wrapper.
+          // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
           <div className="shrink-0 pt-1" onClick={handleCheckboxClick}>
             <Checkbox
               checked={isSelected}
@@ -168,7 +173,18 @@ export function ContactCard({ contact, isSelected, onSelectChange, isSelectionMo
 
   if (isSelectionMode) {
     return (
-      <div onClick={(e) => onSelectChange(!isSelected, e.shiftKey)}>
+      <div
+        role="button"
+        tabIndex={0}
+        aria-pressed={isSelected}
+        onClick={(e) => onSelectChange(!isSelected, e.shiftKey)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onSelectChange(!isSelected, e.shiftKey);
+          }
+        }}
+      >
         {cardContent}
       </div>
     );

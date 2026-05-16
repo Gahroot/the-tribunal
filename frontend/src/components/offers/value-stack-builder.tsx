@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
 import {
   Plus,
   Trash2,
@@ -10,14 +8,16 @@ import {
   CheckCircle,
   XCircle,
 } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Card, CardContent } from "@/components/ui/card";
-import type { ValueStackItem } from "@/types";
 import { formatNumber } from "@/lib/utils/number";
+import type { ValueStackItem } from "@/types";
 
 interface ValueStackBuilderProps {
   items: ValueStackItem[];

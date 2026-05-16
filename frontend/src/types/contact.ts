@@ -1,5 +1,5 @@
 // Contact types
-
+import type { MessageDirection } from "./conversation";
 import type { Tag } from "./tag";
 
 export type ContactStatus = "new" | "contacted" | "qualified" | "converted" | "lost";
@@ -60,9 +60,6 @@ export interface BusinessIntel {
   enrichment_error?: string;
   enrichment_failed_at?: string;
 }
-
-// Import MessageDirection for Contact's last_message_direction field
-import type { MessageDirection } from "./conversation";
 
 export interface Contact {
   id: number;

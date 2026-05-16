@@ -1,11 +1,14 @@
 "use client";
 
-import * as React from "react";
 import { Calendar } from "lucide-react";
-import { MessageItemShell } from "./message-item-shell";
-import { CallMessageItem } from "./call-message-item";
-import { SmsMessageItem } from "./sms-message-item";
+import * as React from "react";
+
 import type { TimelineItem } from "@/types";
+
+import { CallMessageItem } from "./call-message-item";
+import { MessageItemShell } from "./message-item-shell";
+import { SmsMessageItem } from "./sms-message-item";
+
 
 interface InboundMessageItemProps {
   item: TimelineItem;

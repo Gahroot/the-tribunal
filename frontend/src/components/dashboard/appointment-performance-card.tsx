@@ -20,13 +20,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { appointmentsApi } from "@/lib/api/appointments";
-import { queryKeys } from "@/lib/query-keys";
-import { POLL_60S } from "@/lib/query-options";
 import type {
   AppointmentAgentStat,
   AppointmentCampaignStat,
   AppointmentStatsResponse,
 } from "@/lib/api/appointments";
+import { queryKeys } from "@/lib/query-keys";
+import { POLL_60S } from "@/lib/query-options";
 
 // ---------------------------------------------------------------------------
 // Helpers

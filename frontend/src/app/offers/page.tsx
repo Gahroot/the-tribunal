@@ -1,9 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion } from "motion/react";
 import {
   Plus,
   Tag,
@@ -17,17 +14,11 @@ import {
   Eye,
   Layers,
 } from "lucide-react";
+import { motion } from "motion/react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,14 +29,22 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { PageEmptyState } from "@/components/ui/page-state";
 import { Skeleton } from "@/components/ui/skeleton";
-
-import { offersApi } from "@/lib/api/offers";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { offersApi } from "@/lib/api/offers";
 import { queryKeys } from "@/lib/query-keys";
-import type { Offer, DiscountType } from "@/types";
 import { formatNumber } from "@/lib/utils/number";
+import type { Offer, DiscountType } from "@/types";
 
 const discountTypeIcons: Record<DiscountType, React.ReactNode> = {
   percentage: <Percent className="size-4" />,

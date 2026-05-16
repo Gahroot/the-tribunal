@@ -1,9 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createResourceHooks } from "@/lib/api/create-resource-hooks";
+
 import { conversationsApi } from "@/lib/api/conversations";
+import type { ApiClient } from "@/lib/api/create-api-client";
+import { createResourceHooks } from "@/lib/api/create-resource-hooks";
 import { queryKeys } from "@/lib/query-keys";
 import type { Conversation } from "@/types";
-import type { ApiClient } from "@/lib/api/create-api-client";
 
 export type { ConversationsListParams } from "@/lib/api/conversations";
 

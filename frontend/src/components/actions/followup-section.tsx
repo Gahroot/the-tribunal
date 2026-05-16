@@ -1,16 +1,14 @@
 "use client";
 
-import * as React from "react";
-import { formatRelative } from "@/lib/utils/date";
-import { RefreshCw, Send, Sparkles, Clock, RotateCcw, Loader2 } from "lucide-react";
-import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
+import { RefreshCw, Send, Sparkles, Clock, RotateCcw, Loader2 } from "lucide-react";
+import * as React from "react";
+import { toast } from "sonner";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -18,10 +16,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useContactStore } from "@/lib/contact-store";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { queryKeys } from "@/lib/query-keys";
-import { conversationsApi } from "@/lib/api/conversations";
 import {
   useFollowupSettings,
   useUpdateFollowupSettings,
@@ -29,6 +26,10 @@ import {
   useSendFollowup,
   useResetFollowupCounter,
 } from "@/hooks/useFollowups";
+import { conversationsApi } from "@/lib/api/conversations";
+import { useContactStore } from "@/lib/contact-store";
+import { queryKeys } from "@/lib/query-keys";
+import { formatRelative } from "@/lib/utils/date";
 import type { Conversation } from "@/types";
 
 const DELAY_OPTIONS = [

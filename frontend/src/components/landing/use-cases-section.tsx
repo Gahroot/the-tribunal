@@ -1,7 +1,7 @@
 "use client";
 
-import { motion } from "motion/react";
 import { Home, Shield, Wrench, Sun, Car, Heart } from "lucide-react";
+import { motion } from "motion/react";
 
 const containerVariants = {
   hidden: { opacity: 0 },

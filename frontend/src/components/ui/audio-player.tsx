@@ -1,10 +1,11 @@
 "use client";
 
-import * as React from "react";
 import { Play, Pause, Loader2, AlertCircle, RotateCcw } from "lucide-react";
-import { cn } from "@/lib/utils";
+import * as React from "react";
+
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
+import { cn } from "@/lib/utils";
 
 interface AudioPlayerProps {
   url: string;
@@ -116,6 +117,9 @@ export function AudioPlayer({ url, duration: preloadedDuration, className }: Aud
 
   return (
     <div className={cn("flex items-center gap-3", className)}>
+      {/* Recorded calls/voicemails: no caption track is available from the */}
+      {/* provider. The audio element is hidden and controlled via the UI below. */}
+      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <audio ref={audioRef} src={url} preload="metadata" className="hidden" />
 
       {/* Play/Pause Button */}

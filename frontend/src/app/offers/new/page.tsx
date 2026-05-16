@@ -1,4 +1,5 @@
 import { AppSidebar } from "@/components/layout/app-sidebar";
+
 import { OfferBuilderClient } from "./offer-builder-client";
 
 export default function CreateOfferPage() {

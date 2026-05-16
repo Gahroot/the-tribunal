@@ -1,16 +1,13 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
 import { useQuery } from "@tanstack/react-query";
+import { Play, Square, Loader2 } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
-import { Play, Square, Loader2 } from "lucide-react";
 
-import { agentsApi } from "@/lib/api/agents";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -19,6 +16,8 @@ import {
   FormItem,
   FormLabel,
 } from "@/components/ui/form";
+import { PageEmptyState } from "@/components/ui/page-state";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -26,12 +25,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { PageEmptyState } from "@/components/ui/page-state";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { formatTime } from "@/lib/utils/date";
-import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
+import { Slider } from "@/components/ui/slider";
+import { Textarea } from "@/components/ui/textarea";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { agentsApi } from "@/lib/api/agents";
+import { queryKeys } from "@/lib/query-keys";
+import { formatTime } from "@/lib/utils/date";
 
 type TranscriptItem = {
   id: string;

@@ -1,4 +1,6 @@
 import { type Control, useWatch } from "react-hook-form";
+
+import type { EditAgentFormValues } from "@/components/agents/agent-edit-schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   FormControl,
@@ -8,9 +10,8 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import type { EditAgentFormValues } from "@/components/agents/agent-edit-schema";
+import { Textarea } from "@/components/ui/textarea";
 
 interface PostMeetingSmsSectionProps {
   control: Control<EditAgentFormValues>;

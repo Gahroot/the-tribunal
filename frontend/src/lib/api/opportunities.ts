@@ -1,6 +1,7 @@
-import { createApiClient } from "./create-api-client";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 import type { Opportunity, Pipeline, PipelineStage } from "@/types";
+
+import { createApiClient } from "./create-api-client";
 
 export interface OpportunitiesListParams {
   page?: number;

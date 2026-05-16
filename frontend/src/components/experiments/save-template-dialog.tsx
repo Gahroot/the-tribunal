@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { Loader2, Save } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -17,8 +17,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { queryKeys } from "@/lib/query-keys";
 import { messageTemplatesApi } from "@/lib/api/message-templates";
+import { queryKeys } from "@/lib/query-keys";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 
 interface SaveTemplateDialogProps {
@@ -86,6 +86,9 @@ export function SaveTemplateDialog({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g., Friendly Introduction"
+              // The dialog opens specifically so the user can type a name;
+              // focusing the field on open matches the dialog focus-trap pattern.
+              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
             />
           </div>

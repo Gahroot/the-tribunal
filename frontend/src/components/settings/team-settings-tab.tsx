@@ -2,15 +2,15 @@
 
 import { useState } from "react";
 
-import { InviteMemberDialog } from "@/components/workspaces/invite-member-dialog";
 import { CompanyInfoCard } from "@/components/settings/team/company-info-card";
 import { TeamInviteForm } from "@/components/settings/team/team-invite-form";
 import { TeamMemberRoleDialog } from "@/components/settings/team/team-member-role-dialog";
 import { TeamMembersList } from "@/components/settings/team/team-members-list";
 import { WorkspaceDetailsCard } from "@/components/settings/team/workspace-details-card";
+import { InviteMemberDialog } from "@/components/workspaces/invite-member-dialog";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { useWorkspace } from "@/providers/workspace-provider";
 import type { TeamMember } from "@/lib/api/settings";
+import { useWorkspace } from "@/providers/workspace-provider";
 
 /**
  * Team & workspace settings tab.

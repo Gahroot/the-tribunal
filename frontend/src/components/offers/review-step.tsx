@@ -1,8 +1,9 @@
 "use client";
 
-import { OfferPreview } from "./offer-preview";
-import type { OfferFormData } from "./offer-builder-wizard";
 import type { LeadMagnet } from "@/types";
+
+import type { OfferFormData } from "./offer-builder-wizard";
+import { OfferPreview } from "./offer-preview";
 
 interface ReviewStepProps {
   formData: OfferFormData;

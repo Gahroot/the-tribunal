@@ -1,6 +1,5 @@
 "use client";
 
-import * as React from "react";
 import {
   Receipt,
   Handshake,
@@ -13,10 +12,12 @@ import {
   MousePointerClick,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { useContactStore } from "@/lib/contact-store";
+import * as React from "react";
 import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
+import { useContactStore } from "@/lib/contact-store";
+import { cn } from "@/lib/utils";
 
 interface QuickAction {
   id: string;

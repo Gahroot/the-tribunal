@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { motion } from "motion/react";
+import { useState, useEffect } from "react";
+
 import {
   Card,
   CardContent,

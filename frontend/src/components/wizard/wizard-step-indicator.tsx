@@ -1,4 +1,5 @@
 import { Check } from "lucide-react";
+
 import type { WizardStepDef } from "@/hooks/useWizard";
 
 interface WizardStepIndicatorProps<TStepId extends string> {

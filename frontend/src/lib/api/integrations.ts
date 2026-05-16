@@ -1,4 +1,5 @@
 import { apiPost } from "@/lib/api";
+
 import { createApiClient } from "./create-api-client";
 
 export interface IntegrationWithMaskedCredentials {

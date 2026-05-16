@@ -1,7 +1,7 @@
-import { createResourceHooks } from "@/lib/api/create-resource-hooks";
 import { appointmentsApi, type UpdateAppointmentRequest } from "@/lib/api/appointments";
-import type { Appointment } from "@/types";
 import type { ApiClient } from "@/lib/api/create-api-client";
+import { createResourceHooks } from "@/lib/api/create-resource-hooks";
+import type { Appointment } from "@/types";
 
 const {
   queryKeys: appointmentQueryKeys,

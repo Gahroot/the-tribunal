@@ -1,5 +1,5 @@
-import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AgentsList } from "@/components/agents/agents-list";
+import { AppSidebar } from "@/components/layout/app-sidebar";
 
 export default function AgentsPage() {
   return (

@@ -1,13 +1,14 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import * as React from "react";
 import { use } from "react";
-import { useRouter } from "next/navigation";
-import { ConversationLayout } from "@/components/layout/conversation-layout";
+
 import { AppSidebar } from "@/components/layout/app-sidebar";
-import { useContactStore } from "@/lib/contact-store";
-import { useContact } from "@/hooks/useContacts";
+import { ConversationLayout } from "@/components/layout/conversation-layout";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useContact } from "@/hooks/useContacts";
+import { useContactStore } from "@/lib/contact-store";
 
 interface PageProps {
   params: Promise<{ id: string }>;

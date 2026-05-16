@@ -1,8 +1,5 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { motion } from "motion/react";
-import { formatDate, addDays, startOfWeek, endOfWeek, isSameDay } from "@/lib/utils/date";
 import {
   ChevronLeft,
   ChevronRight,
@@ -16,10 +13,15 @@ import {
   RefreshCw,
   Bell,
 } from "lucide-react";
+import { motion } from "motion/react";
 import Link from "next/link";
+import { useState, useMemo } from "react";
+import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
+import { NewAppointmentDialog } from "@/components/calendar/new-appointment-dialog";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -35,14 +37,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useAppointments, useDeleteAppointment } from "@/hooks/useAppointments";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { toast } from "sonner";
-import { appointmentStatusColors } from "@/lib/status-colors";
-import { NewAppointmentDialog } from "@/components/calendar/new-appointment-dialog";
+import { useAppointments, useDeleteAppointment } from "@/hooks/useAppointments";
 import { appointmentsApi } from "@/lib/api/appointments";
+import { appointmentStatusColors } from "@/lib/status-colors";
+import { formatDate, addDays, startOfWeek, endOfWeek, isSameDay } from "@/lib/utils/date";
 import type { Appointment, Contact } from "@/types";
 
 // Status filter options
@@ -584,8 +584,16 @@ export function CalendarPage() {
                   {todayAppointments.map((apt) => (
                     <div
                       key={apt.id}
+                      role="button"
+                      tabIndex={0}
                       className="flex items-center gap-3 p-2 rounded-lg border hover:bg-muted/50 transition-colors cursor-pointer"
                       onClick={() => setSelectedAppointmentId(apt.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSelectedAppointmentId(apt.id);
+                        }
+                      }}
                     >
                       <Avatar className="size-8">
                         <AvatarFallback className="text-xs">
@@ -628,8 +636,16 @@ export function CalendarPage() {
                 {upcomingAppointments.slice(0, 5).map((apt) => (
                   <div
                     key={apt.id}
+                    role="button"
+                    tabIndex={0}
                     className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
                     onClick={() => setSelectedAppointmentId(apt.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setSelectedAppointmentId(apt.id);
+                      }
+                    }}
                   >
                     <div className="text-center min-w-[40px]">
                       <div className="text-xs font-medium text-muted-foreground">

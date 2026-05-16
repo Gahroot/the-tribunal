@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Sparkles, Loader2, Check, ChevronRight, X } from "lucide-react";
+import { useState } from "react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -15,11 +17,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-
+import { Textarea } from "@/components/ui/textarea";
 import {
   offersApi,
   GenerateOfferRequest,
@@ -31,8 +30,8 @@ import {
   GeneratedUrgency,
   GeneratedCTA,
 } from "@/lib/api/offers";
-import type { ValueStackItem, GuaranteeType, UrgencyType } from "@/types";
 import { formatNumber } from "@/lib/utils/number";
+import type { ValueStackItem, GuaranteeType, UrgencyType } from "@/types";
 
 interface AIOfferWriterProps {
   workspaceId: string;

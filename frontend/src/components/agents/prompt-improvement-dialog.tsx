@@ -1,13 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { Wand2, Loader2, Sparkles } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
-import { improvementSuggestionsApi } from "@/lib/api/improvement-suggestions";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { queryKeys } from "@/lib/query-keys";
+import { SuggestionsQueue } from "@/components/suggestions/suggestions-queue";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,7 +17,9 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import { SuggestionsQueue } from "@/components/suggestions/suggestions-queue";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { improvementSuggestionsApi } from "@/lib/api/improvement-suggestions";
+import { queryKeys } from "@/lib/query-keys";
 
 interface PromptImprovementDialogProps {
   agentId: string;

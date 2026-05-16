@@ -1,6 +1,6 @@
 import { createApiClient, type ResourceId } from "@/lib/api/create-api-client";
-import type { PaginatedResponse } from "@/types/api";
 import type { MessageTemplate } from "@/types";
+import type { PaginatedResponse } from "@/types/api";
 
 // Request Types
 export interface MessageTemplatesListParams {

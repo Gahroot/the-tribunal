@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Inter, Manrope } from "next/font/google";
-import { Providers } from "@/providers/providers";
+
 import { Spotlight } from "@/components/effects/spotlight";
+import { Providers } from "@/providers/providers";
 import "./globals.css";
 
 const inter = Inter({

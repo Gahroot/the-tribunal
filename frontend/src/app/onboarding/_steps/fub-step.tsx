@@ -1,8 +1,5 @@
 "use client";
 
-import { useCallback, useId, useState } from "react";
-import { useFormContext } from "react-hook-form";
-import { toast } from "sonner";
 import {
   AlertCircle,
   CheckCircle2,
@@ -13,6 +10,9 @@ import {
   Plug,
   Settings,
 } from "lucide-react";
+import { useCallback, useId, useState } from "react";
+import { useFormContext } from "react-hook-form";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ import { verifyFub } from "@/lib/api/realtor";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 
 import type { OnboardingFormValues } from "../_state";
+
 import { InstructionStep } from "./instruction-step";
 import { useOnboardingExtras } from "./onboarding-context";
 

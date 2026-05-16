@@ -1,7 +1,7 @@
 "use client";
 
 import type { UseFormReturn } from "react-hook-form";
-import type { AgentFormValues } from "./create-agent-form";
+
 
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -13,7 +13,6 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -21,12 +20,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import {
   REALTIME_VOICES,
   HUME_VOICES,
   GROK_VOICES,
   ELEVENLABS_VOICES,
 } from "@/lib/voice-constants";
+
+import type { AgentFormValues } from "./create-agent-form";
 
 interface BasicInfoStepProps {
   form: UseFormReturn<AgentFormValues>;

@@ -1,9 +1,18 @@
 "use client";
 
-import { useState } from "react";
 import { Plus, Trash2, Filter } from "lucide-react";
+import { useState } from "react";
+
+import { FilterChip } from "@/components/filters/filter-chip";
+import { SaveSegmentDialog } from "@/components/segments/save-segment-dialog";
+import { TagPicker } from "@/components/tags/tag-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -11,14 +20,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { TagPicker } from "@/components/tags/tag-picker";
-import { FilterChip } from "@/components/filters/filter-chip";
-import { SaveSegmentDialog } from "@/components/segments/save-segment-dialog";
 import type { FilterRule, FilterDefinition } from "@/types";
 
 interface FieldOption {

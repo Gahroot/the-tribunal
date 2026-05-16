@@ -1,14 +1,16 @@
 "use client";
 
+import { ArrowLeft, X } from "lucide-react";
+import Link from "next/link";
 import * as React from "react";
 import { useEffect, useRef } from "react";
-import Link from "next/link";
-import { ArrowLeft, X } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
+
 import { AIAgentsSection } from "./ai-agents-section";
 import { FollowupSection } from "./followup-section";
 import { QuickActionsSection } from "./quick-actions-section";

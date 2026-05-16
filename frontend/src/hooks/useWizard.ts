@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import type { LucideIcon } from "lucide-react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 
 export interface WizardStepDef<TStepId extends string> {
   id: TStepId;

@@ -1,6 +1,6 @@
-import { createResourceHooks } from "@/lib/api/create-resource-hooks";
 import { agentsApi, type Agent, type CreateAgentRequest, type UpdateAgentRequest } from "@/lib/api/agents";
 import type { ApiClient } from "@/lib/api/create-api-client";
+import { createResourceHooks } from "@/lib/api/create-resource-hooks";
 
 const {
   queryKeys: agentQueryKeys,

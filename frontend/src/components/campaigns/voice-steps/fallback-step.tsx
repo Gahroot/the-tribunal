@@ -2,9 +2,10 @@
 
 import { MessageSquare } from "lucide-react";
 
+import type { Agent } from "@/types";
+
 import { SMSFallbackStep, type SMSFallbackMode } from "../sms-fallback-step";
 import type { WizardStep } from "../wizard-types";
-import type { Agent } from "@/types";
 
 export interface SMSFallbackStepFields {
   sms_fallback_enabled: boolean;

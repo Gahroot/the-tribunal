@@ -1,8 +1,10 @@
 "use client";
 
 import { Search, ArrowUpDown } from "lucide-react";
-import { Input } from "@/components/ui/input";
+
+import { ContactFilterBuilder } from "@/components/filters/contact-filter-builder";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -10,10 +12,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
-import { ContactFilterBuilder } from "@/components/filters/contact-filter-builder";
-import { contactStatusColors, contactStatusLabels } from "@/lib/status-colors";
 import type { ContactSortBy } from "@/lib/api/contacts";
+import { contactStatusColors, contactStatusLabels } from "@/lib/status-colors";
+import { cn } from "@/lib/utils";
 import type { ContactStatus } from "@/types";
 import type { FilterDefinition } from "@/types";
 

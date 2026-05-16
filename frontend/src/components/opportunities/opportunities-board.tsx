@@ -1,7 +1,5 @@
 "use client";
 
-import * as React from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
   DragOverlay,
@@ -20,18 +18,23 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Card, CardContent } from "@/components/ui/card";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { GripVertical, DollarSign, Calendar, CircleDot } from "lucide-react";
+import * as React from "react";
+
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
 import { opportunitiesApi } from "@/lib/api/opportunities";
 import { queryKeys } from "@/lib/query-keys";
 import { opportunityStatusColors } from "@/lib/status-colors";
-import type { Opportunity, OpportunityStatus, PipelineStage } from "@/types";
-import { OpportunityDetailSheet } from "./opportunity-detail-sheet";
 import { cn } from "@/lib/utils";
 import { formatDate } from "@/lib/utils/date";
-import { GripVertical, DollarSign, Calendar, CircleDot } from "lucide-react";
+import type { Opportunity, OpportunityStatus, PipelineStage } from "@/types";
+
+import { OpportunityDetailSheet } from "./opportunity-detail-sheet";
+
 
 interface OpportunitiesBoardProps {
   workspaceId: string;

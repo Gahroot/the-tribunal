@@ -1,15 +1,16 @@
 "use client";
 
-import * as React from "react";
-import Link from "next/link";
 import { ArrowLeft, Menu, User } from "lucide-react";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { useIsMobile } from "@/hooks/use-mobile";
+import Link from "next/link";
+import * as React from "react";
+
 import { ActionsPanel } from "@/components/actions/actions-panel";
-import { ConversationFeed } from "@/components/conversation/conversation-feed";
 import { ContactSidebar } from "@/components/contacts/contact-sidebar";
+import { ConversationFeed } from "@/components/conversation/conversation-feed";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
 
 interface ConversationLayoutProps {
   className?: string;

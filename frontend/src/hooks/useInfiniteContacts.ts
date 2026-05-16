@@ -1,5 +1,6 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
+
 import { contactsApi, type ContactsListParams } from "@/lib/api/contacts";
 import { queryKeys } from "@/lib/query-keys";
 import type { Contact, ContactStatus } from "@/types";

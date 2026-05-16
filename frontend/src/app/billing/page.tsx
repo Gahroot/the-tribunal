@@ -1,15 +1,15 @@
 "use client";
 
-import * as React from "react";
-import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { CreditCard, CheckCircle2, Zap, Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import * as React from "react";
 import { toast } from "sonner";
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createCheckout, createPortal, getBillingStatus, type BillingStatus } from "@/lib/api/billing";
 import { queryKeys } from "@/lib/query-keys";
 import { getApiErrorMessage } from "@/lib/utils/errors";

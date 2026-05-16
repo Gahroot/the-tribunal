@@ -1,4 +1,6 @@
 import type { UseFormReturn } from "react-hook-form";
+
+import type { EditAgentFormValues } from "@/components/agents/agent-edit-schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   FormControl,
@@ -16,7 +18,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { VoiceOption } from "@/lib/voice-constants";
-import type { EditAgentFormValues } from "@/components/agents/agent-edit-schema";
 
 interface VoiceTabProps {
   form: UseFormReturn<EditAgentFormValues>;

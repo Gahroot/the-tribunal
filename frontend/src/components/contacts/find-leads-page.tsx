@@ -1,28 +1,25 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
 import { useMutation } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { CheckCircle2, Loader2, MapPin, Search, Users } from "lucide-react";
+import Link from "next/link";
+import { useState } from "react";
+import { toast } from "sonner";
 
 import {
-  scrapingApi,
-  type BusinessResult,
-  type ImportLeadsResponse,
-} from "@/lib/api/scraping";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { useLeadImport } from "@/hooks/useLeadImport";
-import { getApiErrorMessage } from "@/lib/utils/errors";
-import { messages } from "@/lib/messages";
+  applyLeadFilters,
+  LeadFilters,
+  type LeadFilterState,
+} from "@/components/contacts/shared/lead-filters";
+import { LeadResultsList } from "@/components/contacts/shared/lead-results-list";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -30,12 +27,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { useLeadImport } from "@/hooks/useLeadImport";
 import {
-  applyLeadFilters,
-  LeadFilters,
-  type LeadFilterState,
-} from "@/components/contacts/shared/lead-filters";
-import { LeadResultsList } from "@/components/contacts/shared/lead-results-list";
+  scrapingApi,
+  type BusinessResult,
+  type ImportLeadsResponse,
+} from "@/lib/api/scraping";
+import { messages } from "@/lib/messages";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 
 export function FindLeadsPage() {
   const workspaceId = useWorkspaceId();

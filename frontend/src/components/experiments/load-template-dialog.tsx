@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { Loader2, Trash2, FileText, Check } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -15,11 +15,11 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { queryKeys } from "@/lib/query-keys";
 import { messageTemplatesApi } from "@/lib/api/message-templates";
-import type { MessageTemplate } from "@/types";
-import { getApiErrorMessage } from "@/lib/utils/errors";
+import { queryKeys } from "@/lib/query-keys";
 import { formatDate } from "@/lib/utils/date";
+import { getApiErrorMessage } from "@/lib/utils/errors";
+import type { MessageTemplate } from "@/types";
 
 interface LoadTemplateDialogProps {
   open: boolean;
@@ -105,6 +105,9 @@ export function LoadTemplateDialog({
               {templates.map((template) => (
                 <div
                   key={template.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={selectedId === template.id}
                   className={`group relative p-3 rounded-lg border cursor-pointer transition-colors ${
                     selectedId === template.id
                       ? "border-primary bg-primary/5"
@@ -112,6 +115,15 @@ export function LoadTemplateDialog({
                   }`}
                   onClick={() => setSelectedId(template.id)}
                   onDoubleClick={() => handleSelect(template)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleSelect(template);
+                    } else if (e.key === " ") {
+                      e.preventDefault();
+                      setSelectedId(template.id);
+                    }
+                  }}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">

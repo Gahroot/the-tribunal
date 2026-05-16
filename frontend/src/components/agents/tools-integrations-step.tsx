@@ -1,9 +1,10 @@
 "use client";
 
-import type { UseFormReturn } from "react-hook-form";
-import type { AgentFormValues } from "./create-agent-form";
 
 import { ChevronDown, Globe, Search } from "lucide-react";
+import type { UseFormReturn } from "react-hook-form";
+
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -13,10 +14,11 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { FormField } from "@/components/ui/form";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { GROK_BUILTIN_TOOLS } from "@/lib/voice-constants";
+
 import { INTEGRATIONS_WITH_TOOLS, getRiskLevelBadge } from "./agent-form-utils";
+import type { AgentFormValues } from "./create-agent-form";
 
 interface ToolsIntegrationsStepProps {
   form: UseFormReturn<AgentFormValues>;

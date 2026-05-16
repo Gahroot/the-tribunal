@@ -1,4 +1,5 @@
 import type { WizardErrors } from "../wizard-types";
+
 import type { BasicsFields, ScheduleFields } from "./form-types";
 
 export function validateBasics(data: BasicsFields): WizardErrors {

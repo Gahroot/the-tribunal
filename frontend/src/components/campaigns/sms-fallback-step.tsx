@@ -1,16 +1,16 @@
 "use client";
 
-import { motion } from "motion/react";
 import { MessageSquare, Bot, Sparkles, FileText } from "lucide-react";
+import { motion } from "motion/react";
 
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { AgentSelector } from "./agent-selector";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { insertPlaceholderAtCursor } from "@/lib/utils/placeholder";
-
 import type { Agent } from "@/types";
+
+import { AgentSelector } from "./agent-selector";
 
 export type SMSFallbackMode = "template" | "ai";
 

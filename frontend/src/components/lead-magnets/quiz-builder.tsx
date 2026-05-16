@@ -1,21 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Trash2, GripVertical, Sparkles, Loader2 } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
+import { Plus, Trash2, GripVertical, Sparkles, Loader2 } from "lucide-react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -24,8 +14,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-
+import { Textarea } from "@/components/ui/textarea";
 import { leadMagnetsApi, GenerateQuizRequest } from "@/lib/api/lead-magnets";
 import type { QuizContent, QuizQuestion, QuizOption, QuizResult } from "@/types";
 

@@ -1,19 +1,19 @@
 "use client";
 
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Wand2, Lightbulb, Check, X, Clock, BarChart3, FlaskConical } from "lucide-react";
+import { useState } from "react";
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
-import { improvementSuggestionsApi } from "@/lib/api/improvement-suggestions";
-import { campaignReportsApi } from "@/lib/api/campaign-reports";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { queryKeys } from "@/lib/query-keys";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { SuggestionsQueue } from "@/components/suggestions/suggestions-queue";
 import { CampaignReportsList } from "@/components/suggestions/campaign-reports-list";
 import { ExperimentDashboard } from "@/components/suggestions/experiment-dashboard";
+import { SuggestionsQueue } from "@/components/suggestions/suggestions-queue";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { campaignReportsApi } from "@/lib/api/campaign-reports";
+import { improvementSuggestionsApi } from "@/lib/api/improvement-suggestions";
+import { queryKeys } from "@/lib/query-keys";
 
 export default function SuggestionsPage() {
   const workspaceId = useWorkspaceId();

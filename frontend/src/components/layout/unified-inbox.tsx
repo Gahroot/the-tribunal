@@ -1,14 +1,15 @@
 "use client";
 
-import * as React from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
-import { cn } from "@/lib/utils";
-import { useIsMobile } from "@/hooks/use-mobile";
-import { useContactStore } from "@/lib/contact-store";
+import * as React from "react";
+
+import { ContactSidebar } from "@/components/contacts/contact-sidebar";
 import { ContactsList } from "@/components/contacts/contacts-list";
 import { ConversationFeed } from "@/components/conversation/conversation-feed";
-import { ContactSidebar } from "@/components/contacts/contact-sidebar";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { useContactStore } from "@/lib/contact-store";
+import { cn } from "@/lib/utils";
 
 interface UnifiedInboxProps {
   className?: string;

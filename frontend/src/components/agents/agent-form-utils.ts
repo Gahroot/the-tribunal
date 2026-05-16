@@ -1,4 +1,5 @@
 import { Zap, Crown, Sparkles, Shield, AlertTriangle, ShieldAlert } from "lucide-react";
+
 import { AVAILABLE_INTEGRATIONS, type ToolRiskLevel } from "@/lib/integrations";
 
 export const INTEGRATIONS_WITH_TOOLS = AVAILABLE_INTEGRATIONS.filter(

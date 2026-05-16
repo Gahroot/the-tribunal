@@ -1,4 +1,8 @@
+import { Wand2 } from "lucide-react";
 import type { UseFormReturn } from "react-hook-form";
+
+import type { EditAgentFormValues } from "@/components/agents/agent-edit-schema";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   FormControl,
@@ -8,14 +12,11 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { Wand2 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { BEST_PRACTICES_PROMPT } from "@/lib/voice-constants";
-import type { EditAgentFormValues } from "@/components/agents/agent-edit-schema";
 import { formatNumber } from "@/lib/utils/number";
+import { BEST_PRACTICES_PROMPT } from "@/lib/voice-constants";
 
 interface PromptTabProps {
   form: UseFormReturn<EditAgentFormValues>;

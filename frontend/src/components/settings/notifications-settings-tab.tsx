@@ -10,13 +10,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   settingsApi,
   type NotificationSettings,
 } from "@/lib/api/settings";
-
 import { queryKeys } from "@/lib/query-keys";
 export function NotificationsSettingsTab() {
   const queryClient = useQueryClient();

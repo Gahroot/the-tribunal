@@ -1,7 +1,7 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 import { contactStatusDotColors } from "@/lib/status-colors";
+import { cn } from "@/lib/utils";
 import { getContactInitials } from "@/lib/utils/initials";
 import type { Contact } from "@/types";
 

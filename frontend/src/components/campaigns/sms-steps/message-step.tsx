@@ -1,7 +1,7 @@
 "use client";
 
-import { motion } from "motion/react";
 import { MessageSquare, Tag } from "lucide-react";
+import { motion } from "motion/react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -15,12 +15,12 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { insertPlaceholderAtCursor } from "@/lib/utils/placeholder";
+import type { Offer } from "@/types";
 
 import { OfferSelector } from "../offer-selector";
 import type { WizardStep } from "../wizard-types";
 
-import { insertPlaceholderAtCursor } from "@/lib/utils/placeholder";
-import type { Offer } from "@/types";
 
 export interface MessageStepFields {
   initial_message: string;

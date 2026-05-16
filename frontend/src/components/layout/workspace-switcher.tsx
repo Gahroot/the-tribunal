@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import { ChevronsUpDown, Plus, Building2, Check } from "lucide-react";
-import { useWorkspace } from "@/providers/workspace-provider";
-import { CreateWorkspaceDialog } from "@/components/workspaces/create-workspace-dialog";
+import { useState } from "react";
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,6 +16,8 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { CreateWorkspaceDialog } from "@/components/workspaces/create-workspace-dialog";
+import { useWorkspace } from "@/providers/workspace-provider";
 
 export function WorkspaceSwitcher() {
   const { workspaces, currentWorkspace, setCurrentWorkspace, isPending } = useWorkspace();

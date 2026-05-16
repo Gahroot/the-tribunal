@@ -1,7 +1,7 @@
 "use client";
 
-import { motion } from "motion/react";
 import { Database, Phone, CheckCircle2 } from "lucide-react";
+import { motion } from "motion/react";
 
 const containerVariants = {
   hidden: { opacity: 0 },

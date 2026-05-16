@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Phone, Mail, Calendar, Webhook, Key, Loader2, Send as SendIcon } from "lucide-react";
+import { useState } from "react";
 
+import { IntegrationConfigDialog } from "@/components/settings/integration-config-dialog";
+import { PhoneNumbersTable } from "@/components/settings/phone-numbers-table";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -13,16 +16,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { PhoneNumbersTable } from "@/components/settings/phone-numbers-table";
-import { IntegrationConfigDialog } from "@/components/settings/integration-config-dialog";
 import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { queryKeys } from "@/lib/query-keys";
-import { settingsApi } from "@/lib/api/settings";
 import {
   integrationsApi,
   type IntegrationWithMaskedCredentials,
 } from "@/lib/api/integrations";
+import { settingsApi } from "@/lib/api/settings";
+import { queryKeys } from "@/lib/query-keys";
 
 type IntegrationType = "calcom" | "telnyx" | "openai" | "resend" | "lob";
 

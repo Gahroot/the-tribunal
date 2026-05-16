@@ -1,15 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm, useWatch } from "react-hook-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Loader2, Save } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
@@ -18,6 +16,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -27,15 +27,15 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { workspacesApi } from "@/lib/api/workspaces";
-import { queryKeys } from "@/lib/query-keys";
-import { useWorkspace } from "@/providers/workspace-provider";
 import { TIMEZONE_OPTIONS } from "@/lib/constants";
-import { getApiErrorMessage } from "@/lib/utils/errors";
+import { queryKeys } from "@/lib/query-keys";
 import {
   companyFormSchema,
   emptyCompanyFormValues,
   type CompanyFormValues,
 } from "@/lib/schemas/team-settings";
+import { getApiErrorMessage } from "@/lib/utils/errors";
+import { useWorkspace } from "@/providers/workspace-provider";
 
 interface CompanyInfoCardProps {
   workspaceId: string | null;

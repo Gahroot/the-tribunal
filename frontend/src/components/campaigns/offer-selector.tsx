@@ -1,7 +1,5 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { motion } from "motion/react";
 import {
   Tag,
   Percent,
@@ -14,7 +12,11 @@ import {
   Eye,
   FileText,
 } from "lucide-react";
+import { motion } from "motion/react";
+import { useMemo, useState } from "react";
 
+import { OfferPreview } from "@/components/offers/offer-preview";
+import { GenericResourceSelector } from "@/components/shared/generic-resource-selector";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,7 +28,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -34,11 +35,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { OfferPreview } from "@/components/offers/offer-preview";
-import { GenericResourceSelector } from "@/components/shared/generic-resource-selector";
-import type { Offer, DiscountType, LeadMagnet } from "@/types";
+import { Textarea } from "@/components/ui/textarea";
 import { formatDate } from "@/lib/utils/date";
 import { formatNumber } from "@/lib/utils/number";
+import type { Offer, DiscountType, LeadMagnet } from "@/types";
 
 interface OfferSelectorProps {
   offers: Offer[];

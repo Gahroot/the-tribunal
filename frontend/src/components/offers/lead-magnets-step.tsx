@@ -1,7 +1,8 @@
 "use client";
 
-import { LeadMagnetSelector } from "./lead-magnet-selector";
 import type { LeadMagnet } from "@/types";
+
+import { LeadMagnetSelector } from "./lead-magnet-selector";
 
 interface LeadMagnetsStepProps {
   leadMagnets: LeadMagnet[];

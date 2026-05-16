@@ -1,6 +1,7 @@
-import { formatDate, formatRelative } from "@/lib/utils/date";
 import { Clock, AlertTriangle, Flame } from "lucide-react";
+
 import { Badge } from "@/components/ui/badge";
+import { formatDate, formatRelative } from "@/lib/utils/date";
 import type { Contact, TimelineItem } from "@/types";
 
 function engagementTier(score: number): "hot" | "warm" | "cold" {

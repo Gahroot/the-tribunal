@@ -1,7 +1,7 @@
 "use client";
 
-import { motion } from "motion/react";
 import { TrendingUp, BarChart3, Clock, DollarSign } from "lucide-react";
+import { motion } from "motion/react";
 
 const containerVariants = {
   hidden: { opacity: 0 },

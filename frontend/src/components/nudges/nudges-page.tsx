@@ -1,10 +1,6 @@
 "use client";
 
-import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { formatDayMonth, formatRelative, addDays } from "@/lib/utils/date";
-import Link from "next/link";
 import {
   Bell,
   Check,
@@ -16,21 +12,25 @@ import {
   CalendarIcon,
   Mail,
 } from "lucide-react";
+import Link from "next/link";
+import { useState } from "react";
+import { toast } from "sonner";
 
-import { nudgesApi } from "@/lib/api/nudges";
-import type { HumanNudge, NudgeStatus, SuggestedAction } from "@/types/nudge";
-import { useWorkspaceId } from "@/hooks/use-workspace-id";
-import { queryKeys } from "@/lib/query-keys";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PageEmptyState } from "@/components/ui/page-state";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar-lazy";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageEmptyState } from "@/components/ui/page-state";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useWorkspaceId } from "@/hooks/use-workspace-id";
+import { nudgesApi } from "@/lib/api/nudges";
+import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
+import { formatDayMonth, formatRelative, addDays } from "@/lib/utils/date";
 import { getApiErrorMessage } from "@/lib/utils/errors";
+import type { HumanNudge, NudgeStatus, SuggestedAction } from "@/types/nudge";
 
 const NUDGE_TYPE_EMOJI: Record<string, string> = {
   birthday: "🎂",

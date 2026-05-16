@@ -2,15 +2,15 @@
 
 import { User, Bell, Webhook, CreditCard, Building2, Tags, FileInput, HandHeart } from "lucide-react";
 
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ProfileSettingsTab } from "@/components/settings/profile-settings-tab";
-import { NotificationsSettingsTab } from "@/components/settings/notifications-settings-tab";
-import { IntegrationsSettingsTab } from "@/components/settings/integrations-settings-tab";
 import { BillingSettingsTab } from "@/components/settings/billing-settings-tab";
+import { IntegrationsSettingsTab } from "@/components/settings/integrations-settings-tab";
+import { LeadSourcesSettingsTab } from "@/components/settings/lead-sources-settings-tab";
+import { NotificationsSettingsTab } from "@/components/settings/notifications-settings-tab";
+import { NudgeSettingsTab } from "@/components/settings/nudge-settings-tab";
+import { ProfileSettingsTab } from "@/components/settings/profile-settings-tab";
 import { TeamSettingsTab } from "@/components/settings/team-settings-tab";
 import { TagManagement } from "@/components/tags/tag-management";
-import { LeadSourcesSettingsTab } from "@/components/settings/lead-sources-settings-tab";
-import { NudgeSettingsTab } from "@/components/settings/nudge-settings-tab";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const settingsTabs = [
   { value: "profile", label: "Profile", icon: User },
