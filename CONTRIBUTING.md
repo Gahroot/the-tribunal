@@ -73,6 +73,48 @@ chore(deps): bump fastapi to 0.115
 - Keep the subject line ≤ 72 characters.
 - Append `!` after the type/scope or include `BREAKING CHANGE:` in the footer for breaking changes.
 
+## Pre-Commit Hooks
+
+This repo runs two layers of pre-commit automation. Install both before your first commit.
+
+### 1. `pre-commit` framework (repo-wide)
+
+Runs generic hygiene checks, `ruff check` + `ruff format` on the backend, and `gitleaks` for secret scanning. Configured in [`.pre-commit-config.yaml`](./.pre-commit-config.yaml).
+
+```bash
+pipx install pre-commit          # or: brew install pre-commit
+pre-commit install               # installs the git hook into frontend/.husky
+pre-commit run --all-files       # one-time sweep of the whole repo (optional)
+pre-commit autoupdate            # bump hook versions periodically
+```
+
+Included hooks:
+
+- `end-of-file-fixer`, `trailing-whitespace`, `check-yaml`, `check-toml`, `check-merge-conflict`
+- `check-added-large-files` — rejects anything over **500 KB**
+- `ruff` (`--fix`) and `ruff-format` — scoped to `backend/`
+- `gitleaks` — secret scanner
+- Local hooks that run `npm run lint` and `npm run typecheck` when staged files match `frontend/**/*.{ts,tsx}`
+
+### 2. Husky + lint-staged (frontend)
+
+Layered on top of `pre-commit` to give the frontend fast, file-scoped fix-on-save behavior. Configured under `lint-staged` in [`frontend/package.json`](./frontend/package.json) and the hook script in [`frontend/.husky/pre-commit`](./frontend/.husky/pre-commit).
+
+Install (one-time, from the repo root):
+
+```bash
+cd frontend
+npm install                      # installs husky + lint-staged + prettier as devDeps
+npm run prepare                  # wires git core.hooksPath to frontend/.husky
+```
+
+The husky `pre-commit` script (1) invokes the `pre-commit` framework against the whole repo, then (2) runs `lint-staged` from `frontend/`, which executes:
+
+- `eslint --fix` on staged `*.ts` / `*.tsx`
+- `prettier --write` on staged `*.json` / `*.md`
+
+If you ever need to skip the hooks for a one-off commit (rare — only for emergency hotfixes), use `git commit --no-verify`.
+
 ## Lint, Typecheck, and Test
 
 Run the relevant checks **before pushing**. CI runs the same commands and will fail the PR otherwise.

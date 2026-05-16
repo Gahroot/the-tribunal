@@ -21,7 +21,10 @@ useDefault = true
 # description = "Ignore documented dummy keys in tests"
 # paths = ['''backend/tests/fixtures/.*''']
 
-[allowlist]
-description = "Project-wide allowlist (empty for now)"
-paths = []
-regexes = []
+# Add an [[allowlists]] block here once a real false positive needs suppressing.
+# Each block must define at least one of: paths, regexes, commits, stopwords.
+#
+# Example:
+# [[allowlists]]
+# description = "Ignore documented dummy keys in tests"
+# paths = ['''backend/tests/fixtures/.*''']

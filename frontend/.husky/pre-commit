@@ -1,0 +1,16 @@
+#!/usr/bin/env sh
+# Husky pre-commit hook. Runs pre-commit (Python hooks) then lint-staged (frontend).
+# Repo root is the parent of frontend/. core.hooksPath is set to frontend/.husky.
+set -e
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+# 1. Run pre-commit framework (backend ruff, gitleaks, generic hygiene). Skip if not installed.
+if command -v pre-commit >/dev/null 2>&1; then
+  ( cd "$REPO_ROOT" && pre-commit run --hook-stage pre-commit )
+else
+  echo "pre-commit not installed — skipping (see CONTRIBUTING.md to install)"
+fi
+
+# 2. Run lint-staged for the frontend workspace.
+( cd "$REPO_ROOT/frontend" && npx lint-staged )
