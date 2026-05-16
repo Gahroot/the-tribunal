@@ -227,6 +227,107 @@ uv run pytest --cov=app --cov-report=term-missing
 
 Coverage config lives in `backend/pyproject.toml` under `[tool.coverage.run]` and `[tool.coverage.report]`. Migrations, `__init__.py` files, and `app/main.py` are omitted.
 
+## Backend Test Factories
+
+Backend tests construct model instances with **factory_boy** factories defined
+in [`backend/tests/factories.py`](backend/tests/factories.py). The factories
+exist so test setup reads as "build this entity with these overrides" rather
+than hand-rolling ``MagicMock`` shapes that drift from the real ORM schema.
+
+### Available factories
+
+One factory per model, exposed as both an importable class and a pytest
+fixture:
+
+| Model               | Factory                       | Fixture                         |
+| ------------------- | ----------------------------- | ------------------------------- |
+| `User`              | `UserFactory`                 | `user_factory`                  |
+| `Workspace`         | `WorkspaceFactory`            | `workspace_factory`             |
+| `WorkspaceMembership` | `WorkspaceMembershipFactory`| `workspace_membership_factory`  |
+| `Contact`           | `ContactFactory`              | `contact_factory`               |
+| `Tag`               | `TagFactory`                  | `tag_factory`                   |
+| `ContactTag`        | `ContactTagFactory`           | `contact_tag_factory`           |
+| `Agent`             | `AgentFactory`                | `agent_factory`                 |
+| `PhoneNumber`       | `PhoneNumberFactory`          | `phone_number_factory`          |
+| `Conversation`      | `ConversationFactory`         | `conversation_factory`          |
+| `Message`           | `MessageFactory`              | `message_factory`               |
+| `Campaign`          | `CampaignFactory`             | `campaign_factory`              |
+| `CampaignContact`   | `CampaignContactFactory`      | `campaign_contact_factory`      |
+| `Appointment`       | `AppointmentFactory`          | `appointment_factory`           |
+| `Pipeline`          | `PipelineFactory`             | `pipeline_factory`              |
+| `PipelineStage`     | `PipelineStageFactory`        | `pipeline_stage_factory`        |
+| `Opportunity`       | `OpportunityFactory`          | `opportunity_factory`           |
+
+### Build vs. create
+
+The project's tests are predominantly unit tests with **mocked**
+`AsyncSession` instances — no real database is touched. Factories support this
+workflow via `build()`, which returns a transient (unpersisted) model
+instance:
+
+```python
+from tests.factories import ContactFactory, WorkspaceFactory
+
+workspace = WorkspaceFactory.build()
+contact = ContactFactory.build(workspace=workspace, first_name="Alice")
+assert contact.workspace_id == workspace.id
+```
+
+For tests backed by a real session, call `bind_factories_to_session(session)`
+from your DB fixture, then use `.create()` (which `add()`s + flushes):
+
+```python
+from tests.factories import bind_factories_to_session, ContactFactory
+
+bind_factories_to_session(sync_session)
+contact = ContactFactory.create(first_name="Alice")  # persisted
+```
+
+### Relationships
+
+Foreign keys are wired with `SubFactory`, so child factories auto-build
+parents unless you pass one explicitly:
+
+```python
+campaign = CampaignFactory.build()  # builds its own workspace
+# vs.
+ws = WorkspaceFactory.build()
+campaign = CampaignFactory.build(workspace=ws)  # shares ws
+```
+
+Many-to-many and one-to-many relations are exposed via `post_generation`
+hooks:
+
+```python
+WorkspaceFactory.build(members=[user1, user2])           # WorkspaceMembership rows
+ContactFactory.build(tag_objects=[tag1, tag2])           # ContactTag rows
+CampaignFactory.build(contacts=[contact1, contact2])     # CampaignContact rows
+ConversationFactory.build(messages=3)                    # 3 outbound Messages
+PipelineFactory.build(stages=4)                          # 4 PipelineStages
+```
+
+### Encrypted columns
+
+Factories with PII columns (`User`, `Contact`) automatically derive the
+`*_hash` lookup columns via `LazyAttribute`, so a hand-set `email=` keeps
+`email_hash` consistent without extra wiring.
+
+### Sequence reset
+
+The `_reset_factory_sequences` autouse fixture in `tests/conftest.py` resets
+every factory's `Sequence` counter before each test. This means
+`UserFactory.build().email` is `user0@example.com` for the first build in
+every test regardless of execution order — required for deterministic
+assertions.
+
+### Proof-of-concept migration
+
+See `backend/tests/services/test_nudge_generator.py` for an example of a test
+file that was migrated from ad-hoc `MagicMock` builders to the factory
+fixtures. The previous `_make_workspace` / `_make_contact` helpers are now
+thin wrappers around `workspace_factory.build()` / `contact_factory.build()`
+with only the test-specific overrides applied.
+
 ## Database Migrations
 
 If your change modifies a SQLAlchemy model:

@@ -107,6 +107,7 @@ markers = [
 
 [dependency-groups]
 dev = [
+    "factory-boy>=3.3.3",
     "mypy>=2.1.0",
     "pytest>=9.0.3",
     "pytest-asyncio>=0.24.0",

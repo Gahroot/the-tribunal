@@ -1,17 +1,18 @@
-"""Shared pytest fixtures for voice agent and audio tests.
+"""Shared pytest fixtures.
 
-This module provides common fixtures used across voice agent tests:
-- Mock voice agent sessions
-- Mock WebSocket connections
-- Mock Cal.com service
-- Mock Telnyx service
+Provides:
+- Mock voice agent sessions, WebSocket connections, Cal.com / Telnyx services
+- Model factory fixtures (``user_factory``, ``workspace_factory``, etc.)
+  backed by factory_boy. See ``tests/factories.py`` and ``CONTRIBUTING.md``.
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+from tests import factories
 
 
 @pytest.fixture
@@ -196,9 +197,7 @@ class MockVoiceAgentSession:
     def set_tool_callback(self, callback: Any) -> None:
         self._tool_callback = callback
 
-    async def submit_tool_result(
-        self, call_id: str, result: dict[str, Any]
-    ) -> None:
+    async def submit_tool_result(self, call_id: str, result: dict[str, Any]) -> None:
         pass
 
     def add_test_audio(self, audio: bytes) -> None:
@@ -218,3 +217,102 @@ def mock_voice_session() -> MockVoiceAgentSession:
         MockVoiceAgentSession instance
     """
     return MockVoiceAgentSession()
+
+
+# ---------------------------------------------------------------------------
+# Factory fixtures
+# ---------------------------------------------------------------------------
+#
+# Each fixture yields the factory CLASS (not an instance) so tests can call
+# ``user_factory.build(...)`` / ``user_factory.create(...)`` as needed.
+#
+# Sequence counters are reset between tests so test order doesn't influence
+# generated emails/IDs. See ``tests/factories.py`` for the factory definitions
+# and ``CONTRIBUTING.md`` for usage patterns.
+
+
+@pytest.fixture(autouse=True)
+def _reset_factory_sequences() -> Iterator[None]:
+    """Reset every factory's Sequence counter before each test."""
+    factories.reset_factory_sequences()
+    yield
+
+
+@pytest.fixture
+def user_factory() -> type[factories.UserFactory]:
+    return factories.UserFactory
+
+
+@pytest.fixture
+def workspace_factory() -> type[factories.WorkspaceFactory]:
+    return factories.WorkspaceFactory
+
+
+@pytest.fixture
+def workspace_membership_factory() -> type[factories.WorkspaceMembershipFactory]:
+    return factories.WorkspaceMembershipFactory
+
+
+@pytest.fixture
+def contact_factory() -> type[factories.ContactFactory]:
+    return factories.ContactFactory
+
+
+@pytest.fixture
+def tag_factory() -> type[factories.TagFactory]:
+    return factories.TagFactory
+
+
+@pytest.fixture
+def contact_tag_factory() -> type[factories.ContactTagFactory]:
+    return factories.ContactTagFactory
+
+
+@pytest.fixture
+def agent_factory() -> type[factories.AgentFactory]:
+    return factories.AgentFactory
+
+
+@pytest.fixture
+def phone_number_factory() -> type[factories.PhoneNumberFactory]:
+    return factories.PhoneNumberFactory
+
+
+@pytest.fixture
+def conversation_factory() -> type[factories.ConversationFactory]:
+    return factories.ConversationFactory
+
+
+@pytest.fixture
+def message_factory() -> type[factories.MessageFactory]:
+    return factories.MessageFactory
+
+
+@pytest.fixture
+def campaign_factory() -> type[factories.CampaignFactory]:
+    return factories.CampaignFactory
+
+
+@pytest.fixture
+def campaign_contact_factory() -> type[factories.CampaignContactFactory]:
+    return factories.CampaignContactFactory
+
+
+@pytest.fixture
+def appointment_factory() -> type[factories.AppointmentFactory]:
+    return factories.AppointmentFactory
+
+
+@pytest.fixture
+def pipeline_factory() -> type[factories.PipelineFactory]:
+    return factories.PipelineFactory
+
+
+@pytest.fixture
+def pipeline_stage_factory() -> type[factories.PipelineStageFactory]:
+    return factories.PipelineStageFactory
+
+
+@pytest.fixture
+def opportunity_factory() -> type[factories.OpportunityFactory]:
+    return factories.OpportunityFactory
