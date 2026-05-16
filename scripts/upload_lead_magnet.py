@@ -10,7 +10,7 @@ from app.db.session import AsyncSessionLocal
 from app.models.lead_magnet import LeadMagnet, LeadMagnetType, DeliveryMethod
 
 WORKSPACE_ID = "ba0e0e99-c7c9-45ec-9625-567d54d6e9c2"  # PRESTYJ workspace
-PDF_PATH = "/static/lead_magnets/dead_lead_reactivation_scripts.pdf"
+PDF_PATH = "/static/lead-magnets/dead-lead-reactivation-scripts.pdf"
 
 
 async def upload_lead_magnet():

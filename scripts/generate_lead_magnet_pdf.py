@@ -4,9 +4,9 @@
 from fpdf import FPDF
 from pathlib import Path
 
-OUTPUT_DIR = Path("/home/groot/aicrm/static/lead_magnets")
+OUTPUT_DIR = Path("/home/groot/aicrm/backend/static/lead-magnets")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-OUTPUT_FILE = OUTPUT_DIR / "dead_lead_reactivation_scripts.pdf"
+OUTPUT_FILE = OUTPUT_DIR / "dead-lead-reactivation-scripts.pdf"
 
 
 class LeadMagnetPDF(FPDF):

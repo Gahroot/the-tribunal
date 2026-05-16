@@ -32,6 +32,38 @@ When running in debug mode, API docs are available at:
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
+## Static assets
+
+The FastAPI app mounts `backend/static/` at the `/static` URL prefix
+(see `app/main.py` — `app.mount("/static", StaticFiles(directory=...))`).
+The mount path is anchored to the `app` package's parent directory so it
+resolves the same way regardless of the CWD uvicorn is launched from
+(local dev, Docker, Railway).
+
+**Purpose:** lead-magnet PDFs and other public marketing collateral served
+directly by the backend. `LeadMagnet.content_url` rows reference paths under
+this prefix (e.g. `/static/lead-magnets/<slug>.pdf`).
+
+```
+backend/static/
+└── lead-magnets/        # Downloadable lead-magnet PDFs
+```
+
+Rules for this directory:
+
+- **Public-only content.** Anything placed here is served unauthenticated at
+  `/static/...`. Never put customer files, exports, PII, credentials, or
+  per-workspace assets here. Use object storage with signed URLs for those.
+- **Kebab-case filenames** (`dead-lead-reactivation-scripts.pdf`), matching
+  the kebab-case directory convention used by the `lead-magnets/` subfolder
+  and the `/api/v1/.../lead-magnets` route segment.
+- **No duplicate roots.** There was previously a stray `static/` at the repo
+  root that was not served by the app (the mount is relative to the backend
+  package). It has been removed; only `backend/static/` exists. The helper
+  scripts under `scripts/generate_lead_magnet_pdf.py` and
+  `scripts/upload_lead_magnet.py` write into and reference
+  `backend/static/lead-magnets/`.
+
 ## Observability — OpenTelemetry tracing
 
 The backend ships distributed traces via OTLP (gRPC). Tracing is **off by default**:

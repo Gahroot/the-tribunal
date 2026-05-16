@@ -6,6 +6,7 @@ import re
 import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 import sentry_sdk
@@ -492,8 +493,12 @@ app.include_router(resend_webhook_router, prefix="/webhooks/resend", tags=["webh
 app.include_router(voice_bridge_router, tags=["voice"])
 app.include_router(voice_test_router, tags=["voice"])
 
-# Mount static files for lead magnets and other assets
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Mount static files for lead magnets and other assets.
+# Anchor on the backend repo root (parent of the ``app`` package) so the mount
+# resolves correctly regardless of the working directory uvicorn is launched
+# from. Served path: ``backend/static/`` (see backend/README.md > Static assets).
+_STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
 
 # --------------------------------------------------------------------------- #
