@@ -66,8 +66,10 @@ jobs:
           fi
           # --package-lock-only + --dry-run would rewrite the lockfile; instead use
           # `npm ci --dry-run` which exits non-zero on package.json/lockfile drift
-          # without touching node_modules.
-          if ! npm ci --dry-run >/dev/null 2>&1; then
+          # without touching node_modules. `--ignore-scripts` is required because the
+          # `prepare` lifecycle script runs `husky` (a devDep) which isn't installed on
+          # a dry-run, causing the check to fail with a misleading lockfile error.
+          if ! npm ci --dry-run --ignore-scripts >/dev/null 2>&1; then
             echo "::error file=frontend/package-lock.json::package-lock.json is out of sync with package.json. Run 'cd frontend && npm install' and commit the regenerated lockfile."
             exit 1
           fi
