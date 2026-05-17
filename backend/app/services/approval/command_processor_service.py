@@ -28,10 +28,22 @@ class CommandProcessorService:
     """Processes inbound SMS commands (Y/N/approve/reject) for pending actions."""
 
     APPROVE_KEYWORDS: ClassVar[set[str]] = {
-        "y", "yes", "approve", "ok", "go", "do it", "\U0001f44d",
+        "y",
+        "yes",
+        "approve",
+        "ok",
+        "go",
+        "do it",
+        "\U0001f44d",
     }
     REJECT_KEYWORDS: ClassVar[set[str]] = {
-        "n", "no", "reject", "deny", "stop", "cancel", "\U0001f44e",
+        "n",
+        "no",
+        "reject",
+        "deny",
+        "stop",
+        "cancel",
+        "\U0001f44e",
     }
 
     async def try_process_command(
@@ -125,7 +137,10 @@ class CommandProcessorService:
         # 8. Approve or reject via the gate service
         if is_approve:
             approved_action = await approval_gate_service.approve_action(
-                db, action_id=action.id, user_id=user_id, channel="sms",
+                db,
+                action_id=action.id,
+                user_id=user_id,
+                channel="sms",
             )
             await self._send_sms_response(
                 from_number=normalized_to,
@@ -134,7 +149,10 @@ class CommandProcessorService:
             )
         else:
             rejected_action = await approval_gate_service.reject_action(
-                db, action_id=action.id, user_id=user_id, channel="sms",
+                db,
+                action_id=action.id,
+                user_id=user_id,
+                channel="sms",
             )
             await self._send_sms_response(
                 from_number=normalized_to,
@@ -150,9 +168,7 @@ class CommandProcessorService:
         )
         return True
 
-    async def _resolve_user_id(
-        self, db: AsyncSession, workspace_id: uuid.UUID
-    ) -> int:
+    async def _resolve_user_id(self, db: AsyncSession, workspace_id: uuid.UUID) -> int:
         """Get the owner/admin user_id for the workspace.
 
         Falls back to the first member if no owner is found.

@@ -35,16 +35,12 @@ class CampaignReportService:
             self._client = AsyncOpenAI(api_key=settings.openai_api_key)
         return self._client
 
-    async def generate_report(
-        self, db: AsyncSession, campaign_id: uuid.UUID
-    ) -> CampaignReport:
+    async def generate_report(self, db: AsyncSession, campaign_id: uuid.UUID) -> CampaignReport:
         """Generate a post-mortem intelligence report for a campaign."""
         log = logger.bind(campaign_id=str(campaign_id))
 
         # Load campaign
-        result = await db.execute(
-            select(Campaign).where(Campaign.id == campaign_id)
-        )
+        result = await db.execute(select(Campaign).where(Campaign.id == campaign_id))
         campaign = result.scalar_one_or_none()
         if not campaign:
             raise ValueError(f"Campaign {campaign_id} not found")
@@ -97,9 +93,7 @@ class CampaignReportService:
 
         return report
 
-    async def _gather_campaign_data(
-        self, db: AsyncSession, campaign: Campaign
-    ) -> dict[str, Any]:
+    async def _gather_campaign_data(self, db: AsyncSession, campaign: Campaign) -> dict[str, Any]:
         """Collect all data needed for analysis."""
         data: dict[str, Any] = {
             "campaign_name": campaign.name,
@@ -157,14 +151,9 @@ class CampaignReportService:
             .where(CampaignContact.campaign_id == campaign.id)
             .group_by(CampaignContact.status)
         )
-        return [
-            {"status": row.status, "count": row.count}
-            for row in result.all()
-        ]
+        return [{"status": row.status, "count": row.count} for row in result.all()]
 
-    async def _gather_voice_data(
-        self, db: AsyncSession, campaign: Campaign
-    ) -> dict[str, Any]:
+    async def _gather_voice_data(self, db: AsyncSession, campaign: Campaign) -> dict[str, Any]:
         """Gather voice-specific campaign data."""
         # Call outcome distribution
         outcome_result = await db.execute(
@@ -180,8 +169,7 @@ class CampaignReportService:
             .group_by(CallOutcome.outcome_type)
         )
         outcome_dist = [
-            {"outcome": row.outcome_type, "count": row.count}
-            for row in outcome_result.all()
+            {"outcome": row.outcome_type, "count": row.count} for row in outcome_result.all()
         ]
 
         # Average call duration for answered calls
@@ -190,8 +178,7 @@ class CampaignReportService:
                 func.avg(CampaignContact.call_duration_seconds).label("avg_duration"),
                 func.max(CampaignContact.call_duration_seconds).label("max_duration"),
                 func.min(CampaignContact.call_duration_seconds).label("min_duration"),
-            )
-            .where(
+            ).where(
                 CampaignContact.campaign_id == campaign.id,
                 CampaignContact.call_duration_seconds.is_not(None),
                 CampaignContact.call_duration_seconds > 0,
@@ -259,9 +246,7 @@ class CampaignReportService:
             for row in rows
         ]
 
-    async def _gather_sms_data(
-        self, db: AsyncSession, campaign: Campaign
-    ) -> dict[str, Any]:
+    async def _gather_sms_data(self, db: AsyncSession, campaign: Campaign) -> dict[str, Any]:
         """Gather SMS-specific campaign data."""
         # Reply rate by follow-up count
         followup_result = await db.execute(
@@ -292,8 +277,7 @@ class CampaignReportService:
         optout_result = await db.execute(
             select(
                 func.avg(CampaignContact.messages_sent).label("avg_messages_before_optout"),
-            )
-            .where(
+            ).where(
                 CampaignContact.campaign_id == campaign.id,
                 CampaignContact.opted_out.is_(True),
             )
@@ -307,9 +291,7 @@ class CampaignReportService:
             else 0,
         }
 
-    async def _gather_timing_data(
-        self, db: AsyncSession, campaign: Campaign
-    ) -> dict[str, Any]:
+    async def _gather_timing_data(self, db: AsyncSession, campaign: Campaign) -> dict[str, Any]:
         """Gather hourly/daily activity distributions."""
         hour_col = cast(extract("hour", CampaignContact.first_sent_at), SAInteger).label("hour")
         # Hourly distribution from first_sent_at
@@ -382,7 +364,7 @@ class CampaignReportService:
             '- "executive_summary": 2-3 paragraph overview of '
             "campaign performance and strategic implications\n"
             '- "key_findings": Array of {{title, description, '
-            'metric, sentiment}} (positive/negative/neutral)\n'
+            "metric, sentiment}} (positive/negative/neutral)\n"
             '- "what_worked": Array of '
             "{{title, description, evidence}}\n"
             '- "what_didnt_work": Array of '

@@ -29,9 +29,7 @@ class LeadMagnetLead(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     lead_magnet_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("lead_magnets.id", ondelete="CASCADE"),
@@ -65,9 +63,7 @@ class LeadMagnetLead(Base):
 
     # Delivery tracking
     delivered: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    delivered_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Source tracking
     source_offer_id: Mapped[uuid.UUID | None] = mapped_column(

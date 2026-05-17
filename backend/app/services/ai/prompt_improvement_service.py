@@ -99,10 +99,12 @@ class PromptImprovementService:
             select(CallOutcome)
             .where(
                 CallOutcome.prompt_version_id == version.id,
-                CallOutcome.outcome_type.in_([
-                    OutcomeType.APPOINTMENT_BOOKED.value,
-                    OutcomeType.LEAD_QUALIFIED.value,
-                ]),
+                CallOutcome.outcome_type.in_(
+                    [
+                        OutcomeType.APPOINTMENT_BOOKED.value,
+                        OutcomeType.LEAD_QUALIFIED.value,
+                    ]
+                ),
             )
             .order_by(CallOutcome.created_at.desc())
             .limit(limit // 2)
@@ -112,10 +114,12 @@ class PromptImprovementService:
             select(CallOutcome)
             .where(
                 CallOutcome.prompt_version_id == version.id,
-                CallOutcome.outcome_type.in_([
-                    OutcomeType.REJECTED.value,
-                    OutcomeType.FAILED.value,
-                ]),
+                CallOutcome.outcome_type.in_(
+                    [
+                        OutcomeType.REJECTED.value,
+                        OutcomeType.FAILED.value,
+                    ]
+                ),
             )
             .order_by(CallOutcome.created_at.desc())
             .limit(limit // 2)
@@ -134,9 +138,7 @@ class PromptImprovementService:
         )
 
         # Build analysis prompt
-        analysis_prompt = self._build_analysis_prompt(
-            version, successful_outcomes, failed_outcomes
-        )
+        analysis_prompt = self._build_analysis_prompt(version, successful_outcomes, failed_outcomes)
 
         # Call LLM for analysis
         client = self._get_client()
@@ -199,9 +201,7 @@ class PromptImprovementService:
                     mutations.append(m)
 
         for mutation_type in mutations:
-            variation = await self._generate_single_variation(
-                version, analysis, mutation_type
-            )
+            variation = await self._generate_single_variation(version, analysis, mutation_type)
             if variation:
                 variations.append(variation)
 
@@ -231,16 +231,16 @@ ANALYSIS SUMMARY:
 {analysis.summary}
 
 WEAKNESSES IDENTIFIED:
-{chr(10).join(f'- {w}' for w in analysis.weaknesses)}
+{chr(10).join(f"- {w}" for w in analysis.weaknesses)}
 
 IMPROVEMENT AREAS:
-{chr(10).join(f'- {a}' for a in analysis.improvement_areas)}
+{chr(10).join(f"- {a}" for a in analysis.improvement_areas)}
 
 CURRENT PROMPT:
 {version.system_prompt}
 
 CURRENT GREETING:
-{version.initial_greeting or 'None'}
+{version.initial_greeting or "None"}
 
 YOUR TASK: {mutation_desc}
 
@@ -451,7 +451,7 @@ PROMPT BEING ANALYZED:
 {version.system_prompt}
 
 INITIAL GREETING:
-{version.initial_greeting or 'None'}
+{version.initial_greeting or "None"}
 
 STATISTICS:
 - Total calls: {version.total_calls}
@@ -470,6 +470,6 @@ Analyze patterns and return JSON with:
 - "strengths": List of what the prompt does well
 - "weaknesses": List of areas where the prompt falls short
 - "improvement_areas": Specific actionable improvements
-- "recommended_mutations": List from [{', '.join(MUTATION_TYPES.keys())}]
+- "recommended_mutations": List from [{", ".join(MUTATION_TYPES.keys())}]
 - "summary": 2-3 sentence summary of the analysis
 """

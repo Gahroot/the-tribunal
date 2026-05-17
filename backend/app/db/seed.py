@@ -57,9 +57,7 @@ async def create_admin_user(
 
 async def create_default_workspace(db: AsyncSession) -> Workspace:
     """Create default workspace if not exists."""
-    result = await db.execute(
-        select(Workspace).where(Workspace.id == DEFAULT_WORKSPACE_ID)
-    )
+    result = await db.execute(select(Workspace).where(Workspace.id == DEFAULT_WORKSPACE_ID))
     existing = result.scalar_one_or_none()
 
     if existing:
@@ -95,10 +93,7 @@ async def create_workspace_membership(
     existing = result.scalar_one_or_none()
 
     if existing:
-        print(
-            f"Membership already exists for user {mask_email(user.email)} "
-            f"in {workspace.name}"
-        )
+        print(f"Membership already exists for user {mask_email(user.email)} in {workspace.name}")
         return existing
 
     membership = WorkspaceMembership(
@@ -110,10 +105,7 @@ async def create_workspace_membership(
     db.add(membership)
     await db.commit()
     await db.refresh(membership)
-    print(
-        f"Created membership for {mask_email(user.email)} "
-        f"in {workspace.name} (role=owner)"
-    )
+    print(f"Created membership for {mask_email(user.email)} in {workspace.name} (role=owner)")
     return membership
 
 

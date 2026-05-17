@@ -196,9 +196,7 @@ class CRMToolExecutor:
         from app.models.phone_number import PhoneNumber
 
         phone_result = await self.db.execute(
-            select(PhoneNumber).where(
-                PhoneNumber.workspace_id == self.workspace_id
-            ).limit(1)
+            select(PhoneNumber).where(PhoneNumber.workspace_id == self.workspace_id).limit(1)
         )
         phone = phone_result.scalar_one_or_none()
         if not phone:
@@ -320,22 +318,24 @@ class CRMToolExecutor:
 
     async def _get_dashboard_stats(self, _args: dict[str, Any]) -> dict[str, Any]:
         contacts_count = await self.db.scalar(
-            select(func.count()).select_from(Contact).where(
-                Contact.workspace_id == self.workspace_id
-            )
+            select(func.count())
+            .select_from(Contact)
+            .where(Contact.workspace_id == self.workspace_id)
         )
         campaigns_count = await self.db.scalar(
-            select(func.count()).select_from(Campaign).where(
-                Campaign.workspace_id == self.workspace_id
-            )
+            select(func.count())
+            .select_from(Campaign)
+            .where(Campaign.workspace_id == self.workspace_id)
         )
         conversations_count = await self.db.scalar(
-            select(func.count()).select_from(Conversation).where(
-                Conversation.workspace_id == self.workspace_id
-            )
+            select(func.count())
+            .select_from(Conversation)
+            .where(Conversation.workspace_id == self.workspace_id)
         )
         appointments_count = await self.db.scalar(
-            select(func.count()).select_from(Appointment).where(
+            select(func.count())
+            .select_from(Appointment)
+            .where(
                 Appointment.workspace_id == self.workspace_id,
                 Appointment.scheduled_at >= datetime.now(UTC),
             )

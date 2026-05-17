@@ -337,7 +337,12 @@ async def process_assistant_message(  # noqa: PLR0913, PLR0915
 
         if response_channel == "sms" and sms_from_number and sms_to_number:
             await _send_sms_response(
-                sms_from_number, sms_to_number, final_text, db, workspace_id, log,
+                sms_from_number,
+                sms_to_number,
+                final_text,
+                db,
+                workspace_id,
+                log,
             )
 
         return {"response": final_text, "actions_taken": actions_taken}

@@ -25,9 +25,7 @@ class HumanProfile(Base):
 
     __tablename__ = "human_profiles"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     workspace_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("workspaces.id", ondelete="CASCADE"),
@@ -47,27 +45,17 @@ class HumanProfile(Base):
     role_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    timezone: Mapped[str] = mapped_column(
-        String(100), default="America/New_York", nullable=False
-    )
+    timezone: Mapped[str] = mapped_column(String(100), default="America/New_York", nullable=False)
     bio: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Preferences and policies
     communication_preferences: Mapped[dict[str, Any]] = mapped_column(
         JSONB, default=dict, nullable=False
     )
-    action_policies: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, default=dict, nullable=False
-    )
-    default_policy: Mapped[str] = mapped_column(
-        String(20), default="ask", nullable=False
-    )
-    auto_approve_timeout_minutes: Mapped[int] = mapped_column(
-        Integer, default=0, nullable=False
-    )
-    auto_reject_timeout_minutes: Mapped[int] = mapped_column(
-        Integer, default=1440, nullable=False
-    )
+    action_policies: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    default_policy: Mapped[str] = mapped_column(String(20), default="ask", nullable=False)
+    auto_approve_timeout_minutes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    auto_reject_timeout_minutes: Mapped[int] = mapped_column(Integer, default=1440, nullable=False)
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 

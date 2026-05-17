@@ -199,9 +199,7 @@ async def import_leads_ai(  # noqa: PLR0912, PLR0915
     # Run all enrichments in parallel
     enrichment_results: list[dict[str, Any] | BaseException] = []
     if leads_to_enrich:
-        enrichment_tasks = [
-            enrich_single(lead, phone) for lead, phone in leads_to_enrich
-        ]
+        enrichment_tasks = [enrich_single(lead, phone) for lead, phone in leads_to_enrich]
         enrichment_results = await asyncio.gather(*enrichment_tasks, return_exceptions=True)
 
     # Process results and create contacts
@@ -219,10 +217,12 @@ async def import_leads_ai(  # noqa: PLR0912, PLR0915
 
         if enrichment_result["enrichment_status"] == "failed":
             enrichment_failed += 1
-            lead_details.append(LeadImportDetail(
-                name=lead.name,
-                status="enrichment_failed",
-            ))
+            lead_details.append(
+                LeadImportDetail(
+                    name=lead.name,
+                    status="enrichment_failed",
+                )
+            )
             continue
 
         lead_score: int = enrichment_result["lead_score"]
@@ -232,14 +232,16 @@ async def import_leads_ai(  # noqa: PLR0912, PLR0915
 
         if lead_score < request.min_lead_score:
             rejected_low_score += 1
-            lead_details.append(LeadImportDetail(
-                name=lead.name,
-                status="rejected_low_score",
-                lead_score=lead_score,
-                revenue_tier=revenue_tier,
-                decision_maker_name=dm_name,
-                decision_maker_title=dm_title,
-            ))
+            lead_details.append(
+                LeadImportDetail(
+                    name=lead.name,
+                    status="rejected_low_score",
+                    lead_score=lead_score,
+                    revenue_tier=revenue_tier,
+                    decision_maker_name=dm_name,
+                    decision_maker_title=dm_title,
+                )
+            )
             continue
 
         try:
@@ -274,14 +276,16 @@ async def import_leads_ai(  # noqa: PLR0912, PLR0915
             )
             db.add(contact)
             imported += 1
-            lead_details.append(LeadImportDetail(
-                name=lead.name,
-                status="imported",
-                lead_score=lead_score,
-                revenue_tier=revenue_tier,
-                decision_maker_name=dm_name,
-                decision_maker_title=dm_title,
-            ))
+            lead_details.append(
+                LeadImportDetail(
+                    name=lead.name,
+                    status="imported",
+                    lead_score=lead_score,
+                    revenue_tier=revenue_tier,
+                    decision_maker_name=dm_name,
+                    decision_maker_title=dm_title,
+                )
+            )
         except Exception as e:
             errors.append(f"Failed to import {lead.name}: {e!s}")
 

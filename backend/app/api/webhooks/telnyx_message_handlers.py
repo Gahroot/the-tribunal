@@ -43,9 +43,7 @@ async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:  # 
 
     async with AsyncSessionLocal() as db:
         # Look up workspace by phone number
-        result = await db.execute(
-            select(PhoneNumber).where(PhoneNumber.phone_number == to_number)
-        )
+        result = await db.execute(select(PhoneNumber).where(PhoneNumber.phone_number == to_number))
         phone_record = result.scalar_one_or_none()
 
         if not phone_record:
@@ -56,7 +54,10 @@ async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:  # 
 
         # Check if this is an approval command (Y/N/approve/reject)
         is_command = await command_processor_service.try_process_command(
-            db=db, from_number=from_number, to_number=to_number, body=body,
+            db=db,
+            from_number=from_number,
+            to_number=to_number,
+            body=body,
         )
         if is_command:
             log.info("processed_approval_command", from_number=from_number)
@@ -135,9 +136,7 @@ async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:  # 
                     from app.services.reactivation.drip_runner import handle_inbound_reply
 
                     conv_for_drip = await db.execute(
-                        select(Conv).where(
-                            Conv.id == message.conversation_id
-                        )
+                        select(Conv).where(Conv.id == message.conversation_id)
                     )
                     drip_conv = conv_for_drip.scalar_one_or_none()
                     if drip_conv and drip_conv.contact_id:
@@ -155,7 +154,9 @@ async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:  # 
                     from app.services.campaigns.campaign_sms_stats import update_campaign_sms_reply
 
                     await update_campaign_sms_reply(
-                        db=db, conversation_id=message.conversation_id, log=log,
+                        db=db,
+                        conversation_id=message.conversation_id,
+                        log=log,
                     )
                 except Exception as e:
                     log.exception("campaign_reply_stats_failed", error=str(e))
@@ -257,9 +258,7 @@ async def handle_delivery_status(payload: dict[str, Any], log: Any) -> None:  # 
                         from app.models.phone_number import PhoneNumber as _PhoneNumber
 
                         ws_id = None
-                        phone_row = await db.get(
-                            _PhoneNumber, message.from_phone_number_id
-                        )
+                        phone_row = await db.get(_PhoneNumber, message.from_phone_number_id)
                         if phone_row is not None:
                             ws_id = phone_row.workspace_id
                         observe_sms_bounce(ws_id, bounce_type=bounce_type)

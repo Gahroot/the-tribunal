@@ -48,9 +48,7 @@ async def handle_call_initiated(payload: dict[Any, Any], log: Any) -> None:
 
     async with AsyncSessionLocal() as db:
         # Look up workspace by phone number
-        result = await db.execute(
-            select(PhoneNumber).where(PhoneNumber.phone_number == to_number)
-        )
+        result = await db.execute(select(PhoneNumber).where(PhoneNumber.phone_number == to_number))
         phone_record = result.scalar_one_or_none()
 
         if not phone_record:
@@ -248,7 +246,9 @@ async def handle_call_answered(payload: dict[Any, Any], log: Any) -> None:  # no
 
 
 async def _reconcile_booking_outcome(
-    db: Any, message: Any, log: Any,
+    db: Any,
+    message: Any,
+    log: Any,
 ) -> str | None:
     """Check for booking evidence when message.booking_outcome is NULL.
 
@@ -267,9 +267,7 @@ async def _reconcile_booking_outcome(
     from app.models.appointment import Appointment
 
     # Strategy 1: Direct message_id link
-    appt_result = await db.execute(
-        select(Appointment).where(Appointment.message_id == message.id)
-    )
+    appt_result = await db.execute(select(Appointment).where(Appointment.message_id == message.id))
     appt = appt_result.scalar_one_or_none()
     if appt:
         log.info("reconciled_booking_via_message_id", appointment_id=appt.id)
@@ -387,20 +385,14 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:  # noqa
             # Record completion metric exactly once per call (skip retries that
             # arrive after we've already finalised the message status).
             if not already_finalized:
-                workspace_id = (
-                    message.conversation.workspace_id
-                    if message.conversation
-                    else None
-                )
+                workspace_id = message.conversation.workspace_id if message.conversation else None
                 observe_voice_call_completed(
                     workspace_id=workspace_id,
                     outcome=str(message.status),
                     duration_seconds=message.duration_seconds or duration_secs,
                 )
 
-            contact_id = (
-                message.conversation.contact_id if message.conversation else None
-            )
+            contact_id = message.conversation.contact_id if message.conversation else None
             duration = message.duration_seconds or 0
             if contact_id and duration > 0 and not already_finalized:
                 try:

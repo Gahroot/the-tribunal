@@ -109,19 +109,21 @@ class GooglePlacesService:
             }
 
             # Field mask to request specific fields (nextPageToken required for pagination)
-            field_mask = ",".join([
-                "nextPageToken",
-                "places.id",
-                "places.displayName",
-                "places.formattedAddress",
-                "places.nationalPhoneNumber",
-                "places.internationalPhoneNumber",
-                "places.websiteUri",
-                "places.rating",
-                "places.userRatingCount",
-                "places.types",
-                "places.businessStatus",
-            ])
+            field_mask = ",".join(
+                [
+                    "nextPageToken",
+                    "places.id",
+                    "places.displayName",
+                    "places.formattedAddress",
+                    "places.nationalPhoneNumber",
+                    "places.internationalPhoneNumber",
+                    "places.websiteUri",
+                    "places.rating",
+                    "places.userRatingCount",
+                    "places.types",
+                    "places.businessStatus",
+                ]
+            )
 
             log.info("searching_businesses")
 

@@ -1,6 +1,5 @@
 """Cheap batch transcription for Phase 1 IVR gate using OpenAI Whisper."""
 
-
 import io
 import wave
 

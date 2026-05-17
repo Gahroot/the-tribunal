@@ -183,17 +183,19 @@ async def get_fub_contacts(
         for p in people:
             phones: list[dict[str, str]] = p.get("phones", [])
             emails: list[dict[str, str]] = p.get("emails", [])
-            contacts.append(FUBContact(
-                id=p["id"],
-                first_name=p.get("firstName"),
-                last_name=p.get("lastName"),
-                email=emails[0]["value"] if emails else None,
-                phone=phones[0]["value"] if phones else None,
-                stage=p.get("stage"),
-                tags=p.get("tags", []),
-                last_activity=p.get("lastActivity"),
-                source=p.get("source"),
-            ))
+            contacts.append(
+                FUBContact(
+                    id=p["id"],
+                    first_name=p.get("firstName"),
+                    last_name=p.get("lastName"),
+                    email=emails[0]["value"] if emails else None,
+                    phone=phones[0]["value"] if phones else None,
+                    stage=p.get("stage"),
+                    tags=p.get("tags", []),
+                    last_activity=p.get("lastActivity"),
+                    source=p.get("source"),
+                )
+            )
 
         metadata: dict[str, int] = data.get("_metadata", {})
         total = metadata.get("total", len(contacts))
@@ -239,9 +241,7 @@ async def import_fub_contacts(
 
         # Auto-create drip campaign for imported contacts
         if imported_contact_ids:
-            await auto_create_drip_for_imports(
-                db, workspace_id, imported_contact_ids
-            )
+            await auto_create_drip_for_imports(db, workspace_id, imported_contact_ids)
 
         await db.commit()
         return FUBImportResponse(**counts)

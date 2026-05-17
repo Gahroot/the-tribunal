@@ -441,22 +441,24 @@ async def get_contact_timeline(
             if msg.call_outcome is not None and msg.call_outcome.signals:
                 signals = dict(msg.call_outcome.signals)
 
-            timeline_items.append({
-                "id": msg.id,
-                "type": item_type,
-                "timestamp": msg.created_at,
-                "direction": msg.direction,
-                "is_ai": msg.is_ai,
-                "content": msg.body,
-                "duration_seconds": msg.duration_seconds,
-                "recording_url": msg.recording_url,
-                "transcript": msg.transcript,
-                "status": msg.status,
-                "booking_outcome": msg.booking_outcome,
-                "signals": signals,
-                "original_id": msg.id,
-                "original_type": f"{msg.channel}_message",
-            })
+            timeline_items.append(
+                {
+                    "id": msg.id,
+                    "type": item_type,
+                    "timestamp": msg.created_at,
+                    "direction": msg.direction,
+                    "is_ai": msg.is_ai,
+                    "content": msg.body,
+                    "duration_seconds": msg.duration_seconds,
+                    "recording_url": msg.recording_url,
+                    "transcript": msg.transcript,
+                    "status": msg.status,
+                    "booking_outcome": msg.booking_outcome,
+                    "signals": signals,
+                    "original_id": msg.id,
+                    "original_type": f"{msg.channel}_message",
+                }
+            )
 
     # Sort by timestamp (oldest first) for client display
     timeline_items.sort(key=lambda x: x["timestamp"])

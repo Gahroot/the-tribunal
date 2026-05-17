@@ -177,17 +177,19 @@ def _process_csv_row(
     """
     first_name = _get_csv_field(row, column_mapping, "first_name") or ""
     if not first_name:
-        errors.append(ImportErrorDetail(
-            row=row_num, field="first_name", error="First name is required"
-        ))
+        errors.append(
+            ImportErrorDetail(row=row_num, field="first_name", error="First name is required")
+        )
         return None, False
 
     phone_raw = _get_csv_field(row, column_mapping, "phone_number") or ""
     phone_number = clean_phone_number(phone_raw)
     if not phone_number:
-        errors.append(ImportErrorDetail(
-            row=row_num, field="phone_number", error=f"Invalid phone: {phone_raw}"
-        ))
+        errors.append(
+            ImportErrorDetail(
+                row=row_num, field="phone_number", error=f"Invalid phone: {phone_raw}"
+            )
+        )
         return None, False
 
     if skip_duplicates and phone_number in existing_phones:
@@ -195,9 +197,9 @@ def _process_csv_row(
 
     email = _get_csv_field(row, column_mapping, "email")
     if email and not validate_email(email):
-        errors.append(ImportErrorDetail(
-            row=row_num, field="email", error=f"Invalid email: {email}"
-        ))
+        errors.append(
+            ImportErrorDetail(row=row_num, field="email", error=f"Invalid email: {email}")
+        )
         return None, False
 
     status_val = (_get_csv_field(row, column_mapping, "status") or "").lower()
@@ -205,10 +207,11 @@ def _process_csv_row(
     if status_val and status_val in VALID_STATUSES:
         contact_status = status_val
     elif status_val:
-        errors.append(ImportErrorDetail(
-            row=row_num, field="status",
-            error=f"Invalid status '{status_val}', using default"
-        ))
+        errors.append(
+            ImportErrorDetail(
+                row=row_num, field="status", error=f"Invalid status '{status_val}', using default"
+            )
+        )
 
     tags_raw = _get_csv_field(row, column_mapping, "tags")
     tags_list = [t.strip() for t in tags_raw.split(",") if t.strip()] if tags_raw else None
@@ -310,16 +313,12 @@ class ContactImportService:
         # Build column mapping
         if explicit_mapping:
             # Invert: {csv_header: field_name} -> {field_name: csv_header}
-            column_mapping: dict[str, str | None] = dict.fromkeys(
-                CSV_FIELD_MAPPING, None
-            )
+            column_mapping: dict[str, str | None] = dict.fromkeys(CSV_FIELD_MAPPING, None)
             for csv_header, field_name in explicit_mapping.items():
                 if field_name in column_mapping:
                     column_mapping[field_name] = csv_header
         else:
-            column_mapping = {
-                f: find_csv_column(headers, f) for f in CSV_FIELD_MAPPING
-            }
+            column_mapping = {f: find_csv_column(headers, f) for f in CSV_FIELD_MAPPING}
 
         # Validate required fields
         if not column_mapping["first_name"]:
@@ -329,9 +328,7 @@ class ContactImportService:
 
         # Get existing phone numbers
         existing_phones = (
-            await self._get_existing_phones(workspace_id)
-            if skip_duplicates
-            else set()
+            await self._get_existing_phones(workspace_id) if skip_duplicates else set()
         )
 
         # Process rows
@@ -392,9 +389,7 @@ class ContactImportService:
             Set of normalized phone numbers
         """
         phone_result = await self.db.execute(
-            select(Contact.phone_number).where(
-                Contact.workspace_id == workspace_id
-            )
+            select(Contact.phone_number).where(Contact.workspace_id == workspace_id)
         )
         existing_phones: set[str] = set()
         for db_row in phone_result:
@@ -436,8 +431,13 @@ class ContactImportService:
         for row in rows:
             row_num += 1
             contact_data, is_dup = _process_csv_row(
-                row, row_num, column_mapping, default_status,
-                existing_phones, skip_duplicates, errors
+                row,
+                row_num,
+                column_mapping,
+                default_status,
+                existing_phones,
+                skip_duplicates,
+                errors,
             )
 
             if is_dup:

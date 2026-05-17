@@ -51,14 +51,30 @@ def should_require_booking_tools(message: str) -> bool:  # noqa: PLR0911
     """
     # Direct booking intent phrases - always trigger
     direct_booking_phrases = [
-        "book a", "book an", "schedule a", "schedule an",
-        "set up a", "setup a", "arrange a",
-        "want to meet", "want to call", "want to schedule",
-        "like to meet", "like to call", "like to schedule",
-        "can we meet", "can we call", "can we schedule",
-        "let's meet", "lets meet", "let's schedule", "lets schedule",
-        "interested in scheduling", "interested in meeting",
-        "ready to book", "ready to schedule",
+        "book a",
+        "book an",
+        "schedule a",
+        "schedule an",
+        "set up a",
+        "setup a",
+        "arrange a",
+        "want to meet",
+        "want to call",
+        "want to schedule",
+        "like to meet",
+        "like to call",
+        "like to schedule",
+        "can we meet",
+        "can we call",
+        "can we schedule",
+        "let's meet",
+        "lets meet",
+        "let's schedule",
+        "lets schedule",
+        "interested in scheduling",
+        "interested in meeting",
+        "ready to book",
+        "ready to schedule",
     ]
     if any(phrase in message for phrase in direct_booking_phrases):
         return True
@@ -66,31 +82,65 @@ def should_require_booking_tools(message: str) -> bool:  # noqa: PLR0911
     # Buying signals - general positive responses indicating readiness to proceed
     # These trigger booking tools so the AI offers to schedule instead of more questions
     buying_signal_phrases = [
-        "sounds good", "that sounds great", "that sounds good",
-        "ok sounds good", "okay sounds good",
-        "i'm in", "im in", "count me in", "sign me up",
-        "i'm interested", "im interested", "i'm ready", "im ready",
-        "let's move forward", "lets move forward",
-        "let's get started", "lets get started",
-        "let's go", "lets go",
-        "how do we get started", "how do i get started",
-        "what's the next step", "whats the next step",
-        "what do i need to do", "what do we do next",
-        "i want that", "i need that", "i want this", "i need this",
-        "yes please", "yeah that works", "yes that works",
+        "sounds good",
+        "that sounds great",
+        "that sounds good",
+        "ok sounds good",
+        "okay sounds good",
+        "i'm in",
+        "im in",
+        "count me in",
+        "sign me up",
+        "i'm interested",
+        "im interested",
+        "i'm ready",
+        "im ready",
+        "let's move forward",
+        "lets move forward",
+        "let's get started",
+        "lets get started",
+        "let's go",
+        "lets go",
+        "how do we get started",
+        "how do i get started",
+        "what's the next step",
+        "whats the next step",
+        "what do i need to do",
+        "what do we do next",
+        "i want that",
+        "i need that",
+        "i want this",
+        "i need this",
+        "yes please",
+        "yeah that works",
+        "yes that works",
     ]
     if any(phrase in message for phrase in buying_signal_phrases):
         return True
 
     # Availability questions - trigger tools
     availability_phrases = [
-        "when are you", "when is he", "when is she", "when is nolan",
-        "what times", "what time do", "what days",
-        "any availability", "your availability", "his availability",
-        "are you available", "is he available", "is she available",
-        "when can we", "when can i", "when could we",
-        "what's available", "whats available",
-        "free time", "open slots", "available slots",
+        "when are you",
+        "when is he",
+        "when is she",
+        "when is nolan",
+        "what times",
+        "what time do",
+        "what days",
+        "any availability",
+        "your availability",
+        "his availability",
+        "are you available",
+        "is he available",
+        "is she available",
+        "when can we",
+        "when can i",
+        "when could we",
+        "what's available",
+        "whats available",
+        "free time",
+        "open slots",
+        "available slots",
     ]
     if any(phrase in message for phrase in availability_phrases):
         return True
@@ -128,8 +178,13 @@ def should_require_booking_tools(message: str) -> bool:  # noqa: PLR0911
 
     # Email mention in booking context
     email_context_phrases = [
-        "my email is", "email is", "send it to", "send confirmation to",
-        "here's my email", "heres my email", "my email:",
+        "my email is",
+        "email is",
+        "send it to",
+        "send confirmation to",
+        "here's my email",
+        "heres my email",
+        "my email:",
     ]
     return any(phrase in message for phrase in email_context_phrases)
 
@@ -237,12 +292,27 @@ async def generate_text_response(  # noqa: PLR0915, PLR0912
             # OPT-OUT DETECTION: Never force booking tools on negative intent
             # These phrases indicate user wants to stop communication
             opt_out_phrases = [
-                "stop", "unsubscribe", "opt out", "optout", "cancel",
-                "remove me", "take me off", "don't text", "dont text",
-                "don't contact", "dont contact", "leave me alone",
-                "not interested", "no thanks", "no thank you",
-                "spam", "harassment", "harassing", "reported",
-                "wrong number", "wrong person",
+                "stop",
+                "unsubscribe",
+                "opt out",
+                "optout",
+                "cancel",
+                "remove me",
+                "take me off",
+                "don't text",
+                "dont text",
+                "don't contact",
+                "dont contact",
+                "leave me alone",
+                "not interested",
+                "no thanks",
+                "no thank you",
+                "spam",
+                "harassment",
+                "harassing",
+                "reported",
+                "wrong number",
+                "wrong person",
             ]
             is_opt_out = any(phrase in last_msg for phrase in opt_out_phrases)
 
@@ -288,21 +358,23 @@ async def generate_text_response(  # noqa: PLR0915, PLR0912
             )
 
             # Add assistant message and tool results to conversation
-            api_messages.append({
-                "role": "assistant",
-                "content": assistant_message.content,
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
-                        },
-                    }
-                    for tc in assistant_message.tool_calls
-                ],
-            })
+            api_messages.append(
+                {
+                    "role": "assistant",
+                    "content": assistant_message.content,
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
+                        }
+                        for tc in assistant_message.tool_calls
+                    ],
+                }
+            )
             api_messages.extend(tool_results)
 
             # Make follow-up call to get final response
@@ -375,9 +447,7 @@ async def generate_followup_message(
     # Get contact name for personalization
     contact_name = "there"
     if conversation.contact_id:
-        result = await db.execute(
-            select(Contact).where(Contact.id == conversation.contact_id)
-        )
+        result = await db.execute(select(Contact).where(Contact.id == conversation.contact_id))
         contact = result.scalar_one_or_none()
         if contact and contact.first_name:
             contact_name = contact.first_name

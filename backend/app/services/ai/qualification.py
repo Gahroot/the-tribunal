@@ -119,9 +119,7 @@ async def get_conversation_transcript(
         select(Conversation.id)
         .where(Conversation.contact_id == contact_id)
         .order_by(
-            func.coalesce(
-                Conversation.last_message_at, Conversation.updated_at
-            ).desc(),
+            func.coalesce(Conversation.last_message_at, Conversation.updated_at).desc(),
             Conversation.id.desc(),
         )
         .limit(max_conversations)
@@ -315,9 +313,7 @@ async def check_has_appointment(contact_id: int, db: AsyncSession) -> bool:
     from app.models.appointment import Appointment
 
     result = await db.execute(
-        select(func.count())
-        .select_from(Appointment)
-        .where(Appointment.contact_id == contact_id)
+        select(func.count()).select_from(Appointment).where(Appointment.contact_id == contact_id)
     )
     count = result.scalar() or 0
     return count > 0
@@ -336,18 +332,8 @@ async def calculate_response_rate(contact_id: int, db: AsyncSession) -> float:
     # Single query with conditional aggregation (1 query instead of 3)
     result = await db.execute(
         select(
-            func.sum(
-                case(
-                    (Message.direction == "outbound", 1),
-                    else_=0
-                )
-            ).label("outbound_count"),
-            func.sum(
-                case(
-                    (Message.direction == "inbound", 1),
-                    else_=0
-                )
-            ).label("inbound_count"),
+            func.sum(case((Message.direction == "outbound", 1), else_=0)).label("outbound_count"),
+            func.sum(case((Message.direction == "inbound", 1), else_=0)).label("inbound_count"),
         )
         .select_from(Message)
         .join(Conversation, Message.conversation_id == Conversation.id)
@@ -541,11 +527,13 @@ async def batch_analyze_contacts(
                 analyzed += 1
                 if analysis.get("is_qualified"):
                     qualified += 1
-                contact_results.append({
-                    "contact_id": contact.id,
-                    "lead_score": analysis.get("lead_score"),
-                    "is_qualified": analysis.get("is_qualified"),
-                })
+                contact_results.append(
+                    {
+                        "contact_id": contact.id,
+                        "lead_score": analysis.get("lead_score"),
+                        "is_qualified": analysis.get("is_qualified"),
+                    }
+                )
             else:
                 errors += 1
         except Exception as e:

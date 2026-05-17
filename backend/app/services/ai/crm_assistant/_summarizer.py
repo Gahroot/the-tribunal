@@ -129,8 +129,10 @@ def _find_split_point(messages: list[dict[str, Any]]) -> int:
     # Now if the message immediately before cut is an assistant with
     # tool_calls, ensure we keep all subsequent tool results — i.e. cut
     # earlier than the assistant.
-    if cut > 0 and messages[cut - 1].get("role") == "assistant" and messages[cut - 1].get(
-        "tool_calls"
+    if (
+        cut > 0
+        and messages[cut - 1].get("role") == "assistant"
+        and messages[cut - 1].get("tool_calls")
     ):
         cut -= 1
 
@@ -189,8 +191,7 @@ async def maybe_summarize(  # noqa: PLR0911
                     {
                         "role": "user",
                         "content": (
-                            "Summarize the following CRM operator chat history:\n\n"
-                            f"{flattened}"
+                            f"Summarize the following CRM operator chat history:\n\n{flattened}"
                         ),
                     },
                 ],
@@ -211,9 +212,7 @@ async def maybe_summarize(  # noqa: PLR0911
     summary_msg = {
         "role": "system",
         "content": (
-            "## Summary of earlier conversation\n"
-            f"{summary_text.strip()}\n"
-            "## End of summary"
+            f"## Summary of earlier conversation\n{summary_text.strip()}\n## End of summary"
         ),
     }
     recent = messages[split:]

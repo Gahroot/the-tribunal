@@ -242,8 +242,7 @@ class OpportunityService:
     ) -> OpportunityResponse:
         """Create an opportunity after validating pipeline and stage."""
         pipeline_query = select(Pipeline).where(
-            (Pipeline.id == opportunity_in.pipeline_id)
-            & (Pipeline.workspace_id == workspace_id)
+            (Pipeline.id == opportunity_in.pipeline_id) & (Pipeline.workspace_id == workspace_id)
         )
         pipeline = (await self.db.execute(pipeline_query)).scalar_one_or_none()
         if not pipeline:
@@ -254,9 +253,7 @@ class OpportunityService:
 
         stage = None
         if opportunity_in.stage_id:
-            stage_query = select(PipelineStage).where(
-                PipelineStage.id == opportunity_in.stage_id
-            )
+            stage_query = select(PipelineStage).where(PipelineStage.id == opportunity_in.stage_id)
             stage = (await self.db.execute(stage_query)).scalar_one_or_none()
             if not stage:
                 raise HTTPException(
@@ -300,9 +297,7 @@ class OpportunityService:
 
         # Stage change — update probability and log activity
         if opportunity_in.stage_id and opportunity_in.stage_id != opportunity.stage_id:
-            stage_query = select(PipelineStage).where(
-                PipelineStage.id == opportunity_in.stage_id
-            )
+            stage_query = select(PipelineStage).where(PipelineStage.id == opportunity_in.stage_id)
             stage = (await self.db.execute(stage_query)).scalar_one_or_none()
             if not stage:
                 raise HTTPException(
@@ -310,19 +305,21 @@ class OpportunityService:
                     detail="Stage not found",
                 )
 
-            old_stage_query = select(PipelineStage).where(
-                PipelineStage.id == opportunity.stage_id
-            )
+            old_stage_query = select(PipelineStage).where(PipelineStage.id == opportunity.stage_id)
             old_stage = (await self.db.execute(old_stage_query)).scalar_one_or_none()
 
-            self.db.add(OpportunityActivity(
-                opportunity_id=opportunity_id,
-                user_id=user_id,
-                activity_type="stage_changed",
-                old_value=old_stage.name if old_stage else "None",
-                new_value=stage.name,
-                description=f"Moved from {old_stage.name if old_stage else 'None'} to {stage.name}",
-            ))
+            self.db.add(
+                OpportunityActivity(
+                    opportunity_id=opportunity_id,
+                    user_id=user_id,
+                    activity_type="stage_changed",
+                    old_value=old_stage.name if old_stage else "None",
+                    new_value=stage.name,
+                    description=(
+                        f"Moved from {old_stage.name if old_stage else 'None'} to {stage.name}"
+                    ),
+                )
+            )
 
             opportunity.stage_id = opportunity_in.stage_id
             opportunity.probability = stage.probability
@@ -330,8 +327,15 @@ class OpportunityService:
 
         # Simple field updates
         for field in [
-            "name", "description", "amount", "currency",
-            "expected_close_date", "assigned_user_id", "source", "lost_reason", "is_active",
+            "name",
+            "description",
+            "amount",
+            "currency",
+            "expected_close_date",
+            "assigned_user_id",
+            "source",
+            "lost_reason",
+            "is_active",
         ]:
             value = getattr(opportunity_in, field, None)
             if value is not None:
@@ -339,14 +343,18 @@ class OpportunityService:
 
         # Status change — log activity
         if opportunity_in.status is not None and opportunity_in.status != opportunity.status:
-            self.db.add(OpportunityActivity(
-                opportunity_id=opportunity_id,
-                user_id=user_id,
-                activity_type="status_changed",
-                old_value=opportunity.status,
-                new_value=opportunity_in.status,
-                description=f"Status changed from {opportunity.status} to {opportunity_in.status}",
-            ))
+            self.db.add(
+                OpportunityActivity(
+                    opportunity_id=opportunity_id,
+                    user_id=user_id,
+                    activity_type="status_changed",
+                    old_value=opportunity.status,
+                    new_value=opportunity_in.status,
+                    description=(
+                        f"Status changed from {opportunity.status} to {opportunity_in.status}"
+                    ),
+                )
+            )
             opportunity.status = opportunity_in.status
             is_closed = opportunity_in.status in ("won", "lost", "abandoned")
             opportunity.closed_date = datetime.now(UTC).date() if is_closed else None
