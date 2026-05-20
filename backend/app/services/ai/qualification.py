@@ -14,9 +14,9 @@ from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.config import settings
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
+from app.services.ai.openai_credentials import get_openai_bearer_token
 
 logger = structlog.get_logger()
 
@@ -373,7 +373,7 @@ async def analyze_and_qualify_contact(
     log = logger.bind(contact_id=contact_id)
     log.info("analyzing_contact")
 
-    api_key = openai_api_key or settings.openai_api_key
+    api_key = openai_api_key or get_openai_bearer_token()
     if not api_key:
         log.error("no_openai_api_key")
         return {"success": False, "error": "OpenAI API key not configured"}
@@ -491,7 +491,7 @@ async def batch_analyze_contacts(
     """
     log = logger.bind(workspace_id=workspace_id)
 
-    api_key = settings.openai_api_key
+    api_key = get_openai_bearer_token()
     if not api_key:
         return {"success": False, "error": "OpenAI API key not configured"}
 

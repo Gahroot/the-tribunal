@@ -105,9 +105,34 @@ const INTEGRATION_CONFIGS: Record<IntegrationType, IntegrationConfig> = {
         key: "api_key",
         label: "API Key",
         placeholder: "sk-...",
-        description: "Find this at platform.openai.com/api-keys",
-        required: true,
+        description: "Find this at platform.openai.com/api-keys, or use OAuth fields below",
         type: "password",
+      },
+      {
+        key: "access_token",
+        label: "OAuth Access Token",
+        placeholder: "eyJ...",
+        description: "Paste the OpenAI OAuth accessToken from your working auth.json",
+        type: "password",
+      },
+      {
+        key: "refresh_token",
+        label: "OAuth Refresh Token",
+        placeholder: "rt_...",
+        description: "Stored for future refresh support; not used until refresh is implemented",
+        type: "password",
+      },
+      {
+        key: "expires_at",
+        label: "OAuth Expires At",
+        placeholder: "1780093083223",
+        description: "Epoch milliseconds from auth.json (optional)",
+      },
+      {
+        key: "account_id",
+        label: "OpenAI Account ID",
+        placeholder: "account uuid",
+        description: "OpenAI accountId from auth.json (optional)",
       },
       {
         key: "organization_id",
@@ -173,7 +198,19 @@ function getSchema(integrationType: IntegrationType) {
     }
   }
 
-  return z.object(shape);
+  const schema = z.object(shape);
+
+  if (integrationType === "openai") {
+    return schema.refine(
+      (values) => Boolean(values.api_key || values.access_token),
+      {
+        message: "Enter an API key or OAuth access token",
+        path: ["api_key"],
+      }
+    );
+  }
+
+  return schema;
 }
 
 interface IntegrationConfigDialogProps {

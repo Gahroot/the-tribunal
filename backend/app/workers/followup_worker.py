@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.models.conversation import Conversation
+from app.services.ai.openai_credentials import get_openai_bearer_token
 from app.services.ai.text_response_generator import generate_followup_message
 from app.services.telephony.telnyx import TelnyxSMSService
 from app.workers.base import BaseWorker, WorkerRegistry
@@ -88,12 +89,12 @@ class FollowupWorker(RetryableWorker, BaseWorker):
         """
         log = self.logger.bind(conversation_id=str(conversation.id))
 
-        # Check for required API keys
-        openai_key = settings.openai_api_key
+        # Check for required credentials
+        openai_key = get_openai_bearer_token()
         telnyx_key = settings.telnyx_api_key
 
         if not openai_key:
-            log.warning("No OpenAI API key configured")
+            log.warning("No OpenAI credential configured")
             return False
 
         if not telnyx_key:

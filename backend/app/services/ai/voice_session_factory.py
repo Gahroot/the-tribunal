@@ -21,6 +21,7 @@ from app.core.config import Settings
 from app.models.agent import Agent
 from app.services.ai.elevenlabs_voice_agent import ElevenLabsVoiceAgentSession
 from app.services.ai.grok import GrokVoiceAgentSession
+from app.services.ai.openai_credentials import get_openai_bearer_token, is_openai_configured
 from app.services.ai.protocols import VoiceAgentProtocol
 from app.services.ai.voice_agent import VoiceAgentSession
 
@@ -91,10 +92,10 @@ class VoiceSessionFactory:
         Returns:
             Tuple of (session, error)
         """
-        if not self.settings.openai_api_key:
-            return None, "OpenAI API key not configured"
+        if not is_openai_configured():
+            return None, "OpenAI credential not configured"
 
-        return VoiceAgentSession(self.settings.openai_api_key, agent), None
+        return VoiceAgentSession(get_openai_bearer_token(), agent), None
 
     def _create_grok_session(
         self,
@@ -230,7 +231,7 @@ class VoiceSessionFactory:
         provider_lower = provider.lower()
 
         if provider_lower == "openai":
-            return bool(self.settings.openai_api_key)
+            return is_openai_configured()
 
         if provider_lower == "grok":
             return bool(self.settings.xai_api_key)

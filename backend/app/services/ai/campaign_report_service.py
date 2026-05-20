@@ -16,10 +16,10 @@ from sqlalchemy import case, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.expression import extract
 
-from app.core.config import settings
 from app.models.call_outcome import CallOutcome
 from app.models.campaign import Campaign, CampaignContact, CampaignType
 from app.models.campaign_report import CampaignReport
+from app.services.ai.openai_credentials import create_openai_client
 
 logger = structlog.get_logger()
 
@@ -32,7 +32,7 @@ class CampaignReportService:
 
     def _get_client(self) -> AsyncOpenAI:
         if self._client is None:
-            self._client = AsyncOpenAI(api_key=settings.openai_api_key)
+            self._client = create_openai_client()
         return self._client
 
     async def generate_report(self, db: AsyncSession, campaign_id: uuid.UUID) -> CampaignReport:

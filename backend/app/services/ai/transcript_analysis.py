@@ -10,7 +10,7 @@ from typing import Any
 import structlog
 from openai import AsyncOpenAI
 
-from app.core.config import settings
+from app.services.ai.openai_credentials import create_openai_client
 
 logger = structlog.get_logger()
 
@@ -45,7 +45,7 @@ _client: AsyncOpenAI | None = None
 def _get_client() -> AsyncOpenAI:
     global _client
     if _client is None:
-        _client = AsyncOpenAI(api_key=settings.openai_api_key)
+        _client = create_openai_client()
     return _client
 
 

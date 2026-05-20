@@ -8,8 +8,8 @@ import structlog
 from bs4 import BeautifulSoup
 from openai import APIConnectionError, APITimeoutError, AsyncOpenAI, RateLimitError
 
-from app.core.config import settings
 from app.schemas.find_leads_ai import WebsiteSummary
+from app.services.ai.openai_credentials import get_openai_bearer_token
 
 logger = structlog.get_logger()
 
@@ -74,7 +74,7 @@ class AIContentAnalyzerService:
     """Service for AI-powered website content analysis."""
 
     def __init__(self, api_key: str | None = None) -> None:
-        self._openai = AsyncOpenAI(api_key=api_key or settings.openai_api_key)
+        self._openai = AsyncOpenAI(api_key=api_key or get_openai_bearer_token())
         self.logger = logger.bind(component="ai_content_analyzer")
 
     def _extract_text(self, html: str, max_chars: int = 8000) -> str:

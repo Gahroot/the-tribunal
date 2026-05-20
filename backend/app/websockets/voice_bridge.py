@@ -32,6 +32,7 @@ from app.services.ai.call_context import lookup_call_context, save_call_transcri
 from app.services.ai.elevenlabs_voice_agent import ElevenLabsVoiceAgentSession
 from app.services.ai.grok import GrokVoiceAgentSession
 from app.services.ai.ivr.gate import GateOutcome, GateResult, IVRGate
+from app.services.ai.openai_credentials import is_openai_configured
 from app.services.ai.tool_executor import create_tool_callback
 from app.services.ai.voice_agent import VoiceAgentSession
 from app.services.ai.voice_session_factory import create_voice_session
@@ -475,7 +476,7 @@ async def _voice_stream_bridge_body(  # noqa: PLR0912, PLR0915
         agent_id=str(agent.id) if agent else None,
         has_contact=contact_info is not None,
         has_offer=offer_info is not None,
-        openai_key_configured=bool(settings.openai_api_key),
+        openai_credential_configured=is_openai_configured(),
         xai_key_configured=bool(settings.xai_api_key),
         elevenlabs_key_configured=bool(settings.elevenlabs_api_key),
     )

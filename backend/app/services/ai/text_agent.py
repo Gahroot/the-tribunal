@@ -22,6 +22,7 @@ from app.core.config import settings
 from app.models.agent import Agent
 from app.models.conversation import Conversation, Message
 from app.services.ai.message_context_builder import build_message_context
+from app.services.ai.openai_credentials import get_openai_bearer_token
 from app.services.ai.opt_out_detector import (
     classify_opt_out_intent,
     has_potential_opt_out_keywords,
@@ -79,10 +80,10 @@ async def process_inbound_with_ai(  # noqa: PLR0911
         log.info("agent_not_active")
         return
 
-    # TODO: Get OpenAI API key from workspace settings
-    openai_key = settings.openai_api_key
+    # TODO: Get OpenAI credential from workspace settings
+    openai_key = get_openai_bearer_token()
     if not openai_key:
-        log.error("no_openai_api_key")
+        log.error("no_openai_credential")
         return
 
     # === AI-POWERED OPT-OUT DETECTION ===

@@ -22,6 +22,7 @@ from app.core.utils import get_client_ip
 from app.db.session import get_db
 from app.models.agent import Agent
 from app.models.demo_request import DemoRequest
+from app.services.ai.openai_credentials import get_openai_bearer_token, is_openai_configured
 from app.services.rate_limiting.embed_limiter import (
     enforce_chat_rate_limits,
     enforce_token_rate_limits,
@@ -264,7 +265,7 @@ async def get_ephemeral_token(
     client_ip = get_client_ip(request, settings.trusted_proxies)
     await enforce_token_rate_limits(client_ip=client_ip, public_id=public_id)
 
-    if not settings.openai_api_key:
+    if not is_openai_configured():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Voice service not configured",
@@ -290,7 +291,7 @@ async def get_ephemeral_token(
         response = await client.post(
             "https://api.openai.com/v1/realtime/client_secrets",
             headers={
-                "Authorization": f"Bearer {settings.openai_api_key}",
+                "Authorization": f"Bearer {get_openai_bearer_token()}",
                 "Content-Type": "application/json",
             },
             json={
@@ -372,7 +373,7 @@ async def send_chat_message(
     client_ip = get_client_ip(request, settings.trusted_proxies)
     await enforce_chat_rate_limits(client_ip=client_ip, public_id=public_id)
 
-    if not settings.openai_api_key:
+    if not is_openai_configured():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Chat service not configured",
@@ -393,7 +394,7 @@ async def send_chat_message(
         response = await client.post(
             "https://api.openai.com/v1/chat/completions",
             headers={
-                "Authorization": f"Bearer {settings.openai_api_key}",
+                "Authorization": f"Bearer {get_openai_bearer_token()}",
                 "Content-Type": "application/json",
             },
             json={

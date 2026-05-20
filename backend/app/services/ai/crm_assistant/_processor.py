@@ -23,7 +23,6 @@ import uuid
 from typing import Any
 
 import structlog
-from openai import AsyncOpenAI
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,6 +31,7 @@ from app.models.assistant_conversation import AssistantConversation, AssistantMe
 from app.services.ai.crm_assistant._summarizer import maybe_summarize
 from app.services.ai.crm_assistant._tool_executor import CRMToolExecutor
 from app.services.ai.crm_assistant._tools import get_crm_tools
+from app.services.ai.openai_credentials import create_openai_client
 
 logger = structlog.get_logger()
 
@@ -209,7 +209,7 @@ async def process_assistant_message(  # noqa: PLR0913, PLR0915
     ]
     api_messages = _repair_pairing(api_messages)
 
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    client = create_openai_client()
     cache_key = _cache_key(workspace_id, user_id)
 
     # Compact older history if we're over budget. Preserves the system

@@ -32,6 +32,7 @@ from app.core.request_id import sanitize_request_id
 from app.core.telemetry import configure_tracing, instrument_app
 from app.db.redis import close_redis
 from app.db.session import engine
+from app.services.ai.openai_credentials import is_openai_configured
 from app.websockets.voice_bridge import router as voice_bridge_router
 from app.websockets.voice_test import router as voice_test_router
 from app.workers import start_all_workers, stop_all_workers
@@ -266,8 +267,8 @@ def _validate_startup_config() -> None:
     log = logger.bind(context="startup_validation")
 
     # Check required API keys
-    if not settings.openai_api_key:
-        log.warning("missing_openai_api_key", severity="critical")
+    if not is_openai_configured():
+        log.warning("missing_openai_credential", severity="critical")
 
     if not settings.telnyx_api_key:
         log.warning("missing_telnyx_api_key", severity="critical")

@@ -34,6 +34,10 @@ class Settings(BaseSettings):
 
     # OpenAI
     openai_api_key: str = ""
+    openai_oauth_access_token: str = ""
+    openai_oauth_refresh_token: str = ""
+    openai_oauth_expires_at: int | None = None
+    openai_oauth_account_id: str = ""
     openai_timeout: int = 60
 
     # Telnyx

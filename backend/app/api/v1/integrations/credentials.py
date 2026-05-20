@@ -299,11 +299,28 @@ async def _test_telnyx(client: httpx.AsyncClient, api_key: str) -> IntegrationTe
     )
 
 
-async def _test_openai(client: httpx.AsyncClient, api_key: str) -> IntegrationTestResult:
-    """Test OpenAI API connection."""
+async def _test_openai(
+    client: httpx.AsyncClient,
+    api_key: str,
+    credentials: dict[str, Any] | None = None,
+) -> IntegrationTestResult:
+    """Test OpenAI API connection using API key or OAuth access token."""
+    credential_values = credentials or {"api_key": api_key}
+    bearer_token = credential_values.get("access_token") or credential_values.get("api_key") or ""
+    if not bearer_token:
+        return IntegrationTestResult(
+            success=False,
+            message="OpenAI API key or OAuth access token is required",
+        )
+
+    headers = {"Authorization": f"Bearer {bearer_token}"}
+    organization_id = credential_values.get("organization_id")
+    if organization_id:
+        headers["OpenAI-Organization"] = str(organization_id)
+
     response = await client.get(
         "https://api.openai.com/v1/models",
-        headers={"Authorization": f"Bearer {api_key}"},
+        headers=headers,
     )
     if response.status_code == 200:
         try:
@@ -382,10 +399,13 @@ async def test_integration(
         )
 
     credentials = integration.credentials
-    api_key = credentials.get("api_key", "")
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
+            if integration_type == "openai":
+                return await _test_openai(client, "", credentials)
+
+            api_key = credentials.get("api_key", "")
             return await tester(client, api_key)
     except httpx.TimeoutException:
         return IntegrationTestResult(

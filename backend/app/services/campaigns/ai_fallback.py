@@ -8,10 +8,10 @@ from openai import AsyncOpenAI
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.models.agent import Agent
 from app.models.campaign import Campaign
 from app.models.contact import Contact
+from app.services.ai.openai_credentials import get_openai_bearer_token
 
 logger = structlog.get_logger()
 
@@ -44,9 +44,9 @@ async def generate_sms_fallback_message(
         call_outcome=call_outcome,
     )
 
-    api_key = openai_api_key or settings.openai_api_key
+    api_key = openai_api_key or get_openai_bearer_token()
     if not api_key:
-        raise ValueError("OpenAI API key required for AI fallback")
+        raise ValueError("OpenAI credential required for AI fallback")
 
     # Get the agent's system prompt if configured
     agent = None

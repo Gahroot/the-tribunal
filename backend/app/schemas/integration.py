@@ -28,9 +28,14 @@ class TelnyxCredentials(IntegrationCredentialsBase):
     phone_number: str | None = Field(None, description="Default phone number")
 
 
-class OpenAICredentials(IntegrationCredentialsBase):
+class OpenAICredentials(BaseModel):
     """OpenAI specific credentials."""
 
+    api_key: str | None = Field(None, description="OpenAI API key")
+    access_token: str | None = Field(None, description="OpenAI OAuth access token")
+    refresh_token: str | None = Field(None, description="OpenAI OAuth refresh token")
+    expires_at: int | None = Field(None, description="OAuth token expiry as epoch milliseconds")
+    account_id: str | None = Field(None, description="OpenAI account ID")
     organization_id: str | None = Field(None, description="OpenAI organization ID")
 
 

@@ -13,10 +13,10 @@ from openai import AsyncOpenAI
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.models.call_outcome import CallOutcome, OutcomeType
 from app.models.improvement_suggestion import ImprovementSuggestion
 from app.models.prompt_version import PromptVersion
+from app.services.ai.openai_credentials import create_openai_client
 from app.services.ai.prompt_version_service import PromptVersionService
 
 logger = structlog.get_logger()
@@ -70,7 +70,7 @@ class PromptImprovementService:
     def _get_client(self) -> AsyncOpenAI:
         """Get or create the OpenAI client."""
         if self._client is None:
-            self._client = AsyncOpenAI(api_key=settings.openai_api_key)
+            self._client = create_openai_client()
         return self._client
 
     async def analyze_performance(

@@ -25,7 +25,7 @@ import re
 import structlog
 from openai import AsyncOpenAI
 
-from app.core.config import settings
+from app.services.ai.openai_credentials import get_openai_bearer_token
 
 logger = structlog.get_logger()
 
@@ -116,7 +116,7 @@ async def classify_opt_out_intent(
     """
     log = logger.bind(message_preview=message[:50] if message else "")
 
-    api_key = openai_api_key or settings.openai_api_key
+    api_key = openai_api_key or get_openai_bearer_token()
     if not api_key:
         log.warning("no_openai_key_for_opt_out_classifier")
         # Fall back to keyword-only detection if no API key

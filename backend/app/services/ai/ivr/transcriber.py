@@ -4,9 +4,8 @@ import io
 import wave
 
 import structlog
-from openai import AsyncOpenAI
 
-from app.core.config import settings
+from app.services.ai.openai_credentials import create_openai_client
 from app.services.audio.codec import mulaw_to_pcm
 
 logger = structlog.get_logger()
@@ -46,7 +45,7 @@ class WhisperTranscriber:
     """
 
     def __init__(self) -> None:
-        self._client = AsyncOpenAI(api_key=settings.openai_api_key)
+        self._client = create_openai_client()
         self._log = logger.bind(service="whisper_transcriber")
 
     async def transcribe(self, mulaw_audio: bytes) -> str:

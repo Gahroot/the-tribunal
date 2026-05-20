@@ -22,6 +22,7 @@ from app.models.user import User
 from app.models.workspace import WorkspaceMembership
 from app.services.ai.elevenlabs_voice_agent import ElevenLabsVoiceAgentSession
 from app.services.ai.grok import GrokVoiceAgentSession
+from app.services.ai.openai_credentials import get_openai_bearer_token, is_openai_configured
 from app.services.ai.voice_agent import VoiceAgentSession
 from app.websockets.connection_limits import (
     HeartbeatMonitor,
@@ -173,9 +174,9 @@ def _create_voice_session_for_test(  # noqa: PLR0911
         return GrokVoiceAgentSession(settings.xai_api_key, agent), None
 
     # Default to OpenAI
-    if not settings.openai_api_key:
-        return None, "OpenAI API key not configured"
-    return VoiceAgentSession(settings.openai_api_key, agent), None
+    if not is_openai_configured():
+        return None, "OpenAI credential not configured"
+    return VoiceAgentSession(get_openai_bearer_token(), agent), None
 
 
 async def _handle_start_message(

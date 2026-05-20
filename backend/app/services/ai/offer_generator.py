@@ -12,7 +12,7 @@ from typing import Any
 import structlog
 from openai import AsyncOpenAI
 
-from app.core.config import settings
+from app.services.ai.openai_credentials import get_openai_bearer_token
 
 logger = structlog.get_logger()
 
@@ -83,7 +83,7 @@ async def generate_offer_content(
         target_audience=target_audience,
     )
 
-    api_key = openai_api_key or settings.openai_api_key
+    api_key = openai_api_key or get_openai_bearer_token()
     if not api_key:
         log.error("no_openai_api_key")
         return {"success": False, "error": "OpenAI API key not configured"}

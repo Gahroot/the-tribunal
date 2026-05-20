@@ -23,6 +23,7 @@ from app.schemas.conversation import (
     MessageResponse,
     PaginatedConversations,
 )
+from app.services.ai.openai_credentials import get_openai_bearer_token
 from app.services.ai.text_response_generator import generate_followup_message
 from app.services.campaigns.conversation_syncer import CampaignConversationSyncer
 from app.services.telephony.telnyx import TelnyxSMSService
@@ -319,7 +320,7 @@ class ConversationService:
         """Generate a follow-up message preview (does not send)."""
         conversation = await self._get_conversation(conversation_id, workspace_id)
 
-        openai_key = settings.openai_api_key
+        openai_key = get_openai_bearer_token()
         if not openai_key:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -356,7 +357,7 @@ class ConversationService:
 
         message_body = message
         if not message_body:
-            openai_key = settings.openai_api_key
+            openai_key = get_openai_bearer_token()
             if not openai_key:
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
