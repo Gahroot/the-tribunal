@@ -49,10 +49,18 @@ class TestWhisperTranscriber:
 
     @pytest.fixture
     def transcriber(self):
-        """Create a WhisperTranscriber with mocked OpenAI client."""
-        with patch("app.services.ai.ivr.transcriber.AsyncOpenAI") as mock_cls:
-            mock_client = MagicMock()
-            mock_cls.return_value = mock_client
+        """Create a WhisperTranscriber with mocked OpenAI client.
+
+        ``WhisperTranscriber.__init__`` eagerly calls
+        ``create_openai_client()``; we patch that factory so no real OpenAI
+        SDK client is constructed (and no API key is required to import the
+        test).
+        """
+        mock_client = MagicMock()
+        with patch(
+            "app.services.ai.ivr.transcriber.create_openai_client",
+            return_value=mock_client,
+        ):
             t = WhisperTranscriber()
             t._client = mock_client
             yield t

@@ -69,7 +69,9 @@ async def test_simple_response_no_tools() -> None:
         )
     )
 
-    with patch.object(processor, "AsyncOpenAI", return_value=fake_client), patch.object(
+    with patch.object(
+        processor, "create_openai_client", return_value=fake_client
+    ), patch.object(
         processor, "maybe_summarize", AsyncMock(side_effect=lambda _c, m: m)
     ):
         result = await processor.process_assistant_message(
@@ -99,7 +101,9 @@ async def test_tool_loop_dispatches_and_records_actions() -> None:
         chat=SimpleNamespace(completions=SimpleNamespace(create=create))
     )
 
-    with patch.object(processor, "AsyncOpenAI", return_value=fake_client), patch.object(
+    with patch.object(
+        processor, "create_openai_client", return_value=fake_client
+    ), patch.object(
         processor, "maybe_summarize", AsyncMock(side_effect=lambda _c, m: m)
     ), patch.object(
         processor.CRMToolExecutor,
@@ -144,7 +148,9 @@ async def test_prompt_cache_key_passed_to_openai_call() -> None:
         chat=SimpleNamespace(completions=SimpleNamespace(create=create))
     )
 
-    with patch.object(processor, "AsyncOpenAI", return_value=fake_client), patch.object(
+    with patch.object(
+        processor, "create_openai_client", return_value=fake_client
+    ), patch.object(
         processor, "maybe_summarize", AsyncMock(side_effect=lambda _c, m: m)
     ):
         await processor.process_assistant_message(
