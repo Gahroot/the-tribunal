@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import {
+  isRealtimeAudioDeltaEvent,
+  isRealtimeAudioDoneEvent,
+  isRealtimeAudioTranscriptDeltaEvent,
+  isRealtimeAudioTranscriptDoneEvent,
+} from "@/lib/realtime-events";
+
 import type {
   AgentConfig,
   AgentState,
@@ -411,38 +418,17 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       }
 
       await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
-      const agentTools = tokenData.tools ?? [];
-
       dataChannel.onopen = () => {
         if (abortController.signal.aborted) return;
         setStatus("connected");
         setAgentState("listening");
-
-        const sessionConfig: Record<string, unknown> = {
-          instructions: tokenData.agent.instructions,
-          voice: tokenData.agent.voice,
-          input_audio_transcription: { model: "whisper-1" },
-          turn_detection: {
-            type: "server_vad",
-            threshold: 0.5,
-            prefix_padding_ms: 300,
-            silence_duration_ms: 200,
-          },
-        };
-        if (agentTools.length > 0) {
-          sessionConfig.tools = agentTools;
-          sessionConfig.tool_choice = "auto";
-        }
-
-        dataChannel.send(
-          JSON.stringify({ type: "session.update", session: sessionConfig })
-        );
 
         if (tokenData.agent.initial_greeting) {
           dataChannel.send(
             JSON.stringify({
               type: "response.create",
               response: {
+                output_modalities: ["audio"],
                 instructions: `Start the conversation by saying exactly this (do not add anything else): "${tokenData.agent.initial_greeting}"`,
               },
             })
@@ -480,7 +466,12 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
                 },
               })
             );
-            dataChannel.send(JSON.stringify({ type: "response.create" }));
+            dataChannel.send(
+              JSON.stringify({
+                type: "response.create",
+                response: { output_modalities: ["audio"] },
+              })
+            );
           }
 
           if (result.action === "end_call") {
@@ -506,7 +497,12 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
                 },
               })
             );
-            dataChannel.send(JSON.stringify({ type: "response.create" }));
+            dataChannel.send(
+              JSON.stringify({
+                type: "response.create",
+                response: { output_modalities: ["audio"] },
+              })
+            );
           }
         }
       };
@@ -519,9 +515,9 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
             setAgentState("listening");
           } else if (data.type === "input_audio_buffer.speech_stopped") {
             setAgentState("thinking");
-          } else if (data.type === "response.audio.delta") {
+          } else if (isRealtimeAudioDeltaEvent(data.type)) {
             setAgentState("speaking");
-          } else if (data.type === "response.audio.done") {
+          } else if (isRealtimeAudioDoneEvent(data.type)) {
             setAgentState("listening");
           } else if (data.type === "response.done") {
             setAgentState("listening");
@@ -549,7 +545,12 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
                 },
               };
               dataChannel.send(JSON.stringify(errorOutput));
-              dataChannel.send(JSON.stringify({ type: "response.create" }));
+              dataChannel.send(
+                JSON.stringify({
+                  type: "response.create",
+                  response: { output_modalities: ["audio"] },
+                })
+              );
               return;
             }
 
@@ -571,13 +572,13 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
               }
               callbacksRef.current.onUserTranscript?.(trimmed);
             }
-          } else if (data.type === "response.audio_transcript.delta") {
+          } else if (isRealtimeAudioTranscriptDeltaEvent(data.type)) {
             const delta = data.delta as string;
             if (delta) {
               currentAssistantTextRef.current += delta;
               callbacksRef.current.onAssistantDelta?.(delta);
             }
-          } else if (data.type === "response.audio_transcript.done") {
+          } else if (isRealtimeAudioTranscriptDoneEvent(data.type)) {
             const finalText = currentAssistantTextRef.current.trim();
             if (finalText) {
               if (saveTranscript) {

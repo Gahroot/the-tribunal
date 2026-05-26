@@ -40,6 +40,7 @@ from app.api.v1 import (
     pending_actions,
     phone_numbers,
     prompt_versions,
+    realtime,
     scraping,
     segments,
     settings,
@@ -55,6 +56,7 @@ api_router = APIRouter()
 # Include routers
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 api_router.include_router(settings.router, prefix="/settings", tags=["Settings"])
+api_router.include_router(realtime.router, prefix="/realtime", tags=["Realtime"])
 api_router.include_router(device_tokens.router, prefix="/settings", tags=["Settings"])
 api_router.include_router(workspaces.router, prefix="/workspaces", tags=["Workspaces"])
 api_router.include_router(

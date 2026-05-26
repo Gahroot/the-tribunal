@@ -7254,6 +7254,32 @@
         "title": "DiscountType",
         "type": "string"
       },
+      "DiscoveryJobStatus": {
+        "description": "Lead discovery job lifecycle status.",
+        "enum": [
+          "pending",
+          "running",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "title": "DiscoveryJobStatus",
+        "type": "string"
+      },
+      "DiscoverySourceType": {
+        "description": "Where a lead discovery job pulls candidate prospects from.",
+        "enum": [
+          "google_places",
+          "web_scrape",
+          "csv_import",
+          "manual",
+          "api",
+          "linkedin",
+          "other"
+        ],
+        "title": "DiscoverySourceType",
+        "type": "string"
+      },
       "DripCampaignCreate": {
         "description": "Request to create a drip campaign.",
         "properties": {
@@ -7975,6 +8001,32 @@
         },
         "title": "EmbedSettingsUpdate",
         "type": "object"
+      },
+      "EnrichmentProvider": {
+        "description": "Lead enrichment provider identifier.",
+        "enum": [
+          "google_places",
+          "website_scraper",
+          "ai_content_analyzer",
+          "linkedin_lookup",
+          "email_lookup",
+          "phone_lookup",
+          "manual",
+          "other"
+        ],
+        "title": "EnrichmentProvider",
+        "type": "string"
+      },
+      "EnrichmentResultStatus": {
+        "description": "Outcome status of a single enrichment provider call.",
+        "enum": [
+          "success",
+          "partial",
+          "failed",
+          "skipped"
+        ],
+        "title": "EnrichmentResultStatus",
+        "type": "string"
       },
       "EnrollContactsRequest": {
         "description": "Request to enroll contacts in a drip campaign.",
@@ -10273,6 +10325,292 @@
         "title": "KnowledgeDocumentUpdate",
         "type": "object"
       },
+      "LeadDiscoveryJobResponse": {
+        "description": "Response for a discovery job.",
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "discovered_count": {
+            "title": "Discovered Count",
+            "type": "integer"
+          },
+          "duplicate_count": {
+            "title": "Duplicate Count",
+            "type": "integer"
+          },
+          "error_count": {
+            "title": "Error Count",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "invalid_count": {
+            "title": "Invalid Count",
+            "type": "integer"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "mission_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mission Id"
+          },
+          "params": {
+            "additionalProperties": true,
+            "title": "Params",
+            "type": "object"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query"
+          },
+          "requested_by_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested By Id"
+          },
+          "requested_count": {
+            "title": "Requested Count",
+            "type": "integer"
+          },
+          "source_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Label"
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/DiscoverySourceType"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DiscoveryJobStatus"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "mission_id",
+          "requested_by_id",
+          "source_type",
+          "source_label",
+          "query",
+          "params",
+          "status",
+          "requested_count",
+          "discovered_count",
+          "duplicate_count",
+          "invalid_count",
+          "started_at",
+          "completed_at",
+          "last_error",
+          "error_count",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "LeadDiscoveryJobResponse",
+        "type": "object"
+      },
+      "LeadEnrichmentResultResponse": {
+        "description": "Response for a single enrichment result.",
+        "properties": {
+          "cost_cents": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Cents"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "extracted": {
+            "additionalProperties": true,
+            "title": "Extracted",
+            "type": "object"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "mission_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mission Id"
+          },
+          "prospect_id": {
+            "format": "uuid",
+            "title": "Prospect Id",
+            "type": "string"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/EnrichmentProvider"
+          },
+          "request_payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Payload"
+          },
+          "response_payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Payload"
+          },
+          "score_delta": {
+            "title": "Score Delta",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EnrichmentResultStatus"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "prospect_id",
+          "mission_id",
+          "provider",
+          "status",
+          "request_payload",
+          "response_payload",
+          "extracted",
+          "score_delta",
+          "cost_cents",
+          "duration_ms",
+          "error_message",
+          "created_at"
+        ],
+        "title": "LeadEnrichmentResultResponse",
+        "type": "object"
+      },
       "LeadImportDetail": {
         "description": "Per-lead detail in import response.",
         "properties": {
@@ -10658,6 +10996,424 @@
           }
         },
         "title": "LeadMagnetUpdate",
+        "type": "object"
+      },
+      "LeadProspectResponse": {
+        "description": "Response for a lead prospect (decrypted PII fields included).",
+        "properties": {
+          "bounce_count": {
+            "title": "Bounce Count",
+            "type": "integer"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "company_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Name"
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dedupe_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dedupe Key"
+          },
+          "discovered_at": {
+            "format": "date-time",
+            "title": "Discovered At",
+            "type": "string"
+          },
+          "discovery_job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discovery Job Id"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "enrichment_attempts": {
+            "title": "Enrichment Attempts",
+            "type": "integer"
+          },
+          "evidence": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Name"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "identity_kind": {
+            "$ref": "#/components/schemas/ProspectIdentityKind"
+          },
+          "last_contacted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Contacted At"
+          },
+          "last_enriched_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Enriched At"
+          },
+          "last_failed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Failed At"
+          },
+          "last_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Name"
+          },
+          "last_replied_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Replied At"
+          },
+          "lead_score": {
+            "title": "Lead Score",
+            "type": "integer"
+          },
+          "linkedin_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linkedin Url"
+          },
+          "location_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Label"
+          },
+          "mission_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mission Id"
+          },
+          "phone_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone Number"
+          },
+          "promoted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promoted At"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "qualification_score": {
+            "title": "Qualification Score",
+            "type": "integer"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region"
+          },
+          "reply_count": {
+            "title": "Reply Count",
+            "type": "integer"
+          },
+          "source_external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source External Id"
+          },
+          "source_query": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Query"
+          },
+          "source_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Type"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProspectStatus"
+          },
+          "suppression_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suppression Reason"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "website_host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website Host"
+          },
+          "website_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website Url"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "mission_id",
+          "discovery_job_id",
+          "contact_id",
+          "identity_kind",
+          "first_name",
+          "last_name",
+          "full_name",
+          "title",
+          "email",
+          "phone_number",
+          "company_name",
+          "website_url",
+          "website_host",
+          "linkedin_url",
+          "country_code",
+          "region",
+          "city",
+          "location_label",
+          "source_type",
+          "source_external_id",
+          "source_query",
+          "provenance",
+          "evidence",
+          "dedupe_key",
+          "lead_score",
+          "qualification_score",
+          "status",
+          "suppression_reason",
+          "enrichment_attempts",
+          "last_enriched_at",
+          "last_contacted_at",
+          "last_replied_at",
+          "last_failed_at",
+          "reply_count",
+          "bounce_count",
+          "discovered_at",
+          "promoted_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "LeadProspectResponse",
         "type": "object"
       },
       "LeadSourceCreate": {
@@ -11781,6 +12537,18 @@
         ],
         "title": "MessageTestWithVariantsResponse",
         "type": "object"
+      },
+      "MissionStatus": {
+        "description": "Outbound mission lifecycle status.",
+        "enum": [
+          "draft",
+          "active",
+          "paused",
+          "completed",
+          "archived"
+        ],
+        "title": "MissionStatus",
+        "type": "string"
       },
       "NotificationSettings": {
         "description": "Schema for notification settings.",
@@ -14530,6 +15298,849 @@
         "title": "OptInResponse",
         "type": "object"
       },
+      "OutboundMissionCreate": {
+        "description": "Request to create an outbound mission.",
+        "properties": {
+          "daily_outreach_cap": {
+            "default": 50,
+            "minimum": 0.0,
+            "title": "Daily Outreach Cap",
+            "type": "integer"
+          },
+          "daily_prospect_cap": {
+            "default": 100,
+            "minimum": 0.0,
+            "title": "Daily Prospect Cap",
+            "type": "integer"
+          },
+          "default_agent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Agent Id"
+          },
+          "default_from_email": {
+            "anyOf": [
+              {
+                "maxLength": 320,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default From Email"
+          },
+          "default_from_phone_number": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default From Phone Number"
+          },
+          "default_sequence_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Sequence Id"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "discovery_config": {
+            "additionalProperties": true,
+            "title": "Discovery Config",
+            "type": "object"
+          },
+          "enrichment_config": {
+            "additionalProperties": true,
+            "title": "Enrichment Config",
+            "type": "object"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "objective": {
+            "default": "book_call",
+            "maxLength": 50,
+            "title": "Objective",
+            "type": "string"
+          },
+          "offer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offer Id"
+          },
+          "sequence_config": {
+            "additionalProperties": true,
+            "title": "Sequence Config",
+            "type": "object"
+          },
+          "target_audience": {
+            "additionalProperties": true,
+            "title": "Target Audience",
+            "type": "object"
+          },
+          "timezone": {
+            "default": "America/New_York",
+            "maxLength": 50,
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "OutboundMissionCreate",
+        "type": "object"
+      },
+      "OutboundMissionResponse": {
+        "description": "Response for an outbound mission.",
+        "properties": {
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Id"
+          },
+          "daily_outreach_cap": {
+            "title": "Daily Outreach Cap",
+            "type": "integer"
+          },
+          "daily_prospect_cap": {
+            "title": "Daily Prospect Cap",
+            "type": "integer"
+          },
+          "default_agent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Agent Id"
+          },
+          "default_from_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default From Email"
+          },
+          "default_from_phone_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default From Phone Number"
+          },
+          "default_sequence_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Sequence Id"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "discovery_config": {
+            "additionalProperties": true,
+            "title": "Discovery Config",
+            "type": "object"
+          },
+          "enrichment_config": {
+            "additionalProperties": true,
+            "title": "Enrichment Config",
+            "type": "object"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "next_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Run At"
+          },
+          "objective": {
+            "title": "Objective",
+            "type": "string"
+          },
+          "offer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offer Id"
+          },
+          "paused_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused At"
+          },
+          "sequence_config": {
+            "additionalProperties": true,
+            "title": "Sequence Config",
+            "type": "object"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MissionStatus"
+          },
+          "target_audience": {
+            "additionalProperties": true,
+            "title": "Target Audience",
+            "type": "object"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "total_appointments_booked": {
+            "title": "Total Appointments Booked",
+            "type": "integer"
+          },
+          "total_contacts_created": {
+            "title": "Total Contacts Created",
+            "type": "integer"
+          },
+          "total_prospects_contacted": {
+            "title": "Total Prospects Contacted",
+            "type": "integer"
+          },
+          "total_prospects_discovered": {
+            "title": "Total Prospects Discovered",
+            "type": "integer"
+          },
+          "total_prospects_enriched": {
+            "title": "Total Prospects Enriched",
+            "type": "integer"
+          },
+          "total_prospects_qualified": {
+            "title": "Total Prospects Qualified",
+            "type": "integer"
+          },
+          "total_prospects_replied": {
+            "title": "Total Prospects Replied",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "created_by_id",
+          "offer_id",
+          "default_agent_id",
+          "default_sequence_id",
+          "name",
+          "description",
+          "objective",
+          "status",
+          "target_audience",
+          "discovery_config",
+          "enrichment_config",
+          "sequence_config",
+          "default_from_phone_number",
+          "default_from_email",
+          "daily_prospect_cap",
+          "daily_outreach_cap",
+          "timezone",
+          "total_prospects_discovered",
+          "total_prospects_enriched",
+          "total_prospects_contacted",
+          "total_prospects_replied",
+          "total_prospects_qualified",
+          "total_contacts_created",
+          "total_appointments_booked",
+          "started_at",
+          "paused_at",
+          "completed_at",
+          "archived_at",
+          "last_run_at",
+          "next_run_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "OutboundMissionResponse",
+        "type": "object"
+      },
+      "OutboundMissionStatsResponse": {
+        "description": "Aggregate stats for an outbound mission.",
+        "properties": {
+          "booking_rate": {
+            "title": "Booking Rate",
+            "type": "number"
+          },
+          "mission_id": {
+            "format": "uuid",
+            "title": "Mission Id",
+            "type": "string"
+          },
+          "qualification_rate": {
+            "title": "Qualification Rate",
+            "type": "number"
+          },
+          "reply_rate": {
+            "title": "Reply Rate",
+            "type": "number"
+          },
+          "total_appointments_booked": {
+            "title": "Total Appointments Booked",
+            "type": "integer"
+          },
+          "total_contacts_created": {
+            "title": "Total Contacts Created",
+            "type": "integer"
+          },
+          "total_prospects_contacted": {
+            "title": "Total Prospects Contacted",
+            "type": "integer"
+          },
+          "total_prospects_discovered": {
+            "title": "Total Prospects Discovered",
+            "type": "integer"
+          },
+          "total_prospects_enriched": {
+            "title": "Total Prospects Enriched",
+            "type": "integer"
+          },
+          "total_prospects_qualified": {
+            "title": "Total Prospects Qualified",
+            "type": "integer"
+          },
+          "total_prospects_replied": {
+            "title": "Total Prospects Replied",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mission_id",
+          "total_prospects_discovered",
+          "total_prospects_enriched",
+          "total_prospects_contacted",
+          "total_prospects_replied",
+          "total_prospects_qualified",
+          "total_contacts_created",
+          "total_appointments_booked",
+          "reply_rate",
+          "qualification_rate",
+          "booking_rate"
+        ],
+        "title": "OutboundMissionStatsResponse",
+        "type": "object"
+      },
+      "OutboundMissionUpdate": {
+        "description": "Partial update for an outbound mission.",
+        "properties": {
+          "daily_outreach_cap": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Outreach Cap"
+          },
+          "daily_prospect_cap": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Prospect Cap"
+          },
+          "default_agent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Agent Id"
+          },
+          "default_from_email": {
+            "anyOf": [
+              {
+                "maxLength": 320,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default From Email"
+          },
+          "default_from_phone_number": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default From Phone Number"
+          },
+          "default_sequence_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Sequence Id"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "discovery_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discovery Config"
+          },
+          "enrichment_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enrichment Config"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "objective": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objective"
+          },
+          "offer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offer Id"
+          },
+          "sequence_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sequence Config"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MissionStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target_audience": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Audience"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "title": "OutboundMissionUpdate",
+        "type": "object"
+      },
+      "OutboundSequenceEnrollmentResponse": {
+        "description": "Response for a sequence enrollment.",
+        "properties": {
+          "attempts_made": {
+            "title": "Attempts Made",
+            "type": "integer"
+          },
+          "cancel_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancel Reason"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_step": {
+            "title": "Current Step",
+            "type": "integer"
+          },
+          "enrolled_at": {
+            "format": "date-time",
+            "title": "Enrolled At",
+            "type": "string"
+          },
+          "failed_attempts": {
+            "title": "Failed Attempts",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_attempt_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt At"
+          },
+          "last_outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Outcome"
+          },
+          "mission_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mission Id"
+          },
+          "next_step_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Step At"
+          },
+          "paused_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused Until"
+          },
+          "prospect_id": {
+            "format": "uuid",
+            "title": "Prospect Id",
+            "type": "string"
+          },
+          "sequence_id": {
+            "format": "uuid",
+            "title": "Sequence Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SequenceEnrollmentStatus"
+          },
+          "successful_attempts": {
+            "title": "Successful Attempts",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "mission_id",
+          "sequence_id",
+          "prospect_id",
+          "status",
+          "current_step",
+          "next_step_at",
+          "last_attempt_at",
+          "last_outcome",
+          "cancel_reason",
+          "attempts_made",
+          "successful_attempts",
+          "failed_attempts",
+          "enrolled_at",
+          "completed_at",
+          "paused_until",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "OutboundSequenceEnrollmentResponse",
+        "type": "object"
+      },
       "PaginatedAgents": {
         "description": "Paginated agents response.",
         "properties": {
@@ -14762,6 +16373,43 @@
         "title": "PaginatedConversations",
         "type": "object"
       },
+      "PaginatedLeadDiscoveryJobs": {
+        "description": "Paginated discovery job list.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LeadDiscoveryJobResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "pages": {
+            "title": "Pages",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size",
+          "pages"
+        ],
+        "title": "PaginatedLeadDiscoveryJobs",
+        "type": "object"
+      },
       "PaginatedLeadMagnets": {
         "description": "Paginated lead magnets response.",
         "properties": {
@@ -14797,6 +16445,43 @@
           "pages"
         ],
         "title": "PaginatedLeadMagnets",
+        "type": "object"
+      },
+      "PaginatedLeadProspects": {
+        "description": "Paginated prospect list.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LeadProspectResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "pages": {
+            "title": "Pages",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size",
+          "pages"
+        ],
+        "title": "PaginatedLeadProspects",
         "type": "object"
       },
       "PaginatedMessageTemplates": {
@@ -14945,6 +16630,43 @@
           "pages"
         ],
         "title": "PaginatedOpportunities",
+        "type": "object"
+      },
+      "PaginatedOutboundMissions": {
+        "description": "Paginated mission list.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OutboundMissionResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "pages": {
+            "title": "Pages",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size",
+          "pages"
+        ],
+        "title": "PaginatedOutboundMissions",
         "type": "object"
       },
       "PaginatedPhoneNumbers": {
@@ -16295,6 +18017,35 @@
         "title": "PromptVersionUpdate",
         "type": "object"
       },
+      "ProspectIdentityKind": {
+        "description": "Primary identity facet for a prospect.\n\nUsed to route enrichment + dedupe behaviour. ``MULTI`` means more than one\nidentifier is populated (e.g. phone + email + website).",
+        "enum": [
+          "phone",
+          "email",
+          "website",
+          "owner_name",
+          "multi"
+        ],
+        "title": "ProspectIdentityKind",
+        "type": "string"
+      },
+      "ProspectStatus": {
+        "description": "Lead prospect lifecycle status.",
+        "enum": [
+          "new",
+          "enriching",
+          "enriched",
+          "queued",
+          "contacted",
+          "replied",
+          "qualified",
+          "converted",
+          "suppressed",
+          "archived"
+        ],
+        "title": "ProspectStatus",
+        "type": "string"
+      },
       "PublicOfferResponse": {
         "description": "Public offer response - no sensitive data.",
         "properties": {
@@ -16843,6 +18594,118 @@
           "description"
         ],
         "title": "QuizResult",
+        "type": "object"
+      },
+      "RealtimeTokenRequest": {
+        "description": "Optional test-session overrides for a Realtime client secret.",
+        "properties": {
+          "initial_greeting": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initial Greeting"
+          },
+          "instructions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructions"
+          },
+          "silence_duration_ms": {
+            "anyOf": [
+              {
+                "maximum": 5000.0,
+                "minimum": 100.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Silence Duration Ms"
+          },
+          "turn_detection_threshold": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turn Detection Threshold"
+          },
+          "voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice"
+          }
+        },
+        "title": "RealtimeTokenRequest",
+        "type": "object"
+      },
+      "RealtimeTokenResponse": {
+        "description": "Realtime client secret response.",
+        "properties": {
+          "agent": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Agent",
+            "type": "object"
+          },
+          "client_secret": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Client Secret",
+            "type": "object"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "tools": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Tools",
+            "type": "array"
+          }
+        },
+        "required": [
+          "client_secret",
+          "model",
+          "agent",
+          "tools"
+        ],
+        "title": "RealtimeTokenResponse",
         "type": "object"
       },
       "RealtorCampaignResponse": {
@@ -17498,6 +19361,21 @@
         ],
         "title": "SendMessageToContactRequest",
         "type": "object"
+      },
+      "SequenceEnrollmentStatus": {
+        "description": "Per-prospect sequence enrollment status.",
+        "enum": [
+          "active",
+          "paused",
+          "completed",
+          "replied",
+          "opted_out",
+          "converted",
+          "failed",
+          "cancelled"
+        ],
+        "title": "SequenceEnrollmentStatus",
+        "type": "string"
       },
       "TagCreate": {
         "description": "Schema for creating a tag.",
@@ -21571,6 +23449,132 @@
         "summary": "Submit Offer Optin",
         "tags": [
           "Public Offers"
+        ]
+      }
+    },
+    "/api/v1/realtime/token/{agent_id}": {
+      "get": {
+        "description": "Temporary GET compatibility wrapper for older voice-test callers.",
+        "operationId": "get_realtime_token_compat_api_v1_realtime_token__agent_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RealtimeTokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Realtime Token Compat",
+        "tags": [
+          "Realtime"
+        ]
+      },
+      "post": {
+        "description": "Create an authenticated OpenAI Realtime client secret for voice testing.",
+        "operationId": "create_realtime_token_api_v1_realtime_token__agent_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RealtimeTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RealtimeTokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Create Realtime Token",
+        "tags": [
+          "Realtime"
         ]
       }
     },
@@ -36570,6 +38574,1701 @@
         "summary": "Update Line Item",
         "tags": [
           "Opportunities"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/outbound-missions": {
+      "get": {
+        "description": "List outbound missions in a workspace with optional filters.",
+        "operationId": "list_missions_api_v1_workspaces__workspace_id__outbound_missions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/MissionStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "objective",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 50,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Objective"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedOutboundMissions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Missions",
+        "tags": [
+          "Outbound Missions"
+        ]
+      },
+      "post": {
+        "description": "Create a new outbound mission in DRAFT status.",
+        "operationId": "create_mission_api_v1_workspaces__workspace_id__outbound_missions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OutboundMissionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboundMissionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Create Mission",
+        "tags": [
+          "Outbound Missions"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}": {
+      "delete": {
+        "description": "Delete a mission.\n\nOnly DRAFT or ARCHIVED missions can be deleted outright. Active or paused\nmissions must be archived first (via ``POST /{id}/archive``) — this\npreserves the audit trail of any prospects/sequence enrollments that\nreferenced the mission.",
+        "operationId": "delete_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mission Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Delete Mission",
+        "tags": [
+          "Outbound Missions"
+        ]
+      },
+      "get": {
+        "description": "Fetch a single outbound mission.",
+        "operationId": "get_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mission Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboundMissionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Mission",
+        "tags": [
+          "Outbound Missions"
+        ]
+      },
+      "patch": {
+        "description": "Partially update an outbound mission.\n\nField updates are only allowed when the mission is in DRAFT, PAUSED, or\nARCHIVED status. The ``status`` field is intentionally read-only here —\ncallers must use the dedicated lifecycle endpoints (start/pause/resume/\ncomplete/archive).",
+        "operationId": "update_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mission Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OutboundMissionUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboundMissionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Update Mission",
+        "tags": [
+          "Outbound Missions"
+        ]
+      },
+      "put": {
+        "description": "Partially update an outbound mission.\n\nField updates are only allowed when the mission is in DRAFT, PAUSED, or\nARCHIVED status. The ``status`` field is intentionally read-only here —\ncallers must use the dedicated lifecycle endpoints (start/pause/resume/\ncomplete/archive).",
+        "operationId": "update_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mission Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OutboundMissionUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboundMissionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Update Mission",
+        "tags": [
+          "Outbound Missions"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/archive": {
+      "post": {
+        "description": "Archive a mission (any state except already-archived).",
+        "operationId": "archive_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mission Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboundMissionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Archive Mission",
+        "tags": [
+          "Outbound Missions"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/complete": {
+      "post": {
+        "description": "Mark a mission as completed.",
+        "operationId": "complete_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mission Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboundMissionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Complete Mission",
+        "tags": [
+          "Outbound Missions"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/discovery-jobs": {
+      "get": {
+        "description": "List discovery jobs that emitted prospects into this mission.",
+        "operationId": "list_mission_discovery_jobs_api_v1_workspaces__workspace_id__outbound_missions__mission_id__discovery_jobs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mission Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/DiscoveryJobStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/DiscoverySourceType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedLeadDiscoveryJobs"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Mission Discovery Jobs",
+        "tags": [
+          "Outbound Missions"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/discovery-jobs/{job_id}": {
+      "get": {
+        "description": "Fetch a single discovery job.",
+        "operationId": "get_mission_discovery_job_api_v1_workspaces__workspace_id__outbound_missions__mission_id__discovery_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mission Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeadDiscoveryJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Mission Discovery Job",
+        "tags": [
+          "Outbound Missions"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/enrichment-status": {
+      "get": {
+        "description": "Aggregate enrichment status for a mission.\n\nReturns counts grouped by ``(provider, status)`` plus totals for the\nprospect-level enrichment counters. Useful to drive a Lead Miner status\npanel without paginating the raw audit table.",
+        "operationId": "get_mission_enrichment_status_api_v1_workspaces__workspace_id__outbound_missions__mission_id__enrichment_status_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mission Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Mission Enrichment Status Api V1 Workspaces  Workspace Id  Outbound Missions  Mission Id  Enrichment Status Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Mission Enrichment Status",
+        "tags": [
+          "Outbound Missions"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/enrollments": {
+      "get": {
+        "description": "List sequence enrollments for the mission.",
+        "operationId": "list_mission_enrollments_api_v1_workspaces__workspace_id__outbound_missions__mission_id__enrollments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mission Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SequenceEnrollmentStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OutboundSequenceEnrollmentResponse"
+                  },
+                  "title": "Response List Mission Enrollments Api V1 Workspaces  Workspace Id  Outbound Missions  Mission Id  Enrollments Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Mission Enrollments",
+        "tags": [
+          "Outbound Missions"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/pause": {
+      "post": {
+        "description": "Pause an active mission.",
+        "operationId": "pause_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__pause_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mission Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboundMissionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Pause Mission",
+        "tags": [
+          "Outbound Missions"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/prospects": {
+      "get": {
+        "description": "List prospects belonging to a mission with filter + pagination.",
+        "operationId": "list_mission_prospects_api_v1_workspaces__workspace_id__outbound_missions__mission_id__prospects_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mission Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProspectStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "identity_kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProspectIdentityKind"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Identity Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 50,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_score",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Score"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_score",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Score"
+            }
+          },
+          {
+            "in": "query",
+            "name": "has_email",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Has Email"
+            }
+          },
+          {
+            "in": "query",
+            "name": "has_phone",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Has Phone"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedLeadProspects"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Mission Prospects",
+        "tags": [
+          "Outbound Missions"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/prospects/{prospect_id}": {
+      "get": {
+        "description": "Fetch a single prospect that belongs to ``mission_id``.",
+        "operationId": "get_mission_prospect_api_v1_workspaces__workspace_id__outbound_missions__mission_id__prospects__prospect_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mission Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "prospect_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Prospect Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeadProspectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Mission Prospect",
+        "tags": [
+          "Outbound Missions"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/prospects/{prospect_id}/enrichment": {
+      "get": {
+        "description": "List enrichment audit rows for a single prospect (newest first).",
+        "operationId": "list_prospect_enrichment_results_api_v1_workspaces__workspace_id__outbound_missions__mission_id__prospects__prospect_id__enrichment_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mission Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "prospect_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Prospect Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LeadEnrichmentResultResponse"
+                  },
+                  "title": "Response List Prospect Enrichment Results Api V1 Workspaces  Workspace Id  Outbound Missions  Mission Id  Prospects  Prospect Id  Enrichment Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Prospect Enrichment Results",
+        "tags": [
+          "Outbound Missions"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/prospects/{prospect_id}/select": {
+      "post": {
+        "description": "Select a prospect for outreach — moves status to QUEUED.",
+        "operationId": "select_mission_prospect_api_v1_workspaces__workspace_id__outbound_missions__mission_id__prospects__prospect_id__select_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mission Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "prospect_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Prospect Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeadProspectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Select Mission Prospect",
+        "tags": [
+          "Outbound Missions"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/prospects/{prospect_id}/suppress": {
+      "post": {
+        "description": "Suppress a prospect (do-not-contact).",
+        "operationId": "suppress_mission_prospect_api_v1_workspaces__workspace_id__outbound_missions__mission_id__prospects__prospect_id__suppress_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mission Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "prospect_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Prospect Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reason",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeadProspectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Suppress Mission Prospect",
+        "tags": [
+          "Outbound Missions"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/resume": {
+      "post": {
+        "description": "Resume a paused mission.",
+        "operationId": "resume_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mission Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboundMissionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Resume Mission",
+        "tags": [
+          "Outbound Missions"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/sequence": {
+      "get": {
+        "description": "Return the mission's default sequence + enrollment counters.\n\nResponse shape::\n\n    {\n      \"mission_id\": \"<uuid>\",\n      \"default_sequence\": OutboundSequenceResponse | null,\n      \"enrollment_counts\": {\"active\": 3, \"completed\": 12, ...},\n      \"total_enrollments\": 27\n    }",
+        "operationId": "get_mission_sequence_overview_api_v1_workspaces__workspace_id__outbound_missions__mission_id__sequence_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mission Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Mission Sequence Overview Api V1 Workspaces  Workspace Id  Outbound Missions  Mission Id  Sequence Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Mission Sequence Overview",
+        "tags": [
+          "Outbound Missions"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/start": {
+      "post": {
+        "description": "Start (or resume) a mission — moves DRAFT/PAUSED → ACTIVE.",
+        "operationId": "start_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__start_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mission Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboundMissionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Start Mission",
+        "tags": [
+          "Outbound Missions"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/stats": {
+      "get": {
+        "description": "Return mission counters with derived reply / qualification / booking rates.",
+        "operationId": "get_mission_stats_api_v1_workspaces__workspace_id__outbound_missions__mission_id__stats_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mission Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboundMissionStatsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Mission Stats",
+        "tags": [
+          "Outbound Missions"
         ]
       }
     },

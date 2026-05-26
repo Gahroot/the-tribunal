@@ -11,8 +11,8 @@ export interface RealtimeSession {
   model: string;
   voice: string;
   // Audio settings
-  input_audio_format: "pcm16" | "g711_ulaw" | "g711_alaw";
-  output_audio_format: "pcm16" | "g711_ulaw" | "g711_alaw";
+  input_audio_format: "pcm16" | "g711_ulaw" | "g711_alaw" | "audio/pcm" | "audio/pcmu" | "audio/pcma";
+  output_audio_format: "pcm16" | "g711_ulaw" | "g711_alaw" | "audio/pcm" | "audio/pcmu" | "audio/pcma";
   // Turn detection
   turn_detection_type: "server_vad" | "none";
   turn_detection_threshold?: number;

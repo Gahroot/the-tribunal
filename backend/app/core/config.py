@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     openai_oauth_refresh_token: str = ""
     openai_oauth_expires_at: int | None = None
     openai_oauth_account_id: str = ""
+    openai_oauth_client_id: str = ""
+    openai_oauth_token_url: str = "https://auth.openai.com/oauth/token"
+    openai_realtime_model: str = "gpt-realtime-2"
+    openai_realtime_client_secret_ttl_seconds: int = 600
+    openai_realtime_idle_timeout_ms: int | None = 6000
+    openai_codex_voice_enabled: bool = False
     openai_timeout: int = 60
 
     # Telnyx
@@ -79,6 +85,26 @@ class Settings(BaseSettings):
 
     # Google Places API
     google_places_api_key: str = ""
+
+    # gosom/google-maps-scraper — optional self-hosted Google Maps scraper.
+    # Leave ``gosom_base_url`` empty to disable the provider entirely; the
+    # lead miner then falls back to its other configured sources. Point
+    # ``gosom_base_url`` at the root of the gosom web server (e.g.
+    # ``http://localhost:8080``) — the provider appends ``/api/v1/jobs``
+    # internally. ``gosom_default_concurrency`` is reserved: the gosom REST
+    # ``JobData`` body has no concurrency field today (the CLI ``-c`` flag
+    # isn't surfaced via HTTP), so the provider keeps the setting for future
+    # compatibility and for ops dashboards without transmitting it.
+    gosom_base_url: str = ""
+    gosom_request_timeout_seconds: float = 30.0
+    gosom_poll_interval_seconds: float = 5.0
+    gosom_poll_max_wait_seconds: float = 900.0
+    gosom_default_depth: int = 1
+    gosom_default_concurrency: int = 4  # Reserved (not transmitted over REST).
+    gosom_default_email_extraction: bool = True
+    gosom_default_extra_reviews: bool = False
+    gosom_default_lang: str = "en"
+    gosom_default_max_time_seconds: int = 600
 
     # App
     debug: bool = False

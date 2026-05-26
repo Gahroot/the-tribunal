@@ -5,18 +5,27 @@ import base64
 import binascii
 import json
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 import structlog
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
+from app.core.config import settings
 from app.core.metrics import openai_realtime_latency_ms
 from app.models.agent import Agent
+from app.services.ai.openai_realtime_config import (
+    build_realtime_session_config,
+    build_response_create_event,
+    build_session_update_event,
+)
 from app.services.ai.voice_agent_base import VoiceAgentBase
+from app.services.ai.voice_tools import get_tools_from_agent_config
 
 logger = structlog.get_logger()
+
+TOOL_TIMEOUT_SECONDS = 30.0
 
 
 class VoiceAgentSession(VoiceAgentBase):
@@ -36,9 +45,14 @@ class VoiceAgentSession(VoiceAgentBase):
 
     SERVICE_NAME = "openai_voice_agent"
     BASE_URL = "wss://api.openai.com/v1/realtime"
-    MODEL = "gpt-realtime"
 
-    def __init__(self, api_key: str, agent: Agent | None = None) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        agent: Agent | None = None,
+        *,
+        model: str | None = None,
+    ) -> None:
         """Initialize voice agent session.
 
         Args:
@@ -47,7 +61,10 @@ class VoiceAgentSession(VoiceAgentBase):
         """
         super().__init__(agent)
         self.api_key = api_key
+        self.model = model or settings.openai_realtime_model
         self._connection_task: asyncio.Task[None] | None = None
+        self._tool_callback: Callable[[str, str, dict[str, Any]], Any] | None = None
+        self._tool_tasks: set[asyncio.Task[None]] = set()
         # Monotonic timestamp of the most recent response.create event we
         # sent. Cleared once response.created is observed so we measure
         # request → ack latency for each turn without double-counting.
@@ -59,12 +76,12 @@ class VoiceAgentSession(VoiceAgentBase):
         Returns:
             True if successful, False otherwise
         """
-        url = f"{self.BASE_URL}?model={self.MODEL}"
+        url = f"{self.BASE_URL}?model={self.model}"
         self.logger.info(
             "========== CONNECTING TO OPENAI REALTIME API ==========",
             url=url,
-            model=self.MODEL,
-            api_key_prefix=self.api_key[:10] + "..." if self.api_key else "None",
+            model=self.model,
+            credential_configured=bool(self.api_key),
         )
 
         try:
@@ -104,7 +121,135 @@ class VoiceAgentSession(VoiceAgentBase):
 
     async def disconnect(self) -> None:
         """Disconnect from OpenAI Realtime API."""
+        await self._cancel_tool_tasks()
         await self._disconnect_ws()
+
+    def set_tool_callback(
+        self,
+        callback: Callable[[str, str, dict[str, Any]], Any],
+    ) -> None:
+        """Set callback for executing OpenAI function calls."""
+        self._tool_callback = callback
+        self.logger.info("openai_tool_callback_set", callback_set=callback is not None)
+
+    async def submit_tool_result(self, call_id: str, result: dict[str, Any]) -> None:
+        """Submit function-call output back to OpenAI Realtime."""
+        if not self.ws:
+            self.logger.warning("openai_websocket_not_connected_for_tool_result")
+            return
+
+        event = {
+            "type": "conversation.item.create",
+            "item": {
+                "type": "function_call_output",
+                "call_id": call_id,
+                "output": json.dumps(result),
+            },
+        }
+        await self._send_event(event)
+        self.logger.info("openai_tool_result_submitted", call_id=call_id)
+        await self._send_event(build_response_create_event())
+
+    async def _cancel_tool_tasks(self) -> None:
+        """Cancel pending OpenAI tool tasks on disconnect."""
+        if not self._tool_tasks:
+            return
+        tasks = list(self._tool_tasks)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        self._tool_tasks.clear()
+
+    def _track_tool_task(self, task: asyncio.Task[None]) -> None:
+        self._tool_tasks.add(task)
+
+        def discard_done(done_task: asyncio.Task[None]) -> None:
+            self._tool_tasks.discard(done_task)
+
+        task.add_done_callback(discard_done)
+
+    async def _handle_function_call_arguments_done(self, event: dict[str, Any]) -> None:
+        """Execute a completed OpenAI function call without blocking audio streaming."""
+        call_id = str(event.get("call_id") or "")
+        function_name = str(event.get("name") or "")
+        arguments_str = str(event.get("arguments") or "{}")
+        self.logger.info(
+            "openai_function_call_received",
+            call_id=call_id,
+            function_name=function_name,
+        )
+        if not call_id or not function_name:
+            self.logger.warning(
+                "openai_function_call_missing_required_fields",
+                has_call_id=bool(call_id),
+                has_function_name=bool(function_name),
+            )
+            return
+
+        try:
+            arguments_raw = json.loads(arguments_str)
+        except json.JSONDecodeError:
+            arguments_raw = {}
+            self.logger.warning(
+                "openai_function_call_invalid_arguments",
+                call_id=call_id,
+                function_name=function_name,
+            )
+        arguments = arguments_raw if isinstance(arguments_raw, dict) else {}
+
+        tool_callback = self._tool_callback
+        if not tool_callback:
+            await self.submit_tool_result(
+                call_id,
+                {"success": False, "error": "Tool execution not configured"},
+            )
+            return
+
+        async def run_tool() -> None:
+            try:
+                result = await asyncio.wait_for(
+                    tool_callback(call_id, function_name, arguments),
+                    timeout=TOOL_TIMEOUT_SECONDS,
+                )
+                if not isinstance(result, dict):
+                    result = {"success": True, "result": result}
+                await self.submit_tool_result(call_id, result)
+            except TimeoutError:
+                self.logger.error(
+                    "openai_function_call_timeout",
+                    call_id=call_id,
+                    function_name=function_name,
+                    timeout_seconds=TOOL_TIMEOUT_SECONDS,
+                )
+                await self.submit_tool_result(
+                    call_id,
+                    {"success": False, "error": "Tool execution timed out. Please try again."},
+                )
+            except Exception as e:
+                self.logger.exception(
+                    "openai_function_call_error",
+                    call_id=call_id,
+                    function_name=function_name,
+                    error=str(e),
+                )
+                await self.submit_tool_result(call_id, {"success": False, "error": str(e)})
+
+        self._track_tool_task(asyncio.create_task(run_tool()))
+
+    def _log_session_event(self, event_name: str, session: dict[str, Any]) -> None:
+        """Log GA or legacy session state without exposing instructions."""
+        audio = session.get("audio", {})
+        audio_input = audio.get("input", {}) if isinstance(audio, dict) else {}
+        audio_output = audio.get("output", {}) if isinstance(audio, dict) else {}
+        self.logger.info(
+            event_name,
+            session_id=session.get("id"),
+            model=session.get("model"),
+            output_modalities=session.get("output_modalities") or session.get("modalities"),
+            voice=audio_output.get("voice") or session.get("voice"),
+            input_audio_format=audio_input.get("format") or session.get("input_audio_format"),
+            output_audio_format=audio_output.get("format") or session.get("output_audio_format"),
+        )
 
     async def _configure_session(self) -> None:
         """Configure the Realtime session with agent settings.
@@ -112,40 +257,29 @@ class VoiceAgentSession(VoiceAgentBase):
         Uses g711_ulaw at 8kHz - this matches Telnyx's format directly,
         eliminating the need for audio conversion (lower latency, no quality loss).
         """
-        # Build full prompt using the prompt builder
         instructions = self._prompt_builder.build_full_prompt(
             include_realism=False,
             include_booking=False,
         )
+        tools = get_tools_from_agent_config(
+            self.agent,
+            enable_booking=bool(self.agent and self.agent.calcom_event_type_id),
+            timezone=self._timezone,
+        )
+        session_config = build_realtime_session_config(
+            model=self.model,
+            instructions=instructions,
+            voice=self.agent.voice_id if self.agent else None,
+            turn_detection_mode=self.agent.turn_detection_mode if self.agent else "server_vad",
+            turn_detection_threshold=self.agent.turn_detection_threshold if self.agent else 0.5,
+            silence_duration_ms=self.agent.silence_duration_ms if self.agent else 700,
+            idle_timeout_ms=settings.openai_realtime_idle_timeout_ms,
+            language=self.agent.language if self.agent else None,
+            tools=tools,
+        )
 
-        config: dict[str, Any] = {
-            "type": "session.update",
-            "session": {
-                "modalities": ["text", "audio"],
-                "instructions": instructions,
-                "voice": self.agent.voice_id if self.agent else "alloy",
-                # g711_ulaw at 8kHz - matches Telnyx format directly (no conversion!)
-                "input_audio_format": "g711_ulaw",
-                "output_audio_format": "g711_ulaw",
-                "turn_detection": {
-                    "type": self.agent.turn_detection_mode
-                    if self.agent and self.agent.turn_detection_mode
-                    else "server_vad",
-                    # Lower threshold = more sensitive to speech detection
-                    "threshold": 0.5,
-                    # More padding before speech starts (captures audio before VAD triggers)
-                    "prefix_padding_ms": 800,
-                    # Wait for silence before responding
-                    "silence_duration_ms": 700,
-                },
-                # Enable noise reduction to reduce static from caller environment
-                "input_audio_noise_reduction": {"type": "near_field"},
-                "temperature": 0.8,
-            },
-        }
-
-        await self._send_event(config)
-        self.logger.info("session_configured", audio_format="g711_ulaw")
+        await self._send_event(build_session_update_event(session_config))
+        self.logger.info("session_configured", audio_format="audio/pcmu", model=self.model)
 
     async def configure_session(
         self,
@@ -172,46 +306,36 @@ class VoiceAgentSession(VoiceAgentBase):
             self.logger.warning("websocket_not_connected")
             return
 
-        session_config: dict[str, Any] = {
-            # CRITICAL: Always include modalities and audio formats to prevent them being cleared
-            # Must use g711_ulaw to match Telnyx format - pcm16 would break audio!
-            "modalities": ["text", "audio"],
-            "input_audio_format": "g711_ulaw",
-            "output_audio_format": "g711_ulaw",
-        }
+        del temperature  # GA Realtime sessions no longer accept arbitrary temperature.
 
-        if voice:
-            session_config["voice"] = voice
-
-        if system_prompt:
-            # Build enhanced prompt using prompt builder
-            enhanced_prompt = self._prompt_builder.build_full_prompt(
-                base_prompt=system_prompt,
-                include_realism=False,
-                include_booking=False,
-            )
-            session_config["instructions"] = enhanced_prompt
-
-        if temperature is not None:
-            session_config["temperature"] = temperature
-
-        # Configure turn detection
-        if any([turn_detection_mode, turn_detection_threshold, silence_duration_ms]):
-            turn_detection: dict[str, Any] = {"type": turn_detection_mode or "server_vad"}
-            if turn_detection_threshold is not None:
-                turn_detection["threshold"] = turn_detection_threshold
-            if silence_duration_ms is not None:
-                turn_detection["silence_duration_ms"] = silence_duration_ms
-            turn_detection["prefix_padding_ms"] = 800
-            session_config["turn_detection"] = turn_detection
-
-        if session_config:
-            config = {
-                "type": "session.update",
-                "session": session_config,
-            }
-            await self._send_event(config)
-            self.logger.info("session_reconfigured", updates=list(session_config.keys()))
+        enhanced_prompt = self._prompt_builder.build_full_prompt(
+            base_prompt=system_prompt,
+            include_realism=False,
+            include_booking=False,
+        )
+        tools = get_tools_from_agent_config(
+            self.agent,
+            enable_booking=bool(self.agent and self.agent.calcom_event_type_id),
+            timezone=self._timezone,
+        )
+        session_config = build_realtime_session_config(
+            model=self.model,
+            instructions=enhanced_prompt,
+            voice=voice or (self.agent.voice_id if self.agent else None),
+            turn_detection_mode=turn_detection_mode
+            or (self.agent.turn_detection_mode if self.agent else "server_vad"),
+            turn_detection_threshold=turn_detection_threshold
+            if turn_detection_threshold is not None
+            else (self.agent.turn_detection_threshold if self.agent else 0.5),
+            silence_duration_ms=silence_duration_ms
+            if silence_duration_ms is not None
+            else (self.agent.silence_duration_ms if self.agent else 700),
+            idle_timeout_ms=settings.openai_realtime_idle_timeout_ms,
+            language=self.agent.language if self.agent else None,
+            tools=tools,
+        )
+        await self._send_event(build_session_update_event(session_config))
+        self.logger.info("session_reconfigured", updates=list(session_config.keys()))
 
     async def send_greeting(self, greeting: str) -> None:
         """Send an initial greeting message.
@@ -248,13 +372,7 @@ class VoiceAgentSession(VoiceAgentBase):
             await self._send_event(event)
 
             # Request the assistant to respond (which will speak the greeting)
-            response_event = {
-                "type": "response.create",
-                "response": {
-                    "modalities": ["audio", "text"],
-                },
-            }
-            await self._send_event(response_event)
+            await self._send_event(build_response_create_event())
 
             self.logger.info("greeting_sent", greeting_length=len(greeting))
         except Exception as e:
@@ -346,17 +464,10 @@ class VoiceAgentSession(VoiceAgentBase):
                 greeting_length=len(message) if message else 0,
             )
 
-            # Trigger response generation with audio modality
-            # This tells OpenAI to respond to the conversation item we just created
-            self.logger.info("sending_response_create_event", modalities=["text", "audio"])
-            await self._send_event(
-                {
-                    "type": "response.create",
-                    "response": {
-                        "modalities": ["text", "audio"],
-                    },
-                }
-            )
+            # Trigger response generation with audio output.
+            # This tells OpenAI to respond to the conversation item we just created.
+            self.logger.info("sending_response_create_event", output_modalities=["audio"])
+            await self._send_event(build_response_create_event())
             self.logger.info(
                 "response_create_sent_successfully",
                 hint="AI should now generate audio response",
@@ -424,7 +535,7 @@ class VoiceAgentSession(VoiceAgentBase):
 
                 event_type = event.get("type", "")
 
-                if event_type == "response.audio.delta":
+                if event_type in {"response.output_audio.delta", "response.audio.delta"}:
                     # Skip audio if we're in interrupted state (barge-in handling)
                     # OpenAI continues sending audio for a brief period after cancel
                     if self._is_interrupted:
@@ -462,12 +573,30 @@ class VoiceAgentSession(VoiceAgentBase):
 
                         yield decoded
 
-                elif event_type == "response.audio_transcript.delta":
+                elif event_type in {
+                    "response.output_audio.done",
+                    "response.audio.done",
+                }:
+                    self.logger.debug("audio_output_done", event_type=event_type)
+
+                elif event_type in {
+                    "response.output_audio_transcript.delta",
+                    "response.audio_transcript.delta",
+                }:
                     # Agent's speech transcript (what the AI is saying)
                     transcript = event.get("delta", "")
                     if transcript:
                         self._append_agent_transcript_delta(transcript)
                         self.logger.debug("audio_transcript_chunk", text=transcript[:50])
+
+                elif event_type in {
+                    "response.output_audio_transcript.done",
+                    "response.audio_transcript.done",
+                }:
+                    transcript = event.get("transcript", "")
+                    if transcript and not self._agent_transcript:
+                        self._append_agent_transcript_delta(transcript)
+                    self.logger.debug("audio_transcript_done", transcript_length=len(transcript))
 
                 elif event_type == "conversation.item.input_audio_transcription.completed":
                     # User's speech transcript (what the human said)
@@ -475,7 +604,7 @@ class VoiceAgentSession(VoiceAgentBase):
                     if user_text:
                         self._add_user_transcript(user_text)
 
-                elif event_type == "response.text.delta":
+                elif event_type in {"response.output_text.delta", "response.text.delta"}:
                     # Text response (not audio) - this means audio is NOT being generated
                     text = event.get("delta", "")
                     self.logger.warning(
@@ -484,7 +613,7 @@ class VoiceAgentSession(VoiceAgentBase):
                         text_length=len(text) if text else 0,
                     )
 
-                elif event_type == "response.text.done":
+                elif event_type in {"response.output_text.done", "response.text.done"}:
                     text = event.get("text", "")
                     self.logger.warning(
                         "text_response_done_not_audio",
@@ -518,7 +647,9 @@ class VoiceAgentSession(VoiceAgentBase):
                         response_id=response.get("id"),
                         status=response.get("status"),
                         status_details=response.get("status_details"),
-                        modalities=response.get("modalities"),
+                        output_modalities=(
+                            response.get("output_modalities") or response.get("modalities")
+                        ),
                         output_count=len(output),
                         output_summary=output_summary,
                         total_tokens=usage.get("total_tokens"),
@@ -566,7 +697,9 @@ class VoiceAgentSession(VoiceAgentBase):
                         "response_created",
                         response_id=response.get("id"),
                         status=response.get("status"),
-                        modalities=response.get("modalities"),
+                        output_modalities=(
+                            response.get("output_modalities") or response.get("modalities")
+                        ),
                         output=response.get("output"),
                     )
 
@@ -578,7 +711,13 @@ class VoiceAgentSession(VoiceAgentBase):
                         item_type=item.get("type"),
                         role=item.get("role"),
                         content_types=[c.get("type") for c in item.get("content", [])],
+                        function_name=(
+                            item.get("name") if item.get("type") == "function_call" else None
+                        ),
                     )
+
+                elif event_type == "response.function_call_arguments.done":
+                    await self._handle_function_call_arguments_done(event)
 
                 elif event_type == "response.content_part.added":
                     part = event.get("part", {})
@@ -590,25 +729,11 @@ class VoiceAgentSession(VoiceAgentBase):
 
                 elif event_type == "session.created":
                     session = event.get("session", {})
-                    self.logger.info(
-                        "session_created",
-                        session_id=session.get("id"),
-                        model=session.get("model"),
-                        modalities=session.get("modalities"),
-                        voice=session.get("voice"),
-                        input_audio_format=session.get("input_audio_format"),
-                        output_audio_format=session.get("output_audio_format"),
-                    )
+                    self._log_session_event("session_created", session)
 
                 elif event_type == "session.updated":
                     session = event.get("session", {})
-                    self.logger.info(
-                        "session_updated",
-                        modalities=session.get("modalities"),
-                        voice=session.get("voice"),
-                        input_audio_format=session.get("input_audio_format"),
-                        output_audio_format=session.get("output_audio_format"),
-                    )
+                    self._log_session_event("session_updated", session)
 
                 elif event_type == "error":
                     error = event.get("error", {})
@@ -691,20 +816,25 @@ class VoiceAgentSession(VoiceAgentBase):
             is_outbound=is_outbound,
         )
 
-        # Send session update with full context
-        config: dict[str, Any] = {
-            "type": "session.update",
-            "session": {
-                "instructions": full_instructions,
-                # CRITICAL: Always include modalities and audio formats
-                "modalities": ["text", "audio"],
-                "input_audio_format": "g711_ulaw",
-                "output_audio_format": "g711_ulaw",
-            },
-        }
+        tools = get_tools_from_agent_config(
+            self.agent,
+            enable_booking=bool(self.agent and self.agent.calcom_event_type_id),
+            timezone=self._timezone,
+        )
+        session_config = build_realtime_session_config(
+            model=self.model,
+            instructions=full_instructions,
+            voice=self.agent.voice_id if self.agent else None,
+            turn_detection_mode=self.agent.turn_detection_mode if self.agent else "server_vad",
+            turn_detection_threshold=self.agent.turn_detection_threshold if self.agent else 0.5,
+            silence_duration_ms=self.agent.silence_duration_ms if self.agent else 700,
+            idle_timeout_ms=settings.openai_realtime_idle_timeout_ms,
+            language=self.agent.language if self.agent else None,
+            tools=tools,
+        )
 
         try:
-            await self._send_event(config)
+            await self._send_event(build_session_update_event(session_config))
             self.logger.info(
                 "context_injected_to_instructions",
                 is_outbound=is_outbound,
@@ -740,14 +870,21 @@ class VoiceAgentSession(VoiceAgentBase):
         # Log important events with details
         if event_type == "session.update":
             session = event.get("session", {})
+            audio = session.get("audio", {}) if isinstance(session, dict) else {}
+            audio_input = audio.get("input", {}) if isinstance(audio, dict) else {}
+            audio_output = audio.get("output", {}) if isinstance(audio, dict) else {}
             self.logger.info(
                 "sending_session_update",
-                modalities=session.get("modalities"),
-                voice=session.get("voice"),
-                input_audio_format=session.get("input_audio_format"),
-                output_audio_format=session.get("output_audio_format"),
+                model=session.get("model"),
+                output_modalities=session.get("output_modalities") or session.get("modalities"),
+                voice=audio_output.get("voice") or session.get("voice"),
+                input_audio_format=audio_input.get("format") or session.get("input_audio_format"),
+                output_audio_format=(
+                    audio_output.get("format") or session.get("output_audio_format")
+                ),
                 has_instructions=bool(session.get("instructions")),
-                turn_detection=session.get("turn_detection"),
+                turn_detection=audio_input.get("turn_detection") or session.get("turn_detection"),
+                tool_count=len(session.get("tools", [])),
             )
         elif event_type == "response.create":
             response = event.get("response", {})
@@ -756,7 +893,7 @@ class VoiceAgentSession(VoiceAgentBase):
             self._pending_response_create_at = time.monotonic()
             self.logger.info(
                 "sending_response_create",
-                modalities=response.get("modalities"),
+                output_modalities=response.get("output_modalities") or response.get("modalities"),
                 has_instructions=bool(response.get("instructions")),
             )
         elif event_type == "conversation.item.create":

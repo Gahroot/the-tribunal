@@ -6,6 +6,7 @@ lookup, origin validation, and the OpenAI HTTP calls so the routes can be
 exercised without a database, Redis, or network.
 """
 
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -15,6 +16,7 @@ from fastapi import FastAPI, HTTPException, status
 from httpx import ASGITransport, AsyncClient
 
 from app.api.v1.router import api_router
+from app.services.ai.openai_credentials import OpenAICredentialContext
 
 
 @asynccontextmanager
@@ -42,7 +44,7 @@ def _build_agent_mock() -> MagicMock:
     """Build a minimal Agent mock sufficient for embed endpoints."""
     agent = MagicMock()
     agent.id = "agent-id"
-    agent.workspace_id = "ws-id"
+    agent.workspace_id = uuid.uuid4()
     agent.public_id = "demo-public-id"
     agent.name = "Test Agent"
     agent.system_prompt = "be helpful"
@@ -118,7 +120,13 @@ class TestTokenEndpointRateLimit:
                 side_effect=fake_token_limits,
             ),
             patch(
-                "app.api.v1.embed.settings.openai_api_key", "sk-test"
+                "app.api.v1.embed.resolve_openai_credentials",
+                new=AsyncMock(
+                    return_value=OpenAICredentialContext(
+                        bearer_token="sk-test",
+                        source="test",
+                    )
+                ),
             ),
             patch(
                 "app.api.v1.embed.httpx.AsyncClient",
@@ -133,12 +141,20 @@ class TestTokenEndpointRateLimit:
                 assert resp.status_code == 200, (
                     f"request {i + 1} should succeed, got {resp.status_code}"
                 )
+                if i == 0:
+                    assert "instructions" not in resp.json()["agent"]
 
             resp = await client.post(
                 "/api/v1/p/embed/demo-public-id/token",
                 json={"mode": "voice"},
             )
 
+        first_post = fake_http_client.post.await_args_list[0].kwargs
+        body = first_post["json"]
+        assert "session" in body
+        assert body["session"]["type"] == "realtime"
+        assert body["session"]["output_modalities"] == ["audio"]
+        assert body["session"]["audio"]["input"]["format"] == {"type": "audio/pcmu"}
         assert resp.status_code == 429
         assert resp.json()["detail"] == "Rate limit exceeded. Please try again later."
 
@@ -180,7 +196,13 @@ class TestChatEndpointRateLimit:
                 side_effect=fake_chat_limits,
             ),
             patch(
-                "app.api.v1.embed.settings.openai_api_key", "sk-test"
+                "app.api.v1.embed.resolve_openai_credentials",
+                new=AsyncMock(
+                    return_value=OpenAICredentialContext(
+                        bearer_token="sk-test",
+                        source="test",
+                    )
+                ),
             ),
             patch(
                 "app.api.v1.embed.httpx.AsyncClient",

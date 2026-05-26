@@ -267,17 +267,20 @@ class TestDatabaseWrappers:
 
 
 class TestSetupVoiceSession:
-    async def test_openai_session_skips_tool_callback(self) -> None:
+    async def test_openai_session_receives_tool_callback(self) -> None:
         session = _make_voice_session(VoiceAgentSession)
         agent = _make_agent(voice_provider="openai")
         log = MagicMock()
 
-        await vb._setup_voice_session(
-            session, agent, None, None, "UTC", log, call_control_id="cc-1"
-        )
+        with patch.object(
+            vb, "create_tool_callback", return_value="CALLBACK"
+        ) as factory:
+            await vb._setup_voice_session(
+                session, agent, None, None, "UTC", log, call_control_id="cc-1"
+            )
 
-        # OpenAI sessions don't support tools — callback must not be set.
-        session.set_tool_callback.assert_not_called()
+        factory.assert_called_once()
+        session.set_tool_callback.assert_called_once_with("CALLBACK")
         session.configure_session.assert_awaited_once()
 
     async def test_grok_session_receives_tool_callback(self) -> None:

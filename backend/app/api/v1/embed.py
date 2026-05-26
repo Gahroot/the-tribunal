@@ -22,7 +22,11 @@ from app.core.utils import get_client_ip
 from app.db.session import get_db
 from app.models.agent import Agent
 from app.models.demo_request import DemoRequest
-from app.services.ai.openai_credentials import get_openai_bearer_token, is_openai_configured
+from app.services.ai.openai_credentials import OpenAICredentialError, resolve_openai_credentials
+from app.services.ai.openai_realtime_config import (
+    build_client_secret_request,
+    build_realtime_session_config,
+)
 from app.services.rate_limiting.embed_limiter import (
     enforce_chat_rate_limits,
     enforce_token_rate_limits,
@@ -265,39 +269,34 @@ async def get_ephemeral_token(
     client_ip = get_client_ip(request, settings.trusted_proxies)
     await enforce_token_rate_limits(client_ip=client_ip, public_id=public_id)
 
-    if not is_openai_configured():
+    try:
+        credential_context = await resolve_openai_credentials(db, agent.workspace_id)
+    except OpenAICredentialError:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Voice service not configured",
-        )
+        ) from None
 
-    # Map voice to OpenAI Realtime-compatible voices
-    openai_realtime_voices = {
-        "alloy",
-        "ash",
-        "ballad",
-        "coral",
-        "echo",
-        "sage",
-        "shimmer",
-        "verse",
-        "marin",
-        "cedar",
-    }
-    voice = agent.voice_id if agent.voice_id in openai_realtime_voices else "ash"
+    session_config = build_realtime_session_config(
+        instructions=agent.system_prompt,
+        voice=agent.voice_id,
+        turn_detection_mode=agent.turn_detection_mode,
+        turn_detection_threshold=agent.turn_detection_threshold,
+        silence_duration_ms=agent.silence_duration_ms,
+        idle_timeout_ms=settings.openai_realtime_idle_timeout_ms,
+        language=agent.language,
+    )
+    client_secret_body = build_client_secret_request(session=session_config)
 
-    # Create ephemeral client secret from OpenAI (GA Realtime API)
+    # Create ephemeral client secret from OpenAI with the full GA session bound server-side.
     async with httpx.AsyncClient() as client:
         response = await client.post(
             "https://api.openai.com/v1/realtime/client_secrets",
             headers={
-                "Authorization": f"Bearer {get_openai_bearer_token()}",
+                **credential_context.openai_headers(),
                 "Content-Type": "application/json",
             },
-            json={
-                "model": "gpt-4o-realtime-preview",
-                "voice": voice,
-            },
+            json=client_secret_body,
             timeout=30.0,
         )
 
@@ -305,7 +304,7 @@ async def get_ephemeral_token(
             logger.error(
                 "openai_session_error",
                 status=response.status_code,
-                body=response.text,
+                credential_source=credential_context.source,
             )
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -344,11 +343,10 @@ async def get_ephemeral_token(
         agent={
             "name": agent.name,
             "voice": agent.voice_id,
-            "instructions": agent.system_prompt,
             "language": agent.language,
             "initial_greeting": agent.initial_greeting,
         },
-        model="gpt-realtime",
+        model=session_config["model"],
         tools=tools,
     )
 
@@ -373,11 +371,13 @@ async def send_chat_message(
     client_ip = get_client_ip(request, settings.trusted_proxies)
     await enforce_chat_rate_limits(client_ip=client_ip, public_id=public_id)
 
-    if not is_openai_configured():
+    try:
+        credential_context = await resolve_openai_credentials(db, agent.workspace_id)
+    except OpenAICredentialError:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Chat service not configured",
-        )
+        ) from None
 
     # Build messages for OpenAI
     messages: list[dict[str, str]] = [{"role": "system", "content": agent.system_prompt}]
@@ -394,7 +394,7 @@ async def send_chat_message(
         response = await client.post(
             "https://api.openai.com/v1/chat/completions",
             headers={
-                "Authorization": f"Bearer {get_openai_bearer_token()}",
+                **credential_context.openai_headers(),
                 "Content-Type": "application/json",
             },
             json={
@@ -410,7 +410,7 @@ async def send_chat_message(
             logger.error(
                 "openai_chat_error",
                 status=response.status_code,
-                body=response.text,
+                credential_source=credential_context.source,
             )
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

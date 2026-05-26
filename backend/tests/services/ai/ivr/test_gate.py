@@ -2,7 +2,10 @@
 
 import base64
 import json
-from unittest.mock import AsyncMock, patch
+from collections.abc import Iterator
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from app.services.ai.ivr.gate import (
     FIRST_BUFFER_SECONDS,
@@ -12,6 +15,24 @@ from app.services.ai.ivr.gate import (
     IVRGate,
 )
 from app.services.ai.ivr.types import IVRMode
+
+
+@pytest.fixture(autouse=True)
+def _stub_openai_client() -> Iterator[MagicMock]:
+    """Stub ``create_openai_client`` for every test in this module.
+
+    ``IVRGate.__init__`` eagerly constructs a ``WhisperTranscriber`` which
+    in turn calls ``create_openai_client()`` and validates credentials. We
+    patch the factory so no real OpenAI SDK client is built and no API key
+    is required to import/run these tests. Tests still patch
+    ``gate._transcriber.transcribe`` for behavior assertions.
+    """
+    mock_client = MagicMock()
+    with patch(
+        "app.services.ai.ivr.transcriber.create_openai_client",
+        return_value=mock_client,
+    ):
+        yield mock_client
 
 
 def _make_start_event(stream_id: str = "test-stream") -> str:

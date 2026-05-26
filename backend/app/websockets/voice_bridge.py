@@ -33,6 +33,7 @@ from app.services.ai.elevenlabs_voice_agent import ElevenLabsVoiceAgentSession
 from app.services.ai.grok import GrokVoiceAgentSession
 from app.services.ai.ivr.gate import GateOutcome, GateResult, IVRGate
 from app.services.ai.openai_credentials import is_openai_configured
+from app.services.ai.protocols import supports_tools
 from app.services.ai.tool_executor import create_tool_callback
 from app.services.ai.voice_agent import VoiceAgentSession
 from app.services.ai.voice_session_factory import create_voice_session
@@ -143,8 +144,8 @@ async def _setup_voice_session(
     Args:
         skip_ivr_detection: If True, skip AI-based IVR detection (Phase 1 gate handled it)
     """
-    # Set up tool callback for Grok and ElevenLabs voice sessions (both support tools)
-    if isinstance(voice_session, (GrokVoiceAgentSession, ElevenLabsVoiceAgentSession)):
+    # Set up tool callback for any provider session that supports tool calls.
+    if supports_tools(voice_session):
         log.info(
             "setting_up_tool_callback",
             session_type=type(voice_session).__name__,

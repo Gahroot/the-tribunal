@@ -159,8 +159,8 @@ class VoiceAgentProtocol(Protocol):
 class ToolCallableProtocol(Protocol):
     """Protocol for voice agents that support tool/function calling.
 
-    Implemented by Grok and ElevenLabs voice agents for Cal.com booking,
-    web search, X search, and DTMF tools.
+    Implemented by OpenAI, Grok, and ElevenLabs voice agents for Cal.com
+    booking, web search, X search, and DTMF tools.
     """
 
     def set_tool_callback(

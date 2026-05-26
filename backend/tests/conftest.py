@@ -6,9 +6,15 @@ Provides:
   backed by factory_boy. See ``tests/factories.py`` and ``CONTRIBUTING.md``.
 """
 
+import os
 from collections.abc import AsyncIterator, Iterator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
+
+# Keep test security/CORS expectations deterministic even when a developer's
+# local backend/.env disables webhook verification or Vercel preview CORS.
+os.environ.setdefault("SKIP_WEBHOOK_VERIFICATION", "false")
+os.environ.setdefault("CORS_ALLOW_VERCEL_PREVIEWS", "true")
 
 import pytest
 

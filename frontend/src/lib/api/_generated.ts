@@ -533,6 +533,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/realtime/token/{agent_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Realtime Token Compat
+         * @description Temporary GET compatibility wrapper for older voice-test callers.
+         */
+        get: operations["get_realtime_token_compat_api_v1_realtime_token__agent_id__get"];
+        put?: never;
+        /**
+         * Create Realtime Token
+         * @description Create an authenticated OpenAI Realtime client secret for voice testing.
+         */
+        post: operations["create_realtime_token_api_v1_realtime_token__agent_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/realtor/campaigns": {
         parameters: {
             query?: never;
@@ -4174,6 +4198,410 @@ export interface paths {
          * @description Delete a line item.
          */
         delete: operations["delete_line_item_api_v1_workspaces__workspace_id__opportunities__opportunity_id__line_items__item_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/outbound-missions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Missions
+         * @description List outbound missions in a workspace with optional filters.
+         */
+        get: operations["list_missions_api_v1_workspaces__workspace_id__outbound_missions_get"];
+        put?: never;
+        /**
+         * Create Mission
+         * @description Create a new outbound mission in DRAFT status.
+         */
+        post: operations["create_mission_api_v1_workspaces__workspace_id__outbound_missions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Mission
+         * @description Fetch a single outbound mission.
+         */
+        get: operations["get_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__get"];
+        /**
+         * Update Mission
+         * @description Partially update an outbound mission.
+         *
+         *     Field updates are only allowed when the mission is in DRAFT, PAUSED, or
+         *     ARCHIVED status. The ``status`` field is intentionally read-only here —
+         *     callers must use the dedicated lifecycle endpoints (start/pause/resume/
+         *     complete/archive).
+         */
+        put: operations["update_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__put"];
+        post?: never;
+        /**
+         * Delete Mission
+         * @description Delete a mission.
+         *
+         *     Only DRAFT or ARCHIVED missions can be deleted outright. Active or paused
+         *     missions must be archived first (via ``POST /{id}/archive``) — this
+         *     preserves the audit trail of any prospects/sequence enrollments that
+         *     referenced the mission.
+         */
+        delete: operations["delete_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Mission
+         * @description Partially update an outbound mission.
+         *
+         *     Field updates are only allowed when the mission is in DRAFT, PAUSED, or
+         *     ARCHIVED status. The ``status`` field is intentionally read-only here —
+         *     callers must use the dedicated lifecycle endpoints (start/pause/resume/
+         *     complete/archive).
+         */
+        patch: operations["update_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive Mission
+         * @description Archive a mission (any state except already-archived).
+         */
+        post: operations["archive_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete Mission
+         * @description Mark a mission as completed.
+         */
+        post: operations["complete_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/discovery-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Mission Discovery Jobs
+         * @description List discovery jobs that emitted prospects into this mission.
+         */
+        get: operations["list_mission_discovery_jobs_api_v1_workspaces__workspace_id__outbound_missions__mission_id__discovery_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/discovery-jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Mission Discovery Job
+         * @description Fetch a single discovery job.
+         */
+        get: operations["get_mission_discovery_job_api_v1_workspaces__workspace_id__outbound_missions__mission_id__discovery_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/enrichment-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Mission Enrichment Status
+         * @description Aggregate enrichment status for a mission.
+         *
+         *     Returns counts grouped by ``(provider, status)`` plus totals for the
+         *     prospect-level enrichment counters. Useful to drive a Lead Miner status
+         *     panel without paginating the raw audit table.
+         */
+        get: operations["get_mission_enrichment_status_api_v1_workspaces__workspace_id__outbound_missions__mission_id__enrichment_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/enrollments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Mission Enrollments
+         * @description List sequence enrollments for the mission.
+         */
+        get: operations["list_mission_enrollments_api_v1_workspaces__workspace_id__outbound_missions__mission_id__enrollments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause Mission
+         * @description Pause an active mission.
+         */
+        post: operations["pause_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/prospects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Mission Prospects
+         * @description List prospects belonging to a mission with filter + pagination.
+         */
+        get: operations["list_mission_prospects_api_v1_workspaces__workspace_id__outbound_missions__mission_id__prospects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/prospects/{prospect_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Mission Prospect
+         * @description Fetch a single prospect that belongs to ``mission_id``.
+         */
+        get: operations["get_mission_prospect_api_v1_workspaces__workspace_id__outbound_missions__mission_id__prospects__prospect_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/prospects/{prospect_id}/enrichment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Prospect Enrichment Results
+         * @description List enrichment audit rows for a single prospect (newest first).
+         */
+        get: operations["list_prospect_enrichment_results_api_v1_workspaces__workspace_id__outbound_missions__mission_id__prospects__prospect_id__enrichment_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/prospects/{prospect_id}/select": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Select Mission Prospect
+         * @description Select a prospect for outreach — moves status to QUEUED.
+         */
+        post: operations["select_mission_prospect_api_v1_workspaces__workspace_id__outbound_missions__mission_id__prospects__prospect_id__select_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/prospects/{prospect_id}/suppress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suppress Mission Prospect
+         * @description Suppress a prospect (do-not-contact).
+         */
+        post: operations["suppress_mission_prospect_api_v1_workspaces__workspace_id__outbound_missions__mission_id__prospects__prospect_id__suppress_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Mission
+         * @description Resume a paused mission.
+         */
+        post: operations["resume_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/sequence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Mission Sequence Overview
+         * @description Return the mission's default sequence + enrollment counters.
+         *
+         *     Response shape::
+         *
+         *         {
+         *           "mission_id": "<uuid>",
+         *           "default_sequence": OutboundSequenceResponse | null,
+         *           "enrollment_counts": {"active": 3, "completed": 12, ...},
+         *           "total_enrollments": 27
+         *         }
+         */
+        get: operations["get_mission_sequence_overview_api_v1_workspaces__workspace_id__outbound_missions__mission_id__sequence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Mission
+         * @description Start (or resume) a mission — moves DRAFT/PAUSED → ACTIVE.
+         */
+        post: operations["start_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/outbound-missions/{mission_id}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Mission Stats
+         * @description Return mission counters with derived reply / qualification / booking rates.
+         */
+        get: operations["get_mission_stats_api_v1_workspaces__workspace_id__outbound_missions__mission_id__stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -7985,6 +8413,18 @@ export interface components {
          */
         DiscountType: "percentage" | "fixed" | "free_service";
         /**
+         * DiscoveryJobStatus
+         * @description Lead discovery job lifecycle status.
+         * @enum {string}
+         */
+        DiscoveryJobStatus: "pending" | "running" | "succeeded" | "failed" | "cancelled";
+        /**
+         * DiscoverySourceType
+         * @description Where a lead discovery job pulls candidate prospects from.
+         * @enum {string}
+         */
+        DiscoverySourceType: "google_places" | "web_scrape" | "csv_import" | "manual" | "api" | "linkedin" | "other";
+        /**
          * DripCampaignCreate
          * @description Request to create a drip campaign.
          */
@@ -8264,6 +8704,18 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /**
+         * EnrichmentProvider
+         * @description Lead enrichment provider identifier.
+         * @enum {string}
+         */
+        EnrichmentProvider: "google_places" | "website_scraper" | "ai_content_analyzer" | "linkedin_lookup" | "email_lookup" | "phone_lookup" | "manual" | "other";
+        /**
+         * EnrichmentResultStatus
+         * @description Outcome status of a single enrichment provider call.
+         * @enum {string}
+         */
+        EnrichmentResultStatus: "success" | "partial" | "failed" | "skipped";
         /**
          * EnrollContactsRequest
          * @description Request to enroll contacts in a drip campaign.
@@ -9246,6 +9698,112 @@ export interface components {
             title?: string | null;
         };
         /**
+         * LeadDiscoveryJobResponse
+         * @description Response for a discovery job.
+         */
+        LeadDiscoveryJobResponse: {
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Discovered Count */
+            discovered_count: number;
+            /** Duplicate Count */
+            duplicate_count: number;
+            /** Error Count */
+            error_count: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Invalid Count */
+            invalid_count: number;
+            /** Last Error */
+            last_error: string | null;
+            /** Mission Id */
+            mission_id: string | null;
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+            /** Query */
+            query: string | null;
+            /** Requested By Id */
+            requested_by_id: number | null;
+            /** Requested Count */
+            requested_count: number;
+            /** Source Label */
+            source_label: string | null;
+            source_type: components["schemas"]["DiscoverySourceType"];
+            /** Started At */
+            started_at: string | null;
+            status: components["schemas"]["DiscoveryJobStatus"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+        };
+        /**
+         * LeadEnrichmentResultResponse
+         * @description Response for a single enrichment result.
+         */
+        LeadEnrichmentResultResponse: {
+            /** Cost Cents */
+            cost_cents: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Duration Ms */
+            duration_ms: number | null;
+            /** Error Message */
+            error_message: string | null;
+            /** Extracted */
+            extracted: {
+                [key: string]: unknown;
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Mission Id */
+            mission_id: string | null;
+            /**
+             * Prospect Id
+             * Format: uuid
+             */
+            prospect_id: string;
+            provider: components["schemas"]["EnrichmentProvider"];
+            /** Request Payload */
+            request_payload: {
+                [key: string]: unknown;
+            } | null;
+            /** Response Payload */
+            response_payload: {
+                [key: string]: unknown;
+            } | null;
+            /** Score Delta */
+            score_delta: number;
+            status: components["schemas"]["EnrichmentResultStatus"];
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+        };
+        /**
          * LeadImportDetail
          * @description Per-lead detail in import response.
          */
@@ -9381,6 +9939,111 @@ export interface components {
             name?: string | null;
             /** Thumbnail Url */
             thumbnail_url?: string | null;
+        };
+        /**
+         * LeadProspectResponse
+         * @description Response for a lead prospect (decrypted PII fields included).
+         */
+        LeadProspectResponse: {
+            /** Bounce Count */
+            bounce_count: number;
+            /** City */
+            city: string | null;
+            /** Company Name */
+            company_name: string | null;
+            /** Contact Id */
+            contact_id: number | null;
+            /** Country Code */
+            country_code: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Dedupe Key */
+            dedupe_key: string | null;
+            /**
+             * Discovered At
+             * Format: date-time
+             */
+            discovered_at: string;
+            /** Discovery Job Id */
+            discovery_job_id: string | null;
+            /** Email */
+            email: string | null;
+            /** Enrichment Attempts */
+            enrichment_attempts: number;
+            /** Evidence */
+            evidence: {
+                [key: string]: unknown;
+            }[];
+            /** First Name */
+            first_name: string | null;
+            /** Full Name */
+            full_name: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            identity_kind: components["schemas"]["ProspectIdentityKind"];
+            /** Last Contacted At */
+            last_contacted_at: string | null;
+            /** Last Enriched At */
+            last_enriched_at: string | null;
+            /** Last Failed At */
+            last_failed_at: string | null;
+            /** Last Name */
+            last_name: string | null;
+            /** Last Replied At */
+            last_replied_at: string | null;
+            /** Lead Score */
+            lead_score: number;
+            /** Linkedin Url */
+            linkedin_url: string | null;
+            /** Location Label */
+            location_label: string | null;
+            /** Mission Id */
+            mission_id: string | null;
+            /** Phone Number */
+            phone_number: string | null;
+            /** Promoted At */
+            promoted_at: string | null;
+            /** Provenance */
+            provenance: {
+                [key: string]: unknown;
+            };
+            /** Qualification Score */
+            qualification_score: number;
+            /** Region */
+            region: string | null;
+            /** Reply Count */
+            reply_count: number;
+            /** Source External Id */
+            source_external_id: string | null;
+            /** Source Query */
+            source_query: string | null;
+            /** Source Type */
+            source_type: string | null;
+            status: components["schemas"]["ProspectStatus"];
+            /** Suppression Reason */
+            suppression_reason: string | null;
+            /** Title */
+            title: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Website Host */
+            website_host: string | null;
+            /** Website Url */
+            website_url: string | null;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
         };
         /**
          * LeadSourceCreate
@@ -9786,6 +10449,12 @@ export interface components {
              */
             workspace_id: string;
         };
+        /**
+         * MissionStatus
+         * @description Outbound mission lifecycle status.
+         * @enum {string}
+         */
+        MissionStatus: "draft" | "active" | "paused" | "completed" | "archived";
         /**
          * NotificationSettings
          * @description Schema for notification settings.
@@ -10671,6 +11340,295 @@ export interface components {
             success: boolean;
         };
         /**
+         * OutboundMissionCreate
+         * @description Request to create an outbound mission.
+         */
+        OutboundMissionCreate: {
+            /**
+             * Daily Outreach Cap
+             * @default 50
+             */
+            daily_outreach_cap: number;
+            /**
+             * Daily Prospect Cap
+             * @default 100
+             */
+            daily_prospect_cap: number;
+            /** Default Agent Id */
+            default_agent_id?: string | null;
+            /** Default From Email */
+            default_from_email?: string | null;
+            /** Default From Phone Number */
+            default_from_phone_number?: string | null;
+            /** Default Sequence Id */
+            default_sequence_id?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Discovery Config */
+            discovery_config?: {
+                [key: string]: unknown;
+            };
+            /** Enrichment Config */
+            enrichment_config?: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            /**
+             * Objective
+             * @default book_call
+             */
+            objective: string;
+            /** Offer Id */
+            offer_id?: string | null;
+            /** Sequence Config */
+            sequence_config?: {
+                [key: string]: unknown;
+            };
+            /** Target Audience */
+            target_audience?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Timezone
+             * @default America/New_York
+             */
+            timezone: string;
+        };
+        /**
+         * OutboundMissionResponse
+         * @description Response for an outbound mission.
+         */
+        OutboundMissionResponse: {
+            /** Archived At */
+            archived_at: string | null;
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By Id */
+            created_by_id: number | null;
+            /** Daily Outreach Cap */
+            daily_outreach_cap: number;
+            /** Daily Prospect Cap */
+            daily_prospect_cap: number;
+            /** Default Agent Id */
+            default_agent_id: string | null;
+            /** Default From Email */
+            default_from_email: string | null;
+            /** Default From Phone Number */
+            default_from_phone_number: string | null;
+            /** Default Sequence Id */
+            default_sequence_id: string | null;
+            /** Description */
+            description: string | null;
+            /** Discovery Config */
+            discovery_config: {
+                [key: string]: unknown;
+            };
+            /** Enrichment Config */
+            enrichment_config: {
+                [key: string]: unknown;
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Run At */
+            last_run_at: string | null;
+            /** Name */
+            name: string;
+            /** Next Run At */
+            next_run_at: string | null;
+            /** Objective */
+            objective: string;
+            /** Offer Id */
+            offer_id: string | null;
+            /** Paused At */
+            paused_at: string | null;
+            /** Sequence Config */
+            sequence_config: {
+                [key: string]: unknown;
+            };
+            /** Started At */
+            started_at: string | null;
+            status: components["schemas"]["MissionStatus"];
+            /** Target Audience */
+            target_audience: {
+                [key: string]: unknown;
+            };
+            /** Timezone */
+            timezone: string;
+            /** Total Appointments Booked */
+            total_appointments_booked: number;
+            /** Total Contacts Created */
+            total_contacts_created: number;
+            /** Total Prospects Contacted */
+            total_prospects_contacted: number;
+            /** Total Prospects Discovered */
+            total_prospects_discovered: number;
+            /** Total Prospects Enriched */
+            total_prospects_enriched: number;
+            /** Total Prospects Qualified */
+            total_prospects_qualified: number;
+            /** Total Prospects Replied */
+            total_prospects_replied: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+        };
+        /**
+         * OutboundMissionStatsResponse
+         * @description Aggregate stats for an outbound mission.
+         */
+        OutboundMissionStatsResponse: {
+            /** Booking Rate */
+            booking_rate: number;
+            /**
+             * Mission Id
+             * Format: uuid
+             */
+            mission_id: string;
+            /** Qualification Rate */
+            qualification_rate: number;
+            /** Reply Rate */
+            reply_rate: number;
+            /** Total Appointments Booked */
+            total_appointments_booked: number;
+            /** Total Contacts Created */
+            total_contacts_created: number;
+            /** Total Prospects Contacted */
+            total_prospects_contacted: number;
+            /** Total Prospects Discovered */
+            total_prospects_discovered: number;
+            /** Total Prospects Enriched */
+            total_prospects_enriched: number;
+            /** Total Prospects Qualified */
+            total_prospects_qualified: number;
+            /** Total Prospects Replied */
+            total_prospects_replied: number;
+        };
+        /**
+         * OutboundMissionUpdate
+         * @description Partial update for an outbound mission.
+         */
+        OutboundMissionUpdate: {
+            /** Daily Outreach Cap */
+            daily_outreach_cap?: number | null;
+            /** Daily Prospect Cap */
+            daily_prospect_cap?: number | null;
+            /** Default Agent Id */
+            default_agent_id?: string | null;
+            /** Default From Email */
+            default_from_email?: string | null;
+            /** Default From Phone Number */
+            default_from_phone_number?: string | null;
+            /** Default Sequence Id */
+            default_sequence_id?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Discovery Config */
+            discovery_config?: {
+                [key: string]: unknown;
+            } | null;
+            /** Enrichment Config */
+            enrichment_config?: {
+                [key: string]: unknown;
+            } | null;
+            /** Name */
+            name?: string | null;
+            /** Objective */
+            objective?: string | null;
+            /** Offer Id */
+            offer_id?: string | null;
+            /** Sequence Config */
+            sequence_config?: {
+                [key: string]: unknown;
+            } | null;
+            status?: components["schemas"]["MissionStatus"] | null;
+            /** Target Audience */
+            target_audience?: {
+                [key: string]: unknown;
+            } | null;
+            /** Timezone */
+            timezone?: string | null;
+        };
+        /**
+         * OutboundSequenceEnrollmentResponse
+         * @description Response for a sequence enrollment.
+         */
+        OutboundSequenceEnrollmentResponse: {
+            /** Attempts Made */
+            attempts_made: number;
+            /** Cancel Reason */
+            cancel_reason: string | null;
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Current Step */
+            current_step: number;
+            /**
+             * Enrolled At
+             * Format: date-time
+             */
+            enrolled_at: string;
+            /** Failed Attempts */
+            failed_attempts: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Attempt At */
+            last_attempt_at: string | null;
+            /** Last Outcome */
+            last_outcome: string | null;
+            /** Mission Id */
+            mission_id: string | null;
+            /** Next Step At */
+            next_step_at: string | null;
+            /** Paused Until */
+            paused_until: string | null;
+            /**
+             * Prospect Id
+             * Format: uuid
+             */
+            prospect_id: string;
+            /**
+             * Sequence Id
+             * Format: uuid
+             */
+            sequence_id: string;
+            status: components["schemas"]["SequenceEnrollmentStatus"];
+            /** Successful Attempts */
+            successful_attempts: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+        };
+        /**
          * PaginatedAgents
          * @description Paginated agents response.
          */
@@ -10777,12 +11735,44 @@ export interface components {
             total: number;
         };
         /**
+         * PaginatedLeadDiscoveryJobs
+         * @description Paginated discovery job list.
+         */
+        PaginatedLeadDiscoveryJobs: {
+            /** Items */
+            items: components["schemas"]["LeadDiscoveryJobResponse"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Pages */
+            pages: number;
+            /** Total */
+            total: number;
+        };
+        /**
          * PaginatedLeadMagnets
          * @description Paginated lead magnets response.
          */
         PaginatedLeadMagnets: {
             /** Items */
             items: components["schemas"]["LeadMagnetResponse"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Pages */
+            pages: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * PaginatedLeadProspects
+         * @description Paginated prospect list.
+         */
+        PaginatedLeadProspects: {
+            /** Items */
+            items: components["schemas"]["LeadProspectResponse"][];
             /** Page */
             page: number;
             /** Page Size */
@@ -10847,6 +11837,22 @@ export interface components {
         PaginatedOpportunities: {
             /** Items */
             items: components["schemas"]["OpportunityResponse"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Pages */
+            pages: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * PaginatedOutboundMissions
+         * @description Paginated mission list.
+         */
+        PaginatedOutboundMissions: {
+            /** Items */
+            items: components["schemas"]["OutboundMissionResponse"][];
             /** Page */
             page: number;
             /** Page Size */
@@ -11363,6 +12369,21 @@ export interface components {
             traffic_percentage?: number | null;
         };
         /**
+         * ProspectIdentityKind
+         * @description Primary identity facet for a prospect.
+         *
+         *     Used to route enrichment + dedupe behaviour. ``MULTI`` means more than one
+         *     identifier is populated (e.g. phone + email + website).
+         * @enum {string}
+         */
+        ProspectIdentityKind: "phone" | "email" | "website" | "owner_name" | "multi";
+        /**
+         * ProspectStatus
+         * @description Lead prospect lifecycle status.
+         * @enum {string}
+         */
+        ProspectStatus: "new" | "enriching" | "enriched" | "queued" | "contacted" | "replied" | "qualified" | "converted" | "suppressed" | "archived";
+        /**
          * PublicOfferResponse
          * @description Public offer response - no sensitive data.
          */
@@ -11576,6 +12597,42 @@ export interface components {
             min_score: number;
             /** Title */
             title: string;
+        };
+        /**
+         * RealtimeTokenRequest
+         * @description Optional test-session overrides for a Realtime client secret.
+         */
+        RealtimeTokenRequest: {
+            /** Initial Greeting */
+            initial_greeting?: string | null;
+            /** Instructions */
+            instructions?: string | null;
+            /** Silence Duration Ms */
+            silence_duration_ms?: number | null;
+            /** Turn Detection Threshold */
+            turn_detection_threshold?: number | null;
+            /** Voice */
+            voice?: string | null;
+        };
+        /**
+         * RealtimeTokenResponse
+         * @description Realtime client secret response.
+         */
+        RealtimeTokenResponse: {
+            /** Agent */
+            agent: {
+                [key: string]: string | null;
+            };
+            /** Client Secret */
+            client_secret: {
+                [key: string]: string;
+            };
+            /** Model */
+            model: string;
+            /** Tools */
+            tools: {
+                [key: string]: unknown;
+            }[];
         };
         /**
          * RealtorCampaignResponse
@@ -11863,6 +12920,12 @@ export interface components {
             /** From Number */
             from_number?: string | null;
         };
+        /**
+         * SequenceEnrollmentStatus
+         * @description Per-prospect sequence enrollment status.
+         * @enum {string}
+         */
+        SequenceEnrollmentStatus: "active" | "paused" | "completed" | "replied" | "opted_out" | "converted" | "failed" | "cancelled";
         /**
          * TagCreate
          * @description Schema for creating a tag.
@@ -13784,6 +14847,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OptInResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_realtime_token_compat_api_v1_realtime_token__agent_id__get: {
+        parameters: {
+            query: {
+                workspace_id: string;
+            };
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RealtimeTokenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_realtime_token_api_v1_realtime_token__agent_id__post: {
+        parameters: {
+            query: {
+                workspace_id: string;
+            };
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RealtimeTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RealtimeTokenResponse"];
                 };
             };
             /** @description Validation Error */
@@ -21525,6 +22658,756 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_missions_api_v1_workspaces__workspace_id__outbound_missions_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+                status?: components["schemas"]["MissionStatus"] | null;
+                objective?: string | null;
+                search?: string | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedOutboundMissions"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_mission_api_v1_workspaces__workspace_id__outbound_missions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutboundMissionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutboundMissionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                mission_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutboundMissionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                mission_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutboundMissionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutboundMissionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                mission_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                mission_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutboundMissionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutboundMissionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                mission_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutboundMissionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                mission_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutboundMissionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_mission_discovery_jobs_api_v1_workspaces__workspace_id__outbound_missions__mission_id__discovery_jobs_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+                status?: components["schemas"]["DiscoveryJobStatus"] | null;
+                source_type?: components["schemas"]["DiscoverySourceType"] | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+                mission_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedLeadDiscoveryJobs"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_mission_discovery_job_api_v1_workspaces__workspace_id__outbound_missions__mission_id__discovery_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                mission_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeadDiscoveryJobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_mission_enrichment_status_api_v1_workspaces__workspace_id__outbound_missions__mission_id__enrichment_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                mission_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_mission_enrollments_api_v1_workspaces__workspace_id__outbound_missions__mission_id__enrollments_get: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["SequenceEnrollmentStatus"] | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+                mission_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutboundSequenceEnrollmentResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                mission_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutboundMissionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_mission_prospects_api_v1_workspaces__workspace_id__outbound_missions__mission_id__prospects_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+                status?: components["schemas"]["ProspectStatus"] | null;
+                identity_kind?: components["schemas"]["ProspectIdentityKind"] | null;
+                source_type?: string | null;
+                min_score?: number | null;
+                max_score?: number | null;
+                has_email?: boolean | null;
+                has_phone?: boolean | null;
+                search?: string | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+                mission_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedLeadProspects"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_mission_prospect_api_v1_workspaces__workspace_id__outbound_missions__mission_id__prospects__prospect_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                mission_id: string;
+                prospect_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeadProspectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_prospect_enrichment_results_api_v1_workspaces__workspace_id__outbound_missions__mission_id__prospects__prospect_id__enrichment_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+                mission_id: string;
+                prospect_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeadEnrichmentResultResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    select_mission_prospect_api_v1_workspaces__workspace_id__outbound_missions__mission_id__prospects__prospect_id__select_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                mission_id: string;
+                prospect_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeadProspectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suppress_mission_prospect_api_v1_workspaces__workspace_id__outbound_missions__mission_id__prospects__prospect_id__suppress_post: {
+        parameters: {
+            query?: {
+                reason?: string | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+                mission_id: string;
+                prospect_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeadProspectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                mission_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutboundMissionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_mission_sequence_overview_api_v1_workspaces__workspace_id__outbound_missions__mission_id__sequence_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                mission_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_mission_api_v1_workspaces__workspace_id__outbound_missions__mission_id__start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                mission_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutboundMissionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_mission_stats_api_v1_workspaces__workspace_id__outbound_missions__mission_id__stats_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                mission_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutboundMissionStatsResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

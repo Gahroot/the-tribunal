@@ -10,6 +10,7 @@ export interface Agent {
   voice_id: string;
   language: string;
   system_prompt: string;
+  initial_greeting: string | null;
   temperature: number;
   text_response_delay_ms: number;
   text_max_context_messages: number;

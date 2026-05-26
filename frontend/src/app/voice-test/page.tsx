@@ -31,6 +31,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { agentsApi } from "@/lib/api/agents";
 import { queryKeys } from "@/lib/query-keys";
+import {
+  isRealtimeAudioTranscriptDeltaEvent,
+  isRealtimeAudioTranscriptDoneEvent,
+  isRealtimeTextDoneEvent,
+} from "@/lib/realtime-events";
 import { formatTime } from "@/lib/utils/date";
 
 type TranscriptItem = {
@@ -41,6 +46,12 @@ type TranscriptItem = {
 };
 
 type ConnectionStatus = "idle" | "connecting" | "connected";
+
+type RealtimeTokenData = {
+  client_secret?: { value?: string };
+  agent?: { initial_greeting?: string | null };
+  tools?: Array<Record<string, unknown>>;
+};
 
 // OpenAI Realtime voices
 const VOICES = [
@@ -184,6 +195,7 @@ export default function VoiceTestPage() {
   const callTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
+  const currentAssistantTextRef = useRef("");
 
   // Fetch agents
   const { data: agentsData } = useQuery({
@@ -240,6 +252,7 @@ export default function VoiceTestPage() {
     if (audioStream) {
       audioStream.getTracks().forEach((t) => t.stop());
     }
+    currentAssistantTextRef.current = "";
     setAudioStream(null);
   }, [audioStream]);
 
@@ -261,6 +274,7 @@ export default function VoiceTestPage() {
       return;
     }
 
+    currentAssistantTextRef.current = "";
     setConnectionStatus("connecting");
     addTranscript("system", `Connecting to ${selectedAgent.name}...`);
 
@@ -270,17 +284,28 @@ export default function VoiceTestPage() {
       // so an XSS payload cannot lift the access token.
       const apiBase = "";
 
-      // Get ephemeral token
+      // Get ephemeral token with server-bound GA Realtime session config.
       const tokenResponse = await fetch(
         `${apiBase}/api/v1/realtime/token/${selectedAgentId}?workspace_id=${workspaceId}`,
-        { credentials: "include" }
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            voice,
+            instructions: editedSystemPrompt || undefined,
+            turn_detection_threshold: threshold,
+            silence_duration_ms: silenceDuration,
+            initial_greeting: selectedAgent.initial_greeting ?? undefined,
+          }),
+        }
       );
 
       if (!tokenResponse.ok) {
         throw new Error(`Failed to get token: ${await tokenResponse.text()}`);
       }
 
-      const tokenData = await tokenResponse.json();
+      const tokenData = (await tokenResponse.json()) as RealtimeTokenData;
       const ephemeralKey = tokenData.client_secret?.value;
 
       if (!ephemeralKey) {
@@ -330,29 +355,12 @@ export default function VoiceTestPage() {
         setCallDuration(0);
         callTimerRef.current = setInterval(() => setCallDuration((p) => p + 1), 1000);
 
-        // Configure session
-        dc.send(JSON.stringify({
-          type: "session.update",
-          session: {
-            instructions: editedSystemPrompt || "You are a helpful assistant.",
-            voice: voice,
-            input_audio_transcription: { model: "whisper-1" },
-            turn_detection: {
-              type: "server_vad",
-              threshold: threshold,
-              silence_duration_ms: silenceDuration,
-              prefix_padding_ms: 300,
-            },
-            tools: tokenData.tools ?? [],
-            tool_choice: tokenData.tools?.length > 0 ? "auto" : "none",
-          },
-        }));
-
         // Initial greeting
         if (tokenData.agent?.initial_greeting) {
           dc.send(JSON.stringify({
             type: "response.create",
             response: {
+              output_modalities: ["audio"],
               instructions: `Start by saying: "${tokenData.agent.initial_greeting}"`,
             },
           }));
@@ -365,8 +373,17 @@ export default function VoiceTestPage() {
 
           if (data.type === "conversation.item.input_audio_transcription.completed") {
             addTranscript("user", data.transcript);
-          } else if (data.type === "response.audio_transcript.done") {
-            addTranscript("assistant", data.transcript);
+          } else if (isRealtimeAudioTranscriptDeltaEvent(data.type)) {
+            const delta = data.delta as string | undefined;
+            if (delta) currentAssistantTextRef.current += delta;
+          } else if (isRealtimeAudioTranscriptDoneEvent(data.type)) {
+            const transcriptText =
+              (data.transcript as string | undefined) || currentAssistantTextRef.current;
+            if (transcriptText) addTranscript("assistant", transcriptText);
+            currentAssistantTextRef.current = "";
+          } else if (isRealtimeTextDoneEvent(data.type)) {
+            const text = data.text as string | undefined;
+            if (text) addTranscript("assistant", text);
           } else if (data.type === "response.function_call_arguments.done") {
             const { call_id, name, arguments: argsJson } = data;
             try {
@@ -387,7 +404,10 @@ export default function VoiceTestPage() {
                 type: "conversation.item.create",
                 item: { type: "function_call_output", call_id, output: JSON.stringify(toolResult) },
               }));
-              dc.send(JSON.stringify({ type: "response.create" }));
+              dc.send(JSON.stringify({
+                type: "response.create",
+                response: { output_modalities: ["audio"] },
+              }));
 
               if (toolResult.action === "end_call") {
                 setTimeout(() => {
@@ -401,7 +421,10 @@ export default function VoiceTestPage() {
                 type: "conversation.item.create",
                 item: { type: "function_call_output", call_id, output: JSON.stringify({ error: String(e) }) },
               }));
-              dc.send(JSON.stringify({ type: "response.create" }));
+              dc.send(JSON.stringify({
+                type: "response.create",
+                response: { output_modalities: ["audio"] },
+              }));
             }
           } else if (data.type === "error") {
             addTranscript("system", `Error: ${data.error?.message ?? "Unknown"}`);

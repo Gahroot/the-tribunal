@@ -16,7 +16,6 @@ export interface TokenResponse {
   agent: {
     name: string;
     voice: string;
-    instructions: string;
     language: string;
     initial_greeting: string | null;
   };
