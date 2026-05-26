@@ -27,18 +27,35 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+def _assistant_conversations_has_updated_at() -> bool:
+    result = op.get_bind().execute(
+        sa.text(
+            """
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'assistant_conversations'
+              AND column_name = 'updated_at'
+            LIMIT 1
+            """
+        )
+    ).scalar_one_or_none()
+    return result is not None
+
+
 def upgrade() -> None:
     # Add as nullable first so existing rows can be backfilled, then enforce
     # NOT NULL once every row has a value.
-    op.add_column(
-        "assistant_conversations",
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            nullable=True,
-            server_default=sa.func.now(),
-        ),
-    )
+    if not _assistant_conversations_has_updated_at():
+        op.add_column(
+            "assistant_conversations",
+            sa.Column(
+                "updated_at",
+                sa.DateTime(timezone=True),
+                nullable=True,
+                server_default=sa.func.now(),
+            ),
+        )
     op.execute(
         "UPDATE assistant_conversations SET updated_at = created_at "
         "WHERE updated_at IS NULL"
@@ -47,4 +64,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_column("assistant_conversations", "updated_at")
+    if _assistant_conversations_has_updated_at():
+        op.drop_column("assistant_conversations", "updated_at")
