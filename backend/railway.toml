@@ -2,7 +2,7 @@
 builder = "nixpacks"
 
 [deploy]
-preDeployCommand = ["bash scripts/release.sh"]
+preDeployCommand = ["alembic upgrade head"]
 startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'"
 healthcheckPath = "/readyz"
 healthcheckTimeout = 60
