@@ -26,6 +26,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 
 from alembic import op
+from app.core.encryption import hash_phone, hash_value
 
 revision: str = "dev01a1b2c3d4"
 down_revision: str | Sequence[str] | None = "cc1d2e3f4a5b"
@@ -33,15 +34,62 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+def _backfill_contact_lookup_hashes() -> None:
+    bind = op.get_bind()
+    rows = bind.execute(sa.text("SELECT id, email, phone_number FROM contacts")).mappings()
+    for row in rows:
+        email = row["email"]
+        phone_number = row["phone_number"]
+        bind.execute(
+            sa.text(
+                """
+                UPDATE contacts
+                SET email_hash = :email_hash,
+                    phone_hash = :phone_hash
+                WHERE id = :id
+                """
+            ),
+            {
+                "id": row["id"],
+                "email_hash": hash_value(email) if email is not None else None,
+                "phone_hash": hash_phone(str(phone_number)),
+            },
+        )
+
+
+def _backfill_user_lookup_hashes() -> None:
+    bind = op.get_bind()
+    rows = bind.execute(sa.text("SELECT id, email, phone_number FROM users")).mappings()
+    for row in rows:
+        email = row["email"]
+        phone_number = row["phone_number"]
+        bind.execute(
+            sa.text(
+                """
+                UPDATE users
+                SET email_hash = :email_hash,
+                    phone_hash = :phone_hash
+                WHERE id = :id
+                """
+            ),
+            {
+                "id": row["id"],
+                "email_hash": hash_value(str(email)),
+                "phone_hash": hash_phone(str(phone_number))
+                if phone_number is not None
+                else None,
+            },
+        )
+
+
 def upgrade() -> None:
     # contacts: widen PII columns to TEXT and add lookup hashes.
     op.alter_column("contacts", "email", type_=sa.Text(), existing_nullable=True)
     op.alter_column("contacts", "phone_number", type_=sa.Text(), existing_nullable=False)
     op.add_column("contacts", sa.Column("email_hash", sa.Text(), nullable=True))
-    # ``phone_hash`` is NOT NULL in the ORM; the table is empty in dev so we
-    # can add it without a backfill default. If a non-empty dev DB hits this
-    # migration, it'll need to backfill ``hash_value(phone_number)`` first.
-    op.add_column("contacts", sa.Column("phone_hash", sa.Text(), nullable=False))
+    op.add_column("contacts", sa.Column("phone_hash", sa.Text(), nullable=True))
+    _backfill_contact_lookup_hashes()
+    op.alter_column("contacts", "phone_hash", nullable=False)
     op.create_index("ix_contacts_email_hash", "contacts", ["email_hash"], unique=False)
     op.create_index("ix_contacts_phone_hash", "contacts", ["phone_hash"], unique=False)
     # Drop indexes the ORM no longer declares — the lookup hashes replace them.
@@ -51,8 +99,10 @@ def upgrade() -> None:
     # users: same shape — email is NOT NULL UNIQUE, phone is nullable.
     op.alter_column("users", "email", type_=sa.Text(), existing_nullable=False)
     op.alter_column("users", "phone_number", type_=sa.Text(), existing_nullable=True)
-    op.add_column("users", sa.Column("email_hash", sa.Text(), nullable=False))
+    op.add_column("users", sa.Column("email_hash", sa.Text(), nullable=True))
     op.add_column("users", sa.Column("phone_hash", sa.Text(), nullable=True))
+    _backfill_user_lookup_hashes()
+    op.alter_column("users", "email_hash", nullable=False)
     op.create_index("ix_users_email_hash", "users", ["email_hash"], unique=True)
     op.create_index("ix_users_phone_hash", "users", ["phone_hash"], unique=False)
     op.execute('DROP INDEX IF EXISTS "ix_users_email"')
