@@ -26,16 +26,14 @@ WORKDIR /app
 
 # Resolve dependencies first (cached layer; only invalidated when lock changes).
 COPY pyproject.toml uv.lock README.md ./
-RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-dev --no-install-project
 
 # Then copy the project source and install the project itself.
 COPY app/ ./app/
 COPY alembic/ ./alembic/
 COPY alembic.ini ./
 COPY static/ ./static/
-RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev
 
 # ---------- Stage 2: runtime ----------
 FROM python:3.12-slim AS runtime
