@@ -4,7 +4,7 @@ import type { Contact } from "./contact";
 
 export type MessageDirection = "inbound" | "outbound";
 export type MessageStatus = "queued" | "sending" | "sent" | "delivered" | "failed" | "received";
-export type MessageChannel = "sms" | "email" | "voice" | "voicemail" | "note";
+export type MessageChannel = "sms" | "email" | "imessage" | "voice" | "voicemail" | "note";
 
 export interface Message {
   id: string;
@@ -32,8 +32,11 @@ export interface Conversation {
   id: string;
   user_id: string;
   workspace_id?: string;
-  contact_id: number;
+  contact_id: number | null;
   contact?: Contact;
+  workspace_phone: string;
+  contact_phone: string;
+  channel: string;
   status: "active" | "archived" | "blocked";
   unread_count: number;
   last_message_preview?: string;

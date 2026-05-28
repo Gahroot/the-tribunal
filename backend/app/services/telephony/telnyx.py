@@ -18,6 +18,7 @@ from tenacity import (
 )
 
 from app.core.config import settings
+from app.core.encryption import hash_phone
 from app.core.metrics import (
     latency_ms_timer,
     observe_sms_sent,
@@ -619,11 +620,12 @@ class TelnyxSMSService:
         if not variants:
             return None
 
+        phone_hashes = [hash_phone(variant) for variant in variants]
         result = await db.execute(
             select(Contact)
             .where(
                 Contact.workspace_id == workspace_id,
-                Contact.phone_number.in_(variants),
+                Contact.phone_hash.in_(phone_hashes),
             )
             .limit(1)
         )

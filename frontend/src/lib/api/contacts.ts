@@ -36,6 +36,8 @@ export type BulkDeleteResponse = Schemas["BulkDeleteResponse"];
 export type BulkUpdateStatusResponse = Schemas["BulkStatusUpdateResponse"];
 export type AIToggleResponse = Schemas["AIToggleResponse"];
 
+export type ContactAgentAssignResponse = Schemas["ContactAgentAssignResponse"];
+
 // The OpenAPI spec models `ImportResult.errors` and `CSVPreviewResponse
 // .contact_fields` as loose `unknown[]`/`{ [k: string]: unknown }[]` — the
 // backend hasn't pinned them down yet. We narrow them at the boundary so UI
@@ -229,6 +231,17 @@ export const contactsApi = {
         body: { enabled },
       },
     );
+  },
+
+  assignAgent: async (
+    workspaceId: string,
+    contactId: number,
+    agentId: string | null,
+  ): Promise<ContactAgentAssignResponse> => {
+    return apiClient.post("/api/v1/workspaces/{workspace_id}/contacts/{contact_id}/agent", {
+      path: { workspace_id: workspaceId, contact_id: contactId },
+      body: { agent_id: agentId },
+    });
   },
 
   previewCSV: async (workspaceId: string, file: File): Promise<CSVPreviewResult> => {

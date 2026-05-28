@@ -21,3 +21,11 @@ export function formatPhoneNumber(phone?: string | null): string {
   }
   return phone;
 }
+
+export function normalizePhoneForComparison(phone?: string | null): string {
+  if (!phone) return "";
+  const cleaned = phone.replace(/\D/g, "");
+  if (cleaned.length === 10) return `+1${cleaned}`;
+  if (cleaned.length === 11 && cleaned[0] === "1") return `+${cleaned}`;
+  return phone.trim().toLowerCase();
+}

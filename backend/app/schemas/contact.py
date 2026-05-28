@@ -208,6 +208,20 @@ class AIToggleResponse(BaseModel):
     conversation_id: uuid.UUID
 
 
+class ContactAgentAssignRequest(BaseModel):
+    """Request schema for assigning an AI agent to a contact conversation."""
+
+    agent_id: uuid.UUID | None
+
+
+class ContactAgentAssignResponse(BaseModel):
+    """Response schema for contact-level agent assignment."""
+
+    assigned_agent_id: uuid.UUID | None
+    ai_enabled: bool
+    conversation_id: uuid.UUID
+
+
 class TimelineItem(BaseModel):
     """A unified timeline item."""
 

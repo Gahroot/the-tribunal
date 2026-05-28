@@ -8,6 +8,7 @@ import structlog
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.agent import Agent
 from app.models.contact import Contact
 from app.models.conversation import Conversation
 from app.models.phone_number import PhoneNumber
@@ -37,10 +38,24 @@ from app.services.contacts.exceptions import (
     ContactPhoneNotConfiguredError,
     ContactValidationError,
 )
-from app.services.telephony.telnyx import TelnyxSMSService
+from app.services.telephony.text_provider import get_text_message_provider
 from app.utils.phone import normalize_phone_safe
 
 logger = structlog.get_logger()
+
+
+def _preferred_provider_for_phone(phone_number: PhoneNumber) -> str | None:
+    """Keep contact sends on the sender identity's configured transport."""
+    if phone_number.imessage_enabled:
+        return "mac_relay"
+    return None
+
+
+def _sender_address_for_phone(phone_number: PhoneNumber) -> str:
+    """Return the provider-facing sender identity for a phone row."""
+    if phone_number.imessage_enabled and phone_number.mac_relay_sender_id:
+        return phone_number.mac_relay_sender_id
+    return phone_number.phone_number
 
 
 class ContactService:
@@ -335,16 +350,14 @@ class ContactService:
         workspace_id: uuid.UUID,
         message_body: str,
         from_number: str | None = None,
-        telnyx_api_key: str | None = None,
     ) -> Any:
-        """Send an SMS message to a contact.
+        """Send a configured text-channel message to a contact.
 
         Args:
             contact_id: The contact ID
             workspace_id: The workspace UUID
             message_body: Message text
             from_number: Optional specific phone number to send from
-            telnyx_api_key: Telnyx API key
 
         Returns:
             Created message object
@@ -352,7 +365,7 @@ class ContactService:
         Raises:
             ContactNotFoundError: If contact not found
             ContactValidationError: If contact has no phone number
-            ContactPhoneNotConfiguredError: If SMS service not configured
+            ContactPhoneNotConfiguredError: If text messaging is not configured
         """
         # Get contact
         contact = await self.get_contact(contact_id, workspace_id)
@@ -363,19 +376,15 @@ class ContactService:
         # Get workspace phone number for sending
         workspace_phone = await self._get_workspace_phone(workspace_id, from_number)
 
-        # Check for Telnyx API key
-        if not telnyx_api_key:
-            raise ContactPhoneNotConfiguredError("SMS service not configured")
-
-        # Send message via Telnyx (this creates/gets conversation automatically)
-        sms_service = TelnyxSMSService(telnyx_api_key)
+        sms_service = get_text_message_provider(_preferred_provider_for_phone(workspace_phone))
         try:
             message = await sms_service.send_message(
                 to_number=contact.phone_number,
-                from_number=workspace_phone.phone_number,
+                from_number=_sender_address_for_phone(workspace_phone),
                 body=message_body,
                 db=self.db,
                 workspace_id=workspace_id,
+                phone_number_id=workspace_phone.id,
             )
             return message
         finally:
@@ -403,13 +412,58 @@ class ContactService:
             ContactNotFoundError: If contact not found
             ContactValidationError: If contact has no phone number
         """
-        # Get contact
-        contact = await self.get_contact(contact_id, workspace_id)
+        conversation = await self._get_or_create_contact_conversation(contact_id, workspace_id)
+        conversation.ai_enabled = enabled
 
+        await self.db.commit()
+        await self.db.refresh(conversation)
+
+        return {
+            "ai_enabled": conversation.ai_enabled,
+            "conversation_id": conversation.id,
+        }
+
+    async def assign_agent(
+        self,
+        contact_id: int,
+        workspace_id: uuid.UUID,
+        agent_id: uuid.UUID | None,
+    ) -> dict[str, Any]:
+        """Assign an AI agent to a contact's active text conversation."""
+        conversation = await self._get_or_create_contact_conversation(contact_id, workspace_id)
+
+        if agent_id is not None:
+            agent_result = await self.db.execute(
+                select(Agent).where(
+                    Agent.id == agent_id,
+                    Agent.workspace_id == workspace_id,
+                    Agent.is_active.is_(True),
+                )
+            )
+            if agent_result.scalar_one_or_none() is None:
+                raise ContactValidationError("Agent not found or inactive")
+
+        conversation.assigned_agent_id = agent_id
+        conversation.ai_enabled = agent_id is not None
+        await self.db.commit()
+        await self.db.refresh(conversation)
+
+        return {
+            "assigned_agent_id": conversation.assigned_agent_id,
+            "ai_enabled": conversation.ai_enabled,
+            "conversation_id": conversation.id,
+        }
+
+    async def _get_or_create_contact_conversation(
+        self,
+        contact_id: int,
+        workspace_id: uuid.UUID,
+    ) -> Conversation:
+        """Find or create the most relevant conversation for contact-level settings."""
+        contact = await self.get_contact(contact_id, workspace_id)
         if not contact.phone_number:
             raise ContactValidationError("Contact does not have a phone number")
 
-        # Normalize the contact phone number for matching
         normalized_contact_phone = (
             normalize_phone_safe(contact.phone_number) or contact.phone_number
         )
@@ -420,6 +474,7 @@ class ContactService:
             .where(
                 Conversation.workspace_id == workspace_id,
                 Conversation.contact_id == contact_id,
+                Conversation.channel.in_(("sms", "imessage")),
             )
             .order_by(Conversation.updated_at.desc())
             .limit(1)
@@ -432,6 +487,7 @@ class ContactService:
                 select(Conversation)
                 .where(
                     Conversation.workspace_id == workspace_id,
+                    Conversation.channel.in_(("sms", "imessage")),
                     or_(
                         Conversation.contact_phone == contact.phone_number,
                         Conversation.contact_phone == normalized_contact_phone,
@@ -446,32 +502,21 @@ class ContactService:
             if conversation is not None:
                 conversation.contact_id = contact_id
 
-        # If still no conversation, create one
-        if conversation is None:
-            # Get a workspace phone number
-            workspace_phone = await self._get_workspace_phone(workspace_id, None)
+        if conversation is not None:
+            return conversation
 
-            # Create conversation
-            conversation = Conversation(
-                workspace_id=workspace_id,
-                contact_id=contact_id,
-                workspace_phone=workspace_phone.phone_number,
-                contact_phone=normalized_contact_phone,
-                channel="sms",
-                ai_enabled=enabled,
-            )
-            self.db.add(conversation)
-        else:
-            # Update existing conversation
-            conversation.ai_enabled = enabled
-
-        await self.db.commit()
-        await self.db.refresh(conversation)
-
-        return {
-            "ai_enabled": conversation.ai_enabled,
-            "conversation_id": conversation.id,
-        }
+        workspace_phone = await self._get_workspace_phone(workspace_id, None)
+        conversation = Conversation(
+            workspace_id=workspace_id,
+            contact_id=contact_id,
+            workspace_phone=_sender_address_for_phone(workspace_phone),
+            contact_phone=normalized_contact_phone,
+            channel="imessage" if workspace_phone.imessage_enabled else "sms",
+            ai_enabled=True,
+        )
+        self.db.add(conversation)
+        await self.db.flush()
+        return conversation
 
     async def _get_workspace_phone(
         self,
@@ -505,7 +550,8 @@ class ContactService:
             if workspace_phone is None:
                 raise ContactValidationError("Specified phone number not found or not SMS-enabled")
         else:
-            # Use the first available SMS-enabled phone number
+            # Use the first available text-enabled sender, preferring iMessage
+            # relay identities for contact-level automation setup.
             phone_result = await self.db.execute(
                 select(PhoneNumber)
                 .where(
@@ -513,6 +559,7 @@ class ContactService:
                     PhoneNumber.sms_enabled.is_(True),
                     PhoneNumber.is_active.is_(True),
                 )
+                .order_by(PhoneNumber.imessage_enabled.desc(), PhoneNumber.created_at)
                 .limit(1)
             )
             workspace_phone = phone_result.scalar_one_or_none()

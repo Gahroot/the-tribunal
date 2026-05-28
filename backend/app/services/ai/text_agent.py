@@ -18,7 +18,6 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.models.agent import Agent
 from app.models.conversation import Conversation, Message
 from app.services.ai.message_context_builder import build_message_context
@@ -51,7 +50,7 @@ async def process_inbound_with_ai(  # noqa: PLR0911
         workspace_id: Workspace ID
         db: Database session
     """
-    from app.services.telephony.telnyx import TelnyxSMSService
+    from app.services.telephony.text_provider import get_text_message_provider
 
     log = logger.bind(conversation_id=str(conversation_id))
     log.info("processing_inbound_with_ai")
@@ -140,13 +139,7 @@ async def process_inbound_with_ai(  # noqa: PLR0911
         log.warning("no_response_generated")
         return
 
-    # Send response via SMS
-    telnyx_api_key = settings.telnyx_api_key
-    if not telnyx_api_key:
-        log.error("no_telnyx_api_key")
-        return
-
-    sms_service = TelnyxSMSService(telnyx_api_key)
+    sms_service = get_text_message_provider(_preferred_provider_for_conversation(conversation))
     try:
         await sms_service.send_message(
             to_number=conversation.contact_phone,
@@ -168,6 +161,13 @@ async def process_inbound_with_ai(  # noqa: PLR0911
         )
     finally:
         await sms_service.close()
+
+
+def _preferred_provider_for_conversation(conversation: Conversation) -> str | None:
+    """Keep AI replies on the same text transport as the inbound thread."""
+    if conversation.channel == "imessage":
+        return "mac_relay"
+    return None
 
 
 async def schedule_ai_response(

@@ -11,9 +11,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.encryption import hash_phone
 from app.core.metrics import observe_sms_sent
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message, MessageChannel
+from app.models.phone_number import PhoneNumber
 from app.models.user import User
 from app.models.workspace import WorkspaceMembership
 from app.services.ai.text_agent import schedule_ai_response
@@ -312,15 +314,38 @@ async def _get_or_create_text_conversation(
             if contact is not None:
                 conversation.contact_id = contact.id
                 await db.commit()
+        if conversation.assigned_agent_id is None:
+            conversation.assigned_agent_id = await _resolve_existing_contact_agent_id(
+                db,
+                workspace_id,
+                conversation.contact_id,
+            )
+            if conversation.assigned_agent_id is None:
+                conversation.assigned_agent_id = await _resolve_default_agent_id(
+                    db,
+                    workspace_id,
+                    workspace_phone,
+                )
+            if conversation.assigned_agent_id is not None:
+                await db.commit()
         return conversation
 
     contact = await _find_contact_by_phone(db, workspace_id, contact_phone)
+    assigned_agent_id = await _resolve_existing_contact_agent_id(
+        db,
+        workspace_id,
+        contact.id if contact else None,
+    )
+    if assigned_agent_id is None:
+        assigned_agent_id = await _resolve_default_agent_id(db, workspace_id, workspace_phone)
+
     conversation = Conversation(
         workspace_id=workspace_id,
         contact_id=contact.id if contact else None,
         workspace_phone=workspace_phone,
         contact_phone=contact_phone,
         channel=channel,
+        assigned_agent_id=assigned_agent_id,
         ai_enabled=True,
     )
     db.add(conversation)
@@ -341,17 +366,58 @@ async def _find_contact_by_phone(
     from app.utils.phone import phone_lookup_variants
 
     variants = phone_lookup_variants(contact_phone)
-    if not variants:
+    phone_hashes = [hash_phone(variant) for variant in variants]
+    if not phone_hashes:
         return None
     result = await db.execute(
         select(Contact)
         .where(
             Contact.workspace_id == workspace_id,
-            Contact.phone_number.in_(variants),
+            Contact.phone_hash.in_(phone_hashes),
         )
         .limit(1)
     )
     return result.scalars().first()
+
+
+async def _resolve_existing_contact_agent_id(
+    db: AsyncSession,
+    workspace_id: uuid.UUID,
+    contact_id: int | None,
+) -> uuid.UUID | None:
+    """Return an agent already assigned to another conversation for this contact."""
+    if contact_id is None:
+        return None
+
+    result = await db.execute(
+        select(Conversation.assigned_agent_id)
+        .where(
+            Conversation.workspace_id == workspace_id,
+            Conversation.contact_id == contact_id,
+            Conversation.channel.in_(("sms", "imessage")),
+            Conversation.assigned_agent_id.isnot(None),
+        )
+        .order_by(Conversation.updated_at.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _resolve_default_agent_id(
+    db: AsyncSession,
+    workspace_id: uuid.UUID,
+    workspace_phone: str,
+) -> uuid.UUID | None:
+    """Return the sender identity's default agent, if one is configured."""
+    result = await db.execute(
+        select(PhoneNumber.assigned_agent_id).where(
+            PhoneNumber.workspace_id == workspace_id,
+            PhoneNumber.is_active.is_(True),
+            (PhoneNumber.phone_number == workspace_phone)
+            | (PhoneNumber.mac_relay_sender_id == workspace_phone),
+        )
+    )
+    return result.scalar_one_or_none()
 
 
 async def check_operator_by_phone(
@@ -360,18 +426,17 @@ async def check_operator_by_phone(
     workspace_id: uuid.UUID,
 ) -> User | None:
     """Check if the sender is a workspace member texting from their registered phone."""
-    from app.utils.phone import normalize_phone_e164
+    from app.utils.phone import phone_lookup_variants
 
-    try:
-        normalized = normalize_phone_e164(from_number)
-    except Exception:
+    phone_hashes = [hash_phone(variant) for variant in phone_lookup_variants(from_number)]
+    if not phone_hashes:
         return None
 
     result = await db.execute(
         select(User)
         .join(WorkspaceMembership, WorkspaceMembership.user_id == User.id)
         .where(
-            User.phone_number == normalized,
+            User.phone_hash.in_(phone_hashes),
             WorkspaceMembership.workspace_id == workspace_id,
             User.is_active == True,  # noqa: E712
         )

@@ -3,10 +3,10 @@
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Integer, String
+from sqlalchemy import Boolean, DateTime, Integer, String, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.encryption import EncryptedString, LookupHash
+from app.core.encryption import EncryptedString, LookupHash, hash_phone, hash_value
 from app.db.base import Base
 
 if TYPE_CHECKING:
@@ -64,3 +64,13 @@ class User(Base):
 
     def __repr__(self) -> str:
         return f"<User(id={self.id}, email_hash={self.email_hash[:8]}...)>"
+
+
+def _sync_user_lookup_hashes(_mapper: object, _connection: object, target: User) -> None:
+    """Keep encrypted user lookup hashes in sync for all write paths."""
+    target.email_hash = hash_value(target.email)
+    target.phone_hash = hash_phone(target.phone_number) if target.phone_number else None
+
+
+event.listen(User, "before_insert", _sync_user_lookup_hashes)
+event.listen(User, "before_update", _sync_user_lookup_hashes)

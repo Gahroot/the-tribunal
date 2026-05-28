@@ -120,3 +120,21 @@ export function useToggleContactAI(workspaceId: string) {
     },
   });
 }
+
+/**
+ * Assign an AI agent to a contact's active conversation.
+ */
+export function useAssignContactAgent(workspaceId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (variables: { contactId: number; agentId: string | null }) =>
+      contactsApi.assignAgent(workspaceId, variables.contactId, variables.agentId),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.conversations.bare(workspaceId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.contacts.aiState(workspaceId, variables.contactId),
+      });
+    },
+  });
+}

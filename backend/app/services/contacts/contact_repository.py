@@ -8,6 +8,7 @@ from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.encryption import hash_phone, hash_value
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
 from app.models.tag import ContactTag
@@ -212,7 +213,9 @@ async def create_contact(
         first_name=first_name,
         last_name=last_name,
         email=email,
+        email_hash=hash_value(email) if email else None,
         phone_number=phone_number,
+        phone_hash=hash_phone(phone_number) if phone_number else None,
         company_name=company_name,
         status=status,
         tags=tags,
@@ -243,6 +246,10 @@ async def update_contact(
     """
     for field, value in update_data.items():
         setattr(contact, field, value)
+        if field == "email":
+            contact.email_hash = hash_value(value) if value else None
+        elif field == "phone_number" and value:
+            contact.phone_hash = hash_phone(value)
 
     await db.commit()
     await db.refresh(contact)
@@ -435,7 +442,12 @@ async def get_contact_timeline(
 
         for msg in recent_messages:
             # Determine type based on channel
-            item_type = "call" if msg.channel == "voice" else msg.channel
+            if msg.channel == "imessage":
+                item_type = "sms"
+            elif msg.channel == "voice":
+                item_type = "call"
+            else:
+                item_type = msg.channel
 
             signals: dict[str, Any] | None = None
             if msg.call_outcome is not None and msg.call_outcome.signals:

@@ -24,6 +24,7 @@ import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 import { isSameDay } from "@/lib/utils/date";
 import { getApiErrorMessage } from "@/lib/utils/errors";
+import { normalizePhoneForComparison } from "@/lib/utils/phone";
 import type { Conversation } from "@/types";
 
 import { ChatHeader } from "./chat-header";
@@ -112,11 +113,20 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
     enabled: !!workspaceId && !!selectedContact,
   });
 
-  // Find the conversation for the current contact
+  const selectedContactPhone = normalizePhoneForComparison(
+    selectedContact?.phone_number,
+  );
+
+  // Find the conversation for the current contact. Inbound relay threads may
+  // arrive before the contact_id is linked, so fall back to normalized phone.
   const contactConversation: Conversation | undefined =
-    conversationsData?.items?.find(
-      (conv) => conv.contact_id === selectedContact?.id,
-    );
+    conversationsData?.items?.find((conv) => {
+      if (conv.contact_id === selectedContact?.id) return true;
+      return (
+        !!selectedContactPhone &&
+        normalizePhoneForComparison(conv.contact_phone) === selectedContactPhone
+      );
+    });
 
   // Mutations for AI toggle, agent assignment, and clear history
   const toggleAIMutation = useToggleConversationAI(workspaceId ?? "");
@@ -220,6 +230,12 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
       { conversationId: contactConversation.id, agentId },
       {
         onSuccess: () => {
+          void queryClient.invalidateQueries({
+            queryKey: queryKeys.conversations.byContact(
+              workspaceId ?? "",
+              selectedContact?.id,
+            ),
+          });
           toast.success(agentId ? "Agent assigned" : "Agent unassigned");
         },
         onError: (err: unknown) => {

@@ -11,6 +11,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.encryption import hash_phone
 from app.core.metrics import (
     latency_ms_timer,
     observe_voice_call_started,
@@ -786,7 +787,7 @@ class TelnyxVoiceService:
         contact_result = await db.execute(
             select(Contact).where(
                 Contact.workspace_id == workspace_id,
-                Contact.phone_number == contact_phone,
+                Contact.phone_hash == hash_phone(contact_phone),
             )
         )
         contact = contact_result.scalar_one_or_none()

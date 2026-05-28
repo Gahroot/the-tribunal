@@ -5540,6 +5540,61 @@
         "title": "CheckoutResponse",
         "type": "object"
       },
+      "ContactAgentAssignRequest": {
+        "description": "Request schema for assigning an AI agent to a contact conversation.",
+        "properties": {
+          "agent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Id"
+          }
+        },
+        "required": [
+          "agent_id"
+        ],
+        "title": "ContactAgentAssignRequest",
+        "type": "object"
+      },
+      "ContactAgentAssignResponse": {
+        "description": "Response schema for contact-level agent assignment.",
+        "properties": {
+          "ai_enabled": {
+            "title": "Ai Enabled",
+            "type": "boolean"
+          },
+          "assigned_agent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned Agent Id"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "assigned_agent_id",
+          "ai_enabled",
+          "conversation_id"
+        ],
+        "title": "ContactAgentAssignResponse",
+        "type": "object"
+      },
       "ContactCreate": {
         "description": "Schema for creating a contact.",
         "properties": {
@@ -31459,6 +31514,74 @@
           }
         ],
         "summary": "Update Contact",
+        "tags": [
+          "Contacts"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/contacts/{contact_id}/agent": {
+      "post": {
+        "description": "Assign an AI agent to the contact's active conversation.",
+        "operationId": "assign_contact_agent_api_v1_workspaces__workspace_id__contacts__contact_id__agent_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "contact_id",
+            "required": true,
+            "schema": {
+              "title": "Contact Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactAgentAssignRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactAgentAssignResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Assign Contact Agent",
         "tags": [
           "Contacts"
         ]

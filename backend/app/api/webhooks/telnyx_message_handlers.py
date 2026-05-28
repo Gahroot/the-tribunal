@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy import select
 
 from app.core.config import settings
+from app.core.encryption import hash_phone
 from app.core.metrics import observe_sms_bounce
 from app.db.session import AsyncSessionLocal
 from app.models.conversation import Message, MessageChannel
@@ -205,18 +206,17 @@ async def handle_delivery_status(payload: dict[str, Any], log: Any) -> None:  # 
 
 async def _check_operator(db: Any, from_number: str, workspace_id: Any) -> User | None:
     """Check if the sender is a workspace member texting from their registered phone."""
-    from app.utils.phone import normalize_phone_e164
+    from app.utils.phone import phone_lookup_variants
 
-    try:
-        normalized = normalize_phone_e164(from_number)
-    except Exception:
+    phone_hashes = [hash_phone(variant) for variant in phone_lookup_variants(from_number)]
+    if not phone_hashes:
         return None
 
     result = await db.execute(
         select(User)
         .join(WorkspaceMembership, WorkspaceMembership.user_id == User.id)
         .where(
-            User.phone_number == normalized,
+            User.phone_hash.in_(phone_hashes),
             WorkspaceMembership.workspace_id == workspace_id,
             User.is_active == True,  # noqa: E712
         )

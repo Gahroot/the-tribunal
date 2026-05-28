@@ -4,11 +4,11 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, event
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.encryption import EncryptedString, LookupHash
+from app.core.encryption import EncryptedString, LookupHash, hash_phone, hash_value
 from app.db.base import Base
 
 if TYPE_CHECKING:
@@ -193,3 +193,14 @@ class Contact(Base):
 
     def __repr__(self) -> str:
         return f"<Contact(id={self.id}, phone_hash={self.phone_hash[:8]}..., status={self.status})>"
+
+
+def _sync_contact_lookup_hashes(_mapper: object, _connection: object, target: Contact) -> None:
+    """Keep encrypted contact lookup hashes in sync for all write paths."""
+    target.email_hash = hash_value(target.email) if target.email else None
+    if target.phone_number:
+        target.phone_hash = hash_phone(target.phone_number)
+
+
+event.listen(Contact, "before_insert", _sync_contact_lookup_hashes)
+event.listen(Contact, "before_update", _sync_contact_lookup_hashes)

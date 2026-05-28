@@ -58,8 +58,11 @@ class MacRelayMessageService(TelnyxSMSService):
         return self._client
 
     def _normalize_outbound_to(self, to_number: str) -> str:
-        """Normalize relay recipients to E.164 for stable conversations."""
-        return normalize_phone_e164(to_number)
+        """Allow relay recipients to be phone numbers or Apple ID emails."""
+        recipient = to_number.strip()
+        if "@" in recipient:
+            return recipient.lower()
+        return normalize_phone_e164(recipient)
 
     def _normalize_outbound_from(self, from_number: str) -> str:
         """Allow Mac relay senders to be phone aliases or Apple ID emails."""

@@ -2522,6 +2522,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/contacts/{contact_id}/agent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Assign Contact Agent
+         * @description Assign an AI agent to the contact's active conversation.
+         */
+        post: operations["assign_contact_agent_api_v1_workspaces__workspace_id__contacts__contact_id__agent_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/contacts/{contact_id}/ai/toggle": {
         parameters: {
             query?: never;
@@ -7872,6 +7892,29 @@ export interface components {
         CheckoutResponse: {
             /** Checkout Url */
             checkout_url: string;
+        };
+        /**
+         * ContactAgentAssignRequest
+         * @description Request schema for assigning an AI agent to a contact conversation.
+         */
+        ContactAgentAssignRequest: {
+            /** Agent Id */
+            agent_id: string | null;
+        };
+        /**
+         * ContactAgentAssignResponse
+         * @description Response schema for contact-level agent assignment.
+         */
+        ContactAgentAssignResponse: {
+            /** Ai Enabled */
+            ai_enabled: boolean;
+            /** Assigned Agent Id */
+            assigned_agent_id: string | null;
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
         };
         /**
          * ContactCreate
@@ -18991,6 +19034,42 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_contact_agent_api_v1_workspaces__workspace_id__contacts__contact_id__agent_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                contact_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactAgentAssignRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactAgentAssignResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

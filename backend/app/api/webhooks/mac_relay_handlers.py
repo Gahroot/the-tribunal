@@ -5,7 +5,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import AsyncSessionLocal
@@ -53,13 +53,18 @@ async def handle_mac_relay_message(payload: dict[str, Any], log: Any) -> dict[st
             log.info("mac_relay_duplicate_ignored", provider_message_id=provider_message_id)
             return {"status": "ok", "reason": "duplicate"}
 
+        sender_id = phone_record.mac_relay_sender_id
+        sender_address = (
+            sender_id if isinstance(sender_id, str) and sender_id else phone_record.phone_number
+        )
         event = InboundTextEvent(
             provider_message_id=provider_message_id,
             from_number=from_number,
-            to_number=phone_record.phone_number,
+            to_number=sender_address,
             body=body,
             workspace_id=phone_record.workspace_id,
             channel=MessageChannel.IMESSAGE,
+            response_channel=MessageChannel.IMESSAGE.value,
         )
 
         message = await process_inbound_text_event(
@@ -118,7 +123,17 @@ async def _find_workspace_phone(db: AsyncSession, to_number: str) -> PhoneNumber
     if normalized and normalized not in candidates:
         candidates.append(normalized)
 
-    result = await db.execute(select(PhoneNumber).where(PhoneNumber.phone_number.in_(candidates)))
+    result = await db.execute(
+        select(PhoneNumber)
+        .where(
+            PhoneNumber.is_active.is_(True),
+            or_(
+                PhoneNumber.phone_number.in_(candidates),
+                PhoneNumber.mac_relay_sender_id.in_(candidates),
+            ),
+        )
+        .limit(1)
+    )
     return result.scalar_one_or_none()
 
 

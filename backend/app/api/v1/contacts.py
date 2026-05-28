@@ -9,7 +9,6 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, 
 from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser, get_workspace
-from app.core.config import settings
 from app.models.contact import Contact
 from app.models.workspace import Workspace
 from app.schemas.contact import (
@@ -20,6 +19,8 @@ from app.schemas.contact import (
     BulkDeleteResponse,
     BulkStatusUpdateRequest,
     BulkStatusUpdateResponse,
+    ContactAgentAssignRequest,
+    ContactAgentAssignResponse,
     ContactCreate,
     ContactEngagementSummary,
     ContactIdsResponse,
@@ -310,7 +311,6 @@ async def send_message_to_contact(
             workspace_id=workspace.id,
             message_body=message_in.body,
             from_number=message_in.from_number,
-            telnyx_api_key=settings.telnyx_api_key,
         )
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
@@ -346,6 +346,31 @@ async def toggle_contact_ai(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
     return AIToggleResponse(**result)
+
+
+@router.post("/{contact_id}/agent", response_model=ContactAgentAssignResponse)
+async def assign_contact_agent(
+    workspace_id: uuid.UUID,
+    contact_id: int,
+    assign_in: ContactAgentAssignRequest,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> ContactAgentAssignResponse:
+    """Assign an AI agent to the contact's active conversation."""
+    service = ContactService(db)
+    try:
+        result = await service.assign_agent(
+            contact_id=contact_id,
+            workspace_id=workspace.id,
+            agent_id=assign_in.agent_id,
+        )
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+    return ContactAgentAssignResponse(**result)
 
 
 @router.get("/{contact_id}/timeline", response_model=list[TimelineItem])
