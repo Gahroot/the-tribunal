@@ -1,9 +1,9 @@
 """OpenAI Codex OAuth helpers for ChatGPT subscription sign-in.
 
-This module mirrors the Codex CLI browser login flow so a workspace can store a
-ChatGPT-backed OpenAI OAuth session instead of a Platform API key. Production
-uses the backend's hosted callback endpoint; localhost callback ports remain
-available only for local development.
+This module mirrors the Codex CLI login flows so a workspace can store a
+ChatGPT-backed OpenAI OAuth session instead of a Platform API key. Local/dev can
+use the Codex browser redirect allow-list; hosted deployments use device-code
+auth unless a custom redirect URI/client has been explicitly configured.
 """
 
 from __future__ import annotations
@@ -35,7 +35,12 @@ from app.models.workspace import WorkspaceIntegration, WorkspaceMembership
 logger = structlog.get_logger()
 
 DEFAULT_OPENAI_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
-OPENAI_OAUTH_AUTHORIZE_URL = "https://auth.openai.com/oauth/authorize"
+OPENAI_OAUTH_ISSUER = "https://auth.openai.com"
+OPENAI_OAUTH_AUTHORIZE_URL = f"{OPENAI_OAUTH_ISSUER}/oauth/authorize"
+OPENAI_OAUTH_DEVICE_USER_CODE_URL = f"{OPENAI_OAUTH_ISSUER}/api/accounts/deviceauth/usercode"
+OPENAI_OAUTH_DEVICE_TOKEN_URL = f"{OPENAI_OAUTH_ISSUER}/api/accounts/deviceauth/token"
+OPENAI_OAUTH_DEVICE_VERIFICATION_URL = f"{OPENAI_OAUTH_ISSUER}/codex/device"
+OPENAI_OAUTH_DEVICE_REDIRECT_URI = f"{OPENAI_OAUTH_ISSUER}/deviceauth/callback"
 OPENAI_OAUTH_SCOPE = "openid profile email offline_access api.connectors.read api.connectors.invoke"
 OPENAI_OAUTH_AUTH_CLAIM = "https://api.openai.com/auth"
 OPENAI_INTEGRATION_TYPE = "openai"
@@ -45,6 +50,7 @@ LOCAL_CALLBACK_HOST = "127.0.0.1"
 LOCAL_CALLBACK_PATH = "/auth/callback"
 LOCAL_CALLBACK_PORTS = (1455, 1457)
 STATE_TTL_SECONDS = 10 * 60
+DEVICE_CODE_TTL_SECONDS = 15 * 60
 
 _callback_server_lock = threading.Lock()
 _callback_server: ThreadingHTTPServer | None = None
@@ -58,11 +64,16 @@ class OpenAIOAuthError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class OpenAIOAuthStart:
-    """Authorization URL returned to the browser."""
+    """OpenAI subscription sign-in instructions returned to the browser."""
 
-    authorization_url: str
-    redirect_uri: str
+    method: str
     expires_at: int
+    authorization_url: str | None = None
+    redirect_uri: str | None = None
+    verification_url: str | None = None
+    user_code: str | None = None
+    poll_token: str | None = None
+    poll_interval_seconds: int = 5
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +92,14 @@ class OpenAIOAuthStatus:
 
 
 @dataclass(frozen=True, slots=True)
+class OpenAIOAuthDevicePollResult:
+    """Result from one device-code polling attempt."""
+
+    pending: bool
+    status: OpenAIOAuthStatus
+
+
+@dataclass(frozen=True, slots=True)
 class _OAuthState:
     """Verified OAuth callback state."""
 
@@ -89,6 +108,18 @@ class _OAuthState:
     code_verifier: str
     redirect_uri: str
     client_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class _DevicePollState:
+    """Verified OpenAI device-code polling state."""
+
+    workspace_id: uuid.UUID
+    user_id: int
+    client_id: str
+    device_auth_id: str
+    user_code: str
+    expires_at: int
 
 
 def get_openai_oauth_client_id() -> str:
@@ -136,11 +167,16 @@ def _encode_state(
     return state, expires_at_ms
 
 
-def _decode_state(state: str) -> _OAuthState:
+def _decrypt_oauth_payload(token: str) -> dict[str, Any]:
     try:
-        payload = decrypt_json(state)
+        payload = decrypt_json(token)
     except (InvalidToken, ValueError, json.JSONDecodeError) as exc:
         raise OpenAIOAuthError("OpenAI sign-in state is invalid or expired") from exc
+    return payload
+
+
+def _decode_state(state: str) -> _OAuthState:
+    payload = _decrypt_oauth_payload(state)
 
     if payload.get("typ") != OPENAI_OAUTH_STATE_TYPE:
         raise OpenAIOAuthError("OpenAI sign-in state is invalid")
@@ -167,6 +203,61 @@ def _decode_state(state: str) -> _OAuthState:
         code_verifier=code_verifier,
         redirect_uri=redirect_uri,
         client_id=client_id,
+    )
+
+
+def _encode_device_poll_state(
+    *,
+    workspace_id: uuid.UUID,
+    user_id: int,
+    client_id: str,
+    device_auth_id: str,
+    user_code: str,
+) -> tuple[str, int]:
+    expires_at = datetime.now(UTC) + timedelta(seconds=DEVICE_CODE_TTL_SECONDS)
+    expires_at_ms = int(expires_at.timestamp() * 1000)
+    poll_token = encrypt_json(
+        {
+            "typ": "openai_codex_device_auth",
+            "workspace_id": str(workspace_id),
+            "user_id": user_id,
+            "client_id": client_id,
+            "device_auth_id": device_auth_id,
+            "user_code": user_code,
+            "expires_at": expires_at_ms,
+        }
+    )
+    return poll_token, expires_at_ms
+
+
+def _decode_device_poll_state(poll_token: str) -> _DevicePollState:
+    payload = _decrypt_oauth_payload(poll_token)
+    if payload.get("typ") != "openai_codex_device_auth":
+        raise OpenAIOAuthError("OpenAI device-code sign-in state is invalid")
+
+    expires_at = _int_value(payload.get("expires_at"))
+    if expires_at is None or expires_at <= _now_ms():
+        raise OpenAIOAuthError("OpenAI device-code sign-in expired")
+
+    try:
+        workspace_id = uuid.UUID(str(payload["workspace_id"]))
+        user_id = int(payload["user_id"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise OpenAIOAuthError("OpenAI device-code sign-in state is incomplete") from exc
+
+    client_id = _string_value(payload.get("client_id"))
+    device_auth_id = _string_value(payload.get("device_auth_id"))
+    user_code = _string_value(payload.get("user_code"))
+    if client_id is None or device_auth_id is None or user_code is None:
+        raise OpenAIOAuthError("OpenAI device-code sign-in state is incomplete")
+
+    return _DevicePollState(
+        workspace_id=workspace_id,
+        user_id=user_id,
+        client_id=client_id,
+        device_auth_id=device_auth_id,
+        user_code=user_code,
+        expires_at=expires_at,
     )
 
 
@@ -234,13 +325,6 @@ def _extract_plan_type(access_token: str, id_token: str | None = None) -> str | 
 def _configured_redirect_uri() -> str | None:
     redirect_uri = settings.openai_oauth_redirect_uri.strip()
     return redirect_uri or None
-
-
-def _hosted_redirect_uri() -> str | None:
-    for base_url in (settings.api_base_url.strip(), settings.public_base_url.strip()):
-        if base_url and "localhost" not in base_url and "127.0.0.1" not in base_url:
-            return f"{base_url.rstrip('/')}/api/v1/integrations/openai/oauth/callback"
-    return None
 
 
 def _local_redirect_uri(port: int) -> str:
@@ -385,13 +469,38 @@ def ensure_local_openai_oauth_callback_server() -> str:
     raise OpenAIOAuthError(f"Could not start OpenAI sign-in callback server: {detail}")
 
 
-def build_openai_oauth_start(workspace_id: uuid.UUID, user_id: int) -> OpenAIOAuthStart:
-    """Build a Codex OAuth authorize URL for a workspace admin."""
-    redirect_uri = (
-        _configured_redirect_uri()
-        or _hosted_redirect_uri()
-        or ensure_local_openai_oauth_callback_server()
+def _is_local_url(value: str) -> bool:
+    parsed = urlparse(value)
+    hostname = parsed.hostname or ""
+    return hostname in {"localhost", "127.0.0.1", "0.0.0.0"}
+
+
+def _has_hosted_backend_url() -> bool:
+    return any(
+        bool(base_url.strip()) and not _is_local_url(base_url.strip())
+        for base_url in (settings.api_base_url, settings.public_base_url)
     )
+
+
+def _should_use_browser_oauth() -> bool:
+    if _configured_redirect_uri() is not None:
+        return True
+    environment = settings.environment.lower()
+    if environment not in {"development", "local", "test"}:
+        return False
+    return not _has_hosted_backend_url()
+
+
+async def build_openai_oauth_start(workspace_id: uuid.UUID, user_id: int) -> OpenAIOAuthStart:
+    """Build OpenAI sign-in instructions for a workspace admin."""
+    if not _should_use_browser_oauth():
+        return await _build_openai_device_code_start(workspace_id, user_id)
+    return _build_openai_browser_oauth_start(workspace_id, user_id)
+
+
+def _build_openai_browser_oauth_start(workspace_id: uuid.UUID, user_id: int) -> OpenAIOAuthStart:
+    """Build a Codex OAuth authorize URL for local/dev or explicit custom callbacks."""
+    redirect_uri = _configured_redirect_uri() or ensure_local_openai_oauth_callback_server()
     code_verifier, code_challenge = _generate_pkce_pair()
     client_id = get_openai_oauth_client_id()
     state, expires_at = _encode_state(
@@ -416,10 +525,116 @@ def build_openai_oauth_start(workspace_id: uuid.UUID, user_id: int) -> OpenAIOAu
         }
     )
     return OpenAIOAuthStart(
+        method="browser",
         authorization_url=f"{OPENAI_OAUTH_AUTHORIZE_URL}?{query}",
         redirect_uri=redirect_uri,
         expires_at=expires_at,
     )
+
+
+async def _build_openai_device_code_start(
+    workspace_id: uuid.UUID,
+    user_id: int,
+) -> OpenAIOAuthStart:
+    client_id = get_openai_oauth_client_id()
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        response = await client.post(
+            OPENAI_OAUTH_DEVICE_USER_CODE_URL,
+            headers={"Content-Type": "application/json"},
+            json={"client_id": client_id},
+        )
+
+    if response.status_code != httpx.codes.OK:
+        logger.warning(
+            "openai_device_code_request_rejected",
+            status_code=response.status_code,
+        )
+        raise OpenAIOAuthError(
+            f"OpenAI device-code sign-in failed with status {response.status_code}"
+        )
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise OpenAIOAuthError("OpenAI device-code sign-in returned invalid JSON") from exc
+
+    device_auth_id = _string_value(payload.get("device_auth_id"))
+    user_code = _string_value(payload.get("user_code")) or _string_value(payload.get("usercode"))
+    interval = _int_value(payload.get("interval")) or 5
+    if device_auth_id is None or user_code is None:
+        raise OpenAIOAuthError("OpenAI device-code sign-in returned incomplete instructions")
+
+    poll_token, expires_at = _encode_device_poll_state(
+        workspace_id=workspace_id,
+        user_id=user_id,
+        client_id=client_id,
+        device_auth_id=device_auth_id,
+        user_code=user_code,
+    )
+    return OpenAIOAuthStart(
+        method="device_code",
+        verification_url=OPENAI_OAUTH_DEVICE_VERIFICATION_URL,
+        user_code=user_code,
+        poll_token=poll_token,
+        expires_at=expires_at,
+        poll_interval_seconds=max(interval, 1),
+    )
+
+
+async def poll_openai_oauth_device_code(
+    poll_token: str,
+    *,
+    workspace_id: uuid.UUID,
+    user_id: int,
+) -> OpenAIOAuthDevicePollResult:
+    """Poll OpenAI device-code auth once and persist credentials when complete."""
+    poll_state = _decode_device_poll_state(poll_token)
+    if poll_state.workspace_id != workspace_id or poll_state.user_id != user_id:
+        raise OpenAIOAuthError("OpenAI device-code sign-in state does not match this workspace")
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        response = await client.post(
+            OPENAI_OAUTH_DEVICE_TOKEN_URL,
+            headers={"Content-Type": "application/json"},
+            json={
+                "device_auth_id": poll_state.device_auth_id,
+                "user_code": poll_state.user_code,
+            },
+        )
+
+    if response.status_code in (httpx.codes.FORBIDDEN, httpx.codes.NOT_FOUND):
+        from app.db.session import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            await _ensure_workspace_admin(db, poll_state.workspace_id, poll_state.user_id)
+            status_snapshot = await get_openai_oauth_status(db, poll_state.workspace_id)
+        return OpenAIOAuthDevicePollResult(pending=True, status=status_snapshot)
+
+    if response.status_code != httpx.codes.OK:
+        logger.warning("openai_device_code_poll_rejected", status_code=response.status_code)
+        raise OpenAIOAuthError(
+            f"OpenAI device-code polling failed with status {response.status_code}"
+        )
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise OpenAIOAuthError("OpenAI device-code polling returned invalid JSON") from exc
+
+    code = _string_value(payload.get("authorization_code"))
+    code_verifier = _string_value(payload.get("code_verifier"))
+    if code is None or code_verifier is None:
+        raise OpenAIOAuthError("OpenAI device-code polling returned incomplete authorization data")
+
+    status_snapshot = await _exchange_openai_authorization_code(
+        code=code,
+        code_verifier=code_verifier,
+        redirect_uri=OPENAI_OAUTH_DEVICE_REDIRECT_URI,
+        client_id=poll_state.client_id,
+        workspace_id=poll_state.workspace_id,
+        user_id=poll_state.user_id,
+    )
+    return OpenAIOAuthDevicePollResult(pending=False, status=status_snapshot)
 
 
 async def complete_openai_oauth_callback(
@@ -427,21 +642,40 @@ async def complete_openai_oauth_callback(
     state: str,
     redirect_uri: str | None = None,
 ) -> OpenAIOAuthStatus:
-    """Exchange an OAuth code and persist the resulting workspace credentials."""
+    """Exchange a browser OAuth code and persist the resulting workspace credentials."""
     decoded_state = _decode_state(state)
     if redirect_uri is not None and redirect_uri != decoded_state.redirect_uri:
         raise OpenAIOAuthError("OpenAI sign-in redirect URI mismatch")
 
+    return await _exchange_openai_authorization_code(
+        code=code,
+        code_verifier=decoded_state.code_verifier,
+        redirect_uri=decoded_state.redirect_uri,
+        client_id=decoded_state.client_id,
+        workspace_id=decoded_state.workspace_id,
+        user_id=decoded_state.user_id,
+    )
+
+
+async def _exchange_openai_authorization_code(
+    *,
+    code: str,
+    code_verifier: str,
+    redirect_uri: str,
+    client_id: str,
+    workspace_id: uuid.UUID,
+    user_id: int,
+) -> OpenAIOAuthStatus:
     async with httpx.AsyncClient(timeout=20.0) as client:
         response = await client.post(
             settings.openai_oauth_token_url,
             headers={"Content-Type": "application/x-www-form-urlencoded"},
             data={
                 "grant_type": "authorization_code",
-                "client_id": decoded_state.client_id,
+                "client_id": client_id,
                 "code": code,
-                "redirect_uri": decoded_state.redirect_uri,
-                "code_verifier": decoded_state.code_verifier,
+                "redirect_uri": redirect_uri,
+                "code_verifier": code_verifier,
             },
         )
 
@@ -486,16 +720,16 @@ async def complete_openai_oauth_callback(
     from app.db.session import AsyncSessionLocal
 
     async with AsyncSessionLocal() as db:
-        await _ensure_workspace_admin(db, decoded_state.workspace_id, decoded_state.user_id)
-        await _upsert_openai_oauth_credentials(db, decoded_state.workspace_id, credentials)
+        await _ensure_workspace_admin(db, workspace_id, user_id)
+        await _upsert_openai_oauth_credentials(db, workspace_id, credentials)
         logger.info(
             "openai_oauth_connected",
-            workspace_id=str(decoded_state.workspace_id),
-            user_id=decoded_state.user_id,
+            workspace_id=str(workspace_id),
+            user_id=user_id,
             account_id=account_id,
             expires_at=expires_at,
         )
-        return await get_openai_oauth_status(db, decoded_state.workspace_id)
+        return await get_openai_oauth_status(db, workspace_id)
 
 
 async def _ensure_workspace_admin(

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict
 
 from fastapi import APIRouter, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.api.deps import DB, CurrentUser, WorkspaceAccess, WorkspaceAdminAccess
 from app.services.ai.openai_oauth import (
@@ -14,6 +14,7 @@ from app.services.ai.openai_oauth import (
     complete_openai_oauth_callback,
     disconnect_openai_oauth,
     get_openai_oauth_status,
+    poll_openai_oauth_device_code,
 )
 
 router = APIRouter()
@@ -21,11 +22,16 @@ public_router = APIRouter()
 
 
 class OpenAIOAuthStartResponse(BaseModel):
-    """Browser sign-in URL for OpenAI Codex OAuth."""
+    """OpenAI subscription sign-in instructions."""
 
-    authorization_url: str
-    redirect_uri: str
+    method: str
     expires_at: int
+    authorization_url: str | None = None
+    redirect_uri: str | None = None
+    verification_url: str | None = None
+    user_code: str | None = None
+    poll_token: str | None = None
+    poll_interval_seconds: int = 5
 
 
 class OpenAIOAuthStatusResponse(BaseModel):
@@ -40,6 +46,21 @@ class OpenAIOAuthStatusResponse(BaseModel):
     plan_type: str | None = None
     api_key_configured: bool = False
     realtime_model: str
+
+
+class OpenAIOAuthDevicePollRequest(BaseModel):
+    """Encrypted device-code polling token from the start response."""
+
+    poll_token: str
+
+
+class OpenAIOAuthDevicePollResponse(BaseModel):
+    """One device-code polling result."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    pending: bool
+    status: OpenAIOAuthStatusResponse
 
 
 @router.get("/openai/oauth/status", response_model=OpenAIOAuthStatusResponse)
@@ -57,15 +78,39 @@ async def start_openai_subscription_login(
     workspace: WorkspaceAdminAccess,
     current_user: CurrentUser,
 ) -> OpenAIOAuthStartResponse:
-    """Create a Codex OAuth URL for connecting ChatGPT subscription auth."""
+    """Create Codex browser or device-code instructions for ChatGPT subscription auth."""
     try:
-        start = build_openai_oauth_start(workspace.id, current_user.id)
+        start = await build_openai_oauth_start(workspace.id, current_user.id)
     except OpenAIOAuthError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
         ) from exc
     return OpenAIOAuthStartResponse(**asdict(start))
+
+
+@router.post("/openai/oauth/device/poll", response_model=OpenAIOAuthDevicePollResponse)
+async def poll_openai_subscription_device_login(
+    workspace: WorkspaceAdminAccess,
+    current_user: CurrentUser,
+    request: OpenAIOAuthDevicePollRequest,
+) -> OpenAIOAuthDevicePollResponse:
+    """Poll OpenAI device-code sign-in once and persist credentials when complete."""
+    try:
+        result = await poll_openai_oauth_device_code(
+            request.poll_token,
+            workspace_id=workspace.id,
+            user_id=current_user.id,
+        )
+    except OpenAIOAuthError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    return OpenAIOAuthDevicePollResponse(
+        pending=result.pending,
+        status=OpenAIOAuthStatusResponse(**asdict(result.status)),
+    )
 
 
 @router.delete("/openai/oauth", response_model=OpenAIOAuthStatusResponse)

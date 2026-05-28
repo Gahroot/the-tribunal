@@ -14367,25 +14367,112 @@
         "title": "OfferUpdate",
         "type": "object"
       },
+      "OpenAIOAuthDevicePollRequest": {
+        "description": "Encrypted device-code polling token from the start response.",
+        "properties": {
+          "poll_token": {
+            "title": "Poll Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "poll_token"
+        ],
+        "title": "OpenAIOAuthDevicePollRequest",
+        "type": "object"
+      },
+      "OpenAIOAuthDevicePollResponse": {
+        "description": "One device-code polling result.",
+        "properties": {
+          "pending": {
+            "title": "Pending",
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OpenAIOAuthStatusResponse"
+          }
+        },
+        "required": [
+          "pending",
+          "status"
+        ],
+        "title": "OpenAIOAuthDevicePollResponse",
+        "type": "object"
+      },
       "OpenAIOAuthStartResponse": {
-        "description": "Browser sign-in URL for OpenAI Codex OAuth.",
+        "description": "OpenAI subscription sign-in instructions.",
         "properties": {
           "authorization_url": {
-            "title": "Authorization Url",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authorization Url"
           },
           "expires_at": {
             "title": "Expires At",
             "type": "integer"
           },
-          "redirect_uri": {
-            "title": "Redirect Uri",
+          "method": {
+            "title": "Method",
             "type": "string"
+          },
+          "poll_interval_seconds": {
+            "default": 5,
+            "title": "Poll Interval Seconds",
+            "type": "integer"
+          },
+          "poll_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poll Token"
+          },
+          "redirect_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redirect Uri"
+          },
+          "user_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Code"
+          },
+          "verification_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Url"
           }
         },
         "required": [
-          "authorization_url",
-          "redirect_uri",
+          "method",
           "expires_at"
         ],
         "title": "OpenAIOAuthStartResponse",
@@ -33862,9 +33949,68 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/integrations/openai/oauth/device/poll": {
+      "post": {
+        "description": "Poll OpenAI device-code sign-in once and persist credentials when complete.",
+        "operationId": "poll_openai_subscription_device_login_api_v1_workspaces__workspace_id__integrations_openai_oauth_device_poll_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenAIOAuthDevicePollRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenAIOAuthDevicePollResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Poll Openai Subscription Device Login",
+        "tags": [
+          "Integrations"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/integrations/openai/oauth/start": {
       "post": {
-        "description": "Create a Codex OAuth URL for connecting ChatGPT subscription auth.",
+        "description": "Create Codex browser or device-code instructions for ChatGPT subscription auth.",
         "operationId": "start_openai_subscription_login_api_v1_workspaces__workspace_id__integrations_openai_oauth_start_post",
         "parameters": [
           {

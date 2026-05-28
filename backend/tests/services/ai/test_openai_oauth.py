@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -16,6 +16,7 @@ from app.services.ai import openai_oauth
 from app.services.ai.openai_oauth import (
     DEFAULT_OPENAI_OAUTH_CLIENT_ID,
     OPENAI_OAUTH_AUTHORIZE_URL,
+    OPENAI_OAUTH_DEVICE_VERIFICATION_URL,
     build_openai_oauth_start,
     disconnect_openai_oauth,
     get_openai_oauth_status,
@@ -67,8 +68,9 @@ async def test_build_openai_oauth_start_uses_codex_client_and_encrypted_state(
         lambda: "http://localhost:1455/auth/callback",
     )
 
-    start = build_openai_oauth_start(workspace_id, user_id)
+    start = await build_openai_oauth_start(workspace_id, user_id)
 
+    assert start.authorization_url is not None
     parsed = urlparse(start.authorization_url)
     params = parse_qs(parsed.query)
     assert f"{parsed.scheme}://{parsed.netloc}{parsed.path}" == OPENAI_OAUTH_AUTHORIZE_URL
@@ -87,7 +89,7 @@ async def test_build_openai_oauth_start_uses_codex_client_and_encrypted_state(
     assert decoded_state.code_verifier
 
 
-async def test_build_openai_oauth_start_uses_hosted_callback_when_api_base_url_is_set(
+async def test_build_openai_oauth_start_uses_device_code_when_backend_url_is_hosted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     workspace_id = uuid.uuid4()
@@ -99,14 +101,31 @@ async def test_build_openai_oauth_start_uses_hosted_callback_when_api_base_url_i
         lambda: pytest.fail("localhost callback should not be started for hosted URL"),
     )
 
-    start = build_openai_oauth_start(workspace_id, user_id)
+    response = Mock()
+    response.status_code = 200
+    response.json.return_value = {
+        "device_auth_id": "device-auth-123",
+        "user_code": "ABCD-EFGH",
+        "interval": "2",
+    }
+    client = AsyncMock()
+    client.post.return_value = response
+    client_cm = AsyncMock()
+    client_cm.__aenter__.return_value = client
+    monkeypatch.setattr(openai_oauth.httpx, "AsyncClient", Mock(return_value=client_cm))
 
-    parsed = urlparse(start.authorization_url)
-    params = parse_qs(parsed.query)
-    callback_url = "https://api.thetribunal.ai/api/v1/integrations/openai/oauth/callback"
-    assert params["redirect_uri"] == [callback_url]
-    decoded_state = openai_oauth._decode_state(params["state"][0])  # noqa: SLF001
-    assert decoded_state.redirect_uri == callback_url
+    start = await build_openai_oauth_start(workspace_id, user_id)
+
+    assert start.method == "device_code"
+    assert start.authorization_url is None
+    assert start.verification_url == OPENAI_OAUTH_DEVICE_VERIFICATION_URL
+    assert start.user_code == "ABCD-EFGH"
+    assert start.poll_token
+    assert start.poll_interval_seconds == 2
+    poll_state = openai_oauth._decode_device_poll_state(start.poll_token)  # noqa: SLF001
+    assert poll_state.workspace_id == workspace_id
+    assert poll_state.user_id == user_id
+    assert poll_state.device_auth_id == "device-auth-123"
 
 
 async def test_get_openai_oauth_status_reports_safe_snapshot() -> None:

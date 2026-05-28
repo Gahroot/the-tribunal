@@ -3205,6 +3205,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/integrations/openai/oauth/device/poll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Poll Openai Subscription Device Login
+         * @description Poll OpenAI device-code sign-in once and persist credentials when complete.
+         */
+        post: operations["poll_openai_subscription_device_login_api_v1_workspaces__workspace_id__integrations_openai_oauth_device_poll_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/integrations/openai/oauth/start": {
         parameters: {
             query?: never;
@@ -3216,7 +3236,7 @@ export interface paths {
         put?: never;
         /**
          * Start Openai Subscription Login
-         * @description Create a Codex OAuth URL for connecting ChatGPT subscription auth.
+         * @description Create Codex browser or device-code instructions for ChatGPT subscription auth.
          */
         post: operations["start_openai_subscription_login_api_v1_workspaces__workspace_id__integrations_openai_oauth_start_post"];
         delete?: never;
@@ -11107,16 +11127,46 @@ export interface components {
             value_stack_items?: components["schemas"]["ValueStackItem"][] | null;
         };
         /**
+         * OpenAIOAuthDevicePollRequest
+         * @description Encrypted device-code polling token from the start response.
+         */
+        OpenAIOAuthDevicePollRequest: {
+            /** Poll Token */
+            poll_token: string;
+        };
+        /**
+         * OpenAIOAuthDevicePollResponse
+         * @description One device-code polling result.
+         */
+        OpenAIOAuthDevicePollResponse: {
+            /** Pending */
+            pending: boolean;
+            status: components["schemas"]["OpenAIOAuthStatusResponse"];
+        };
+        /**
          * OpenAIOAuthStartResponse
-         * @description Browser sign-in URL for OpenAI Codex OAuth.
+         * @description OpenAI subscription sign-in instructions.
          */
         OpenAIOAuthStartResponse: {
             /** Authorization Url */
-            authorization_url: string;
+            authorization_url?: string | null;
             /** Expires At */
             expires_at: number;
+            /** Method */
+            method: string;
+            /**
+             * Poll Interval Seconds
+             * @default 5
+             */
+            poll_interval_seconds: number;
+            /** Poll Token */
+            poll_token?: string | null;
             /** Redirect Uri */
-            redirect_uri: string;
+            redirect_uri?: string | null;
+            /** User Code */
+            user_code?: string | null;
+            /** Verification Url */
+            verification_url?: string | null;
         };
         /**
          * OpenAIOAuthStatusResponse
@@ -20341,6 +20391,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OpenAIOAuthStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    poll_openai_subscription_device_login_api_v1_workspaces__workspace_id__integrations_openai_oauth_device_poll_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenAIOAuthDevicePollRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIOAuthDevicePollResponse"];
                 };
             };
             /** @description Validation Error */

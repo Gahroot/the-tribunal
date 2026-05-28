@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AxiosError } from "axios";
-import { Bot, ExternalLink, Loader2, LogOut, ShieldCheck } from "lucide-react";
+import { Bot, Clipboard, ExternalLink, Loader2, LogOut, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -42,7 +42,13 @@ export function OpenAIChatGPTCard() {
   const queryClient = useQueryClient();
   const pollTimer = useRef<number | null>(null);
   const pendingPopup = useRef<Window | null>(null);
+  const activePollToken = useRef<string | null>(null);
   const [isWaitingForCallback, setIsWaitingForCallback] = useState(false);
+  const [deviceLogin, setDeviceLogin] = useState<{
+    verificationUrl: string;
+    userCode: string;
+    expiresAt: number;
+  } | null>(null);
 
   const statusQuery = useQuery({
     queryKey: queryKeys.integrations.openAIOAuth(workspaceId ?? ""),
@@ -75,7 +81,9 @@ export function OpenAIChatGPTCard() {
       const next = await integrationsApi.getOpenAIOAuthStatus(workspaceId);
       queryClient.setQueryData(queryKeys.integrations.openAIOAuth(workspaceId), next);
       if (next.connected) {
+        activePollToken.current = null;
         setIsWaitingForCallback(false);
+        setDeviceLogin(null);
         await invalidateOpenAIQueries();
         toast.success("OpenAI ChatGPT subscription connected");
         return;
@@ -84,27 +92,92 @@ export function OpenAIChatGPTCard() {
         pollForConnectedStatus(attempt + 1);
         return;
       }
+      activePollToken.current = null;
       setIsWaitingForCallback(false);
       toast.info("Still waiting for OpenAI sign-in. Click refresh after the success tab appears.");
     }, 2000);
   };
 
+  const pollDeviceCode = (pollToken: string, intervalSeconds: number, attempt = 0) => {
+    if (!workspaceId) return;
+    if (pollTimer.current) {
+      window.clearTimeout(pollTimer.current);
+    }
+
+    pollTimer.current = window.setTimeout(async () => {
+      try {
+        const result = await integrationsApi.pollOpenAIOAuthDeviceCode(workspaceId, pollToken);
+        queryClient.setQueryData(
+          queryKeys.integrations.openAIOAuth(workspaceId),
+          result.status
+        );
+        if (!result.pending && result.status.connected) {
+          activePollToken.current = null;
+          setIsWaitingForCallback(false);
+          setDeviceLogin(null);
+          await invalidateOpenAIQueries();
+          toast.success("OpenAI ChatGPT subscription connected");
+          return;
+        }
+        if (attempt < 179 && activePollToken.current === pollToken) {
+          pollDeviceCode(pollToken, intervalSeconds, attempt + 1);
+          return;
+        }
+        activePollToken.current = null;
+        setIsWaitingForCallback(false);
+        toast.info("OpenAI sign-in expired. Start again to get a new device code.");
+      } catch (error) {
+        activePollToken.current = null;
+        setIsWaitingForCallback(false);
+        toast.error(getErrorMessage(error as Error, "Failed to check OpenAI sign-in"));
+      }
+    }, Math.max(intervalSeconds, 1) * 1000);
+  };
+
   const startMutation = useMutation({
     mutationFn: () => integrationsApi.startOpenAIOAuth(workspaceId!),
     onSuccess: (result) => {
+      if (result.method === "browser" && result.authorization_url) {
+        if (pendingPopup.current) {
+          pendingPopup.current.location.href = result.authorization_url;
+        } else {
+          window.open(result.authorization_url, "_blank", "noopener,noreferrer");
+        }
+        pendingPopup.current = null;
+        setDeviceLogin(null);
+        setIsWaitingForCallback(true);
+        pollForConnectedStatus();
+        toast.success("OpenAI sign-in opened in your browser");
+        return;
+      }
+
+      if (!result.verification_url || !result.user_code || !result.poll_token) {
+        pendingPopup.current?.close();
+        pendingPopup.current = null;
+        setIsWaitingForCallback(false);
+        toast.error("OpenAI did not return complete device-code instructions");
+        return;
+      }
       if (pendingPopup.current) {
-        pendingPopup.current.location.href = result.authorization_url;
+        pendingPopup.current.location.href = result.verification_url;
       } else {
-        window.open(result.authorization_url, "_blank", "noopener,noreferrer");
+        window.open(result.verification_url, "_blank", "noopener,noreferrer");
       }
       pendingPopup.current = null;
+      activePollToken.current = result.poll_token;
+      setDeviceLogin({
+        verificationUrl: result.verification_url,
+        userCode: result.user_code,
+        expiresAt: result.expires_at,
+      });
       setIsWaitingForCallback(true);
-      pollForConnectedStatus();
-      toast.success("OpenAI sign-in opened in your browser");
+      pollDeviceCode(result.poll_token, result.poll_interval_seconds);
+      toast.success("Enter the device code in the OpenAI tab");
     },
     onError: (error: Error) => {
       pendingPopup.current?.close();
       pendingPopup.current = null;
+      activePollToken.current = null;
       setIsWaitingForCallback(false);
       toast.error(getErrorMessage(error, "Failed to start OpenAI sign-in"));
     },
@@ -138,8 +211,17 @@ export function OpenAIChatGPTCard() {
       toast.error("No workspace selected. Please select a workspace first.");
       return;
     }
+    activePollToken.current = null;
+    setDeviceLogin(null);
     pendingPopup.current = window.open("about:blank", "openai-codex-oauth");
+    pendingPopup.current?.document.write("<p style='font-family: system-ui, sans-serif; padding: 24px;'>Preparing OpenAI sign-in…</p>");
     startMutation.mutate();
+  };
+
+  const handleCopyCode = async () => {
+    if (!deviceLogin) return;
+    await navigator.clipboard.writeText(deviceLogin.userCode);
+    toast.success("Device code copied");
   };
 
   const handleRefresh = async () => {
@@ -164,7 +246,7 @@ export function OpenAIChatGPTCard() {
             <div>
               <CardTitle className="text-base">ChatGPT subscription for OpenAI Realtime</CardTitle>
               <CardDescription>
-                Connect through the OpenAI Codex login flow so voice agents can use {" "}
+                Connect through the OpenAI Codex subscription flow so voice agents can use {" "}
                 <code className="rounded bg-background px-1 font-mono text-xs">
                   {status?.realtime_model ?? "gpt-realtime-2"}
                 </code>{" "}
@@ -192,10 +274,44 @@ export function OpenAIChatGPTCard() {
 
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Click connect, sign in with OpenAI/ChatGPT in the browser, then return here. After the
-          callback completes, this workspace will use the subscription OAuth token first and fall
-          back to an API key only if no subscription login is connected.
+          Click connect, sign in with OpenAI/ChatGPT, then return here. Hosted deployments use
+          OpenAI&apos;s device-code flow, so paste the code shown below into the OpenAI tab. This
+          workspace will use the subscription token first and fall back to an API key only if no
+          subscription login is connected.
         </p>
+
+        {deviceLogin && !isConnected && (
+          <div className="space-y-3 rounded-lg border border-primary/20 bg-background/80 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium">Enter this code in OpenAI</p>
+                <p className="text-xs text-muted-foreground">
+                  The page opens automatically. If it did not, open {" "}
+                  <a
+                    href={deviceLogin.verificationUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary underline-offset-4 hover:underline"
+                  >
+                    {deviceLogin.verificationUrl}
+                  </a>
+                  .
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={handleCopyCode}>
+                <Clipboard className="size-4" />
+                Copy code
+              </Button>
+            </div>
+            <div className="rounded-lg border bg-muted/40 px-4 py-3 text-center font-mono text-2xl font-semibold tracking-[0.35em]">
+              {deviceLogin.userCode}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Expires {formatDate(deviceLogin.expiresAt)}. This card will update automatically after
+              OpenAI confirms the sign-in.
+            </p>
+          </div>
+        )}
 
         {isConnected && (
           <div className="grid gap-3 rounded-lg border bg-background/70 p-3 text-sm sm:grid-cols-3">
@@ -224,8 +340,8 @@ export function OpenAIChatGPTCard() {
           <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" />
           <p>
             OAuth tokens are encrypted in the workspace integration store and are never shown in
-            the browser. If your browser opens but this card still says not connected, click
-            refresh after the OpenAI success tab appears.
+            the browser. If the card still says not connected after OpenAI confirms the sign-in,
+            click refresh.
           </p>
         </div>
       </CardContent>

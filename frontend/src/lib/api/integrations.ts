@@ -42,9 +42,19 @@ export interface OpenAIOAuthStatus {
 }
 
 export interface OpenAIOAuthStartResponse {
-  authorization_url: string;
-  redirect_uri: string;
+  method: "browser" | "device_code";
   expires_at: number;
+  authorization_url?: string | null;
+  redirect_uri?: string | null;
+  verification_url?: string | null;
+  user_code?: string | null;
+  poll_token?: string | null;
+  poll_interval_seconds: number;
+}
+
+export interface OpenAIOAuthDevicePollResponse {
+  pending: boolean;
+  status: OpenAIOAuthStatus;
 }
 
 // Base API client using the factory for standard CRUD operations
@@ -98,6 +108,16 @@ export const integrationsApi = {
   startOpenAIOAuth: async (workspaceId: string): Promise<OpenAIOAuthStartResponse> => {
     return apiPost<OpenAIOAuthStartResponse>(
       `/api/v1/workspaces/${workspaceId}/integrations/openai/oauth/start`
+    );
+  },
+
+  pollOpenAIOAuthDeviceCode: async (
+    workspaceId: string,
+    pollToken: string
+  ): Promise<OpenAIOAuthDevicePollResponse> => {
+    return apiPost<OpenAIOAuthDevicePollResponse>(
+      `/api/v1/workspaces/${workspaceId}/integrations/openai/oauth/device/poll`,
+      { poll_token: pollToken }
     );
   },
 
