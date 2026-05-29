@@ -132,6 +132,7 @@ async def _setup_voice_session(
     log: Any,
     call_control_id: str | None = None,
     is_outbound: bool = True,
+    workspace_id: uuid.UUID | None = None,
     *,
     skip_ivr_detection: bool = False,
 ) -> None:
@@ -160,6 +161,7 @@ async def _setup_voice_session(
             timezone=timezone,
             call_control_id=call_control_id,
             log=log,
+            workspace_id=workspace_id,
         )
 
         voice_session.set_tool_callback(callback)
@@ -568,6 +570,7 @@ async def _voice_stream_bridge_body(  # noqa: PLR0912, PLR0915
             has_contact=contact_info is not None,
             has_offer=offer_info is not None,
         )
+        parsed_workspace_id = uuid.UUID(workspace_id) if workspace_id else None
         await _setup_voice_session(
             voice_session,
             agent,
@@ -577,6 +580,7 @@ async def _voice_stream_bridge_body(  # noqa: PLR0912, PLR0915
             log,
             call_control_id=call_id,
             is_outbound=is_outbound,
+            workspace_id=parsed_workspace_id,
             skip_ivr_detection=bool(gate_result),
         )
         log.info(

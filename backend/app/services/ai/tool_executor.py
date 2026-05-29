@@ -5,12 +5,14 @@ standalone, testable service. Handles execution of:
 - check_availability: Query Cal.com for available slots
 - book_appointment: Create appointment on Cal.com
 - send_dtmf: Send touch-tone digits for IVR navigation
+- send_application_link: Send the fixed Prestyj application URL by SMS
 
 Usage:
     executor = VoiceToolExecutor(agent, contact_info, timezone)
     result = await executor.execute("check_availability", {"start_date": "2024-01-15"})
 """
 
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 
@@ -21,6 +23,13 @@ from app.services.ai.base_tool_executor import BaseToolExecutor
 from app.services.approval.approval_gate_service import approval_gate_service
 
 logger = structlog.get_logger()
+
+PRESTYJ_APPLICATION_URL = "https://prestyj.com/founding-cohort"
+PRESTYJ_APPLICATION_SMS_BODY = (
+    "Here is the Prestyj founding cohort application: "
+    f"{PRESTYJ_APPLICATION_URL}\n\n"
+    "Fill it out when you have a minute and Nolan will review it."
+)
 
 
 def _format_time_12h(time_24h: str) -> str:
@@ -58,10 +67,12 @@ class VoiceToolExecutor(BaseToolExecutor):
         contact_info: dict[str, Any] | None = None,
         timezone: str = "America/New_York",
         call_control_id: str | None = None,
+        workspace_id: uuid.UUID | None = None,
     ) -> None:
         super().__init__(agent=agent, timezone=timezone)
         self.contact_info = contact_info
         self.call_control_id = call_control_id
+        self.workspace_id = workspace_id
         self.log = logger.bind(service="voice_tool_executor")
 
     # ── Main dispatch ───────────────────────────────────────────────
@@ -104,6 +115,9 @@ class VoiceToolExecutor(BaseToolExecutor):
             return await self._execute_send_dtmf(
                 digits=arguments.get("digits", ""),
             )
+
+        if function_name == "send_application_link":
+            return await self._execute_send_application_link()
 
         self.log.warning("unknown_voice_tool", function_name=function_name)
         return {"success": False, "error": f"Unknown function: {function_name}"}
@@ -288,6 +302,81 @@ class VoiceToolExecutor(BaseToolExecutor):
 
     # ── Voice-only tools ────────────────────────────────────────────
 
+    async def _execute_send_application_link(self) -> dict[str, Any]:
+        """Send the fixed Prestyj founding-cohort application URL to the current caller."""
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+
+        from app.db.session import AsyncSessionLocal
+        from app.models.conversation import Message as MessageModel
+        from app.services.telephony.idempotency import derive as derive_idempotency_key
+        from app.services.telephony.text_provider import get_text_message_provider
+
+        if not self.call_control_id:
+            return {"success": False, "error": "No active call found for this SMS send."}
+
+        async with AsyncSessionLocal() as db:
+            msg_result = await db.execute(
+                select(MessageModel)
+                .options(selectinload(MessageModel.conversation))
+                .where(MessageModel.provider_message_id == self.call_control_id)
+            )
+            call_message = msg_result.scalar_one_or_none()
+            if not call_message or not call_message.conversation:
+                self.log.warning(
+                    "application_link_sms_no_call_message", call_control_id=self.call_control_id
+                )
+                return {"success": False, "error": "Could not find the current call conversation."}
+
+            conversation = call_message.conversation
+            workspace_id = self.workspace_id or conversation.workspace_id
+            idempotency_key = derive_idempotency_key(
+                "voice_application_link_sms",
+                call_message.id,
+                PRESTYJ_APPLICATION_URL,
+            )
+            provider = get_text_message_provider("telnyx")
+            try:
+                sms_message = await provider.send_message(
+                    to_number=conversation.contact_phone,
+                    from_number=conversation.workspace_phone,
+                    body=PRESTYJ_APPLICATION_SMS_BODY,
+                    db=db,
+                    workspace_id=workspace_id,
+                    agent_id=call_message.agent_id,
+                    campaign_id=call_message.campaign_id,
+                    idempotency_key=idempotency_key,
+                )
+            finally:
+                await provider.close()
+
+        status = str(sms_message.status)
+        if status == "failed":
+            self.log.warning(
+                "application_link_sms_failed",
+                call_control_id=self.call_control_id,
+                message_id=str(sms_message.id),
+                error=getattr(sms_message, "error_message", None),
+            )
+            return {
+                "success": False,
+                "application_url": PRESTYJ_APPLICATION_URL,
+                "error": getattr(sms_message, "error_message", None)
+                or "SMS provider failed to send.",
+            }
+
+        self.log.info(
+            "application_link_sms_sent",
+            call_control_id=self.call_control_id,
+            message_id=str(sms_message.id),
+            status=status,
+        )
+        return {
+            "success": True,
+            "application_url": PRESTYJ_APPLICATION_URL,
+            "message": "Application link sent by SMS.",
+        }
+
     async def _execute_send_dtmf(self, digits: str) -> dict[str, Any]:
         """Execute send_dtmf tool for IVR navigation."""
         from app.services.telephony.telnyx_voice import TelnyxVoiceService
@@ -390,6 +479,7 @@ def create_tool_callback(
     timezone: str,
     call_control_id: str | None,
     log: Any,
+    workspace_id: uuid.UUID | None = None,
 ) -> Any:
     """Create a tool callback function for voice sessions.
 
@@ -402,6 +492,7 @@ def create_tool_callback(
         timezone: Workspace timezone
         call_control_id: Telnyx call control ID
         log: Logger instance
+        workspace_id: Workspace ID for outbound text attribution
 
     Returns:
         Async callback function for voice session tool calls
@@ -411,6 +502,7 @@ def create_tool_callback(
         contact_info=contact_info,
         timezone=timezone,
         call_control_id=call_control_id,
+        workspace_id=workspace_id,
     )
 
     async def tool_callback(
