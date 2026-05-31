@@ -1,9 +1,19 @@
 """Background workers registry.
 
-Provides centralized lifecycle management for all background workers.
+Provides centralized lifecycle management and metadata for all background
+workers. ``WORKER_SPECS`` is the canonical startup registry; ``ALL_REGISTRIES``
+is kept as a compatibility projection for code that only needs lifecycle hooks.
 """
 
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Protocol
+
 import structlog
+
+from app.core.config import Settings, settings
 
 # Import all worker registries
 from app.workers.approval_worker import _registry as approval_registry
@@ -11,7 +21,7 @@ from app.workers.auth_rate_limit_cleanup_worker import (
     _registry as auth_rate_limit_cleanup_registry,
 )
 from app.workers.automation_worker import _registry as automation_registry
-from app.workers.base import BaseWorker, WorkerRegistry
+from app.workers.base import BaseWorker
 from app.workers.campaign_worker import _registry as campaign_registry
 from app.workers.drip_campaign_worker import _registry as drip_campaign_registry
 from app.workers.enrichment_worker import _registry as enrichment_registry
@@ -32,52 +42,225 @@ from app.workers.transcript_analysis_worker import _registry as transcript_analy
 from app.workers.voice_campaign_worker import _registry as voice_campaign_registry
 
 logger = structlog.get_logger()
+WorkerEnabledPredicate = Callable[[Settings], bool]
 
-# All worker registries in startup order
-ALL_REGISTRIES: list[WorkerRegistry[BaseWorker]] = [
-    campaign_registry,
-    voice_campaign_registry,
-    followup_registry,
-    reminder_registry,
-    message_test_registry,
-    reputation_registry,
-    enrichment_registry,
-    prompt_stats_registry,
-    prompt_improvement_registry,
-    outbound_improvement_suggestion_registry,
-    experiment_evaluation_registry,
-    automation_registry,
-    noshow_reengagement_registry,
-    never_booked_registry,
-    nudge_registry,
-    approval_registry,
-    drip_campaign_registry,
-    transcript_analysis_registry,
-    auth_rate_limit_cleanup_registry,
-]
+
+class WorkerRegistryProtocol(Protocol):
+    """Lifecycle surface implemented by worker registries."""
+
+    async def start(self) -> BaseWorker:
+        """Start and return the singleton worker instance."""
+        ...
+
+    async def stop(self) -> None:
+        """Stop the singleton worker instance if running."""
+        ...
+
+    def get(self) -> BaseWorker | None:
+        """Return the running worker instance, if any."""
+        ...
+
+
+def _always_enabled(_settings: Settings) -> bool:
+    """Default per-worker enablement predicate."""
+    return True
+
+
+@dataclass(frozen=True, slots=True)
+class WorkerHealthMetadata:
+    """Readiness metadata for a worker heartbeat.
+
+    ``heartbeat_required`` means a running instance must keep its Redis heartbeat
+    fresh for ``/readyz`` to stay green. ``heartbeat_dependency`` records the
+    external dependency used to store/read the health signal.
+    """
+
+    component_name: str
+    heartbeat_required: bool = True
+    heartbeat_dependency: str = "redis"
+
+
+@dataclass(frozen=True, slots=True)
+class WorkerSpec:
+    """Operational metadata and lifecycle hook for a background worker."""
+
+    name: str
+    registry: WorkerRegistryProtocol
+    dependencies: tuple[str, ...]
+    enabled: WorkerEnabledPredicate = _always_enabled
+    enabled_setting: str = "always"
+    health: WorkerHealthMetadata | None = None
+
+    def is_enabled(self, runtime_settings: Settings | None = None) -> bool:
+        """Return whether this worker should start for ``runtime_settings``."""
+        return self.enabled(runtime_settings or settings)
+
+    @property
+    def health_metadata(self) -> WorkerHealthMetadata:
+        """Return explicit health metadata, defaulting to the worker name."""
+        return self.health or WorkerHealthMetadata(component_name=self.name)
+
+
+# All worker specs in startup order. Dependencies document runtime resources the
+# worker reaches during normal polling; they are not startup preconditions unless
+# the worker's own code treats them that way.
+WORKER_SPECS: tuple[WorkerSpec, ...] = (
+    WorkerSpec(
+        name="campaign_worker",
+        registry=campaign_registry,
+        dependencies=("postgres", "redis", "text_message_provider", "openai"),
+    ),
+    WorkerSpec(
+        name="voice_campaign_worker",
+        registry=voice_campaign_registry,
+        dependencies=("postgres", "redis", "telnyx_voice", "openai"),
+    ),
+    WorkerSpec(
+        name="followup_worker",
+        registry=followup_registry,
+        dependencies=("postgres", "openai", "text_message_provider"),
+    ),
+    WorkerSpec(
+        name="reminder_worker",
+        registry=reminder_registry,
+        dependencies=("postgres", "text_message_provider"),
+    ),
+    WorkerSpec(
+        name="message_test_worker",
+        registry=message_test_registry,
+        dependencies=("postgres", "redis", "text_message_provider"),
+    ),
+    WorkerSpec(
+        name="reputation_worker",
+        registry=reputation_registry,
+        dependencies=("postgres", "redis"),
+    ),
+    WorkerSpec(
+        name="enrichment_worker",
+        registry=enrichment_registry,
+        dependencies=("postgres", "website_http", "openai"),
+    ),
+    WorkerSpec(
+        name="prompt_stats",
+        registry=prompt_stats_registry,
+        dependencies=("postgres",),
+    ),
+    WorkerSpec(
+        name="prompt_improvement",
+        registry=prompt_improvement_registry,
+        dependencies=("postgres", "openai"),
+    ),
+    WorkerSpec(
+        name="outbound_improvement_suggestions",
+        registry=outbound_improvement_suggestion_registry,
+        dependencies=("postgres", "openai"),
+    ),
+    WorkerSpec(
+        name="experiment_evaluation",
+        registry=experiment_evaluation_registry,
+        dependencies=("postgres",),
+    ),
+    WorkerSpec(
+        name="automation_worker",
+        registry=automation_registry,
+        dependencies=("postgres", "text_message_provider", "approval_gate"),
+    ),
+    WorkerSpec(
+        name="noshow_reengagement_worker",
+        registry=noshow_reengagement_registry,
+        dependencies=("postgres", "text_message_provider"),
+    ),
+    WorkerSpec(
+        name="never_booked_worker",
+        registry=never_booked_registry,
+        dependencies=("postgres", "text_message_provider"),
+    ),
+    WorkerSpec(
+        name="nudge_worker",
+        registry=nudge_registry,
+        dependencies=("postgres", "telnyx_sms", "expo_push"),
+    ),
+    WorkerSpec(
+        name="approval_worker",
+        registry=approval_registry,
+        dependencies=("postgres", "text_message_provider", "expo_push", "calcom"),
+    ),
+    WorkerSpec(
+        name="drip_campaign_worker",
+        registry=drip_campaign_registry,
+        dependencies=("postgres", "text_message_provider"),
+    ),
+    WorkerSpec(
+        name="transcript_analysis_worker",
+        registry=transcript_analysis_registry,
+        dependencies=("postgres", "openai"),
+    ),
+    WorkerSpec(
+        name="auth_rate_limit_cleanup",
+        registry=auth_rate_limit_cleanup_registry,
+        dependencies=("postgres",),
+    ),
+)
+
+# Compatibility projection for callers that only need the registries.
+ALL_REGISTRIES: list[WorkerRegistryProtocol] = [spec.registry for spec in WORKER_SPECS]
+
+
+def enabled_worker_specs(runtime_settings: Settings | None = None) -> list[WorkerSpec]:
+    """Return enabled workers in startup order."""
+    resolved_settings = runtime_settings or settings
+    return [spec for spec in WORKER_SPECS if spec.is_enabled(resolved_settings)]
 
 
 async def start_all_workers() -> None:
-    """Start all background workers in order."""
+    """Start all enabled background workers in order."""
     log = logger.bind(context="worker_lifecycle")
-    for registry in ALL_REGISTRIES:
-        worker = await registry.start()
-        name = worker.COMPONENT_NAME or worker.__class__.__name__
-        log.info("worker_started", worker=name)
+    for spec in enabled_worker_specs(settings):
+        worker = await spec.registry.start()
+        name = worker.COMPONENT_NAME or worker.__class__.__name__.lower()
+        health = spec.health_metadata
+        log.info(
+            "worker_started",
+            worker=name,
+            worker_spec=spec.name,
+            dependencies=spec.dependencies,
+            enabled_setting=spec.enabled_setting,
+            heartbeat_component=health.component_name,
+            heartbeat_required=health.heartbeat_required,
+            heartbeat_dependency=health.heartbeat_dependency,
+        )
 
 
 async def stop_all_workers() -> None:
-    """Stop all background workers in reverse order."""
+    """Stop all enabled background workers in reverse order."""
     log = logger.bind(context="worker_lifecycle")
-    for registry in reversed(ALL_REGISTRIES):
-        instance = registry.get()
-        name = instance.COMPONENT_NAME or instance.__class__.__name__ if instance else "unknown"
-        await registry.stop()
-        log.info("worker_stopped", worker=name)
+    for spec in reversed(enabled_worker_specs(settings)):
+        instance = spec.registry.get()
+        name = (
+            instance.COMPONENT_NAME or instance.__class__.__name__.lower()
+            if instance
+            else spec.name
+        )
+        health = spec.health_metadata
+        await spec.registry.stop()
+        log.info(
+            "worker_stopped",
+            worker=name,
+            worker_spec=spec.name,
+            enabled_setting=spec.enabled_setting,
+            heartbeat_component=health.component_name,
+            heartbeat_required=health.heartbeat_required,
+            heartbeat_dependency=health.heartbeat_dependency,
+        )
 
 
 __all__ = [
     "start_all_workers",
     "stop_all_workers",
     "ALL_REGISTRIES",
+    "WORKER_SPECS",
+    "WorkerHealthMetadata",
+    "WorkerRegistryProtocol",
+    "WorkerSpec",
+    "enabled_worker_specs",
 ]

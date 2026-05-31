@@ -70,10 +70,12 @@ By default, background workers still run **inside the single `backend-api`
 FastAPI process** for local/dev parity. On startup, `app/main.py`'s lifespan
 handler checks `settings.run_background_workers` (`RUN_BACKGROUND_WORKERS` in
 the environment). When it is `true`, the API process calls `start_all_workers()`
-(defined in `app/workers/__init__.py`), which iterates `ALL_REGISTRIES` and
-starts each worker as an `asyncio.Task` on the same event loop that serves
-HTTP/WebSocket traffic. Shutdown calls `stop_all_workers()` to drain in-flight
-work in reverse order.
+(defined in `app/workers/__init__.py`), which iterates the canonical
+`WORKER_SPECS` metadata registry and starts each enabled worker as an
+`asyncio.Task` on the same event loop that serves HTTP/WebSocket traffic.
+Shutdown calls `stop_all_workers()` to drain in-flight work in reverse order.
+`ALL_REGISTRIES` remains a compatibility projection of `spec.registry` for code
+that only needs lifecycle hooks.
 
 Set `RUN_BACKGROUND_WORKERS=false` for **API-only mode**. In that mode the
 FastAPI app still validates startup configuration, serves HTTP/WebSocket routes,
@@ -99,30 +101,44 @@ The base class runs the poll loop, writes a Redis heartbeat key
 can report per-worker liveness, and applies ≤10% jitter on every sleep to
 desynchronize cycles across replicas.
 
-### Workers and poll intervals
+### Workers, dependencies, and poll intervals
 
-Startup order matches `ALL_REGISTRIES` in `app/workers/__init__.py`.
+Startup order matches `WORKER_SPECS` in `app/workers/__init__.py`. Each
+`WorkerSpec` records:
 
-| Worker | `COMPONENT_NAME` | Poll interval | Purpose |
-|---|---|---|---|
-| `CampaignWorker` | `campaign_worker` | `settings.campaign_poll_interval` (default **5s**) | Processes running SMS campaigns: enforces sending hours and Redis rate limits, sends initial outreach + follow-ups, rotates the number pool, respects the global opt-out list. |
-| `VoiceCampaignWorker` | `voice_campaign_worker` | **10s** | Processes running voice campaigns: initiates outbound calls with SMS fallback, derives idempotency keys, tracks outcomes via Telnyx webhooks. |
-| `FollowupWorker` | `followup_worker` | **60s** | Picks up conversations with a scheduled follow-up, generates the AI reply, sends it via Telnyx, updates follow-up tracking. Capped at `MAX_FOLLOWUPS_PER_TICK = 10`. |
-| `ReminderWorker` | `reminder_worker` | **60s** | Sends SMS reminders before scheduled appointments using the original conversation's phone number. Supports multi-offset sequences (`agent.reminder_offsets`) and a value-reinforcement pre-appointment SMS, deduped via `appointment.reminders_sent`. |
-| `MessageTestWorker` | `message_test_worker` | `settings.campaign_poll_interval` (default **5s**) | Drives A/B message tests: round-robin assigns variants, sends one message per contact, updates variant stats, enforces opt-out. |
-| `ReputationWorker` | `reputation_worker` | `settings.reputation_poll_interval` (default **300s** / 5m) | Refreshes phone-number reputation metrics, advances warming stages via `WarmingScheduler`, logs quarantine events. |
-| `EnrichmentWorker` | `enrichment_worker` | `settings.enrichment_poll_interval` (default **30s**) | Scrapes websites for contacts with `enrichment_status = pending` to populate `linkedin_url` and `business_intel`. |
-| `PromptStatsWorker` | `prompt_stats` | **3600s** (hourly) | Aggregates yesterday's `CallOutcome` rows into `PromptVersionStats` for dashboard trend queries. |
-| `PromptImprovementWorker` | `prompt_improvement` | **86400s** (daily) | Generates improvement suggestions for agents with `auto_suggest=True`; auto-activates winners when `auto_activate=True` and no pending suggestion exists. |
-| `ExperimentEvaluationWorker` | `experiment_evaluation` | **3600s** (hourly) | Walks agents with active A/B experiments, declares statistical winners via `compare_prompt_versions`, eliminates underperforming versions. |
-| `AutomationWorker` | `automation_worker` | **60s** | Evaluates trigger-based automations (`appointment_booked`, `no_show`, `contact_tagged`, `never_booked`), executes their action list, writes `AutomationExecution` rows for idempotency, bumps `automation.last_evaluated_at`. |
-| `NoShowReengagementWorker` | `noshow_reengagement_worker` | **3600s** (hourly) | Multi-day drip for missed appointments — Day 3 and Day 7 templates, progress tracked via `noshow-day3-sent` / `noshow-day7-sent` / `reengaged-booked` tags. |
-| `NeverBookedWorker` | `never_booked_worker` | **3600s** (hourly) | Sends one re-engagement SMS to contacts who replied but never booked (≥1 inbound message, no `appointment-scheduled` tag, last activity older than `agent.never_booked_delay_days`); tags `never-booked-reengaged` to prevent re-fire. |
-| `NudgeWorker` | `nudge_worker` | **3600s** (hourly) | For each workspace with nudge settings enabled: `NudgeGeneratorService` creates `HumanNudge` rows from upcoming dates, `NudgeDeliveryService` ships them via SMS/push to workspace members. |
-| `ApprovalWorker` | `approval_worker` | **30s** | Drives HITL `PendingAction` lifecycle: notifies approvers of new actions, executes approved ones (book appointment, send SMS, …), auto-approves past timeout, expires stale rows. |
-| `DripCampaignWorker` | `drip_campaign_worker` | **900s** (15m) | Advances enrollments across active drip campaigns via `process_active_drip_campaigns()`. Single conceptual job per cycle (`MAX_CONCURRENCY = 1`). |
-| `TranscriptAnalysisWorker` | `transcript_analysis_worker` | **30s** | Picks voice-call `Message` rows with a transcript but no sentiment, runs `analyze_transcript`, merges results into the linked `CallOutcome.signals`. Batches of 10. |
-| `AuthRateLimitCleanupWorker` | `auth_rate_limit_cleanup` | **3600s** (hourly) | Deletes `auth_rate_limits` rows older than 24h so the append-only table doesn't bloat the hot windowed-count queries that gate every auth request. |
+- `name` — stable operational label and default heartbeat component.
+- `registry` — singleton `WorkerRegistry` used to start/stop the worker.
+- `dependencies` — runtime resources touched during normal polling. These are
+  documented for operators; they are not startup gates unless the worker's code
+  validates them.
+- `enabled_setting` — the per-worker setting that controls inclusion. Current
+  specs are `always`; process-level inclusion is controlled by
+  `RUN_BACKGROUND_WORKERS` before `start_all_workers()` is called.
+- `health` — readiness metadata. Current workers require a Redis heartbeat at
+  `worker:<name>:heartbeat`; `/readyz` checks only running specs whose
+  `heartbeat_required` flag is true.
+
+| Worker | `WorkerSpec.name` / `COMPONENT_NAME` | Poll interval | Dependencies | Purpose |
+|---|---|---|---|---|
+| `CampaignWorker` | `campaign_worker` | `settings.campaign_poll_interval` (default **5s**) | Postgres, Redis, text provider, OpenAI | Processes running SMS campaigns: enforces sending hours and Redis rate limits, sends initial outreach + follow-ups, rotates the number pool, respects the global opt-out list. |
+| `VoiceCampaignWorker` | `voice_campaign_worker` | **10s** | Postgres, Redis, Telnyx Voice, OpenAI | Processes running voice campaigns: initiates outbound calls with SMS fallback, derives idempotency keys, tracks outcomes via Telnyx webhooks. |
+| `FollowupWorker` | `followup_worker` | **60s** | Postgres, OpenAI, text provider | Picks up conversations with a scheduled follow-up, generates the AI reply, sends it via the configured text provider, updates follow-up tracking. Capped at `MAX_FOLLOWUPS_PER_TICK = 10`. |
+| `ReminderWorker` | `reminder_worker` | **60s** | Postgres, text provider | Sends SMS reminders before scheduled appointments using the original conversation's phone number. Supports multi-offset sequences (`agent.reminder_offsets`) and a value-reinforcement pre-appointment SMS, deduped via `appointment.reminders_sent`. |
+| `MessageTestWorker` | `message_test_worker` | `settings.campaign_poll_interval` (default **5s**) | Postgres, Redis, text provider | Drives A/B message tests: round-robin assigns variants, sends one message per contact, updates variant stats, enforces opt-out. |
+| `ReputationWorker` | `reputation_worker` | `settings.reputation_poll_interval` (default **300s** / 5m) | Postgres, Redis | Refreshes phone-number reputation metrics, advances warming stages via `WarmingScheduler`, logs quarantine events. |
+| `EnrichmentWorker` | `enrichment_worker` | `settings.enrichment_poll_interval` (default **30s**) | Postgres, website HTTP, OpenAI | Scrapes websites for contacts with `enrichment_status = pending` to populate `linkedin_url` and `business_intel`. |
+| `PromptStatsWorker` | `prompt_stats` | **3600s** (hourly) | Postgres | Aggregates yesterday's `CallOutcome` rows into `PromptVersionStats` for dashboard trend queries. |
+| `PromptImprovementWorker` | `prompt_improvement` | **86400s** (daily) | Postgres, OpenAI | Generates improvement suggestions for agents with `auto_suggest=True`; auto-activates winners when `auto_activate=True` and no pending suggestion exists. |
+| `OutboundImprovementSuggestionWorker` | `outbound_improvement_suggestions` | **86400s** (daily) | Postgres, OpenAI | Analyzes outbound campaign evidence and queues daily/weekly follow-up suggestions for human approval. |
+| `ExperimentEvaluationWorker` | `experiment_evaluation` | **3600s** (hourly) | Postgres | Walks agents with active A/B experiments, declares statistical winners via `compare_prompt_versions`, eliminates underperforming versions. |
+| `AutomationWorker` | `automation_worker` | **60s** | Postgres, text provider, approval gate | Evaluates trigger-based automations (`appointment_booked`, `no_show`, `contact_tagged`, `never_booked`), executes their action list, writes `AutomationExecution` rows for idempotency, bumps `automation.last_evaluated_at`. |
+| `NoShowReengagementWorker` | `noshow_reengagement_worker` | **3600s** (hourly) | Postgres, text provider | Multi-day drip for missed appointments — Day 3 and Day 7 templates, progress tracked via `noshow-day3-sent` / `noshow-day7-sent` / `reengaged-booked` tags. |
+| `NeverBookedWorker` | `never_booked_worker` | **3600s** (hourly) | Postgres, text provider | Sends one re-engagement SMS to contacts who replied but never booked (≥1 inbound message, no `appointment-scheduled` tag, last activity older than `agent.never_booked_delay_days`); tags `never-booked-reengaged` to prevent re-fire. |
+| `NudgeWorker` | `nudge_worker` | **3600s** (hourly) | Postgres, Telnyx SMS, Expo push | For each workspace with nudge settings enabled: `NudgeGeneratorService` creates `HumanNudge` rows from upcoming dates, `NudgeDeliveryService` ships them via SMS/push to workspace members. |
+| `ApprovalWorker` | `approval_worker` | **30s** | Postgres, text provider, Expo push, Cal.com | Drives HITL `PendingAction` lifecycle: notifies approvers of new actions, executes approved ones (book appointment, send SMS, …), auto-approves past timeout, expires stale rows. |
+| `DripCampaignWorker` | `drip_campaign_worker` | **900s** (15m) | Postgres, text provider | Advances enrollments across active drip campaigns via `process_active_drip_campaigns()`. Single conceptual job per cycle (`MAX_CONCURRENCY = 1`). |
+| `TranscriptAnalysisWorker` | `transcript_analysis_worker` | **30s** | Postgres, OpenAI | Picks voice-call `Message` rows with a transcript but no sentiment, runs `analyze_transcript`, merges results into the linked `CallOutcome.signals`. Batches of 10. |
+| `AuthRateLimitCleanupWorker` | `auth_rate_limit_cleanup` | **3600s** (hourly) | Postgres | Deletes `auth_rate_limits` rows older than 24h so the append-only table doesn't bloat the hot windowed-count queries that gate every auth request. |
 
 ### Operational implications
 

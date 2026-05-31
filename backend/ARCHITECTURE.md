@@ -284,28 +284,34 @@ Filtering and pagination:
 All workers extend `BaseWorker` (`app/workers/base.py`) — an async polling
 loop with `_on_start` / `_process_items` / `_on_stop` hooks and a singleton
 `WorkerRegistry`. They are started together in `app/workers/__init__.py`
-during FastAPI `lifespan` startup.
+during FastAPI `lifespan` startup. The canonical startup list is
+`WORKER_SPECS`: each `WorkerSpec` records the stable `name`, lifecycle
+`registry`, runtime `dependencies`, per-worker `enabled_setting` metadata
+(currently `always`; process-level inclusion is `RUN_BACKGROUND_WORKERS`), and
+health metadata used by `/readyz` to check Redis heartbeat keys for running
+workers.
 
-| Worker | Poll | Responsibility |
-|---|---|---|
-| `campaign_worker` | `campaign_poll_interval` | Send SMS campaign messages |
-| `voice_campaign_worker` | 10 s | Initiate outbound voice calls (Telnyx) |
-| `drip_campaign_worker` | — | Advance contacts through drip sequences |
-| `followup_worker` | — | Send agent-decided follow-ups after silence |
-| `reminder_worker` | — | Appointment reminders (24 h / 1 h / custom) |
-| `message_test_worker` | — | Run multi-variant SMS A/B tests |
-| `reputation_worker` | — | Roll up per-number reputation stats |
-| `enrichment_worker` | — | Enrich Contact metadata from external sources |
-| `prompt_stats_worker` | — | Aggregate PromptVersionStats |
-| `prompt_improvement_worker` | — | Generate suggested prompt edits |
-| `experiment_evaluation_worker` | — | Score multi-armed bandit experiments |
-| `automation_worker` | — | Execute Automation rules (`AutomationExecution`) |
-| `noshow_reengagement_worker` | — | Re-engage no-show contacts |
-| `never_booked_worker` | — | Re-engage contacts who never booked |
-| `nudge_worker` | — | Deliver `HumanNudge`s to the operator |
-| `approval_worker` | 30 s | HITL: notify, execute, expire `PendingAction` |
-| `transcript_analysis_worker` | — | Post-call transcript analysis + outcomes |
-| `auth_rate_limit_cleanup_worker` | 1 h | Prune `auth_rate_limits` rows older than 24 h |
+| WorkerSpec name | Poll | Dependencies | Responsibility |
+|---|---|---|---|
+| `campaign_worker` | `campaign_poll_interval` | Postgres, Redis, text provider, OpenAI | Send SMS campaign messages |
+| `voice_campaign_worker` | 10 s | Postgres, Redis, Telnyx Voice, OpenAI | Initiate outbound voice calls (Telnyx) |
+| `followup_worker` | 60 s | Postgres, OpenAI, text provider | Send agent-decided follow-ups after silence |
+| `reminder_worker` | 60 s | Postgres, text provider | Appointment reminders (24 h / 1 h / custom) |
+| `message_test_worker` | `campaign_poll_interval` | Postgres, Redis, text provider | Run multi-variant SMS A/B tests |
+| `reputation_worker` | 5 min | Postgres, Redis | Roll up per-number reputation stats |
+| `enrichment_worker` | 30 s | Postgres, website HTTP, OpenAI | Enrich Contact metadata from external sources |
+| `prompt_stats` | 1 h | Postgres | Aggregate PromptVersionStats |
+| `prompt_improvement` | 1 d | Postgres, OpenAI | Generate suggested prompt edits |
+| `outbound_improvement_suggestions` | 1 d | Postgres, OpenAI | Queue outbound improvement suggestions |
+| `experiment_evaluation` | 1 h | Postgres | Score multi-armed bandit experiments |
+| `automation_worker` | 60 s | Postgres, text provider, approval gate | Execute Automation rules (`AutomationExecution`) |
+| `noshow_reengagement_worker` | 1 h | Postgres, text provider | Re-engage no-show contacts |
+| `never_booked_worker` | 1 h | Postgres, text provider | Re-engage contacts who never booked |
+| `nudge_worker` | 1 h | Postgres, Telnyx SMS, Expo push | Deliver `HumanNudge`s to the operator |
+| `approval_worker` | 30 s | Postgres, text provider, Expo push, Cal.com | HITL: notify, execute, expire `PendingAction` |
+| `drip_campaign_worker` | 15 min | Postgres, text provider | Advance contacts through drip sequences |
+| `transcript_analysis_worker` | 30 s | Postgres, OpenAI | Post-call transcript analysis + outcomes |
+| `auth_rate_limit_cleanup` | 1 h | Postgres | Prune `auth_rate_limits` rows older than 24 h |
 
 Shared infrastructure:
 - `base_campaign_worker.py` — common loop for SMS and voice campaign workers

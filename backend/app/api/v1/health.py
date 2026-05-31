@@ -23,7 +23,7 @@ from sqlalchemy import text
 
 from app.db.redis import get_redis
 from app.db.session import AsyncSessionLocal
-from app.workers import ALL_REGISTRIES
+from app.workers import WORKER_SPECS
 from app.workers.base import heartbeat_key
 
 router = APIRouter()
@@ -73,7 +73,7 @@ async def _check_redis() -> tuple[bool, str | None]:
 
 
 def _expected_worker_labels() -> list[str]:
-    """Return the component names of workers that are expected to be running.
+    """Return heartbeat labels of running workers that require health checks.
 
     A worker only counts toward the heartbeat check after its registry has
     produced a live instance — i.e. once :func:`start_all_workers` has
@@ -81,11 +81,11 @@ def _expected_worker_labels() -> list[str]:
     an empty list, so ``/readyz`` won't spuriously fail before workers boot.
     """
     labels: list[str] = []
-    for registry in ALL_REGISTRIES:
-        instance = registry.get()
-        if instance is None:
+    for spec in WORKER_SPECS:
+        instance = spec.registry.get()
+        if instance is None or not spec.health_metadata.heartbeat_required:
             continue
-        labels.append(instance.COMPONENT_NAME or instance.__class__.__name__.lower())
+        labels.append(spec.health_metadata.component_name)
     return labels
 
 
