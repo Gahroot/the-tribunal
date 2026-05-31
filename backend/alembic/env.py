@@ -10,57 +10,9 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 from app.core.config import settings
 from app.db.base import Base
-from app.models import (  # noqa: F401 - Import all models to register them
-    APIKey,
-    Agent,
-    Appointment,
-    Automation,
-    AutomationExecution,
-    BanditDecision,
-    CallFeedback,
-    CallOutcome,
-    Campaign,
-    CampaignContact,
-    CampaignNumberPool,
-    CampaignReport,
-    Contact,
-    ContactTag,
-    Conversation,
-    DemoRequest,
-    GlobalOptOut,
-    LeadDiscoveryJob,
-    LeadEnrichmentResult,
-    LeadMagnet,
-    LeadProspect,
-    Message,
-    MessageTemplate,
-    MessageTest,
-    Offer,
-    OfferLeadMagnet,
-    Opportunity,
-    OpportunityActivity,
-    OpportunityLineItem,
-    OutboundMission,
-    OutboundSequence,
-    OutboundSequenceEnrollment,
-    OutboundSequenceStepAttempt,
-    PhoneNumber,
-    PhoneNumberDailyStats,
-    Pipeline,
-    PipelineStage,
-    PromptVersion,
-    PromptVersionStats,
-    Segment,
-    Tag,
-    TestContact,
-    TestVariant,
-    User,
-    Workspace,
-    WorkspaceIntegration,
-    WorkspaceInvitation,
-    WorkspaceMembership,
-)
-from app.models.improvement_suggestion import ImprovementSuggestion  # noqa: F401
+from app.db.model_registry import import_model_modules
+
+import_model_modules()
 
 config = context.config
 
