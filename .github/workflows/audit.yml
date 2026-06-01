@@ -120,7 +120,7 @@ jobs:
 
       - name: Open issue for vulnerabilities
         if: steps.severity_check.outputs.has_vulns == 'true'
-        uses: peter-evans/create-issue-from-file@v5
+        uses: peter-evans/create-issue-from-file@v6
         with:
           title: "Security: backend pip-audit detected vulnerabilities"
           content-filepath: backend/pip-audit-issue.md
@@ -233,7 +233,7 @@ jobs:
 
       - name: Open issue for vulnerabilities
         if: steps.severity_check.outputs.has_vulns == 'true'
-        uses: peter-evans/create-issue-from-file@v5
+        uses: peter-evans/create-issue-from-file@v6
         with:
           title: "Security: frontend npm audit detected high-severity vulnerabilities"
           content-filepath: frontend/npm-audit-issue.md
@@ -313,7 +313,7 @@ jobs:
 
       - name: Open issue for leaked secrets
         if: steps.gitleaks.outcome == 'failure'
-        uses: peter-evans/create-issue-from-file@v5
+        uses: peter-evans/create-issue-from-file@v6
         with:
           title: "Security: gitleaks detected secrets in repository history"
           content-filepath: gitleaks-issue.md
