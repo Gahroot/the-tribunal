@@ -25,13 +25,13 @@ The API will be available at <http://localhost:8000> and the OpenAPI docs at <ht
 
 ### Migration safety
 
-Before opening a PR that adds or edits Alembic migrations, run the root target that mirrors CI against your local backend database:
+Before opening a PR that adds or edits Alembic migrations, run the canonical root target that mirrors CI against your local backend database:
 
 ```bash
-make migrate.check
+make ci.migrations
 ```
 
-It runs `alembic upgrade head`, `alembic check`, `alembic downgrade -1`, and `alembic upgrade head` from `backend/`. Use `make migrate.heads` to confirm the migration graph has a single head, and `make migrate.history` when you need to inspect the full revision chain.
+`make migrate.check` is kept as an alias. Use `make migrate.heads` to confirm the migration graph has a single head, and `make migrate.history` when you need to inspect the full revision chain.
 
 ### Frontend (`frontend/`)
 
@@ -131,30 +131,19 @@ If you ever need to skip the hooks for a one-off commit (rare — only for emerg
 
 ## Lint, Typecheck, and Test
 
-Run the relevant checks **before pushing**. CI runs the same commands and will fail the PR otherwise.
+Run the relevant checks **before pushing**. CI delegates to these same root targets and will fail the PR otherwise.
 
-### Backend
+| Target | What it verifies |
+| --- | --- |
+| `make ci.backend` | Backend dependency lock, Ruff lint/format, mypy, and pytest coverage gate. |
+| `make ci.frontend` | Frontend dependency lock, ESLint, TypeScript, unit tests, and production build. |
+| `make ci.codegen` | OpenAPI schema and generated TypeScript client freshness. |
+| `make ci.migrations` | Alembic upgrade/check/downgrade/upgrade round-trip against the configured database. |
+| `make ci.all` | All canonical CI parity targets. |
 
-```bash
-cd backend
-uv run ruff check app             # Lint
-uv run ruff format --check app    # Formatting
-uv run mypy app                   # Type-check
-uv run pytest                     # Test suite
-uv run pytest tests/api/test_contacts.py::test_list  # Single test
-```
+For focused development loops, the shorter `make lint`, `make typecheck`, `make test.backend`, and `make test.frontend` targets are still available, along with direct single-test commands such as `cd backend && uv run pytest tests/api/test_contacts.py::test_list`.
 
-### Frontend
-
-```bash
-cd frontend
-npm run lint                      # ESLint
-npm run typecheck                 # tsc --noEmit (if defined; otherwise npm run build)
-npm run build                     # Production build — must pass
-npm test                          # Unit tests (if defined for the touched area)
-```
-
-Fix **all** errors and warnings before opening a PR. There is zero tolerance for failing lint, type, or build steps on `main`.
+Fix **all** errors and warnings before opening a PR. There is zero tolerance for failing lint, type, test, codegen, migration, or build steps on `main`.
 
 ## Frontend API Mocking with MSW
 
@@ -219,24 +208,23 @@ it("renders the error state when contacts 500", async () => {
 
 ## Backend Test Coverage Ratchet
 
-CI enforces a minimum overall backend coverage via `pytest --cov-fail-under=<floor>` in `.github/workflows/backend-ci.yml`. The floor only ever moves **up** — never down.
+CI enforces a minimum overall backend coverage via `CI_BACKEND_COVERAGE_FLOOR` in the root `Makefile`'s `ci.backend` target. The floor only ever moves **up** — never down.
 
 ### Current floor
 
-**49%** (baseline measured at 44% + 5pts starter buffer).
+**48%** (`CI_BACKEND_COVERAGE_FLOOR` in the root `Makefile`).
 
 ### Policy
 
 1. **Never lower the floor.** If a PR drops coverage below the current floor, fix the PR — do not relax the threshold.
-2. **Raise by +5pts whenever a coverage-improvement task completes.** A "coverage task" is any PR whose primary goal is adding tests to lift overall coverage (typically tagged `test:` or `chore(tests):` in the commit). After the PR lands and CI is green on the new tests, bump the `--cov-fail-under=<n>` value in `backend-ci.yml` by 5 in a follow-up commit (or the same PR if it's already green at the new floor).
+2. **Raise by +5pts whenever a coverage-improvement task completes.** A "coverage task" is any PR whose primary goal is adding tests to lift overall coverage (typically tagged `test:` or `chore(tests):` in the commit). After the PR lands and CI is green on the new tests, bump `CI_BACKEND_COVERAGE_FLOOR` in the root `Makefile` by 5 in a follow-up commit (or the same PR if it's already green at the new floor).
 3. **Incidental coverage gains do not bump the floor.** Only deliberate coverage work moves the ratchet. This keeps the threshold a forcing function for explicit investment rather than a moving goalpost on every feature PR.
 4. **Cap at 90%.** Above 90%, additional gains are usually not worth the test churn; revisit the policy before pushing higher.
 
 ### How to run coverage locally
 
 ```bash
-cd backend
-uv run pytest --cov=app --cov-report=term-missing
+make ci.backend
 ```
 
 Coverage config lives in `backend/pyproject.toml` under `[tool.coverage.run]` and `[tool.coverage.report]`. Migrations, `__init__.py` files, and `app/main.py` are omitted.

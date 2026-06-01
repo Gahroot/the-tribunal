@@ -18,6 +18,13 @@ DB_USER      := aicrm
 DB_NAME      := aicrm
 DB_CONTAINER := aicrm-postgres
 
+CI_BACKEND_COVERAGE_FLOOR ?= 48
+CI_OPENAPI_SECRET_KEY     ?= ci-openapi-export-secret-key-not-used-for-signing-0123
+CI_OPENAPI_ENCRYPTION_KEY ?= ci-openapi-export-encryption-key-not-used-for-crypto-01
+CI_PYTEST_SECRET_KEY      ?= ci-pytest-secret-key-not-used-for-signing-0123456789
+CI_PYTEST_ENCRYPTION_KEY  ?= ci-pytest-encryption-key-not-used-for-crypto-012
+CI_PYTEST_OPENAI_API_KEY  ?= sk-ci-pytest-placeholder-not-a-real-key
+
 # ─── Help ──────────────────────────────────────────────────────────────────────
 
 .PHONY: help
@@ -86,16 +93,74 @@ migrate.history: ## Show Alembic migration history.
 	cd $(BACKEND_DIR) && uv run alembic history --verbose
 
 .PHONY: migrate.check
-migrate.check: ## Run CI-shaped migration safety check against local backend DB.
-	cd $(BACKEND_DIR) && uv run alembic upgrade head
-	cd $(BACKEND_DIR) && uv run alembic check
-	cd $(BACKEND_DIR) && uv run alembic downgrade -1
-	cd $(BACKEND_DIR) && uv run alembic upgrade head
+migrate.check: ci.migrations ## Alias for ci.migrations.
 
 .PHONY: migrate.new
 migrate.new: ## Autogenerate a new migration: make migrate.new m="add foo column".
 	@if [ -z "$(m)" ]; then echo "✗ missing message — usage: make migrate.new m=\"...\""; exit 1; fi
 	cd $(BACKEND_DIR) && uv run alembic revision --autogenerate -m "$(m)"
+
+# ─── CI parity ─────────────────────────────────────────────────────────────────
+
+.PHONY: ci.backend.deps
+ci.backend.deps:
+	cd $(BACKEND_DIR) && uv lock --check
+	cd $(BACKEND_DIR) && uv sync --frozen
+
+.PHONY: ci.frontend.deps
+ci.frontend.deps:
+	@if [ ! -f "$(FRONTEND_DIR)/package-lock.json" ]; then \
+		echo "✗ $(FRONTEND_DIR)/package-lock.json is missing. Run 'cd $(FRONTEND_DIR) && npm install' and commit it."; \
+		exit 1; \
+	fi
+	@cd $(FRONTEND_DIR) && \
+		if ! npm ci --dry-run --ignore-scripts >/dev/null 2>&1; then \
+			echo "✗ package-lock.json is out of sync with package.json. Run 'cd $(FRONTEND_DIR) && npm install' and commit the lockfile."; \
+			exit 1; \
+		fi
+	cd $(FRONTEND_DIR) && npm ci
+
+.PHONY: ci.backend
+ci.backend: ci.backend.deps ## Run backend CI parity: lint, format, type-check, and coverage.
+	cd $(BACKEND_DIR) && uv run ruff check app
+	cd $(BACKEND_DIR) && uv run ruff format --check app
+	cd $(BACKEND_DIR) && uv run mypy app
+	cd $(BACKEND_DIR) && \
+		SECRET_KEY="$(CI_PYTEST_SECRET_KEY)" \
+		ENCRYPTION_KEY="$(CI_PYTEST_ENCRYPTION_KEY)" \
+		OPENAI_API_KEY="$(CI_PYTEST_OPENAI_API_KEY)" \
+		CORS_ALLOW_VERCEL_PREVIEWS="true" \
+		SKIP_WEBHOOK_VERIFICATION="false" \
+		uv run pytest --cov=app --cov-report=term --cov-fail-under=$(CI_BACKEND_COVERAGE_FLOOR)
+
+.PHONY: ci.frontend
+ci.frontend: ci.frontend.deps ## Run frontend CI parity: lint, type-check, unit tests, and build.
+	cd $(FRONTEND_DIR) && npm run lint
+	cd $(FRONTEND_DIR) && npm run typecheck
+	cd $(FRONTEND_DIR) && npm test -- --run
+	cd $(FRONTEND_DIR) && npm run build
+
+.PHONY: ci.codegen
+ci.codegen: ci.backend.deps ci.frontend.deps ## Regenerate OpenAPI/client artifacts and fail on drift.
+	cd $(BACKEND_DIR) && \
+		SECRET_KEY="$(CI_OPENAPI_SECRET_KEY)" \
+		ENCRYPTION_KEY="$(CI_OPENAPI_ENCRYPTION_KEY)" \
+		uv run export-openapi
+	cd $(FRONTEND_DIR) && npm run codegen
+	@if ! git diff --exit-code -- $(BACKEND_DIR)/openapi.json $(FRONTEND_DIR)/src/lib/api/_generated.ts; then \
+		echo "✗ Generated API artifacts are out of date. Commit the changes produced by 'make ci.codegen'."; \
+		exit 1; \
+	fi
+
+.PHONY: ci.migrations
+ci.migrations: ci.backend.deps ## Run migration CI parity against the configured backend database.
+	cd $(BACKEND_DIR) && uv run alembic upgrade head
+	cd $(BACKEND_DIR) && uv run alembic check
+	cd $(BACKEND_DIR) && uv run alembic downgrade -1
+	cd $(BACKEND_DIR) && uv run alembic upgrade head
+
+.PHONY: ci.all
+ci.all: ci.codegen ci.backend ci.frontend ci.migrations ## Run all CI parity targets.
 
 # ─── Tests ─────────────────────────────────────────────────────────────────────
 

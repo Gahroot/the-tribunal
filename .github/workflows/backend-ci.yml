@@ -4,10 +4,12 @@ on:
   push:
     paths:
       - "backend/**"
+      - "Makefile"
       - ".github/workflows/backend-ci.yml"
   pull_request:
     paths:
       - "backend/**"
+      - "Makefile"
       - ".github/workflows/backend-ci.yml"
 
 concurrency:
@@ -18,9 +20,6 @@ jobs:
   test:
     name: Lint, type-check, and test
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
 
     steps:
       - name: Checkout
@@ -37,65 +36,19 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "backend/uv.lock"
 
-      - name: Verify uv.lock is in sync with pyproject.toml
-        # Frozen lockfile discipline: fails CI if anyone edits pyproject.toml without
-        # regenerating uv.lock. Mirrors `npm ci`'s lockfile guarantee on the frontend.
-        # Run BEFORE `uv sync --frozen` so the error message points at the right fix
-        # (`cd backend && uv lock`) instead of an opaque resolver failure.
-        run: uv lock --check
+      - name: Set up Node.js for API client codegen
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
-      - name: Install dependencies
-        run: uv sync --frozen
-
-      - name: Ruff lint
-        run: uv run ruff check app
-
-      - name: Ruff format check
-        run: uv run ruff format --check app
-
-      - name: Mypy
-        run: uv run mypy app
-
-      - name: OpenAPI schema freshness
-        # Regenerate the committed schema from the live FastAPI app; fail if it
-        # drifts. Forces every PR that changes a public route/schema to ship the
-        # regenerated ``backend/openapi.json`` alongside the code change, so API
-        # contract changes are reviewable in the diff.
-        env:
-          # Importing ``app.main`` instantiates Settings, which requires
-          # SECRET_KEY (min 32 chars). The value is only used for in-process
-          # schema generation — no tokens are signed.
-          SECRET_KEY: ci-openapi-export-secret-key-not-used-for-signing-0123
-          ENCRYPTION_KEY: ci-openapi-export-encryption-key-not-used-for-crypto-01
-        run: |
-          uv run export-openapi
-          if ! git diff --exit-code openapi.json; then
-            echo "::error file=backend/openapi.json::openapi.json is out of date. Run 'cd backend && uv run export-openapi' and commit the result."
-            exit 1
-          fi
-
-      - name: Pytest with coverage
+      - name: Backend CI parity
         # Coverage floor ratchets up by +5pts whenever a coverage-improvement task lands.
         # Policy: see CONTRIBUTING.md § Coverage Ratchet. Current floor: 48%.
-        #
-        # 2026-05-21 — bumped down from 49 → 48 after the format-check that had
-        # been silently blocking every backend CI run for ~5 days was repaired.
-        # The previous 49 was set in commit a5fd4e5 but never validated against
-        # a green run; once the gate actually executed pytest, the real number
-        # was 48.79%. Re-ratchet the floor up after the next coverage-targeted
-        # task lands.
-        env:
-          # Production-shaped settings that several services validate at import
-          # or constructor time. SECRET_KEY / ENCRYPTION_KEY are required by
-          # ``app.core.config.Settings``. OPENAI_API_KEY is required because
-          # ``WhisperTranscriber.__init__`` (and friends) eagerly call
-          # ``AsyncOpenAI(api_key=...)``, which raises ``OpenAIError`` if the
-          # token is empty — even when the test mocks the client afterwards.
-          # All values are deliberately bogus placeholders; nothing real is
-          # signed or sent off-box.
-          SECRET_KEY: ci-pytest-secret-key-not-used-for-signing-0123456789
-          ENCRYPTION_KEY: ci-pytest-encryption-key-not-used-for-crypto-012
-          OPENAI_API_KEY: sk-ci-pytest-placeholder-not-a-real-key
-          CORS_ALLOW_VERCEL_PREVIEWS: "true"
-          SKIP_WEBHOOK_VERIFICATION: "false"
-        run: uv run pytest --cov=app --cov-report=term --cov-fail-under=48
+        run: make ci.backend
+
+      - name: OpenAPI schema freshness
+        # Regenerate committed API artifacts from the live FastAPI app and fail
+        # if they drift, so contract changes are reviewable in the PR diff.
+        run: make ci.codegen

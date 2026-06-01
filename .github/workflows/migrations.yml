@@ -16,9 +16,6 @@ jobs:
   reversibility:
     name: Verify migration reversibility
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
 
     services:
       postgres:
@@ -53,6 +50,7 @@ jobs:
             migrations:
               - 'backend/alembic/**'
               - 'backend/app/models/**'
+              - 'Makefile'
               - '.github/workflows/migrations.yml'
 
       - name: Skip notice
@@ -73,10 +71,6 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "backend/uv.lock"
 
-      - name: Install dependencies
-        if: steps.changes.outputs.migrations == 'true'
-        run: uv sync --frozen
-
       - name: Wait for Postgres
         if: steps.changes.outputs.migrations == 'true'
         run: |
@@ -91,20 +85,7 @@ jobs:
           echo "Postgres did not become ready in time"
           exit 1
 
-      - name: Upgrade to head
+      - name: Migration CI parity
         if: steps.changes.outputs.migrations == 'true'
-        run: uv run alembic upgrade head
-
-      - name: Check for model drift
-        # Fails if SQLAlchemy models have changed without a corresponding
-        # Alembic migration (i.e. autogenerate would produce a non-empty diff).
-        if: steps.changes.outputs.migrations == 'true'
-        run: uv run alembic check
-
-      - name: Downgrade one revision
-        if: steps.changes.outputs.migrations == 'true'
-        run: uv run alembic downgrade -1
-
-      - name: Upgrade to head again
-        if: steps.changes.outputs.migrations == 'true'
-        run: uv run alembic upgrade head
+        # Fails if models drift from migrations and verifies a one-step downgrade/upgrade round-trip.
+        run: make ci.migrations

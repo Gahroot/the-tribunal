@@ -72,15 +72,13 @@ backend/                            # FastAPI Python backend
 
 ## Code Quality - Zero Tolerance
 
-After editing ANY frontend file:
-```bash
-cd frontend && npm run lint && npm run build
-```
+After editing CI-covered code, run the matching root parity target instead of copying command sequences:
 
-After editing ANY backend file:
-```bash
-cd backend && uv run ruff check app && uv run mypy app
-```
+- Backend: `make ci.backend`
+- Frontend: `make ci.frontend`
+- Generated API artifacts: `make ci.codegen`
+- Migrations: `make ci.migrations`
+- Everything: `make ci.all`
 
 Fix ALL errors/warnings before continuing.
 
