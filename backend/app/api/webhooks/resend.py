@@ -7,8 +7,15 @@ import structlog
 from fastapi import APIRouter, HTTPException, Request, status
 
 from app.api.deps import DB
-from app.api.webhooks.resend_handlers import handle_event
 from app.core.config import settings
+from app.services.webhooks.pipeline import WebhookPipeline, WebhookRequestEnvelope
+from app.services.webhooks.resend import (
+    RESEND_PROVIDER,
+    ResendWebhookEvent,
+    check_resend_idempotency,
+    dispatch_resend_event,
+    parse_resend_event,
+)
 
 try:
     from svix.webhooks import Webhook, WebhookVerificationError
@@ -19,6 +26,28 @@ except ImportError:
 
 router = APIRouter()
 logger = structlog.get_logger()
+
+
+async def _verify_resend_envelope(envelope: WebhookRequestEnvelope) -> dict[str, Any]:
+    """Verify the Svix signature on a Resend webhook and return the parsed event."""
+    return _verify_signature(envelope.raw_body, dict(envelope.headers))
+
+
+def _parse_resend_payload(
+    payload: dict[str, Any],
+    envelope: WebhookRequestEnvelope,
+) -> ResendWebhookEvent:
+    provider_event_id = envelope.headers.get("svix-id") or envelope.headers.get("webhook-id")
+    return parse_resend_event(payload, provider_event_id=provider_event_id)
+
+
+_RESEND_PIPELINE = WebhookPipeline[dict[str, Any], ResendWebhookEvent](
+    provider=RESEND_PROVIDER,
+    verifier=_verify_resend_envelope,
+    parser=_parse_resend_payload,
+    idempotency_checker=check_resend_idempotency,
+    dispatcher=dispatch_resend_event,
+)
 
 
 def _verify_signature(payload: bytes, headers: dict[str, str]) -> dict[str, Any]:
@@ -58,16 +87,14 @@ def _verify_signature(payload: bytes, headers: dict[str, str]) -> dict[str, Any]
 @router.post("")
 async def resend_webhook(request: Request, db: DB) -> dict[str, str]:
     """Handle incoming Resend webhook events (email.sent, email.delivered, etc.)."""
-    log = logger.bind(endpoint="resend_webhook")
-    body = await request.body()
-    headers = {k.lower(): v for k, v in request.headers.items()}
-
-    event = _verify_signature(body, headers)
-    # svix-id is unique per webhook event and stable across retries — use it
-    # as the idempotency key when persisting the event.
-    svix_id = headers.get("svix-id") or headers.get("webhook-id")
-    log = log.bind(event_type=event.get("type"), svix_id=svix_id)
-    log.info("resend_webhook_received")
-
-    await handle_event(db, event, log, provider_event_id=svix_id)
-    return {"status": "ok"}
+    envelope = WebhookRequestEnvelope(
+        provider=RESEND_PROVIDER,
+        raw_body=await request.body(),
+        headers={k.lower(): v for k, v in request.headers.items()},
+    )
+    result = await _RESEND_PIPELINE.process(
+        db=db,
+        request=envelope,
+        log=logger.bind(endpoint="resend_webhook"),
+    )
+    return result.response_body()

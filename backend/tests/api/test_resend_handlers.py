@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.api.webhooks.resend_handlers import handle_event
+from app.models.email_event import EmailEvent
 
 
 def _make_event(event_type: str = "email.delivered") -> dict[str, Any]:
@@ -109,3 +110,34 @@ async def test_no_provider_event_id_skips_dedupe_check() -> None:
     # Message lookup misses → workspace_id is None → early return, no insert.
     db.add.assert_not_called()
     db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_missing_svix_id_persists_provider_message_id_as_best_effort_key() -> None:
+    """Without a Svix id, keep the prior fallback to the Resend email id."""
+    workspace_id = uuid.uuid4()
+    message = MagicMock()
+    message.id = uuid.uuid4()
+    message.provider_message_id = "msg_abc123"
+    message.conversation.workspace_id = workspace_id
+    message.campaign_id = None
+
+    db = MagicMock()
+    message_lookup = MagicMock()
+    message_lookup.scalar_one_or_none = MagicMock(return_value=message)
+    db.execute = AsyncMock(return_value=message_lookup)
+    db.add = MagicMock()
+    db.commit = AsyncMock()
+    db.rollback = AsyncMock()
+
+    await handle_event(
+        db,
+        _make_event("email.delivered"),
+        log=MagicMock(),
+        provider_event_id=None,
+    )
+
+    db.add.assert_called_once()
+    event_row = db.add.call_args.args[0]
+    assert isinstance(event_row, EmailEvent)
+    assert event_row.provider_event_id == "msg_abc123"

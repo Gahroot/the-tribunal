@@ -6,10 +6,10 @@ event-dispatch / idempotency logic in
 
 * Missing webhook secret → 503 (refuse to process unverified deliveries).
 * Invalid Svix signature → 400.
-* Valid signature → 200 ``{"status": "ok"}`` and ``handle_event`` is invoked
-  with the parsed event plus the ``svix-id`` from headers.
+* Valid signature → 200 ``{"status": "ok"}`` and the reusable pipeline
+  dispatches the parsed event plus the ``svix-id`` from headers.
 * ``webhook-id`` header is honored as a fallback for ``svix-id``.
-* ``handle_event`` is *not* called when verification fails.
+* Domain dispatch is *not* called when verification fails.
 
 All tests mock ``svix.webhooks.Webhook`` so we don't need to sign real
 payloads, and override ``get_db`` so no database is required.
@@ -32,6 +32,11 @@ from app.api.webhooks import resend as resend_module
 from app.api.webhooks.resend import router as resend_router
 from app.core.config import settings as app_settings
 from app.db.session import get_db
+from app.services.webhooks.pipeline import (
+    WebhookDispatchResult,
+    WebhookIdempotencyDecision,
+    WebhookPipeline,
+)
 
 # --------------------------------------------------------------------------- #
 # Helpers
@@ -62,6 +67,20 @@ def _make_event_payload(event_type: str = "email.delivered") -> dict[str, Any]:
         "created_at": "2026-05-15T10:00:00Z",
         "data": {"email_id": "msg_abc123"},
     }
+
+
+def _make_test_pipeline(
+    *,
+    idempotency_checker: AsyncMock,
+    dispatcher: AsyncMock,
+) -> WebhookPipeline[Any, resend_module.ResendWebhookEvent]:
+    return WebhookPipeline(
+        provider=resend_module.RESEND_PROVIDER,
+        verifier=resend_module._verify_resend_envelope,
+        parser=resend_module._parse_resend_payload,
+        idempotency_checker=idempotency_checker,
+        dispatcher=dispatcher,
+    )
 
 
 @pytest.fixture
@@ -104,11 +123,18 @@ async def test_invalid_signature_returns_400(client: AsyncClient) -> None:
     fake_wh = MagicMock()
     fake_wh.verify = MagicMock(side_effect=WebhookVerificationError("bad sig"))
 
-    mock_handle = AsyncMock()
+    mock_dispatch = AsyncMock()
     with (
         patch.object(app_settings, "resend_webhook_secret", "whsec_test"),
         patch.object(resend_module, "Webhook", return_value=fake_wh),
-        patch.object(resend_module, "handle_event", new=mock_handle),
+        patch.object(
+            resend_module,
+            "_RESEND_PIPELINE",
+            new=_make_test_pipeline(
+                idempotency_checker=AsyncMock(),
+                dispatcher=mock_dispatch,
+            ),
+        ),
     ):
         response = await client.post(
             "/webhooks/resend",
@@ -121,7 +147,7 @@ async def test_invalid_signature_returns_400(client: AsyncClient) -> None:
             },
         )
     assert response.status_code == 400
-    mock_handle.assert_not_called()
+    mock_dispatch.assert_not_called()
 
 
 # --------------------------------------------------------------------------- #
@@ -131,11 +157,18 @@ async def test_invalid_signature_returns_400(client: AsyncClient) -> None:
 
 async def test_svix_not_available_returns_500(client: AsyncClient) -> None:
     """If the optional svix dep is missing at runtime, return a clear 500."""
-    mock_handle = AsyncMock()
+    mock_dispatch = AsyncMock()
     with (
         patch.object(app_settings, "resend_webhook_secret", "whsec_test"),
         patch.object(resend_module, "SVIX_AVAILABLE", False),
-        patch.object(resend_module, "handle_event", new=mock_handle),
+        patch.object(
+            resend_module,
+            "_RESEND_PIPELINE",
+            new=_make_test_pipeline(
+                idempotency_checker=AsyncMock(),
+                dispatcher=mock_dispatch,
+            ),
+        ),
     ):
         response = await client.post(
             "/webhooks/resend",
@@ -143,7 +176,7 @@ async def test_svix_not_available_returns_500(client: AsyncClient) -> None:
             headers={"content-type": "application/json"},
         )
     assert response.status_code == 500
-    mock_handle.assert_not_called()
+    mock_dispatch.assert_not_called()
 
 
 # --------------------------------------------------------------------------- #
@@ -151,17 +184,27 @@ async def test_svix_not_available_returns_500(client: AsyncClient) -> None:
 # --------------------------------------------------------------------------- #
 
 
-async def test_valid_signature_dispatches_to_handler(client: AsyncClient) -> None:
-    """Verified webhooks return ``{"status": "ok"}`` and call ``handle_event``."""
+async def test_valid_signature_dispatches_to_pipeline_domain_service(
+    client: AsyncClient,
+) -> None:
+    """Verified webhooks return ``{"status": "ok"}`` and dispatch a parsed DTO."""
     event = _make_event_payload("email.delivered")
     fake_wh = MagicMock()
     fake_wh.verify = MagicMock(return_value=event)
-    mock_handle = AsyncMock()
+    mock_idempotency = AsyncMock(return_value=WebhookIdempotencyDecision.process())
+    mock_dispatch = AsyncMock(return_value=WebhookDispatchResult.processed())
 
     with (
         patch.object(app_settings, "resend_webhook_secret", "whsec_test"),
         patch.object(resend_module, "Webhook", return_value=fake_wh),
-        patch.object(resend_module, "handle_event", new=mock_handle),
+        patch.object(
+            resend_module,
+            "_RESEND_PIPELINE",
+            new=_make_test_pipeline(
+                idempotency_checker=mock_idempotency,
+                dispatcher=mock_dispatch,
+            ),
+        ),
     ):
         response = await client.post(
             "/webhooks/resend",
@@ -177,12 +220,13 @@ async def test_valid_signature_dispatches_to_handler(client: AsyncClient) -> Non
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
-    mock_handle.assert_awaited_once()
-    # handle_event(db, event, log, provider_event_id="msg_xyz_1")
-    call = mock_handle.await_args
-    assert call is not None
-    assert call.args[1] == event  # parsed event payload
-    assert call.kwargs.get("provider_event_id") == "msg_xyz_1"
+    mock_idempotency.assert_awaited_once()
+    mock_dispatch.assert_awaited_once()
+    parsed_event = mock_dispatch.await_args.args[1]
+    assert parsed_event.event_type == "email.delivered"
+    assert parsed_event.provider_event_id == "msg_xyz_1"
+    assert parsed_event.idempotency_key == "msg_xyz_1"
+    assert parsed_event.data == {"email_id": "msg_abc123"}
 
 
 async def test_webhook_id_header_used_as_fallback(client: AsyncClient) -> None:
@@ -194,12 +238,20 @@ async def test_webhook_id_header_used_as_fallback(client: AsyncClient) -> None:
     event = _make_event_payload("email.opened")
     fake_wh = MagicMock()
     fake_wh.verify = MagicMock(return_value=event)
-    mock_handle = AsyncMock()
+    mock_idempotency = AsyncMock(return_value=WebhookIdempotencyDecision.process())
+    mock_dispatch = AsyncMock(return_value=WebhookDispatchResult.processed())
 
     with (
         patch.object(app_settings, "resend_webhook_secret", "whsec_test"),
         patch.object(resend_module, "Webhook", return_value=fake_wh),
-        patch.object(resend_module, "handle_event", new=mock_handle),
+        patch.object(
+            resend_module,
+            "_RESEND_PIPELINE",
+            new=_make_test_pipeline(
+                idempotency_checker=mock_idempotency,
+                dispatcher=mock_dispatch,
+            ),
+        ),
     ):
         response = await client.post(
             "/webhooks/resend",
@@ -212,9 +264,8 @@ async def test_webhook_id_header_used_as_fallback(client: AsyncClient) -> None:
         )
 
     assert response.status_code == 200
-    call = mock_handle.await_args
-    assert call is not None
-    assert call.kwargs["provider_event_id"] == "wh_id_fallback"
+    parsed_event = mock_dispatch.await_args.args[1]
+    assert parsed_event.provider_event_id == "wh_id_fallback"
 
 
 async def test_verify_falls_back_to_payload_when_svix_returns_non_dict(
@@ -225,12 +276,20 @@ async def test_verify_falls_back_to_payload_when_svix_returns_non_dict(
     fake_wh = MagicMock()
     # Old svix versions returned ``None`` on success — fall back to json.loads.
     fake_wh.verify = MagicMock(return_value=None)
-    mock_handle = AsyncMock()
+    mock_idempotency = AsyncMock(return_value=WebhookIdempotencyDecision.process())
+    mock_dispatch = AsyncMock(return_value=WebhookDispatchResult.processed())
 
     with (
         patch.object(app_settings, "resend_webhook_secret", "whsec_test"),
         patch.object(resend_module, "Webhook", return_value=fake_wh),
-        patch.object(resend_module, "handle_event", new=mock_handle),
+        patch.object(
+            resend_module,
+            "_RESEND_PIPELINE",
+            new=_make_test_pipeline(
+                idempotency_checker=mock_idempotency,
+                dispatcher=mock_dispatch,
+            ),
+        ),
     ):
         response = await client.post(
             "/webhooks/resend",
@@ -242,10 +301,50 @@ async def test_verify_falls_back_to_payload_when_svix_returns_non_dict(
         )
 
     assert response.status_code == 200
-    # Parsed event still reached the handler — confirming the json.loads fallback.
-    call = mock_handle.await_args
-    assert call is not None
-    assert call.args[1] == event
+    parsed_event = mock_dispatch.await_args.args[1]
+    assert parsed_event.event_type == "email.clicked"
+    assert parsed_event.data == event["data"]
+
+
+async def test_replay_short_circuits_before_domain_dispatch(client: AsyncClient) -> None:
+    """A duplicate Resend delivery gets a 200 but never runs side effects again."""
+    event = _make_event_payload("email.delivered")
+    fake_wh = MagicMock()
+    fake_wh.verify = MagicMock(return_value=event)
+    mock_idempotency = AsyncMock(
+        return_value=WebhookIdempotencyDecision.duplicate("already_processed")
+    )
+    mock_dispatch = AsyncMock(return_value=WebhookDispatchResult.processed())
+
+    with (
+        patch.object(app_settings, "resend_webhook_secret", "whsec_test"),
+        patch.object(resend_module, "Webhook", return_value=fake_wh),
+        patch.object(
+            resend_module,
+            "_RESEND_PIPELINE",
+            new=_make_test_pipeline(
+                idempotency_checker=mock_idempotency,
+                dispatcher=mock_dispatch,
+            ),
+        ),
+    ):
+        response = await client.post(
+            "/webhooks/resend",
+            content=json.dumps(event),
+            headers={
+                "content-type": "application/json",
+                "svix-id": "evt_replay_1",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "deduped": "true",
+        "reason": "already_processed",
+    }
+    mock_idempotency.assert_awaited_once()
+    mock_dispatch.assert_not_awaited()
 
 
 # --------------------------------------------------------------------------- #
@@ -298,7 +397,5 @@ class TestVerifySignatureUnit:
             patch.object(app_settings, "resend_webhook_secret", "whsec_test"),
             patch.object(resend_module, "Webhook", return_value=fake_wh),
         ):
-            result = resend_module._verify_signature(
-                json.dumps(event).encode(), {"svix-id": "x"}
-            )
+            result = resend_module._verify_signature(json.dumps(event).encode(), {"svix-id": "x"})
         assert result == event
