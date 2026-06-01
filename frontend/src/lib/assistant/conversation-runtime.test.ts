@@ -1,12 +1,21 @@
 import { describe, expect, it } from "vitest";
 
-import type { AssistantStreamEvent } from "@/lib/api/assistant";
+import type {
+  AssistantMessageResponse,
+  AssistantStreamEvent,
+} from "@/lib/api/assistant";
 
 import {
+  applyStreamResult,
   emptyAccumulator,
   emptyRuntime,
+  mergeRuntimePatch,
   parseWorkflowPayload,
   reduceStreamEvent,
+  resolveActiveConversationId,
+  resolveActiveRuntime,
+  selectVisibleMessages,
+  startUserTurn,
   toolNamesFromMessage,
   type ConversationRuntime,
   type StreamAccumulator,
@@ -203,6 +212,184 @@ describe("toolNamesFromMessage", () => {
     });
 
     expect(names).toEqual([]);
+  });
+});
+
+describe("resolveActiveConversationId", () => {
+  it("prefers the explicit selection when present", () => {
+    expect(
+      resolveActiveConversationId("conv_sel", [{ id: "conv_first" }], "draft_1"),
+    ).toBe("conv_sel");
+  });
+
+  it("falls back to the first conversation, then the draft", () => {
+    expect(
+      resolveActiveConversationId(null, [{ id: "conv_first" }], "draft_1"),
+    ).toBe("conv_first");
+    expect(resolveActiveConversationId(null, [], "draft_1")).toBe("draft_1");
+  });
+});
+
+describe("resolveActiveRuntime", () => {
+  const userMessage: AssistantMessageResponse = {
+    id: "m_user",
+    role: "user",
+    content: "hi",
+    created_at: "2026-05-20T14:00:00Z",
+  };
+
+  it("returns the stored runtime when it is streaming", () => {
+    const storedRuntime = { ...emptyRuntime(), isStreaming: true };
+    expect(
+      resolveActiveRuntime({ storedRuntime, isDraftActive: false, hydratedMessages: [] }),
+    ).toBe(storedRuntime);
+  });
+
+  it("returns the stored runtime when it already has messages", () => {
+    const storedRuntime = { ...emptyRuntime(), messages: [userMessage] };
+    expect(
+      resolveActiveRuntime({
+        storedRuntime,
+        isDraftActive: false,
+        hydratedMessages: [],
+      }),
+    ).toBe(storedRuntime);
+  });
+
+  it("returns an empty runtime for an active draft with no stored runtime", () => {
+    expect(
+      resolveActiveRuntime({
+        storedRuntime: undefined,
+        isDraftActive: true,
+        hydratedMessages: [userMessage],
+      }),
+    ).toEqual(emptyRuntime());
+  });
+
+  it("hydrates from persisted messages when nothing is stored", () => {
+    const runtime = resolveActiveRuntime({
+      storedRuntime: undefined,
+      isDraftActive: false,
+      hydratedMessages: [userMessage],
+    });
+    expect(runtime.messages).toEqual([userMessage]);
+    expect(runtime.isStreaming).toBe(false);
+  });
+
+  it("falls back to an empty runtime when there is nothing to hydrate", () => {
+    expect(
+      resolveActiveRuntime({
+        storedRuntime: undefined,
+        isDraftActive: false,
+        hydratedMessages: null,
+      }),
+    ).toEqual(emptyRuntime());
+  });
+});
+
+describe("selectVisibleMessages", () => {
+  it("hides tool-role messages and preserves order", () => {
+    const messages: AssistantMessageResponse[] = [
+      { id: "a", role: "user", content: "q", created_at: "2026-05-20T14:00:00Z" },
+      { id: "b", role: "tool", content: "{}", created_at: "2026-05-20T14:00:01Z" },
+      { id: "c", role: "assistant", content: "a", created_at: "2026-05-20T14:00:02Z" },
+    ];
+    expect(selectVisibleMessages(messages).map((message) => message.id)).toEqual([
+      "a",
+      "c",
+    ]);
+  });
+});
+
+describe("mergeRuntimePatch", () => {
+  it("merges a patch onto an empty runtime when none exists", () => {
+    expect(mergeRuntimePatch(undefined, { isStreaming: true })).toEqual({
+      ...emptyRuntime(),
+      isStreaming: true,
+    });
+  });
+
+  it("overrides only the patched fields", () => {
+    const runtime = { ...emptyRuntime(), streamingText: "keep", error: "old" };
+    expect(mergeRuntimePatch(runtime, { error: null })).toEqual({
+      ...runtime,
+      error: null,
+    });
+  });
+});
+
+describe("startUserTurn", () => {
+  it("appends the user message and resets streaming fields", () => {
+    const runtime: ConversationRuntime = {
+      ...emptyRuntime(),
+      messages: [
+        { id: "prev", role: "assistant", content: "earlier", created_at: "2026-05-20T13:59:00Z" },
+      ],
+      streamingText: "stale",
+      activeTools: [{ name: "x", status: "running" }],
+      error: "boom",
+    };
+    const userMessage: AssistantMessageResponse = {
+      id: "u1",
+      role: "user",
+      content: "new question",
+      created_at: "2026-05-20T14:00:00Z",
+    };
+
+    const next = startUserTurn(runtime, userMessage, "req_1");
+    expect(next.messages).toHaveLength(2);
+    expect(next.messages[1]).toBe(userMessage);
+    expect(next.streamingText).toBe("");
+    expect(next.activeTools).toEqual([]);
+    expect(next.error).toBeNull();
+    expect(next.isStreaming).toBe(true);
+    expect(next.requestId).toBe("req_1");
+  });
+});
+
+describe("applyStreamResult", () => {
+  it("merges the patch and appends a completed message", () => {
+    const runtime: ConversationRuntime = {
+      ...emptyRuntime(),
+      messages: [
+        { id: "u1", role: "user", content: "q", created_at: "2026-05-20T14:00:00Z" },
+      ],
+      isStreaming: true,
+    };
+    const appendMessage: AssistantMessageResponse = {
+      id: "a1",
+      role: "assistant",
+      content: "done",
+      created_at: "2026-05-20T14:00:05Z",
+    };
+
+    const next = applyStreamResult(runtime, {
+      accumulator: emptyAccumulator(),
+      patch: { isStreaming: false },
+      appendMessage,
+      finished: true,
+    });
+    expect(next.isStreaming).toBe(false);
+    expect(next.messages).toHaveLength(2);
+    expect(next.messages[1]).toBe(appendMessage);
+  });
+
+  it("keeps existing messages when there is nothing to append", () => {
+    const runtime: ConversationRuntime = {
+      ...emptyRuntime(),
+      messages: [
+        { id: "u1", role: "user", content: "q", created_at: "2026-05-20T14:00:00Z" },
+      ],
+    };
+
+    const next = applyStreamResult(runtime, {
+      accumulator: emptyAccumulator(),
+      patch: { streamingText: "partial" },
+      appendMessage: null,
+      finished: false,
+    });
+    expect(next.messages).toBe(runtime.messages);
+    expect(next.streamingText).toBe("partial");
   });
 });
 

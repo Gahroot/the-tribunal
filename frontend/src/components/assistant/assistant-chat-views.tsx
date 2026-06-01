@@ -7,7 +7,9 @@ import {
   Loader2,
   MessageSquare,
   Plus,
+  Send,
   Sparkles,
+  Square,
   Trash2,
   User,
   Wrench,
@@ -18,6 +20,7 @@ import { OutboundWorkflowCard } from "@/components/assistant/outbound-workflow-c
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Textarea } from "@/components/ui/textarea";
 import type { AssistantConversationMetaResponse, AssistantMessageResponse } from "@/lib/api/assistant";
 import {
   parseWorkflowPayload,
@@ -195,6 +198,93 @@ export function EmptyState({ onPrompt }: { onPrompt: (message: string) => Promis
         ))}
       </div>
     </div>
+  );
+}
+
+export function MessageList({
+  messages,
+  runtime,
+  scrollRef,
+  onPrompt,
+}: {
+  messages: AssistantMessageResponse[];
+  runtime: ConversationRuntime;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+  onPrompt: (message: string) => Promise<void>;
+}) {
+  return (
+    <ScrollArea className="min-h-0 flex-1">
+      <div ref={scrollRef} className="space-y-4 p-4 lg:p-6">
+        {messages.length === 0 && !runtime.isStreaming ? (
+          <EmptyState onPrompt={onPrompt} />
+        ) : null}
+
+        {messages.map((message) => (
+          <MessageBubble key={message.id} message={message} />
+        ))}
+
+        {runtime.isStreaming ? <StreamingBubble runtime={runtime} /> : null}
+
+        {runtime.error ? (
+          <div className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            <AlertCircle className="size-4" />
+            {runtime.error}
+          </div>
+        ) : null}
+      </div>
+    </ScrollArea>
+  );
+}
+
+export function MessageComposer({
+  input,
+  isStreaming,
+  canSend,
+  onInputChange,
+  onSubmit,
+  onKeyDown,
+  onStop,
+}: {
+  input: string;
+  isStreaming: boolean;
+  canSend: boolean;
+  onInputChange: (value: string) => void;
+  onSubmit: (event: React.FormEvent) => void;
+  onKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  onStop: () => void;
+}) {
+  return (
+    <form onSubmit={onSubmit} className="border-t bg-background/95 p-4">
+      <div className="flex items-end gap-2">
+        <Textarea
+          value={input}
+          onChange={(event) => onInputChange(event.target.value)}
+          placeholder="Ask your CRM assistant…"
+          className="max-h-[140px] min-h-[48px] resize-none"
+          rows={1}
+          onKeyDown={onKeyDown}
+          disabled={!canSend}
+        />
+        {isStreaming ? (
+          <Button type="button" size="icon" variant="secondary" onClick={onStop}>
+            <Square className="size-4" />
+            <span className="sr-only">Stop streaming</span>
+          </Button>
+        ) : (
+          <Button
+            type="submit"
+            size="icon"
+            disabled={!input.trim() || !canSend}
+            aria-label="Send message"
+          >
+            <Send className="size-4" />
+          </Button>
+        )}
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        Press Enter to send, Shift+Enter for a new line.
+      </p>
+    </form>
   );
 }
 

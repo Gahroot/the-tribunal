@@ -73,6 +73,96 @@ export function createRuntimeId(): string {
 }
 
 /**
+ * Resolve which conversation id is active given the explicit selection, the
+ * loaded conversation list, and the current draft id. Falls back to the first
+ * persisted conversation, then the draft, so a freshly mounted chat always has
+ * a stable target before the user picks anything.
+ */
+export function resolveActiveConversationId(
+  activeConversationId: string | null,
+  conversations: { id: string }[],
+  draftConversationId: string,
+): string {
+  return activeConversationId ?? conversations[0]?.id ?? draftConversationId;
+}
+
+/**
+ * Pick the runtime to render for the active conversation. A stored runtime wins
+ * once it is streaming, already has messages, or belongs to the in-progress
+ * draft; otherwise hydrate from the persisted conversation messages when they
+ * match, falling back to an empty runtime.
+ */
+export function resolveActiveRuntime(params: {
+  storedRuntime: ConversationRuntime | undefined;
+  isDraftActive: boolean;
+  hydratedMessages: AssistantMessageResponse[] | null;
+}): ConversationRuntime {
+  const { storedRuntime, isDraftActive, hydratedMessages } = params;
+  if (storedRuntime?.isStreaming || storedRuntime?.messages.length || isDraftActive) {
+    return storedRuntime ?? emptyRuntime();
+  }
+  if (hydratedMessages) {
+    return { ...emptyRuntime(), messages: hydratedMessages };
+  }
+  return storedRuntime ?? emptyRuntime();
+}
+
+/** Messages shown in the transcript: tool-role messages are internal and hidden. */
+export function selectVisibleMessages(
+  messages: AssistantMessageResponse[],
+): AssistantMessageResponse[] {
+  return messages.filter((message) => message.role !== "tool");
+}
+
+/** Shallow-merge a runtime patch onto an existing (or empty) runtime. */
+export function mergeRuntimePatch(
+  runtime: ConversationRuntime | undefined,
+  patch: Partial<ConversationRuntime>,
+): ConversationRuntime {
+  return { ...(runtime ?? emptyRuntime()), ...patch };
+}
+
+/**
+ * Reset the runtime for a new user turn: append the user message and clear the
+ * streaming/tool/error fields so a fresh assistant response can accumulate.
+ */
+export function startUserTurn(
+  runtime: ConversationRuntime,
+  userMessage: AssistantMessageResponse,
+  requestId: string,
+): ConversationRuntime {
+  return {
+    ...runtime,
+    messages: [...runtime.messages, userMessage],
+    streamingText: "",
+    reasoningText: "",
+    activeTools: [],
+    completedTools: [],
+    isStreaming: true,
+    error: null,
+    retryNotice: null,
+    requestId,
+  };
+}
+
+/**
+ * Apply a finished {@link StreamEventResult} to a runtime: merge the patch and
+ * append the completed assistant message when one was produced.
+ */
+export function applyStreamResult(
+  runtime: ConversationRuntime,
+  result: StreamEventResult,
+): ConversationRuntime {
+  return {
+    ...runtime,
+    ...result.patch,
+    messages: result.appendMessage
+      ? [...runtime.messages, result.appendMessage]
+      : runtime.messages,
+  };
+}
+
+/**
  * Fold a single SSE event into the accumulator and produce the runtime patch.
  *
  * The function is pure: it never mutates the input accumulator and returns the

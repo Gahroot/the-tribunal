@@ -15,10 +15,16 @@ import {
   type AssistantStreamEvent,
 } from "@/lib/api/assistant";
 import {
+  applyStreamResult,
   createRuntimeId,
   emptyAccumulator,
   emptyRuntime,
+  mergeRuntimePatch,
   reduceStreamEvent,
+  resolveActiveConversationId,
+  resolveActiveRuntime,
+  selectVisibleMessages,
+  startUserTurn,
   type ConversationRuntime,
   type StreamAccumulator,
 } from "@/lib/assistant/conversation-runtime";
@@ -70,8 +76,11 @@ export function useAssistantChat(): UseAssistantChatResult {
   const abortControllersRef = useRef<Record<string, AbortController>>({});
   const accumulatorsRef = useRef<Record<string, StreamAccumulator>>({});
   const isDraftActive = activeConversationId === draftConversationId;
-  const resolvedActiveConversationId =
-    activeConversationId ?? conversations[0]?.id ?? draftConversationId;
+  const resolvedActiveConversationId = resolveActiveConversationId(
+    activeConversationId,
+    conversations,
+    draftConversationId,
+  );
   const activeConversation = useMemo(
     () =>
       isDraftActive
@@ -88,18 +97,20 @@ export function useAssistantChat(): UseAssistantChatResult {
   );
   const deleteConversation = useDeleteAssistantConversation();
 
-  const activeRuntime = useMemo(() => {
-    const storedRuntime = runtimes[resolvedActiveConversationId];
-    if (storedRuntime?.isStreaming || storedRuntime?.messages.length || isDraftActive) {
-      return storedRuntime ?? emptyRuntime();
-    }
-    if (conversationQuery.data?.id === resolvedActiveConversationId) {
-      return { ...emptyRuntime(), messages: conversationQuery.data.messages };
-    }
-    return storedRuntime ?? emptyRuntime();
-  }, [conversationQuery.data, isDraftActive, resolvedActiveConversationId, runtimes]);
+  const activeRuntime = useMemo(
+    () =>
+      resolveActiveRuntime({
+        storedRuntime: runtimes[resolvedActiveConversationId],
+        isDraftActive,
+        hydratedMessages:
+          conversationQuery.data?.id === resolvedActiveConversationId
+            ? conversationQuery.data.messages
+            : null,
+      }),
+    [conversationQuery.data, isDraftActive, resolvedActiveConversationId, runtimes],
+  );
   const visibleMessages = useMemo(
-    () => activeRuntime.messages.filter((message) => message.role !== "tool"),
+    () => selectVisibleMessages(activeRuntime.messages),
     [activeRuntime.messages],
   );
 
@@ -107,10 +118,7 @@ export function useAssistantChat(): UseAssistantChatResult {
     (conversationId: string, patch: Partial<ConversationRuntime>) => {
       setRuntimes((current) => ({
         ...current,
-        [conversationId]: {
-          ...(current[conversationId] ?? emptyRuntime()),
-          ...patch,
-        },
+        [conversationId]: mergeRuntimePatch(current[conversationId], patch),
       }));
     },
     [],
@@ -165,19 +173,13 @@ export function useAssistantChat(): UseAssistantChatResult {
         return;
       }
 
-      setRuntimes((current) => {
-        const runtime = current[conversationId] ?? emptyRuntime();
-        return {
-          ...current,
-          [conversationId]: {
-            ...runtime,
-            ...result.patch,
-            messages: result.appendMessage
-              ? [...runtime.messages, result.appendMessage]
-              : runtime.messages,
-          },
-        };
-      });
+      setRuntimes((current) => ({
+        ...current,
+        [conversationId]: applyStreamResult(
+          current[conversationId] ?? emptyRuntime(),
+          result,
+        ),
+      }));
       delete abortControllersRef.current[conversationId];
       delete accumulatorsRef.current[conversationId];
     },
@@ -214,18 +216,7 @@ export function useAssistantChat(): UseAssistantChatResult {
             : emptyRuntime());
         return {
           ...current,
-          [conversationId]: {
-            ...runtime,
-            messages: [...runtime.messages, userMessage],
-            streamingText: "",
-            reasoningText: "",
-            activeTools: [],
-            completedTools: [],
-            isStreaming: true,
-            error: null,
-            retryNotice: null,
-            requestId,
-          },
+          [conversationId]: startUserTurn(runtime, userMessage, requestId),
         };
       });
 
