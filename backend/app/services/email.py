@@ -1,8 +1,7 @@
 """Email service for sending transactional emails via Resend."""
 
-import asyncio
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import structlog
 
@@ -20,15 +19,20 @@ except ImportError:
 logger = structlog.get_logger()
 
 
+class _ResendEmails(Protocol):
+    async def send_async(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Send one email with Resend's async HTTP client."""
+
+
+class _ResendModule(Protocol):
+    api_key: str | None
+    Emails: _ResendEmails
+
+
 def _from_address() -> str:
     name = settings.resend_from_name or "AI CRM"
     email = settings.resend_from_email or "noreply@example.com"
     return f"{name} <{email}>"
-
-
-def _send_sync(params: dict[str, Any]) -> dict[str, Any]:
-    response = resend.Emails.send(params)  # type: ignore[arg-type]
-    return dict(response) if response else {}
 
 
 async def _send(params: dict[str, Any]) -> dict[str, Any] | None:
@@ -41,12 +45,14 @@ async def _send(params: dict[str, Any]) -> dict[str, Any] | None:
         logger.warning("resend_api_key_not_configured")
         return None
 
-    resend.api_key = settings.resend_api_key
+    resend_module = cast(_ResendModule, resend)
+    resend_module.api_key = settings.resend_api_key
     try:
-        return await asyncio.to_thread(_send_sync, params)
+        response = await resend_module.Emails.send_async(params)
     except Exception as exc:
         logger.error("resend_send_failed", error=str(exc), to=params.get("to"))
         return None
+    return dict(response) if response else {}
 
 
 async def send_invitation_email(
