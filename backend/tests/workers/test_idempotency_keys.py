@@ -352,8 +352,10 @@ class TestApprovalWorkerKey:
             },
         )
 
-        with patch("app.services.telephony.telnyx.TelnyxSMSService") as sms_cls:
-            sms_instance = sms_cls.return_value
+        with patch(
+            "app.services.telephony.text_provider.get_text_message_provider"
+        ) as provider_factory:
+            sms_instance = provider_factory.return_value
             sms_instance.send_message = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
             sms_instance.close = AsyncMock()
 

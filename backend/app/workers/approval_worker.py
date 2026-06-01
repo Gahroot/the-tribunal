@@ -69,7 +69,9 @@ class ApprovalWorker(RetryableWorker, BaseWorker):
     async def _notify_pending_action(self, db: AsyncSession, action: PendingAction) -> None:
         """Notify a single pending action; raises on failure for retry."""
         try:
-            await self.delivery_service.notify_pending_action(db, action)
+            delivered = await self.delivery_service.notify_pending_action(db, action)
+            if not delivered:
+                raise RuntimeError(f"approval notification delivery failed for action {action.id}")
             await db.commit()
             self.record_items_processed()
         except Exception:
@@ -105,7 +107,7 @@ class ApprovalWorker(RetryableWorker, BaseWorker):
         1. Auto-approve: If a pending action's agent has a HumanProfile with
            auto_approve_timeout_minutes > 0 and the timeout has elapsed,
            set status to 'approved' (next poll will execute it).
-        2. Expire: If expires_at is set and has passed, set status to 'expired'.
+        2. Reject: If expires_at is set and has passed, set status to 'rejected'.
         """
         now = datetime.now(UTC)
 
@@ -148,8 +150,8 @@ class ApprovalWorker(RetryableWorker, BaseWorker):
 
             await db.commit()
 
-        # --- Expire ---
-        expire_result = await db.execute(
+        # --- Auto-reject expired actions ---
+        expired_result = await db.execute(
             select(PendingAction).where(
                 and_(
                     PendingAction.status == "pending",
@@ -158,12 +160,15 @@ class ApprovalWorker(RetryableWorker, BaseWorker):
                 )
             )
         )
-        expired_actions = expire_result.scalars().all()
+        expired_actions = expired_result.scalars().all()
 
         for action in expired_actions:
-            action.status = "expired"
+            action.status = "rejected"
+            action.reviewed_at = now
+            action.review_channel = "timeout"
+            action.rejection_reason = "Approval request timed out."
             self.logger.info(
-                "Expired pending action",
+                "Auto-rejected pending action after timeout",
                 action_id=str(action.id),
             )
 

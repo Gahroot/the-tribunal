@@ -5,11 +5,14 @@ be blocked, or be queued for human approval based on the agent's
 HumanProfile policies.
 """
 
+from __future__ import annotations
+
 import logging
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Protocol
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,8 +23,122 @@ from app.models.pending_action import PendingAction
 logger = logging.getLogger(__name__)
 
 
+class ApprovalActionExecutionError(RuntimeError):
+    """Raised when an approved action handler fails and should be retried."""
+
+    def __init__(self, action_id: uuid.UUID, action_type: str) -> None:
+        self.action_id = action_id
+        self.action_type = action_type
+        super().__init__(f"Failed to execute approved action {action_id} ({action_type})")
+
+
+class ApprovedActionHandler(Protocol):
+    """Typed handler contract for executing one pending-action command type."""
+
+    @property
+    def action_type(self) -> str:
+        """PendingAction.action_type handled by this command handler."""
+        ...
+
+    async def execute(self, db: AsyncSession, action: PendingAction) -> dict[str, Any]:
+        """Execute the approved pending action and return a JSON-serializable result."""
+        ...
+
+
+@dataclass(slots=True, frozen=True)
+class OutboundFollowUpCampaignSuggestionHandler:
+    """Acknowledge an approved outbound follow-up campaign suggestion."""
+
+    action_type: str = "outbound_improvement.follow_up_campaign"
+
+    async def execute(self, db: AsyncSession, action: PendingAction) -> dict[str, Any]:
+        return {
+            "status": "acknowledged",
+            "recommendation": action.action_payload.get("recommended_campaign", {}),
+            "source": action.context.get("source"),
+            "dedupe_key": action.context.get("dedupe_key"),
+        }
+
+
+@dataclass(slots=True, frozen=True)
+class BookAppointmentActionHandler:
+    """Execute a book_appointment pending action via BookingService."""
+
+    action_type: str = "book_appointment"
+
+    async def execute(self, db: AsyncSession, action: PendingAction) -> dict[str, Any]:
+        from app.services.calendar.booking import BookingService
+
+        payload = action.action_payload
+        api_key: str = payload.get("api_key", "")
+        event_type_id: int = payload.get("event_type_id", 0)
+        timezone: str = payload.get("timezone", "America/New_York")
+
+        service = BookingService(
+            api_key=api_key,
+            event_type_id=event_type_id,
+            timezone=timezone,
+        )
+        booking_result = await service.book_appointment(
+            date_str=payload.get("date", ""),
+            time_str=payload.get("time", ""),
+            email=payload.get("email", ""),
+            contact_name=payload.get("name", ""),
+            duration_minutes=payload.get("duration_minutes", 30),
+            phone_number=payload.get("phone_number"),
+        )
+        return {"status": "booked", "booking": str(booking_result)}
+
+
+@dataclass(slots=True, frozen=True)
+class SendSmsActionHandler:
+    """Execute a send_sms pending action via the configured text provider."""
+
+    action_type: str = "send_sms"
+    provider_factory: Callable[[], Any] | None = None
+
+    async def execute(self, db: AsyncSession, action: PendingAction) -> dict[str, Any]:
+        from app.services.idempotency import derive_outbound_key
+        from app.services.telephony.text_provider import get_text_message_provider
+
+        payload = action.action_payload
+        provider_factory = self.provider_factory or get_text_message_provider
+        sms_service = provider_factory()
+        # Stable per-pending-action key. A pending action is executed at
+        # most once on success; the approval_worker retries this method on
+        # transient failure, and the key ensures the SMS isn't sent twice
+        # if the prior attempt reached the provider but failed to commit.
+        idempotency_key = derive_outbound_key("approval_send_sms", action.id)
+        try:
+            await sms_service.send_message(
+                to_number=payload["to_number"],
+                from_number=payload["from_number"],
+                body=payload["text"],
+                db=db,
+                workspace_id=action.workspace_id,
+                agent_id=action.agent_id,
+                idempotency_key=idempotency_key,
+            )
+            return {"status": "sent", "to": payload["to_number"]}
+        finally:
+            await sms_service.close()
+
+
 class ApprovalGateService:
     """Central decision point: should an action execute immediately or be queued for approval?"""
+
+    def __init__(self, action_handlers: Iterable[ApprovedActionHandler] | None = None) -> None:
+        handlers = (
+            tuple(action_handlers) if action_handlers is not None else self._default_handlers()
+        )
+        self._action_handlers = {handler.action_type: handler for handler in handlers}
+
+    @staticmethod
+    def _default_handlers() -> tuple[ApprovedActionHandler, ...]:
+        book_appointment_handler: ApprovedActionHandler = BookAppointmentActionHandler()
+        send_sms_handler: ApprovedActionHandler = SendSmsActionHandler()
+        outbound_handler: ApprovedActionHandler = OutboundFollowUpCampaignSuggestionHandler()
+        return (book_appointment_handler, send_sms_handler, outbound_handler)
 
     async def check_and_execute_or_queue(
         self,
@@ -232,26 +349,21 @@ class ApprovalGateService:
 
         try:
             execution_result = await self._dispatch_action(db, action)
-            action.status = "executed"
-            action.executed_at = datetime.now(UTC)
-            action.execution_result = execution_result
-            await db.commit()
-            return execution_result
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 "Failed to execute approved action %s (%s)",
                 action.id,
                 action.action_type,
             )
-            error_result: dict[str, Any] = {
-                "error": "execution_failed",
-                "action_id": str(action.id),
-            }
-            action.status = "failed"
-            action.executed_at = datetime.now(UTC)
-            action.execution_result = error_result
-            await db.commit()
-            return error_result
+            raise ApprovalActionExecutionError(action.id, action.action_type) from exc
+
+        action.status = (
+            "failed" if execution_result.get("error") == "unsupported_action_type" else "executed"
+        )
+        action.executed_at = datetime.now(UTC)
+        action.execution_result = execution_result
+        await db.commit()
+        return execution_result
 
     async def _dispatch_action(
         self,
@@ -261,30 +373,21 @@ class ApprovalGateService:
         """Route an action to the correct service for execution."""
         from app.services.ai.crm_assistant._tool_metadata import get_approved_action_executor
 
-        dispatch_map: dict[
-            str,
-            Callable[[AsyncSession, PendingAction], Awaitable[dict[str, Any]]],
-        ] = {
-            "book_appointment": self._execute_book_appointment,
-            "send_sms": self._execute_send_sms,
-            "outbound_improvement.follow_up_campaign": (
-                self._execute_outbound_follow_up_campaign_suggestion
-            ),
-        }
+        handler = self._action_handlers.get(action.action_type)
+        if handler is not None:
+            return await handler.execute(db, action)
 
-        handler = get_approved_action_executor(action.action_type) or dispatch_map.get(
-            action.action_type
+        crm_assistant_handler = get_approved_action_executor(action.action_type)
+        if crm_assistant_handler is not None:
+            result: dict[str, Any] = await crm_assistant_handler(db, action)
+            return result
+
+        logger.warning(
+            "No handler for action type %s (action %s)",
+            action.action_type,
+            action.id,
         )
-        if handler is None:
-            logger.warning(
-                "No handler for action type %s (action %s)",
-                action.action_type,
-                action.id,
-            )
-            return {"error": "unsupported_action_type", "type": action.action_type}
-
-        result: dict[str, Any] = await handler(db, action)
-        return result
+        return {"error": "unsupported_action_type", "type": action.action_type}
 
     async def _execute_outbound_follow_up_campaign_suggestion(
         self,
@@ -292,12 +395,7 @@ class ApprovalGateService:
         action: PendingAction,
     ) -> dict[str, Any]:
         """Acknowledge an approved outbound follow-up campaign suggestion."""
-        return {
-            "status": "acknowledged",
-            "recommendation": action.action_payload.get("recommended_campaign", {}),
-            "source": action.context.get("source"),
-            "dedupe_key": action.context.get("dedupe_key"),
-        }
+        return await OutboundFollowUpCampaignSuggestionHandler().execute(db, action)
 
     async def _execute_book_appointment(
         self,
@@ -305,58 +403,15 @@ class ApprovalGateService:
         action: PendingAction,
     ) -> dict[str, Any]:
         """Execute a book_appointment action via BookingService."""
-        from app.services.calendar.booking import BookingService
-
-        payload = action.action_payload
-        api_key: str = payload.get("api_key", "")
-        event_type_id: int = payload.get("event_type_id", 0)
-        timezone: str = payload.get("timezone", "America/New_York")
-
-        service = BookingService(
-            api_key=api_key,
-            event_type_id=event_type_id,
-            timezone=timezone,
-        )
-        booking_result = await service.book_appointment(
-            date_str=payload.get("date", ""),
-            time_str=payload.get("time", ""),
-            email=payload.get("email", ""),
-            contact_name=payload.get("name", ""),
-            duration_minutes=payload.get("duration_minutes", 30),
-            phone_number=payload.get("phone_number"),
-        )
-        return {"status": "booked", "booking": str(booking_result)}
+        return await BookAppointmentActionHandler().execute(db, action)
 
     async def _execute_send_sms(
         self,
         db: AsyncSession,
         action: PendingAction,
     ) -> dict[str, Any]:
-        """Execute a send_sms action via TelnyxSMSService."""
-        from app.core.config import settings
-        from app.services.idempotency import derive_outbound_key
-        from app.services.telephony.telnyx import TelnyxSMSService
-
-        payload = action.action_payload
-        sms_service = TelnyxSMSService(api_key=settings.telnyx_api_key)
-        # Stable per-pending-action key. A pending action is executed at
-        # most once on success; the approval_worker retries this method on
-        # transient failure, and the key ensures the SMS isn't sent twice
-        # if the prior attempt reached Telnyx but failed to commit.
-        idempotency_key = derive_outbound_key("approval_send_sms", action.id)
-        try:
-            await sms_service.send_message(
-                to_number=payload["to_number"],
-                from_number=payload["from_number"],
-                body=payload["text"],
-                db=db,
-                workspace_id=action.workspace_id,
-                agent_id=action.agent_id,
-                idempotency_key=idempotency_key,
-            )
-            return {"status": "sent", "to": payload["to_number"]}
-        finally:
-            await sms_service.close()
+        """Execute a send_sms action via the configured text provider."""
+        return await SendSmsActionHandler().execute(db, action)
 
 
 approval_gate_service = ApprovalGateService()

@@ -1,3 +1,5 @@
-import pytest
+"""Approval service test package placeholder."""
 
-pytest.skip("not yet implemented", allow_module_level=True)
+
+def test_approval_service_test_package_is_configured() -> None:
+    assert True

@@ -5,23 +5,166 @@ approval/rejection commands to the ApprovalGateService before they reach
 normal conversation processing.
 """
 
+from __future__ import annotations
+
 import logging
 import uuid
-from typing import ClassVar
+from collections.abc import Callable
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import ClassVar, Protocol
 
-import httpx
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.models.human_profile import HumanProfile
 from app.models.pending_action import PendingAction
 from app.models.phone_number import PhoneNumber
 from app.models.workspace import WorkspaceMembership
-from app.services.approval.approval_gate_service import approval_gate_service
+from app.services.approval.approval_gate_service import ApprovalGateService, approval_gate_service
 from app.utils.phone import normalize_phone_safe
 
 logger = logging.getLogger(__name__)
+
+
+class ApprovalCommandKind(StrEnum):
+    """Supported inbound operator command intents."""
+
+    APPROVE = "approve"
+    REJECT = "reject"
+
+
+@dataclass(slots=True, frozen=True)
+class ApprovalSmsCommand:
+    """Normalized approval command extracted from an inbound SMS."""
+
+    kind: ApprovalCommandKind
+    normalized_from: str
+    normalized_to: str
+    original_body: str
+
+
+class SmsResponder(Protocol):
+    """Sends command outcome messages back to the operator."""
+
+    async def send_response(self, *, from_number: str, to_number: str, body: str) -> None:
+        """Send a short command outcome response."""
+        ...
+
+
+class TextProviderSmsResponder:
+    """SMS responder backed by the configured text-message provider."""
+
+    async def send_response(self, *, from_number: str, to_number: str, body: str) -> None:
+        from app.db.session import AsyncSessionLocal
+        from app.services.telephony.text_provider import get_text_message_provider
+
+        async with AsyncSessionLocal() as db:
+            sms_service = get_text_message_provider()
+            try:
+                phone_result = await db.execute(
+                    select(PhoneNumber).where(PhoneNumber.phone_number == from_number)
+                )
+                phone_record = phone_result.scalar_one_or_none()
+                if phone_record is None:
+                    logger.debug("No PhoneNumber record for %s", from_number)
+                    return
+                await sms_service.send_message(
+                    to_number=to_number,
+                    from_number=from_number,
+                    body=body,
+                    db=db,
+                    workspace_id=phone_record.workspace_id,
+                    phone_number_id=phone_record.id,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to send text response from %s to %s",
+                    from_number,
+                    to_number,
+                )
+            finally:
+                await sms_service.close()
+
+
+@dataclass(slots=True, frozen=True)
+class ApprovalCommandExecutionResult:
+    """Outcome of applying an inbound command to a pending action."""
+
+    action: PendingAction
+    response_body: str
+
+
+class ApprovalCommandHandler(Protocol):
+    """Typed handler contract for one inbound approval command kind."""
+
+    @property
+    def kind(self) -> ApprovalCommandKind:
+        """Inbound command kind handled by this command handler."""
+        ...
+
+    async def execute(
+        self,
+        *,
+        db: AsyncSession,
+        action: PendingAction,
+        user_id: int,
+        gate_service: ApprovalGateService,
+    ) -> ApprovalCommandExecutionResult:
+        """Apply the command to the pending action and return the operator response."""
+        ...
+
+
+@dataclass(slots=True, frozen=True)
+class ApproveSmsCommandHandler:
+    """Approve the latest pending action."""
+
+    kind: ApprovalCommandKind = ApprovalCommandKind.APPROVE
+
+    async def execute(
+        self,
+        *,
+        db: AsyncSession,
+        action: PendingAction,
+        user_id: int,
+        gate_service: ApprovalGateService,
+    ) -> ApprovalCommandExecutionResult:
+        approved_action = await gate_service.approve_action(
+            db,
+            action_id=action.id,
+            user_id=user_id,
+            channel="sms",
+        )
+        return ApprovalCommandExecutionResult(
+            action=approved_action,
+            response_body=f"✓ Approved: {approved_action.description}",
+        )
+
+
+@dataclass(slots=True, frozen=True)
+class RejectSmsCommandHandler:
+    """Reject the latest pending action."""
+
+    kind: ApprovalCommandKind = ApprovalCommandKind.REJECT
+
+    async def execute(
+        self,
+        *,
+        db: AsyncSession,
+        action: PendingAction,
+        user_id: int,
+        gate_service: ApprovalGateService,
+    ) -> ApprovalCommandExecutionResult:
+        rejected_action = await gate_service.reject_action(
+            db,
+            action_id=action.id,
+            user_id=user_id,
+            channel="sms",
+        )
+        return ApprovalCommandExecutionResult(
+            action=rejected_action,
+            response_body=f"✗ Rejected: {rejected_action.description}",
+        )
 
 
 class CommandProcessorService:
@@ -46,6 +189,20 @@ class CommandProcessorService:
         "\U0001f44e",
     }
 
+    def __init__(
+        self,
+        *,
+        gate_service: ApprovalGateService = approval_gate_service,
+        sms_responder: SmsResponder | None = None,
+        command_handlers: tuple[ApprovalCommandHandler, ...] | None = None,
+        phone_normalizer: Callable[[str], str | None] = normalize_phone_safe,
+    ) -> None:
+        self.gate_service = gate_service
+        self.sms_responder = sms_responder or TextProviderSmsResponder()
+        handlers = command_handlers or (ApproveSmsCommandHandler(), RejectSmsCommandHandler())
+        self._command_handlers = {handler.kind: handler for handler in handlers}
+        self._phone_normalizer = phone_normalizer
+
     async def try_process_command(
         self,
         db: AsyncSession,
@@ -59,27 +216,16 @@ class CommandProcessorService:
         NOT continue with normal SMS processing). Returns False if the message
         is not a recognised command or doesn't come from a known operator.
         """
-        # 1. Normalize body
-        normalized_body = body.strip().lower()
-
-        # 2. Check if body matches approve or reject keywords
-        is_approve = normalized_body in self.APPROVE_KEYWORDS
-        is_reject = normalized_body in self.REJECT_KEYWORDS
-
-        if not is_approve and not is_reject:
+        command = self._parse_command(
+            from_number=from_number,
+            to_number=to_number,
+            body=body,
+        )
+        if command is None:
             return False
 
-        # 3. Normalize the incoming phone numbers for comparison
-        normalized_to = normalize_phone_safe(to_number)
-        normalized_from = normalize_phone_safe(from_number)
-
-        if not normalized_to or not normalized_from:
-            logger.debug(
-                "Could not normalize phone numbers: from=%s, to=%s",
-                from_number,
-                to_number,
-            )
-            return False
+        normalized_to = command.normalized_to
+        normalized_from = command.normalized_from
 
         # 4. Look up PhoneNumber record for to_number to get workspace_id
         phone_result = await db.execute(
@@ -134,39 +280,61 @@ class CommandProcessorService:
         # 7. Resolve user_id from workspace membership
         user_id = await self._resolve_user_id(db, workspace_id)
 
-        # 8. Approve or reject via the gate service
-        if is_approve:
-            approved_action = await approval_gate_service.approve_action(
-                db,
-                action_id=action.id,
-                user_id=user_id,
-                channel="sms",
-            )
-            await self._send_sms_response(
-                from_number=normalized_to,
-                to_number=normalized_from,
-                body=f"\u2713 Approved: {approved_action.description}",
-            )
-        else:
-            rejected_action = await approval_gate_service.reject_action(
-                db,
-                action_id=action.id,
-                user_id=user_id,
-                channel="sms",
-            )
-            await self._send_sms_response(
-                from_number=normalized_to,
-                to_number=normalized_from,
-                body=f"\u2717 Rejected: {rejected_action.description}",
-            )
+        handler = self._command_handlers[command.kind]
+        result = await handler.execute(
+            db=db,
+            action=action,
+            user_id=user_id,
+            gate_service=self.gate_service,
+        )
+        await self._send_sms_response(
+            from_number=normalized_to,
+            to_number=normalized_from,
+            body=result.response_body,
+        )
 
         logger.info(
             "Processed SMS command from %s: %s action %s",
             normalized_from,
-            "approve" if is_approve else "reject",
+            command.kind.value,
             action.id,
         )
         return True
+
+    def _parse_command(
+        self,
+        *,
+        from_number: str,
+        to_number: str,
+        body: str,
+    ) -> ApprovalSmsCommand | None:
+        """Parse and normalize an inbound approval SMS command."""
+        normalized_body = body.strip().lower()
+        command_kind: ApprovalCommandKind | None = None
+        if normalized_body in self.APPROVE_KEYWORDS:
+            command_kind = ApprovalCommandKind.APPROVE
+        elif normalized_body in self.REJECT_KEYWORDS:
+            command_kind = ApprovalCommandKind.REJECT
+
+        if command_kind is None:
+            return None
+
+        normalized_to = self._phone_normalizer(to_number)
+        normalized_from = self._phone_normalizer(from_number)
+        if not normalized_to or not normalized_from:
+            logger.debug(
+                "Could not normalize phone numbers: from=%s, to=%s",
+                from_number,
+                to_number,
+            )
+            return None
+
+        return ApprovalSmsCommand(
+            kind=command_kind,
+            normalized_from=normalized_from,
+            normalized_to=normalized_to,
+            original_body=body,
+        )
 
     async def _resolve_user_id(self, db: AsyncSession, workspace_id: uuid.UUID) -> int:
         """Get the owner/admin user_id for the workspace.
@@ -208,33 +376,12 @@ class CommandProcessorService:
         to_number: str,
         body: str,
     ) -> None:
-        """Send an SMS response via Telnyx API."""
-        if not settings.telnyx_api_key:
-            logger.debug("No Telnyx API key configured — skipping SMS response")
-            return
-
-        try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.post(
-                    "https://api.telnyx.com/v2/messages",
-                    headers={
-                        "Authorization": f"Bearer {settings.telnyx_api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "from": from_number,
-                        "to": to_number,
-                        "text": body,
-                        "type": "SMS",
-                    },
-                )
-                resp.raise_for_status()
-        except Exception:
-            logger.exception(
-                "Failed to send SMS response from %s to %s",
-                from_number,
-                to_number,
-            )
+        """Send an approval command response via the configured text provider."""
+        await self.sms_responder.send_response(
+            from_number=from_number,
+            to_number=to_number,
+            body=body,
+        )
 
 
 command_processor_service = CommandProcessorService()
