@@ -1,11 +1,9 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CalendarIcon, Loader2, Search } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
-import { toast } from "sonner";
 import * as z from "zod";
 
 import { Button } from "@/components/ui/button";
@@ -43,49 +41,33 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useAgents } from "@/hooks/useAgents";
 import { useContacts } from "@/hooks/useContacts";
+import { useCreateAppointment } from "@/hooks/useCreateAppointment";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
-import { appointmentsApi, type CreateAppointmentRequest } from "@/lib/api/appointments";
-import { queryKeys } from "@/lib/query-keys";
+import {
+  APPOINTMENT_FORM_DEFAULTS,
+  appointmentFormSchema,
+  buildCreateAppointmentRequest,
+  DURATION_OPTIONS,
+  generateTimeSlots,
+} from "@/lib/appointments/appointment-form";
 import { cn } from "@/lib/utils";
 import { formatDate } from "@/lib/utils/date";
-import { getApiErrorMessage } from "@/lib/utils/errors";
 
-const appointmentFormSchema = z.object({
+const newAppointmentFormSchema = appointmentFormSchema.extend({
   contact_id: z.string().min(1, { error: "Please select a contact" }),
-  date: z.date({ message: "Please select a date" }),
-  time: z.string().min(1, { error: "Please select a time" }),
-  duration_minutes: z.number().min(15).max(480),
-  service_type: z.string().optional(),
-  notes: z.string().optional(),
-  agent_id: z.string().optional(),
 });
 
-type AppointmentFormValues = z.infer<typeof appointmentFormSchema>;
+type NewAppointmentFormValues = z.infer<typeof newAppointmentFormSchema>;
 
 interface NewAppointmentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-// Generate time slots from 8 AM to 6 PM in 30-minute increments
-function generateTimeSlots(): string[] {
-  const slots: string[] = [];
-  for (let hour = 8; hour <= 18; hour++) {
-    for (const minute of [0, 30]) {
-      if (hour === 18 && minute === 30) continue;
-      const h = hour.toString().padStart(2, "0");
-      const m = minute.toString().padStart(2, "0");
-      slots.push(`${h}:${m}`);
-    }
-  }
-  return slots;
-}
-
 const timeSlots = generateTimeSlots();
 
 export function NewAppointmentDialog({ open, onOpenChange }: NewAppointmentDialogProps) {
   const workspaceId = useWorkspaceId();
-  const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [contactSearch, setContactSearch] = useState("");
 
@@ -100,14 +82,11 @@ export function NewAppointmentDialog({ open, onOpenChange }: NewAppointmentDialo
     { page: 1, page_size: 100, search: contactSearch || undefined }
   );
 
-  const form = useForm<AppointmentFormValues>({
-    resolver: zodResolver(appointmentFormSchema),
+  const form = useForm<NewAppointmentFormValues>({
+    resolver: zodResolver(newAppointmentFormSchema),
     defaultValues: {
+      ...APPOINTMENT_FORM_DEFAULTS,
       contact_id: "",
-      duration_minutes: 30,
-      service_type: "",
-      notes: "",
-      agent_id: undefined,
     },
   });
 
@@ -124,44 +103,27 @@ export function NewAppointmentDialog({ open, onOpenChange }: NewAppointmentDialo
     });
   }, [contactsData?.items, contactSearch]);
 
-  const createAppointmentMutation = useMutation({
-    mutationFn: (data: CreateAppointmentRequest) => {
-      if (!workspaceId) throw new Error("Workspace not loaded");
-      return appointmentsApi.create(workspaceId, data);
-    },
+  const createAppointmentMutation = useCreateAppointment({
+    workspaceId,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.appointments.bare(workspaceId ?? "") });
-      toast.success("Appointment scheduled successfully!");
       form.reset();
       setContactSearch("");
       onOpenChange(false);
     },
-    onError: (error) => {
-      toast.error(getApiErrorMessage(error, "Failed to schedule appointment. Please try again."));
-    },
-    onSettled: () => {
-      setIsSubmitting(false);
-    },
   });
 
-  const handleSubmit = (data: AppointmentFormValues) => {
+  const handleSubmit = (data: NewAppointmentFormValues) => {
     if (isSubmitting) return;
     setIsSubmitting(true);
 
-    const [hours, minutes] = data.time.split(":").map(Number);
-    const scheduledAt = new Date(data.date);
-    scheduledAt.setHours(hours, minutes, 0, 0);
+    const request = buildCreateAppointmentRequest(
+      data,
+      parseInt(data.contact_id, 10),
+    );
 
-    const request: CreateAppointmentRequest = {
-      contact_id: parseInt(data.contact_id, 10),
-      scheduled_at: scheduledAt.toISOString(),
-      duration_minutes: data.duration_minutes,
-      service_type: data.service_type || undefined,
-      notes: data.notes || undefined,
-      agent_id: data.agent_id || undefined,
-    };
-
-    createAppointmentMutation.mutate(request);
+    createAppointmentMutation.mutate(request, {
+      onSettled: () => setIsSubmitting(false),
+    });
   };
 
   const handleOpenChange = (open: boolean) => {
@@ -329,12 +291,11 @@ export function NewAppointmentDialog({ open, onOpenChange }: NewAppointmentDialo
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="15">15 minutes</SelectItem>
-                      <SelectItem value="30">30 minutes</SelectItem>
-                      <SelectItem value="45">45 minutes</SelectItem>
-                      <SelectItem value="60">1 hour</SelectItem>
-                      <SelectItem value="90">1.5 hours</SelectItem>
-                      <SelectItem value="120">2 hours</SelectItem>
+                      {DURATION_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value.toString()}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <FormMessage />
