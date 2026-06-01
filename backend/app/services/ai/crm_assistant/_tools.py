@@ -4,12 +4,32 @@ Style: short imperative descriptions, only non-obvious params documented.
 Mirrors the prompt-hint style in ezcoder's tools/prompt-hints.ts.
 """
 
+from copy import deepcopy
 from typing import Any
+
+from app.services.ai.crm_assistant._tool_metadata import get_tool_policy
 
 CONFIRMED_PARAM = {
     "type": "boolean",
     "description": "True only after explicit user confirmation",
 }
+
+
+def _with_confirmation_property(tool: dict[str, Any]) -> dict[str, Any]:
+    """Add the confirmation parameter when tool metadata requires it."""
+
+    function = tool["function"]
+    if not get_tool_policy(function["name"]).requires_confirmation:
+        return tool
+    properties = function.setdefault("parameters", {}).setdefault("properties", {})
+    properties.setdefault("confirmed", CONFIRMED_PARAM)
+    return tool
+
+
+def _apply_tool_policy_metadata(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return OpenAI tool definitions augmented from CRM tool metadata."""
+
+    return [_with_confirmation_property(deepcopy(tool)) for tool in tools]
 
 CRM_TOOLS: list[dict[str, Any]] = [
     {
@@ -88,7 +108,6 @@ CRM_TOOLS: list[dict[str, Any]] = [
                 "properties": {
                     "contact_id": {"type": "integer"},
                     "body": {"type": "string", "description": "Message text"},
-                    "confirmed": CONFIRMED_PARAM,
                 },
                 "required": ["contact_id", "body"],
             },
@@ -106,7 +125,6 @@ CRM_TOOLS: list[dict[str, Any]] = [
                 "properties": {
                     "campaign_id": {"type": "string", "description": "Campaign UUID"},
                     "contact_id": {"type": "integer"},
-                    "confirmed": CONFIRMED_PARAM,
                 },
                 "required": ["campaign_id", "contact_id"],
             },
@@ -124,7 +142,6 @@ CRM_TOOLS: list[dict[str, Any]] = [
                 "type": "object",
                 "properties": {
                     "campaign_id": {"type": "string", "description": "Campaign UUID"},
-                    "confirmed": CONFIRMED_PARAM,
                 },
                 "required": ["campaign_id"],
             },
@@ -156,7 +173,6 @@ CRM_TOOLS: list[dict[str, Any]] = [
                 "type": "object",
                 "properties": {
                     "campaign_id": {"type": "string", "description": "Campaign UUID"},
-                    "confirmed": CONFIRMED_PARAM,
                 },
                 "required": ["campaign_id"],
             },
@@ -235,7 +251,6 @@ CRM_TOOLS: list[dict[str, Any]] = [
                     "system_prompt": {"type": "string"},
                     "temperature": {"type": "number"},
                     "enabled_tools": {"type": "array", "items": {"type": "string"}},
-                    "confirmed": CONFIRMED_PARAM,
                 },
                 "required": ["name", "system_prompt"],
             },
@@ -257,7 +272,6 @@ CRM_TOOLS: list[dict[str, Any]] = [
                     "temperature": {"type": "number"},
                     "is_active": {"type": "boolean"},
                     "enabled_tools": {"type": "array", "items": {"type": "string"}},
-                    "confirmed": CONFIRMED_PARAM,
                 },
                 "required": ["agent_id"],
             },
@@ -276,7 +290,6 @@ CRM_TOOLS: list[dict[str, Any]] = [
                     "conversation_id": {"type": "string", "description": "Conversation UUID"},
                     "agent_id": {"type": "string", "description": "Agent UUID"},
                     "ai_enabled": {"type": "boolean"},
-                    "confirmed": CONFIRMED_PARAM,
                 },
                 "required": ["conversation_id", "agent_id"],
             },
@@ -486,4 +499,4 @@ CRM_TOOLS: list[dict[str, Any]] = [
 
 def get_crm_tools() -> list[dict[str, Any]]:
     """Return the CRM tool definitions for OpenAI function calling."""
-    return CRM_TOOLS
+    return _apply_tool_policy_metadata(CRM_TOOLS)

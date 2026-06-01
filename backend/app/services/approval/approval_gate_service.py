@@ -7,6 +7,7 @@ HumanProfile policies.
 
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -217,6 +218,18 @@ class ApprovalGateService:
         - book_appointment -> BookingService
         - send_sms -> TelnyxSMSService
         """
+        if action.status != "approved":
+            logger.warning(
+                "Refusing to execute non-approved action %s with status %s",
+                action.id,
+                action.status,
+            )
+            return {
+                "error": "action_not_approved",
+                "action_id": str(action.id),
+                "status": action.status,
+            }
+
         try:
             execution_result = await self._dispatch_action(db, action)
             action.status = "executed"
@@ -246,17 +259,22 @@ class ApprovalGateService:
         action: PendingAction,
     ) -> dict[str, Any]:
         """Route an action to the correct service for execution."""
-        dispatch_map: dict[str, Any] = {
+        from app.services.ai.crm_assistant._tool_metadata import get_approved_action_executor
+
+        dispatch_map: dict[
+            str,
+            Callable[[AsyncSession, PendingAction], Awaitable[dict[str, Any]]],
+        ] = {
             "book_appointment": self._execute_book_appointment,
             "send_sms": self._execute_send_sms,
-            "crm_assistant.start_campaign": self._execute_crm_assistant_campaign_lifecycle,
-            "crm_assistant.resume_campaign": self._execute_crm_assistant_campaign_lifecycle,
             "outbound_improvement.follow_up_campaign": (
                 self._execute_outbound_follow_up_campaign_suggestion
             ),
         }
 
-        handler = dispatch_map.get(action.action_type)
+        handler = get_approved_action_executor(action.action_type) or dispatch_map.get(
+            action.action_type
+        )
         if handler is None:
             logger.warning(
                 "No handler for action type %s (action %s)",
@@ -308,48 +326,6 @@ class ApprovalGateService:
             phone_number=payload.get("phone_number"),
         )
         return {"status": "booked", "booking": str(booking_result)}
-
-    async def _execute_crm_assistant_campaign_lifecycle(
-        self,
-        db: AsyncSession,
-        action: PendingAction,
-    ) -> dict[str, Any]:
-        """Execute an approved CRM assistant campaign lifecycle action."""
-        from app.services.campaigns.campaign_lifecycle import (
-            CampaignLifecycleError,
-            get_campaign_for_workspace,
-            resume_campaign,
-            start_campaign,
-        )
-
-        raw_campaign_id = action.action_payload.get("campaign_id")
-        try:
-            campaign_id = uuid.UUID(str(raw_campaign_id))
-        except (TypeError, ValueError):
-            return {"error": "invalid_campaign_id", "campaign_id": raw_campaign_id}
-
-        campaign = await get_campaign_for_workspace(db, campaign_id, action.workspace_id)
-        if campaign is None:
-            return {"error": "campaign_not_found", "campaign_id": str(campaign_id)}
-
-        try:
-            if action.action_type == "crm_assistant.start_campaign":
-                lifecycle_result = await start_campaign(db, campaign)
-            else:
-                lifecycle_result = await resume_campaign(db, campaign)
-        except CampaignLifecycleError as exc:
-            return {
-                "error": "campaign_lifecycle_failed",
-                "message": str(exc),
-                "campaign_id": str(campaign_id),
-            }
-
-        return {
-            "status": lifecycle_result.status.value,
-            "message": lifecycle_result.message,
-            "campaign_id": str(campaign_id),
-            "contact_count": lifecycle_result.contact_count,
-        }
 
     async def _execute_send_sms(
         self,

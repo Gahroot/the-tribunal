@@ -13,9 +13,12 @@ from app.models.agent import Agent
 from app.models.campaign import Campaign, CampaignStatus
 from app.models.contact import Contact
 from app.models.offer import Offer
+from app.models.pending_action import PendingAction
 from app.models.segment import Segment
 from app.services.ai.crm_assistant._tool_executor import CRMToolExecutor
+from app.services.ai.crm_assistant._tool_metadata import get_approved_action_executor
 from app.services.ai.crm_assistant._tools import get_crm_tools
+from app.services.approval.approval_gate_service import ApprovalGateService
 
 
 def _make_agent(**overrides: Any) -> Agent:
@@ -166,6 +169,9 @@ class _ExecuteResult:
     def scalar_one_or_none(self) -> Any | None:
         return self._rows[0] if self._rows else None
 
+    def scalar_one(self) -> Any:
+        return self._rows[0]
+
     def scalar(self) -> Any | None:
         return self._rows[0] if self._rows else None
 
@@ -201,6 +207,27 @@ def test_offer_tools_are_registered() -> None:
         "update_agent",
         "assign_ai_responder",
     }.issubset(names)
+
+
+def test_approval_tool_metadata_drives_schema_and_executor_bindings() -> None:
+    tools_by_name = {tool["function"]["name"]: tool for tool in get_crm_tools()}
+    confirmation_required = {
+        "send_sms",
+        "send_initial_message",
+        "start_campaign",
+        "resume_campaign",
+        "create_agent",
+        "update_agent",
+        "assign_ai_responder",
+    }
+
+    for tool_name in confirmation_required:
+        assert "confirmed" in tools_by_name[tool_name]["function"]["parameters"]["properties"]
+        assert get_approved_action_executor(f"crm_assistant.{tool_name}") is not None
+
+    pause_properties = tools_by_name["pause_campaign"]["function"]["parameters"]["properties"]
+    assert "confirmed" not in pause_properties
+    assert get_approved_action_executor("crm_assistant.pause_campaign") is None
 
 
 async def test_list_offers_returns_campaign_ready_summaries(
@@ -341,13 +368,91 @@ async def test_gated_outbound_action_creates_pending_action(
         {"name": "Closer", "system_prompt": "Qualify and book."},
     )
 
-    assert result["success"] is False
-    assert result["pending_approval"] is True
+    assert result == {
+        "success": False,
+        "pending_approval": True,
+        "pending_action_id": str(db.add.call_args.args[0].id),
+        "message": "Approval required before I can create this AI agent.",
+    }
     pending_action = db.add.call_args.args[0]
     assert pending_action.workspace_id == workspace_id
     assert pending_action.agent_id is None
     assert pending_action.action_type == "crm_assistant.create_agent"
     assert pending_action.action_payload == {"name": "Closer", "system_prompt": "Qualify and book."}
+    assert pending_action.description == "Create AI agent Closer"
+    assert pending_action.context == {
+        "source": "crm_assistant",
+        "user_id": 7,
+        "risk_level": "high",
+        "requires_confirmation": True,
+    }
+    assert pending_action.urgency == "normal"
+
+
+async def test_approved_crm_assistant_pending_action_executes_bound_tool(
+    db: MagicMock,
+    workspace_id: uuid.UUID,
+) -> None:
+    action = PendingAction(
+        id=uuid.uuid4(),
+        workspace_id=workspace_id,
+        agent_id=None,
+        action_type="crm_assistant.create_agent",
+        action_payload={"name": "Closer", "system_prompt": "Qualify and book."},
+        description="Create AI agent Closer",
+        context={"source": "crm_assistant", "user_id": 7},
+        status="approved",
+    )
+    service = ApprovalGateService()
+
+    result = await service.execute_approved_action(db, action)
+
+    assert result["success"] is True
+    assert result["tool"] == "create_agent"
+    assert action.status == "executed"
+    assert action.execution_result == result
+    created_agent = db.add.call_args.args[0]
+    assert isinstance(created_agent, Agent)
+    assert created_agent.workspace_id == workspace_id
+    assert created_agent.name == "Closer"
+    db.flush.assert_awaited_once()
+    assert db.commit.await_count == 1
+
+
+async def test_rejected_crm_assistant_pending_action_does_not_execute(
+    db: MagicMock,
+    workspace_id: uuid.UUID,
+) -> None:
+    action = PendingAction(
+        id=uuid.uuid4(),
+        workspace_id=workspace_id,
+        agent_id=None,
+        action_type="crm_assistant.create_agent",
+        action_payload={"name": "Closer", "system_prompt": "Qualify and book."},
+        description="Create AI agent Closer",
+        context={"source": "crm_assistant", "user_id": 7},
+        status="pending",
+    )
+    db.execute.return_value = _ExecuteResult([action])
+    service = ApprovalGateService()
+
+    rejected = await service.reject_action(
+        db=db,
+        action_id=action.id,
+        user_id=42,
+        reason="Needs edits",
+    )
+    result = await service.execute_approved_action(db, rejected)
+
+    assert rejected.status == "rejected"
+    assert rejected.reviewed_by_id == 42
+    assert rejected.rejection_reason == "Needs edits"
+    assert result == {
+        "error": "action_not_approved",
+        "action_id": str(action.id),
+        "status": "rejected",
+    }
+    db.add.assert_not_called()
 
 
 async def test_outbound_growth_workflow_asks_for_missing_context(
