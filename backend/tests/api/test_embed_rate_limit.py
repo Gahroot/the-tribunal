@@ -52,7 +52,7 @@ def _build_agent_mock() -> MagicMock:
     agent.language = "en"
     agent.initial_greeting = "hi"
     agent.channel_mode = "voice"
-    agent.allowed_domains = []
+    agent.allowed_domains = ["testserver"]
     agent.embed_settings = {}
     agent.text_max_context_messages = 8
     agent.temperature = 0.7
@@ -66,7 +66,7 @@ def patched_agent() -> AsyncIterator[MagicMock]:
     """Patch ``get_agent_by_public_id`` to return a ready-to-use agent mock."""
     agent = _build_agent_mock()
     with patch(
-        "app.api.v1.embed.get_agent_by_public_id",
+        "app.services.embed.service.PublicEmbedService.get_agent_by_public_id",
         new=AsyncMock(return_value=agent),
     ):
         yield agent
@@ -74,7 +74,7 @@ def patched_agent() -> AsyncIterator[MagicMock]:
 
 @pytest.fixture
 def allow_origin() -> AsyncIterator[MagicMock]:
-    with patch("app.api.v1.embed.validate_origin", return_value=True) as patched:
+    with patch("app.services.embed.access.is_origin_allowed", return_value=True) as patched:
         yield patched
 
 
@@ -112,11 +112,11 @@ class TestTokenEndpointRateLimit:
 
         with (
             patch(
-                "app.api.v1.embed.enforce_token_rate_limits",
+                "app.services.embed.access.enforce_token_rate_limits",
                 side_effect=fake_token_limits,
             ),
             patch(
-                "app.api.v1.embed.resolve_openai_credentials",
+                "app.services.embed.openai.resolve_openai_credentials",
                 new=AsyncMock(
                     return_value=OpenAICredentialContext(
                         bearer_token="sk-test",
@@ -125,13 +125,14 @@ class TestTokenEndpointRateLimit:
                 ),
             ),
             patch(
-                "app.api.v1.embed.httpx.AsyncClient",
+                "app.services.embed.openai.httpx.AsyncClient",
                 return_value=fake_http_client,
             ),
         ):
             for i in range(limit):
                 resp = await client.post(
                     "/api/v1/p/embed/demo-public-id/token",
+                    headers={"Origin": "https://testserver"},
                     json={"mode": "voice"},
                 )
                 assert resp.status_code == 200, (
@@ -142,6 +143,7 @@ class TestTokenEndpointRateLimit:
 
             resp = await client.post(
                 "/api/v1/p/embed/demo-public-id/token",
+                headers={"Origin": "https://testserver"},
                 json={"mode": "voice"},
             )
 
@@ -186,11 +188,11 @@ class TestChatEndpointRateLimit:
 
         with (
             patch(
-                "app.api.v1.embed.enforce_chat_rate_limits",
+                "app.services.embed.access.enforce_chat_rate_limits",
                 side_effect=fake_chat_limits,
             ),
             patch(
-                "app.api.v1.embed.resolve_openai_credentials",
+                "app.services.embed.openai.resolve_openai_credentials",
                 new=AsyncMock(
                     return_value=OpenAICredentialContext(
                         bearer_token="sk-test",
@@ -199,13 +201,14 @@ class TestChatEndpointRateLimit:
                 ),
             ),
             patch(
-                "app.api.v1.embed.httpx.AsyncClient",
+                "app.services.embed.openai.httpx.AsyncClient",
                 return_value=fake_http_client,
             ),
         ):
             for i in range(limit):
                 resp = await client.post(
                     "/api/v1/p/embed/demo-public-id/chat",
+                    headers={"Origin": "https://testserver"},
                     json={"message": "hi", "conversation_history": []},
                 )
                 assert resp.status_code == 200, (
@@ -214,6 +217,7 @@ class TestChatEndpointRateLimit:
 
             resp = await client.post(
                 "/api/v1/p/embed/demo-public-id/chat",
+                headers={"Origin": "https://testserver"},
                 json={"message": "hi", "conversation_history": []},
             )
 
@@ -232,11 +236,12 @@ class TestChatEndpointRateLimit:
             )
 
         with patch(
-            "app.api.v1.embed.enforce_chat_rate_limits",
+            "app.services.embed.access.enforce_chat_rate_limits",
             side_effect=always_block,
         ):
             resp = await client.post(
                 "/api/v1/p/embed/demo-public-id/tool-call",
+                headers={"Origin": "https://testserver"},
                 json={"tool_name": "end_call", "arguments": {}},
             )
 
@@ -255,11 +260,12 @@ class TestChatEndpointRateLimit:
             )
 
         with patch(
-            "app.api.v1.embed.enforce_chat_rate_limits",
+            "app.services.embed.access.enforce_chat_rate_limits",
             side_effect=always_block,
         ):
             resp = await client.post(
                 "/api/v1/p/embed/demo-public-id/transcript",
+                headers={"Origin": "https://testserver"},
                 json={
                     "session_id": "sess",
                     "transcript": "hello",

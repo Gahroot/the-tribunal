@@ -8747,6 +8747,16 @@ export interface components {
             type: string;
         };
         /**
+         * EmbedActionResponse
+         * @description Generic success response for public embed side-effect actions.
+         */
+        EmbedActionResponse: {
+            /** Message */
+            message: string;
+            /** Success */
+            success: boolean;
+        };
+        /**
          * EmbedConfigResponse
          * @description Public configuration for embed widget.
          */
@@ -13483,6 +13493,22 @@ export interface components {
             tool_name: string;
         };
         /**
+         * ToolCallResponse
+         * @description Tool call execution response.
+         */
+        ToolCallResponse: {
+            /** Action */
+            action?: string | null;
+            /** Message */
+            message: string;
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            } | null;
+            /** Success */
+            success: boolean;
+        };
+        /**
          * TranscriptRequest
          * @description Transcript save request.
          */
@@ -13493,6 +13519,14 @@ export interface components {
             session_id: string;
             /** Transcript */
             transcript: string;
+        };
+        /**
+         * TranscriptResponse
+         * @description Transcript save response.
+         */
+        TranscriptResponse: {
+            /** Status */
+            status: string;
         };
         /**
          * UpdateMemberRoleRequest
@@ -14756,9 +14790,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: boolean | string;
-                    };
+                    "application/json": components["schemas"]["EmbedActionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -14859,9 +14891,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: boolean | string;
-                    };
+                    "application/json": components["schemas"]["EmbedActionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -14931,9 +14961,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ToolCallResponse"];
                 };
             };
             /** @description Validation Error */
@@ -14968,9 +14996,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["TranscriptResponse"];
                 };
             };
             /** @description Validation Error */

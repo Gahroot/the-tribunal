@@ -7839,6 +7839,25 @@
         "title": "DripStepSchema",
         "type": "object"
       },
+      "EmbedActionResponse": {
+        "description": "Generic success response for public embed side-effect actions.",
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success",
+          "message"
+        ],
+        "title": "EmbedActionResponse",
+        "type": "object"
+      },
       "EmbedConfigResponse": {
         "description": "Public configuration for embed widget.",
         "properties": {
@@ -20390,6 +20409,48 @@
         "title": "ToolCallRequest",
         "type": "object"
       },
+      "ToolCallResponse": {
+        "description": "Tool call execution response.",
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success",
+          "message"
+        ],
+        "title": "ToolCallResponse",
+        "type": "object"
+      },
       "TranscriptRequest": {
         "description": "Transcript save request.",
         "properties": {
@@ -20412,6 +20473,20 @@
           "duration_seconds"
         ],
         "title": "TranscriptRequest",
+        "type": "object"
+      },
+      "TranscriptResponse": {
+        "description": "Transcript save response.",
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "TranscriptResponse",
         "type": "object"
       },
       "UpdateMemberRoleRequest": {
@@ -23252,18 +23327,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "anyOf": [
-                      {
-                        "type": "boolean"
-                      },
-                      {
-                        "type": "string"
-                      }
-                    ]
-                  },
-                  "title": "Response Trigger Embed Call Api V1 P Embed  Public Id  Call Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/EmbedActionResponse"
                 }
               }
             },
@@ -23412,18 +23476,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "anyOf": [
-                      {
-                        "type": "boolean"
-                      },
-                      {
-                        "type": "string"
-                      }
-                    ]
-                  },
-                  "title": "Response Trigger Embed Text Api V1 P Embed  Public Id  Text Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/EmbedActionResponse"
                 }
               }
             },
@@ -23536,9 +23589,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Execute Tool Call Api V1 P Embed  Public Id  Tool Call Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ToolCallResponse"
                 }
               }
             },
@@ -23591,11 +23642,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Save Transcript Api V1 P Embed  Public Id  Transcript Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/TranscriptResponse"
                 }
               }
             },
