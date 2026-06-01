@@ -1,6 +1,5 @@
 """Contact endpoints."""
 
-import json
 import uuid
 from datetime import datetime
 from typing import Annotated, Any
@@ -35,8 +34,14 @@ from app.schemas.contact import (
     SendMessageToContactRequest,
     TimelineItem,
 )
-from app.services.contacts import ContactImportService, ContactService
-from app.services.contacts.contact_import import CONTACT_FIELDS
+from app.services.contacts import (
+    ContactAIStateService,
+    ContactBulkService,
+    ContactImportService,
+    ContactQueryService,
+    ContactService,
+    ContactTimelineService,
+)
 from app.services.contacts.engagement_summary import get_engagement_summary
 from app.services.contacts.exceptions import (
     ContactNotFoundError,
@@ -73,46 +78,29 @@ async def list_contacts(
     filters: str | None = Query(None, description="JSON FilterDefinition"),
 ) -> ContactListResponse:
     """List contacts in a workspace."""
-    # Parse tag UUIDs
-    tag_uuids: list[uuid.UUID] | None = None
-    if tags:
-        tag_uuids = [uuid.UUID(t.strip()) for t in tags.split(",") if t.strip()]
-
-    # Parse complex filters
-    filter_rules: list[dict[str, Any]] | None = None
-    filter_logic = "and"
-    if filters:
-        try:
-            parsed = json.loads(filters)
-            filter_rules = parsed.get("rules")
-            filter_logic = parsed.get("logic", "and")
-        except (json.JSONDecodeError, AttributeError) as e:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid filters JSON",
-            ) from e
-
-    service = ContactService(db)
-    result = await service.list_contacts(
-        workspace_id=workspace.id,
-        page=page,
-        page_size=page_size,
-        status_filter=status_filter,
-        search=search,
-        sort_by=sort_by,
-        tags=tag_uuids,
-        tags_match=tags_match,
-        lead_score_min=lead_score_min,
-        lead_score_max=lead_score_max,
-        is_qualified=is_qualified,
-        source=source_filter,
-        company_name=company_name_filter,
-        created_after=created_after,
-        created_before=created_before,
-        enrichment_status=enrichment_status,
-        filter_rules=filter_rules,
-        filter_logic=filter_logic,
-    )
+    service = ContactQueryService(db)
+    try:
+        result = await service.list_contacts(
+            workspace_id=workspace.id,
+            page=page,
+            page_size=page_size,
+            status_filter=status_filter,
+            search=search,
+            sort_by=sort_by,
+            tags=tags,
+            tags_match=tags_match,
+            lead_score_min=lead_score_min,
+            lead_score_max=lead_score_max,
+            is_qualified=is_qualified,
+            source=source_filter,
+            company_name=company_name_filter,
+            created_after=created_after,
+            created_before=created_before,
+            enrichment_status=enrichment_status,
+            filters=filters,
+        )
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
     return ContactListResponse(**result)
 
@@ -139,43 +127,26 @@ async def list_contact_ids(
     filters: str | None = Query(None, description="JSON FilterDefinition"),
 ) -> ContactIdsResponse:
     """List all contact IDs matching filters."""
-    # Parse tag UUIDs
-    tag_uuids: list[uuid.UUID] | None = None
-    if tags:
-        tag_uuids = [uuid.UUID(t.strip()) for t in tags.split(",") if t.strip()]
-
-    # Parse complex filters
-    filter_rules: list[dict[str, Any]] | None = None
-    filter_logic = "and"
-    if filters:
-        try:
-            parsed = json.loads(filters)
-            filter_rules = parsed.get("rules")
-            filter_logic = parsed.get("logic", "and")
-        except (json.JSONDecodeError, AttributeError) as e:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid filters JSON",
-            ) from e
-
-    service = ContactService(db)
-    result = await service.list_contact_ids(
-        workspace_id=workspace.id,
-        status_filter=status_filter,
-        search=search,
-        tags=tag_uuids,
-        tags_match=tags_match,
-        lead_score_min=lead_score_min,
-        lead_score_max=lead_score_max,
-        is_qualified=is_qualified,
-        source=source_filter,
-        company_name=company_name_filter,
-        created_after=created_after,
-        created_before=created_before,
-        enrichment_status=enrichment_status,
-        filter_rules=filter_rules,
-        filter_logic=filter_logic,
-    )
+    service = ContactQueryService(db)
+    try:
+        result = await service.list_contact_ids(
+            workspace_id=workspace.id,
+            status_filter=status_filter,
+            search=search,
+            tags=tags,
+            tags_match=tags_match,
+            lead_score_min=lead_score_min,
+            lead_score_max=lead_score_max,
+            is_qualified=is_qualified,
+            source=source_filter,
+            company_name=company_name_filter,
+            created_after=created_after,
+            created_before=created_before,
+            enrichment_status=enrichment_status,
+            filters=filters,
+        )
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
     return ContactIdsResponse(**result)
 
@@ -264,7 +235,7 @@ async def bulk_delete_contacts(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> BulkDeleteResponse:
     """Delete multiple contacts at once."""
-    service = ContactService(db)
+    service = ContactBulkService(db)
     try:
         result = await service.bulk_delete_contacts(request.ids, workspace.id)
     except ValidationError as e:
@@ -282,7 +253,7 @@ async def bulk_update_status(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> BulkStatusUpdateResponse:
     """Update the status of multiple contacts at once."""
-    service = ContactService(db)
+    service = ContactBulkService(db)
     try:
         result = await service.bulk_update_status(request.ids, workspace.id, request.status)
     except ValidationError as e:
@@ -333,7 +304,7 @@ async def toggle_contact_ai(
 
     Finds an existing conversation for the contact or creates one if needed.
     """
-    service = ContactService(db)
+    service = ContactAIStateService(db)
     try:
         result = await service.toggle_ai(
             contact_id=contact_id,
@@ -358,7 +329,7 @@ async def assign_contact_agent(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> ContactAgentAssignResponse:
     """Assign an AI agent to the contact's active conversation."""
-    service = ContactService(db)
+    service = ContactAIStateService(db)
     try:
         result = await service.assign_agent(
             contact_id=contact_id,
@@ -386,7 +357,7 @@ async def get_contact_timeline(
 
     Returns a unified timeline of SMS messages, calls, appointments, etc.
     """
-    service = ContactService(db)
+    service = ContactTimelineService(db)
     timeline_items_data = await service.get_contact_timeline(
         contact_id=contact_id,
         workspace_id=workspace.id,
@@ -439,34 +410,13 @@ async def preview_import_csv(
 
     Returns the headers, sample rows, and suggested field mappings.
     """
-    if not file.filename or not file.filename.lower().endswith(".csv"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File must be a CSV file",
-        )
-
+    import_service = ContactImportService(db)
     try:
-        content = await file.read()
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to read file: {e!s}",
-        ) from e
+        preview = await import_service.preview_upload(file)
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
-    try:
-        preview = ContactImportService.preview_csv(content)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        ) from e
-
-    return CSVPreviewResponse(
-        headers=preview["headers"],
-        sample_rows=preview["sample_rows"],
-        suggested_mapping=preview["suggested_mapping"],
-        contact_fields=CONTACT_FIELDS,
-    )
+    return CSVPreviewResponse(**preview)
 
 
 @router.post("/import", response_model=ImportResult)
@@ -495,55 +445,18 @@ async def import_contacts_csv(
 
     Column names are case-insensitive and support common variations.
     """
-    from app.services.contacts.contact_import import VALID_STATUSES
-
-    if not file.filename or not file.filename.lower().endswith(".csv"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File must be a CSV file",
-        )
-
-    if default_status not in VALID_STATUSES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid status. Must be: {', '.join(VALID_STATUSES)}",
-        )
-
-    try:
-        content = await file.read()
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to read file: {e!s}",
-        ) from e
-
-    # Parse column mapping if provided
-    explicit_mapping: dict[str, str] | None = None
-    if column_mapping:
-        try:
-            explicit_mapping = json.loads(column_mapping)
-        except json.JSONDecodeError as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid column_mapping JSON",
-            ) from e
-
-    # Use import service
     import_service = ContactImportService(db)
     try:
-        result = await import_service.import_csv(
+        result = await import_service.import_upload(
             workspace_id=workspace.id,
-            file_content=content,
+            file=file,
             skip_duplicates=skip_duplicates,
             default_status=default_status,
             source=source,
-            explicit_mapping=explicit_mapping,
+            column_mapping=column_mapping,
         )
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        ) from e
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
     # Convert to response format
     return ImportResult(

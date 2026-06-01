@@ -2,16 +2,19 @@
 
 import csv
 import io
+import json
 import re
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
 import structlog
+from fastapi import UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.contact import Contact
+from app.services.contacts.exceptions import ContactValidationError
 from app.utils.phone import normalize_phone_safe
 
 logger = structlog.get_logger()
@@ -137,6 +140,39 @@ def _get_csv_field(
     return row.get(col, "").strip() or None
 
 
+def _validate_csv_filename(filename: str | None) -> None:
+    """Validate that an uploaded filename looks like a CSV file."""
+    if not filename or not filename.lower().endswith(".csv"):
+        raise ContactValidationError("File must be a CSV file")
+
+
+async def _read_upload_file(file: UploadFile) -> bytes:
+    """Read an uploaded file and map read failures to domain validation errors."""
+    try:
+        return await file.read()
+    except Exception as exc:
+        raise ContactValidationError(f"Failed to read file: {exc!s}") from exc
+
+
+def _parse_explicit_mapping(column_mapping: str | None) -> dict[str, str] | None:
+    """Parse optional JSON column mapping from upload form data."""
+    if not column_mapping:
+        return None
+    try:
+        parsed = json.loads(column_mapping)
+    except json.JSONDecodeError as exc:
+        raise ContactValidationError("Invalid column_mapping JSON") from exc
+    if not isinstance(parsed, dict):
+        raise ContactValidationError("Invalid column_mapping JSON")
+    return {str(header): str(field) for header, field in parsed.items()}
+
+
+def _validate_default_status(default_status: str) -> None:
+    """Validate the default contact status used by CSV imports."""
+    if default_status not in VALID_STATUSES:
+        raise ContactValidationError(f"Invalid status. Must be: {', '.join(VALID_STATUSES)}")
+
+
 def _read_csv_content(file_content: bytes) -> str:
     """Decode CSV file content, trying UTF-8 first then latin-1.
 
@@ -240,6 +276,50 @@ class ContactImportService:
         self.db = db
         self.log = logger.bind(service="contact_import")
 
+    async def preview_upload(self, file: UploadFile) -> dict[str, Any]:
+        """Validate and preview an uploaded CSV file."""
+        _validate_csv_filename(file.filename)
+        content = await _read_upload_file(file)
+        try:
+            preview = self.preview_csv(content)
+        except ValueError as exc:
+            raise ContactValidationError(str(exc)) from exc
+
+        return {
+            "headers": preview["headers"],
+            "sample_rows": preview["sample_rows"],
+            "suggested_mapping": preview["suggested_mapping"],
+            "contact_fields": CONTACT_FIELDS,
+        }
+
+    async def import_upload(
+        self,
+        *,
+        workspace_id: uuid.UUID,
+        file: UploadFile,
+        skip_duplicates: bool = True,
+        default_status: str = "new",
+        source: str = "csv_import",
+        column_mapping: str | None = None,
+    ) -> ImportResult:
+        """Validate upload form inputs and import contacts from an uploaded CSV file."""
+        _validate_csv_filename(file.filename)
+        _validate_default_status(default_status)
+        content = await _read_upload_file(file)
+        explicit_mapping = _parse_explicit_mapping(column_mapping)
+
+        try:
+            return await self.import_csv(
+                workspace_id=workspace_id,
+                file_content=content,
+                skip_duplicates=skip_duplicates,
+                default_status=default_status,
+                source=source,
+                explicit_mapping=explicit_mapping,
+            )
+        except ValueError as exc:
+            raise ContactValidationError(str(exc)) from exc
+
     @staticmethod
     def preview_csv(file_content: bytes) -> dict[str, Any]:
         """Preview a CSV file: extract headers, sample rows, and suggest field mapping.
@@ -304,6 +384,7 @@ class ContactImportService:
         Raises:
             ValueError: If file format is invalid or required columns missing
         """
+        _validate_default_status(default_status)
         self.log.info("import_started", workspace_id=str(workspace_id))
 
         # Parse CSV
