@@ -19,15 +19,15 @@ from app.schemas.prompt_version import (
     VersionComparisonResponse,
     WinnerDetectionResponse,
 )
-from app.services.ai.prompt_version_service import PromptVersionService
+from app.services.ai.prompt_version_lifecycle_service import PromptVersionLifecycleService
 from app.services.exceptions import NotFoundError, ValidationError
 
 router = APIRouter()
 
 
-def _prompt_version_service() -> PromptVersionService:
-    """Return the prompt version service for route adapters."""
-    return PromptVersionService()
+def _prompt_version_service() -> PromptVersionLifecycleService:
+    """Return the prompt version lifecycle service for route adapters."""
+    return PromptVersionLifecycleService()
 
 
 def _raise_http_not_found(exc: NotFoundError) -> NoReturn:
@@ -103,6 +103,56 @@ async def create_prompt_version(
             agent_id,
             body,
             created_by_id=current_user.id,
+        )
+    except NotFoundError as exc:
+        _raise_http_not_found(exc)
+
+
+@router.get("/compare", response_model=VersionComparisonResponse)
+async def compare_versions(
+    workspace_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+    winner_threshold: float = Query(0.95, ge=0.5, le=0.999),
+) -> VersionComparisonResponse:
+    """Compare all active versions with statistical analysis.
+
+    Returns probability each version is best, credible intervals,
+    and recommended actions (continue, declare_winner, eliminate_worst).
+    """
+    try:
+        return await _prompt_version_service().compare_versions_in_workspace(
+            db,
+            workspace_id,
+            agent_id,
+            winner_threshold=winner_threshold,
+        )
+    except NotFoundError as exc:
+        _raise_http_not_found(exc)
+
+
+@router.get("/winner", response_model=WinnerDetectionResponse)
+async def detect_winner(
+    workspace_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+    threshold: float = Query(0.95, ge=0.5, le=0.999),
+) -> WinnerDetectionResponse:
+    """Check if a statistical winner can be declared.
+
+    A winner is declared when one version has probability > threshold
+    of being the best performing version.
+    """
+    try:
+        return await _prompt_version_service().detect_winner_in_workspace(
+            db,
+            workspace_id,
+            agent_id,
+            threshold=threshold,
         )
     except NotFoundError as exc:
         _raise_http_not_found(exc)
@@ -358,53 +408,3 @@ async def update_arm_status(
         _raise_http_not_found(exc)
     except ValidationError as exc:
         _raise_http_bad_request(exc)
-
-
-@router.get("/compare", response_model=VersionComparisonResponse)
-async def compare_versions(
-    workspace_id: uuid.UUID,
-    agent_id: uuid.UUID,
-    current_user: CurrentUser,
-    db: DB,
-    workspace: Annotated[Workspace, Depends(get_workspace)],
-    winner_threshold: float = Query(0.95, ge=0.5, le=0.999),
-) -> VersionComparisonResponse:
-    """Compare all active versions with statistical analysis.
-
-    Returns probability each version is best, credible intervals,
-    and recommended actions (continue, declare_winner, eliminate_worst).
-    """
-    try:
-        return await _prompt_version_service().compare_versions_in_workspace(
-            db,
-            workspace_id,
-            agent_id,
-            winner_threshold=winner_threshold,
-        )
-    except NotFoundError as exc:
-        _raise_http_not_found(exc)
-
-
-@router.get("/winner", response_model=WinnerDetectionResponse)
-async def detect_winner(
-    workspace_id: uuid.UUID,
-    agent_id: uuid.UUID,
-    current_user: CurrentUser,
-    db: DB,
-    workspace: Annotated[Workspace, Depends(get_workspace)],
-    threshold: float = Query(0.95, ge=0.5, le=0.999),
-) -> WinnerDetectionResponse:
-    """Check if a statistical winner can be declared.
-
-    A winner is declared when one version has probability > threshold
-    of being the best performing version.
-    """
-    try:
-        return await _prompt_version_service().detect_winner_in_workspace(
-            db,
-            workspace_id,
-            agent_id,
-            threshold=threshold,
-        )
-    except NotFoundError as exc:
-        _raise_http_not_found(exc)
