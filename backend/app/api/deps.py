@@ -2,6 +2,7 @@
 
 import hashlib
 import uuid
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -12,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import decode_access_token
-from app.db.session import get_db
+from app.db.session import get_db, transaction_boundary
 from app.models.api_key import APIKey
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMembership
@@ -295,11 +296,23 @@ async def get_membership(
     return membership
 
 
+async def get_transactional_db(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> AsyncGenerator[AsyncSession, None]:
+    """Provide a request transaction boundary for migrated mutating routes."""
+    async with transaction_boundary(db):
+        yield db
+
+
 # Type aliases for cleaner dependency injection
 CurrentUser = Annotated[User, Depends(get_current_user)]
 ActiveUser = Annotated[User, Depends(get_current_active_user)]
 OptionalCurrentUser = Annotated[User | None, Depends(get_optional_current_user)]
 DB = Annotated[AsyncSession, Depends(get_db)]
+TransactionalDB = Annotated[
+    AsyncSession,
+    Depends(get_transactional_db, scope="function"),
+]
 WorkspaceAccess = Annotated[Workspace, Depends(get_workspace)]
 WorkspaceAdminAccess = Annotated[Workspace, Depends(get_workspace_admin)]
 CurrentMembership = Annotated[WorkspaceMembership, Depends(get_membership)]

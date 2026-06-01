@@ -1,10 +1,12 @@
 """Tag endpoints."""
 
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 
-from app.api.deps import DB, CurrentUser, get_workspace
+from app.api.deps import DB, CurrentUser, TransactionalDB, get_workspace
+from app.models.workspace import Workspace
 from app.schemas.tag import (
     BulkTagRequest,
     BulkTagResponse,
@@ -16,6 +18,19 @@ from app.schemas.tag import (
 from app.services.tags import TagService
 
 router = APIRouter()
+
+
+async def _transactional_workspace(
+    request: Request,
+    workspace_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: TransactionalDB,
+) -> Workspace:
+    """Resolve workspace access inside the same transaction as tag writes."""
+    return await get_workspace(request, workspace_id, current_user, db)
+
+
+TagWriteWorkspace = Annotated[Workspace, Depends(_transactional_workspace)]
 
 
 @router.get("", response_model=TagListResponse)
@@ -34,14 +49,13 @@ async def list_tags(
 
 @router.post("", response_model=TagResponse, status_code=201)
 async def create_tag(
-    request: Request,
     workspace_id: uuid.UUID,
     tag_in: TagCreate,
     current_user: CurrentUser,
-    db: DB,
+    db: TransactionalDB,
+    workspace: TagWriteWorkspace,
 ) -> TagResponse:
     """Create a new tag."""
-    workspace = await get_workspace(request, workspace_id, current_user, db)
     service = TagService(db)
     return await service.create_tag(
         workspace_id=workspace.id,
@@ -66,15 +80,14 @@ async def get_tag(
 
 @router.put("/{tag_id}", response_model=TagResponse)
 async def update_tag(
-    request: Request,
     workspace_id: uuid.UUID,
     tag_id: uuid.UUID,
     tag_in: TagUpdate,
     current_user: CurrentUser,
-    db: DB,
+    db: TransactionalDB,
+    workspace: TagWriteWorkspace,
 ) -> TagResponse:
     """Update a tag."""
-    workspace = await get_workspace(request, workspace_id, current_user, db)
     service = TagService(db)
     return await service.update_tag(
         tag_id=tag_id,
@@ -85,28 +98,26 @@ async def update_tag(
 
 @router.delete("/{tag_id}", status_code=204)
 async def delete_tag(
-    request: Request,
     workspace_id: uuid.UUID,
     tag_id: uuid.UUID,
     current_user: CurrentUser,
-    db: DB,
+    db: TransactionalDB,
+    workspace: TagWriteWorkspace,
 ) -> None:
     """Delete a tag."""
-    workspace = await get_workspace(request, workspace_id, current_user, db)
     service = TagService(db)
     await service.delete_tag(tag_id, workspace.id)
 
 
 @router.post("/bulk-tag", response_model=BulkTagResponse)
 async def bulk_tag_contacts(
-    http_request: Request,
     workspace_id: uuid.UUID,
     request: BulkTagRequest,
     current_user: CurrentUser,
-    db: DB,
+    db: TransactionalDB,
+    workspace: TagWriteWorkspace,
 ) -> BulkTagResponse:
     """Bulk add/remove tags on contacts."""
-    workspace = await get_workspace(http_request, workspace_id, current_user, db)
     service = TagService(db)
     result = await service.bulk_tag_contacts(
         workspace_id=workspace.id,

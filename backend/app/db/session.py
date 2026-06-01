@@ -1,6 +1,7 @@
 """Database session management."""
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
+from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -60,8 +61,42 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 
+async def commit_open_transaction(session: AsyncSession) -> None:
+    """Commit the active transaction for a request/unit-of-work boundary."""
+    if not session.in_transaction():
+        return
+
+    try:
+        await session.commit()
+    except BaseException:
+        await rollback_open_transaction(session)
+        raise
+
+
+async def rollback_open_transaction(session: AsyncSession) -> None:
+    """Rollback the active transaction for a failed request/unit-of-work boundary."""
+    if session.in_transaction():
+        await session.rollback()
+
+
+@asynccontextmanager
+async def transaction_boundary(session: AsyncSession) -> AsyncIterator[AsyncSession]:
+    """Own commit/rollback for one application unit of work.
+
+    Callers inside the boundary may flush/refresh to materialize database-generated
+    values, but must not commit or rollback themselves.
+    """
+    try:
+        yield session
+    except BaseException:
+        await rollback_open_transaction(session)
+        raise
+    else:
+        await commit_open_transaction(session)
+
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """Dependency that provides a database session."""
+    """Dependency that provides a database session without owning commit/rollback."""
     async with AsyncSessionLocal() as session:
         try:
             yield session

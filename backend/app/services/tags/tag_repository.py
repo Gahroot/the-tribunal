@@ -67,7 +67,7 @@ async def create_tag(
         color=color,
     )
     db.add(tag)
-    await db.commit()
+    await db.flush()
     await db.refresh(tag)
     return tag
 
@@ -80,7 +80,7 @@ async def update_tag(
     """Update a tag."""
     for field, value in update_data.items():
         setattr(tag, field, value)
-    await db.commit()
+    await db.flush()
     await db.refresh(tag)
     return tag
 
@@ -91,7 +91,7 @@ async def delete_tag(
 ) -> None:
     """Delete a tag (cascades to contact_tags)."""
     await db.delete(tag)
-    await db.commit()
+    await db.flush()
 
 
 async def bulk_add_tags(
@@ -140,7 +140,7 @@ async def bulk_add_tags(
                 created += 1
 
     if created > 0:
-        await db.commit()
+        await db.flush()
 
     return created
 
@@ -187,7 +187,7 @@ async def bulk_remove_tags(
             ContactTag.tag_id.in_(tag_ids),
         )
     )
-    await db.commit()
+    await db.flush()
 
     return count
 
