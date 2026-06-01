@@ -10,14 +10,17 @@ import {
   Loader2,
   AlertCircle,
   Trash2,
-  RefreshCw,
-  Bell,
 } from "lucide-react";
 import { motion } from "motion/react";
 import Link from "next/link";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 
+import {
+  ReminderBadges,
+  SendReminderButton,
+  SyncButton,
+} from "@/components/calendar/appointment-actions";
 import { NewAppointmentDialog } from "@/components/calendar/new-appointment-dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -40,198 +43,21 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAppointments, useDeleteAppointment } from "@/hooks/useAppointments";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
-import { appointmentsApi } from "@/lib/api/appointments";
+import {
+  STATUS_OPTIONS,
+  appointmentsForDay,
+  buildAppointmentsQueryParams,
+  getContactName,
+  getInitials,
+  getWeekRange,
+  scheduledCount,
+  statusFilterLabel,
+  todaysAppointments,
+  upcomingAppointments,
+  type StatusFilter,
+} from "@/lib/calendar/calendar-derivations";
 import { appointmentStatusColors } from "@/lib/status-colors";
-import { formatDate, addDays, startOfWeek, endOfWeek, isSameDay } from "@/lib/utils/date";
-import type { Appointment, Contact } from "@/types";
-
-// Status filter options
-const STATUS_OPTIONS = [
-  { value: "", label: "All" },
-  { value: "scheduled", label: "Scheduled" },
-  { value: "no_show", label: "No-Show" },
-  { value: "completed", label: "Completed" },
-  { value: "cancelled", label: "Cancelled" },
-] as const;
-
-type StatusFilter = "" | "scheduled" | "no_show" | "completed" | "cancelled";
-
-// Helper to get contact initials
-function getInitials(firstName: string, lastName?: string): string {
-  const first = firstName?.[0] ?? "";
-  const last = lastName?.[0] ?? "";
-  return (first + last).toUpperCase() || "?";
-}
-
-// Helper to get contact display name
-function getContactName(contact: Contact | null | undefined): string {
-  if (!contact) return "Unknown";
-  return [contact.first_name, contact.last_name].filter(Boolean).join(" ");
-}
-
-// Helper to convert minutes offset to human-readable label
-function offsetToLabel(minutes: number): string {
-  if (minutes >= 1440 && minutes % 1440 === 0) return `${minutes / 1440}d`;
-  if (minutes >= 60 && minutes % 60 === 0) return `${minutes / 60}h`;
-  return `${minutes}m`;
-}
-
-interface ReminderBadgesProps {
-  reminderSentAt?: string | null;
-  remindersSent?: number[] | null;
-  reminderOffsets?: number[] | null;
-}
-
-function ReminderBadges({ reminderSentAt, remindersSent, reminderOffsets }: ReminderBadgesProps) {
-  const sent = remindersSent ?? [];
-
-  // If we have reminder offsets (from agent data on appointment), show multi-badge
-  if (reminderOffsets && reminderOffsets.length > 0) {
-    return (
-      <div className="flex flex-wrap gap-1">
-        {reminderOffsets.map((offset) => {
-          const fired = sent.includes(offset);
-          return (
-            <Badge
-              key={offset}
-              variant="outline"
-              className={fired
-                ? "text-success border-success/20 text-[10px] py-0"
-                : "text-muted-foreground border-muted text-[10px] py-0"
-              }
-            >
-              {offsetToLabel(offset)}{fired ? " ✓" : ""}
-            </Badge>
-          );
-        })}
-      </div>
-    );
-  }
-
-  // If we have fired reminders but no offset config, show fired ones
-  if (sent.length > 0) {
-    return (
-      <div className="flex flex-wrap gap-1">
-        {sent.map((offset) => (
-          <Badge
-            key={offset}
-            variant="outline"
-            className="text-success border-success/20 text-[10px] py-0"
-          >
-            {offsetToLabel(offset)} ✓
-          </Badge>
-        ))}
-      </div>
-    );
-  }
-
-  // Legacy fallback: just reminder_sent_at set
-  if (reminderSentAt) {
-    return (
-      <Badge variant="outline" className="text-success border-success/20 text-[10px] py-0">
-        Reminder sent
-      </Badge>
-    );
-  }
-
-  return null;
-}
-
-interface SyncButtonProps {
-  appointment: Appointment;
-  workspaceId: string;
-  onSynced: () => void;
-}
-
-function SyncButton({ appointment, workspaceId, onSynced }: SyncButtonProps) {
-  const [isSyncing, setIsSyncing] = useState(false);
-
-  if (appointment.sync_status !== "pending") return null;
-
-  const handleSync = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsSyncing(true);
-    try {
-      const result = await appointmentsApi.syncAppointment(workspaceId, appointment.id);
-      if (result.status === "synced") {
-        toast.success("Synced to Cal.com");
-        onSynced();
-      } else {
-        toast.error(`Sync failed: ${result.error ?? "Unknown error"}`);
-      }
-    } catch {
-      toast.error("Failed to sync appointment");
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      className="text-xs h-7 gap-1"
-      onClick={handleSync}
-      disabled={isSyncing}
-      title="Sync to Cal.com"
-    >
-      {isSyncing ? (
-        <Loader2 className="size-3 animate-spin" />
-      ) : (
-        <RefreshCw className="size-3" />
-      )}
-      Sync
-    </Button>
-  );
-}
-
-interface SendReminderButtonProps {
-  appointment: Appointment;
-  workspaceId: string;
-  onSent: () => void;
-}
-
-function SendReminderButton({ appointment, workspaceId, onSent }: SendReminderButtonProps) {
-  const [isSending, setIsSending] = useState(false);
-
-  if (appointment.status !== "scheduled") return null;
-
-  const handleSend = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsSending(true);
-    try {
-      const result = await appointmentsApi.sendReminder(workspaceId, appointment.id);
-      if (result.success) {
-        toast.success(`Reminder sent to ${result.sent_to ?? "contact"}`);
-        onSent();
-      } else {
-        toast.error(result.message || "Failed to send reminder");
-      }
-    } catch {
-      toast.error("Failed to send reminder");
-    } finally {
-      setIsSending(false);
-    }
-  };
-
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      className="text-xs h-7 gap-1"
-      onClick={handleSend}
-      disabled={isSending}
-      title="Send SMS reminder"
-    >
-      {isSending ? (
-        <Loader2 className="size-3 animate-spin" />
-      ) : (
-        <Bell className="size-3" />
-      )}
-      Remind
-    </Button>
-  );
-}
+import { formatDate, addDays, isSameDay } from "@/lib/utils/date";
 
 export function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -241,19 +67,15 @@ export function CalendarPage() {
   const workspaceId = useWorkspaceId();
 
   // Compute week bounds before the data fetch so they drive the query key + params
-  const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
-  const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
-  const weekStartIso = weekStart.toISOString();
-  const weekEndIso = weekEnd.toISOString();
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const { weekStart, weekStartIso, weekEndIso, weekDays } = useMemo(
+    () => getWeekRange(currentDate),
+    [currentDate]
+  );
 
-  const queryParams = {
-    page: 1,
-    page_size: 100,
-    date_from: weekStartIso,
-    date_to: weekEndIso,
-    ...(statusFilter ? { status_filter: statusFilter } : {}),
-  };
+  const queryParams = useMemo(
+    () => buildAppointmentsQueryParams(weekStartIso, weekEndIso, statusFilter),
+    [weekStartIso, weekEndIso, statusFilter]
+  );
 
   const { data: appointmentsData, isPending, error, refetch } = useAppointments(
     workspaceId ?? "",
@@ -269,18 +91,12 @@ export function CalendarPage() {
   const totalCount = appointmentsData?.total ?? 0;
 
   const todayAppointments = useMemo(
-    () =>
-      appointmentsList.filter((apt) =>
-        isSameDay(new Date(apt.scheduled_at), new Date())
-      ),
+    () => todaysAppointments(appointmentsList),
     [appointmentsList]
   );
 
-  const upcomingAppointments = useMemo(
-    () =>
-      appointmentsList.filter(
-        (apt) => new Date(apt.scheduled_at) > new Date()
-      ),
+  const upcomingList = useMemo(
+    () => upcomingAppointments(appointmentsList),
     [appointmentsList]
   );
 
@@ -422,9 +238,7 @@ export function CalendarPage() {
               {/* Appointments for the week */}
               <div className="grid grid-cols-7 gap-2 min-h-[300px]">
                 {weekDays.map((day) => {
-                  const dayAppointments = appointmentsList.filter((apt) =>
-                    isSameDay(new Date(apt.scheduled_at), day)
-                  );
+                  const dayAppointments = appointmentsForDay(appointmentsList, day);
 
                   return (
                     <div
@@ -634,7 +448,7 @@ export function CalendarPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {upcomingAppointments.slice(0, 5).map((apt) => (
+                {upcomingList.slice(0, 5).map((apt) => (
                   <div
                     key={apt.id}
                     role="button"
@@ -693,14 +507,12 @@ export function CalendarPage() {
                     {totalCount}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {statusFilter
-                      ? STATUS_OPTIONS.find((o) => o.value === statusFilter)?.label ?? "Filtered"
-                      : "Total"}
+                    {statusFilterLabel(statusFilter)}
                   </div>
                 </div>
                 <div className="p-3 rounded-lg bg-muted/50">
                   <div className="text-2xl font-bold text-success">
-                    {appointmentsList.filter((a) => a.status === "scheduled").length}
+                    {scheduledCount(appointmentsList)}
                   </div>
                   <div className="text-xs text-muted-foreground">
                     Scheduled
