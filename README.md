@@ -29,10 +29,11 @@ the-tribunal/
 A root `Makefile` orchestrates both sides. From the repo root:
 
 ```bash
-make install   # uv sync + npm ci
-cp backend/.env.example backend/.env   # configure your secrets
-make migrate   # alembic upgrade head
-make dev       # docker compose + backend uvicorn + frontend dev (parallel)
+make install                               # uv sync + npm ci
+cp backend/.env.example backend/.env       # configure backend secrets
+cp frontend/.env.example frontend/.env.local  # configure frontend overrides
+make migrate                               # alembic upgrade head
+make dev                                   # docker compose + backend uvicorn + frontend dev (parallel)
 ```
 
 Dashboard at http://localhost:3000 · API docs at http://localhost:8000/docs.
@@ -54,8 +55,9 @@ Run `make help` for the full list. Cheat sheet:
 | `make migrate.heads` | Verify the Alembic graph has exactly one head. |
 | `make migrate.history` | Show verbose Alembic migration history. |
 | `make migrate.new m="..."` | Autogenerate a new Alembic revision. |
-| `make ci.backend` | Backend CI parity: dependency lock, lint, format, type-check, and coverage. |
-| `make ci.frontend` | Frontend CI parity: dependency lock, lint, type-check, tests, and build. |
+| `make ci.env` | Verify env templates match backend config and frontend env usage. |
+| `make ci.backend` | Backend CI parity: env drift, lint, format, type-check, and coverage. |
+| `make ci.frontend` | Frontend CI parity: env drift, dependency lock, lint, type-check, tests, and build. |
 | `make ci.codegen` | Regenerate OpenAPI/client artifacts and fail on drift. |
 | `make ci.migrations` | Migration CI parity: upgrade head, check, downgrade -1, upgrade head. |
 | `make ci.all` | Run all canonical CI parity targets. |
@@ -85,6 +87,7 @@ uv run uvicorn app.main:app --reload --port 8000
 ```bash
 cd frontend
 npm install
+cp .env.example .env.local   # configure frontend overrides
 npm run dev
 ```
 

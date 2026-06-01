@@ -15,6 +15,7 @@ Thanks for your interest in contributing! This guide covers local setup, branchi
 
 ```bash
 cd backend
+cp .env.example .env              # Configure backend secrets
 docker compose up -d              # PostgreSQL + Redis
 uv sync                           # Install Python dependencies
 uv run alembic upgrade head       # Apply database migrations
@@ -37,6 +38,7 @@ make ci.migrations
 
 ```bash
 cd frontend
+cp .env.example .env.local        # Configure frontend overrides
 npm ci                            # Clean install of locked dependencies
 npm run dev                       # Dev server on :3000
 ```
@@ -135,8 +137,9 @@ Run the relevant checks **before pushing**. CI delegates to these same root targ
 
 | Target | What it verifies |
 | --- | --- |
-| `make ci.backend` | Backend dependency lock, Ruff lint/format, mypy, and pytest coverage gate. |
-| `make ci.frontend` | Frontend dependency lock, ESLint, TypeScript, unit tests, and production build. |
+| `make ci.env` | Backend/frontend env templates match backend Settings and frontend `process.env` usage. |
+| `make ci.backend` | Env drift check, backend dependency lock, Ruff lint/format, mypy, and pytest coverage gate. |
+| `make ci.frontend` | Env drift check, frontend dependency lock, ESLint, TypeScript, unit tests, and production build. |
 | `make ci.codegen` | OpenAPI schema and generated TypeScript client freshness. |
 | `make ci.migrations` | Alembic upgrade/check/downgrade/upgrade round-trip against the configured database. |
 | `make ci.all` | All canonical CI parity targets. |

@@ -120,8 +120,12 @@ ci.frontend.deps:
 		fi
 	cd $(FRONTEND_DIR) && npm ci
 
+.PHONY: ci.env
+ci.env: ## Verify env templates match backend config and frontend env usage.
+	python3 scripts/check_env_drift.py
+
 .PHONY: ci.backend
-ci.backend: ci.backend.deps ## Run backend CI parity: lint, format, type-check, and coverage.
+ci.backend: ci.backend.deps ci.env ## Run backend CI parity: env drift, lint, format, type-check, and coverage.
 	cd $(BACKEND_DIR) && uv run ruff check app
 	cd $(BACKEND_DIR) && uv run ruff format --check app
 	cd $(BACKEND_DIR) && uv run mypy app
@@ -134,7 +138,7 @@ ci.backend: ci.backend.deps ## Run backend CI parity: lint, format, type-check, 
 		uv run pytest --cov=app --cov-report=term --cov-fail-under=$(CI_BACKEND_COVERAGE_FLOOR)
 
 .PHONY: ci.frontend
-ci.frontend: ci.frontend.deps ## Run frontend CI parity: lint, type-check, unit tests, and build.
+ci.frontend: ci.frontend.deps ci.env ## Run frontend CI parity: env drift, lint, type-check, unit tests, and build.
 	cd $(FRONTEND_DIR) && npm run lint
 	cd $(FRONTEND_DIR) && npm run typecheck
 	cd $(FRONTEND_DIR) && npm test -- --run
