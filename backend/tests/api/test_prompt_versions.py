@@ -207,7 +207,10 @@ async def test_winner_route_translates_not_found_to_404(
     )
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Agent not found"
+    assert response.json()["detail"] == {
+        "code": "not_found",
+        "message": "Agent not found",
+    }
 
 
 async def test_pause_route_translates_validation_error_to_400(
@@ -224,7 +227,10 @@ async def test_pause_route_translates_validation_error_to_400(
     )
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Cannot pause eliminated version"
+    assert response.json()["detail"] == {
+        "code": "validation_error",
+        "message": "Cannot pause eliminated version",
+    }
 
 
 @pytest.mark.parametrize(

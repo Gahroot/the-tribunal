@@ -22,6 +22,7 @@ from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.api.redirects import router as redirects_router
+from app.api.service_errors import install_service_error_handler
 from app.api.v1.health import router as health_router
 from app.api.v1.router import api_router
 from app.api.webhooks.calcom import router as calcom_webhook_router
@@ -420,6 +421,7 @@ app = FastAPI(
     redoc_url="/redoc" if settings.debug else None,
     openapi_url="/openapi.json" if settings.debug else None,
 )
+install_service_error_handler(app)
 
 # OpenTelemetry instrumentation — must run after ``app`` is created but before
 # any requests are served. No-op when tracing wasn't activated above.

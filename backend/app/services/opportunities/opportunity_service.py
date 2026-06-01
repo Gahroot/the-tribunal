@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import structlog
-from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -29,6 +28,7 @@ from app.schemas.opportunity import (
     PipelineStageUpdate,
     PipelineUpdate,
 )
+from app.services.exceptions import NotFoundError
 from app.services.opportunities.opportunity_filters import apply_opportunity_filters
 
 logger = structlog.get_logger()
@@ -249,20 +249,14 @@ class OpportunityService:
         )
         pipeline = (await self.db.execute(pipeline_query)).scalar_one_or_none()
         if not pipeline:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Pipeline not found",
-            )
+            raise NotFoundError("Pipeline not found")
 
         stage = None
         if opportunity_in.stage_id:
             stage_query = select(PipelineStage).where(PipelineStage.id == opportunity_in.stage_id)
             stage = (await self.db.execute(stage_query)).scalar_one_or_none()
             if not stage:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Stage not found",
-                )
+                raise NotFoundError("Stage not found")
 
         opportunity = Opportunity(
             workspace_id=workspace_id,
@@ -303,10 +297,7 @@ class OpportunityService:
             stage_query = select(PipelineStage).where(PipelineStage.id == opportunity_in.stage_id)
             stage = (await self.db.execute(stage_query)).scalar_one_or_none()
             if not stage:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Stage not found",
-                )
+                raise NotFoundError("Stage not found")
 
             old_stage_query = select(PipelineStage).where(PipelineStage.id == opportunity.stage_id)
             old_stage = (await self.db.execute(old_stage_query)).scalar_one_or_none()

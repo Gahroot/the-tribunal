@@ -8,6 +8,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query, status
 
 from app.api.deps import DB, CurrentUser, get_workspace
+from app.api.service_errors import ServiceErrorRoute
 from app.models.workspace import Workspace
 from app.schemas.opportunity import (
     OpportunityCreate,
@@ -26,7 +27,7 @@ from app.schemas.opportunity import (
 )
 from app.services.opportunities import OpportunityService
 
-router = APIRouter()
+router = APIRouter(route_class=ServiceErrorRoute)
 
 
 # Pipeline endpoints

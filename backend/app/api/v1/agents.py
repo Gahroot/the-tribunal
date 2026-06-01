@@ -6,6 +6,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query, status
 
 from app.api.deps import DB, CurrentUser, get_workspace
+from app.api.service_errors import ServiceErrorRoute
 from app.models.workspace import Workspace
 from app.schemas.agent import (
     AgentCreate,
@@ -17,7 +18,7 @@ from app.schemas.agent import (
 )
 from app.services.agents import AgentService
 
-router = APIRouter()
+router = APIRouter(route_class=ServiceErrorRoute)
 
 
 @router.get("", response_model=PaginatedAgents)

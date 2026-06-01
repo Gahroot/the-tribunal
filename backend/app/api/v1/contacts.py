@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, 
 from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser, get_workspace
+from app.api.service_errors import ServiceErrorRoute
 from app.models.contact import Contact
 from app.models.workspace import Workspace
 from app.schemas.contact import (
@@ -48,7 +49,7 @@ from app.services.contacts.exceptions import (
 )
 from app.services.exceptions import NotFoundError, ServiceUnavailableError, ValidationError
 
-router = APIRouter()
+router = APIRouter(route_class=ServiceErrorRoute)
 
 
 @router.get("", response_model=ContactListResponse)
