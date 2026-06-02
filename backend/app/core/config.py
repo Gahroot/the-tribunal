@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30  # 30 minutes (short-lived)
     refresh_token_expire_days: int = 7  # 7 days (long-lived)
+    cookie_secure: bool | None = None  # None = secure unless local development
 
     # OpenAI
     openai_api_key: str = ""
@@ -115,6 +116,13 @@ class Settings(BaseSettings):
     api_base_url: str = ""  # Base URL for webhooks (e.g., https://api.example.com)
     frontend_url: str = "http://localhost:3000"  # Frontend URL for links in emails
     public_base_url: str = "http://localhost:8000"  # Public base URL for short link redirects
+
+    @property
+    def secure_auth_cookies(self) -> bool:
+        """Return whether auth cookies should require HTTPS."""
+        if self.cookie_secure is not None:
+            return self.cookie_secure
+        return self.environment.lower() not in {"development", "local", "test", "testing"}
 
     # Workers
     # Keep ``True`` for the legacy single-process API+workers topology. Set
