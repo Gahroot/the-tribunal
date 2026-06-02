@@ -5,6 +5,8 @@ import { Spotlight } from "@/components/effects/spotlight";
 import { Providers } from "@/providers/providers";
 import "./globals.css";
 
+import EZPixelClient from "../../ez-pixel.client";
+
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
@@ -31,6 +33,8 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${manrope.variable} font-sans antialiased relative min-h-screen`}
       >
+        <EZPixelClient />
+
         <Providers>
           <Spotlight className="fixed" />
           <div className="relative z-10">{children}</div>

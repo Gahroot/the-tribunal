@@ -122,6 +122,7 @@ dependencies = [
     # baseline: pybreaker 1.4 is the first release with typed async support used in our circuit-breaker
     # wrapper around outbound Telnyx calls.
     "pybreaker>=1.4.1",
+    "ez-pixel>=0.1.0",
 ]
 
 [project.scripts]
