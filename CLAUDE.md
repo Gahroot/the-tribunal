@@ -1,168 +1,97 @@
-# The Tribunal - AI CRM
+# The Tribunal
 
-AI-powered CRM platform that manages leads through calls, SMS, and messages with AI voice agents and SMS campaigns, featuring a Next.js dashboard with Cal.com appointment booking integration and human-in-the-loop approval gates.
+The Tribunal is a proprietary AI-powered CRM command center for capturing leads, running AI voice/SMS follow-up, booking appointments, and giving operators a Next.js dashboard for human-in-the-loop decisions.
 
-## Project Structure
+## Apps and stable structure
 
-```
-frontend/                           # Next.js 16 React frontend
-  src/
-    app/                            # App Router pages (27 route groups)
-      agents/, campaigns/, contacts/, calls/, dashboard/, settings/
-      offers/, experiments/, suggestions/, lead-magnets/, opportunities/
-      automations/, calendar/, find-leads/, phone-numbers/, voice-test/
-      pending-actions/, billing/, nudges/, onboarding/
-    components/                     # React components (one per file, 29 feature groups)
-      ui/                           # shadcn/ui primitives (Radix-based)
-      agents/, campaigns/, contacts/, calls/, conversation/, settings/
-      opportunities/, automations/, calcom/, layout/, auth/, wizard/
-      pending-actions/, nudges/, suggestions/, tags/, segments/
-    lib/
-      api/                          # API client functions (one per resource)
-      api.ts                        # Axios fetch wrapper
-      utils/                        # Utility functions
-      contact-store.ts              # Zustand store
-    hooks/                          # Custom React hooks (useContacts, useWizard, etc.)
-    providers/                      # Auth, workspace, combined providers
-    types/                          # TypeScript type definitions
-    widget/                         # Embeddable chat widget
+- `frontend/` — Next.js 16 + React 19 + TypeScript dashboard. Key folders: `src/app/` routes, `src/components/` feature/UI components, `src/lib/api/` API clients and generated OpenAPI types, `src/providers/` auth/workspace providers, `src/types/` shared domain types, `src/widget/` embeddable chat widget.
+- `backend/` — FastAPI + SQLAlchemy async API. Key folders: `app/api/v1/` authenticated/public API routers, `app/api/webhooks/` Telnyx/Cal.com/Resend webhooks, `app/services/` domain logic, `app/models/` ORM models, `app/schemas/` Pydantic schemas, `app/workers/` in-process background jobs, `app/websockets/` voice/realtime bridges, `alembic/versions/` migrations, `tests/` pytest suites.
+- `scripts/` — operational/demo scripts such as prompt updates, lead-magnet PDF generation/upload, encryption-key rotation, and stress/adversarial tests.
+- `docs/` and `backend/docs/` — strategy, architecture, migration, and operational notes.
 
-backend/                            # FastAPI Python backend
-  app/
-    main.py                         # FastAPI app entrypoint
-    api/v1/                         # Versioned API routes (43 resource modules)
-    api/webhooks/                   # Incoming webhook handlers (Telnyx, Cal.com)
-    models/                         # SQLAlchemy ORM models (43 files)
-    schemas/                        # Pydantic schemas (39 files)
-    services/                       # Business logic by domain (24 service groups)
-      ai/, telephony/, calendar/, campaigns/, contacts/
-      conversations/, opportunities/, segments/, tags/, tools/
-      approval/, knowledge/, nudges/, appointments/
-    core/                           # Config, security, logging, encryption
-    db/                             # Session factory, Redis, pagination
-    utils/                          # Calendar, phone, datetime helpers
-    workers/                        # Background jobs (17 worker types)
-    websockets/                     # Voice bridge, real-time handlers
-  alembic/versions/                 # Database migrations
-  tests/                            # Pytest test suite (api/, schemas/, services/, workers/)
-```
+## Product domains and integrations
 
-## Tech Stack
+- Core domains include workspaces, contacts/leads, conversations, AI agents, SMS and voice campaigns, appointments, offers, lead magnets/forms, opportunities, pending approvals, nudges, automations, billing, and onboarding.
+- External integrations include OpenAI Realtime, Telnyx voice/SMS, Cal.com booking/webhooks, Resend email/webhooks, Stripe billing, and Follow Up Boss/realtor workflows.
+- Frontend root redirects to `/contacts`; the app also exposes public surfaces under routes such as `embed`, offers, lead magnets, demos, and lead forms.
 
-**Frontend:** Next.js 16, React 19, TypeScript 5 (strict), TailwindCSS 4, shadcn/ui, React Query 5, Zustand 5, Zod 4, Framer Motion, Three.js/R3F
-**Backend:** FastAPI, Python 3.12+, SQLAlchemy 2 (async), PostgreSQL 17, Redis 7, Alembic, uv
-**Integrations:** OpenAI Realtime API, Telnyx (VoIP/SMS), Cal.com, ElevenLabs, SendGrid
+## Project-specific architecture notes
 
-## Organization Rules
+- The backend is multi-tenant by workspace; most domain routes and services are scoped through workspace-aware APIs.
+- Background workers run inside the single FastAPI `backend-api` process via `start_all_workers()` in the app lifespan. There is no separate worker service or Celery process; deploying uvicorn/gunicorn with `--workers > 1` or multiple backend replicas multiplies every poll loop unless workers are extracted or leader-elected.
+- `backend/static/` is served unauthenticated at `/static` for public marketing collateral such as lead-magnet PDFs only. Do not put customer files, exports, PII, credentials, or per-workspace assets there.
+- Frontend typed API contracts derive from `backend/openapi.json`; when backend public routes/schemas change, run `make ci.codegen` and commit both `backend/openapi.json` and `frontend/src/lib/api/_generated.ts`.
+- Shared local primitives: use `backend/app/services/contacts/contact_filters.py` for rule-based contact/list filtering, `frontend/src/lib/query-keys.ts` for React Query keys, `frontend/src/lib/query-options.ts` for query presets, and `frontend/src/components/ui/page-state.tsx` for page-level loading/error/empty states.
 
-**Frontend:**
-- Pages → `src/app/` (Next.js App Router)
-- Components → `src/components/`, one per file, grouped by feature
-- API clients → `src/lib/api/`, one file per resource
-- Utilities → `src/lib/utils/`, grouped by functionality
-- Types → `src/types/` or co-located
+## Local commands
 
-**Backend:**
-- API routes → `app/api/v1/`, one file per resource
-- Models → `app/models/`, one model per file
-- Schemas → `app/schemas/`, matching model structure
-- Services → `app/services/`, grouped by domain (ai, telephony, calendar, approval, knowledge)
-- Workers → `app/workers/`, one worker per job type
-- Migrations → `alembic/versions/`
+- Install all deps: `make install` (`backend: uv sync`, `frontend: npm ci`).
+- Start everything locally: `make dev` (Postgres/Redis via backend Docker Compose, FastAPI on `:8000`, Next.js on `:3000`).
+- Start pieces: `make dev.db`, `make dev.backend`, `make dev.frontend`.
+- Apply migrations: `make migrate`; create migration: `make migrate.new m="message"`.
+- Backend checks used by CI: `make ci.backend`.
+- Frontend checks used by CI: `make ci.frontend`.
+- Codegen checks used by CI: `make ci.codegen`.
+- Migration CI shape for model/migration changes: `make ci.migrations`.
+- Full local CI parity: `make ci.all`.
+- Frontend e2e on PRs: `cd frontend && npm run e2e` after installing Playwright Chromium.
+- Local DB backup/restore targets: `make db.backup.local`; `make db.restore.local f=backend/backups/<file>.dump`.
+- Encryption-key rotation workflow: `make rotate.encryption-key`.
 
-## Code Quality - Zero Tolerance
+## Runtime and deployment facts
 
-After editing CI-covered code, run the matching root parity target instead of copying command sequences:
+- Backend local services are defined in `backend/docker-compose.yml` using PostgreSQL 17 and Redis 7 with `aicrm` database/container names.
+- Frontend uses Node `20.18.0` from `frontend/.nvmrc`, `npm@10.9.0`, and deploys from `frontend/` on Vercel with `npm ci` + `npm run build`.
+- Backend deploys on Railway via `backend/railway.toml`; pre-deploy runs `alembic upgrade head`, start command runs `uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips=*`, and healthcheck is `/readyz`.
+- Production contains live CRM/contact data. Test migrations locally first and back up data before schema changes that touch contact/lead tables.
 
-- Backend: `make ci.backend`
-- Frontend: `make ci.frontend`
-- Generated API artifacts: `make ci.codegen`
-- Migrations: `make ci.migrations`
-- Everything: `make ci.all`
+## Repo-local agent assets
 
-Fix ALL errors/warnings before continuing.
-
-## Shared primitives
-
-Prefer these canonical patterns over rolling new ones:
-
-- `backend/app/services/contacts/contact_filters.py` — gold-standard filter engine. Reuse `apply_contact_filters()` and the `FilterDefinition` shape for any list endpoint that needs rule-based filtering.
-- `frontend/src/lib/query-keys.ts` — canonical React Query key factory. All new hooks should pull keys from here rather than inlining tuples.
-- `frontend/src/lib/query-options.ts` — shared query option presets (stale times, retry policies). Compose these instead of hand-tuning per-hook.
-- `frontend/src/components/ui/page-state.tsx` — `PageLoadingState`, `PageErrorState`, `PageEmptyState`. Use for every page-level loading/error/empty surface so the app renders consistent states.
-
-## Development
-
-```bash
-cd backend && docker compose up -d                              # PostgreSQL + Redis
-cd frontend && npm run dev                                      # Frontend :3000
-cd backend && uv run uvicorn app.main:app --reload --port 8000  # Backend :8000
-cd backend && uv run alembic upgrade head                       # Migrations
-cd backend && uv run pytest                                     # Tests
-```
-
-## Production
-
-The app is deployed on Railway. Use `railway` CLI for logs, deploys, and environment management.
-This is a live, actively used CRM with real contact data. Never run destructive database operations (DROP, TRUNCATE, DELETE without WHERE) against production. Always test migrations locally first and back up data before schema changes that touch contact/lead tables.
-
-## Agent Toolchain
-
-This repo uses a **single canonical agent toolchain rooted at `.ezcoder/`**. Older `.claude/` and `.gg/` toolchain directories have been consolidated — do not recreate them.
-
-| Path | Purpose |
-|---|---|
-| `.ezcoder/commands/` | Slash commands (`commit`, `fix`, `test`, `update`). Authoritative — edit here. |
-| `.ezcoder/plans/` | Saved multi-file plans. |
-| `.ezcoder/skills/` | Reusable skill packages (e.g. `commit-work`). |
-| `.ezcoder/agents/` | Named sub-agent definitions. |
-| `.ezcoder/eyes/` | Perception-probe **metadata** — `manifest.json` + `journal.jsonl` (gitignored runtime state). |
-| `.gg/eyes/` | Perception-probe **shell scripts** (`visual-web.sh`, `http.sh`, `mail.sh`, `logs.sh`). Kept at `.gg/eyes/` because `.ezcoder/eyes/manifest.json` and the Eyes section below reference these paths. Gitignored — scripts are bootstrapped per-checkout. |
-| `.claude/worktrees/` | Agent runtime workspace. Gitignored. Leave alone. |
-
-**Do not create `.claude/commands/`, `.gg/commands/`, or `.gg/plans/`** — they are gitignored to block accidental re-introduction by IDE plugins. If you need a new command/plan, add it under `.ezcoder/`.
+- Canonical agent assets live under `.ezcoder/` (`commands/`, `plans/`, `skills/`, `agents/`, `eyes/`). Do not recreate legacy `.claude/commands/`, `.gg/commands/`, or `.gg/plans/`.
+- Current local perception scripts are `.ezcoder/eyes/http.sh`, `.ezcoder/eyes/logs.sh`, and `.ezcoder/eyes/mail.sh`; probe state/artifacts under `.ezcoder/eyes/` are gitignored.
 
 ## Eyes
 
-Perception probes live in `.gg/eyes/` (scripts) with metadata in `.ezcoder/eyes/`. All headless. Artifacts → `.gg/eyes/out/` (gitignored). Invoke probes yourself; don't ask the user to verify what you can verify.
+Perception probes live in `.ezcoder/eyes/`. All headless. Artifacts → `.ezcoder/eyes/out/` (gitignored). Invoke probes yourself; don't ask the user to verify what you can verify.
 
 ### Available probes
 
 | Need | Run | Then |
 |---|---|---|
-| Screenshot a frontend page | `.gg/eyes/visual-web.sh http://localhost:3000/<path>` | Use `analyze_image` on the PNG path printed to stdout |
-| Hit a backend API endpoint | `.gg/eyes/http.sh http://localhost:8000/api/v1/<resource> [GET\|POST\|PUT\|DELETE] [body-or-@file] [-H "Authorization: Bearer ..."]` | Read the body file from the JSON output; check status code |
-| Check backend/server logs | `.gg/eyes/logs.sh --service backend --lines 50` or `--file /path/to/log` or `--grep "ERROR"` | Scan stdout for errors, warnings, or the pattern you need |
-| Inspect captured emails | `.gg/eyes/mail.sh latest` or `mail.sh list` or `mail.sh read <id>` | Read the redacted email body/headers to confirm email content |
-| Count captured emails | `.gg/eyes/mail.sh count` | Compare against expected count after triggering email-sending code |
-| Clear email inbox | `.gg/eyes/mail.sh clear` | Run before tests that assert on email count/content |
+| Hit a backend API or webhook endpoint | `.ezcoder/eyes/http.sh http://localhost:8000/api/v1/<resource> [GET\|POST\|PUT\|DELETE] [body-or-@file] [-H "Authorization: Bearer ..."]` | Read the JSON output, inspect the redacted `body`/`headers` files, and confirm status code plus response shape. |
+| Hit public/static backend surfaces | `.ezcoder/eyes/http.sh http://localhost:8000/static/<asset>` or `.ezcoder/eyes/http.sh http://localhost:8000/readyz` | Confirm non-500 status, content-type/size, and body where applicable. |
+| Check server or worker logs | `.ezcoder/eyes/logs.sh --file <path> --lines 100` or `.ezcoder/eyes/logs.sh --service backend --grep "ERROR|Traceback|<worker_name>"` | Scan the redacted output for tracebacks, worker activity, warnings, or the event you expected. |
+| Inspect captured emails | `.ezcoder/eyes/mail.sh latest`, `.ezcoder/eyes/mail.sh list --limit 10`, or `.ezcoder/eyes/mail.sh read <id>` | Read the redacted subject/from/to/body and verify links, copy, recipients, and workspace-specific content. |
+| Count or clear captured emails | `.ezcoder/eyes/mail.sh count` or `.ezcoder/eyes/mail.sh clear` | Use `clear` before email assertions, then compare `count` against the expected sends after triggering code. |
 
 ### When to use these eyes (automatically, without being asked)
 
 Reach for probes ON YOUR OWN INITIATIVE when any of these apply:
 
-- **After editing any `.tsx` file under `frontend/src/components/` or `frontend/src/app/`**, screenshot the affected page with `.gg/eyes/visual-web.sh http://localhost:3000/<route>` and verify the render matches intent.
-- **After adding or modifying a backend route under `backend/app/api/v1/`**, hit it with `.gg/eyes/http.sh http://localhost:8000/api/v1/<endpoint>` and confirm the response shape and status code.
-- **After changing a Pydantic schema in `backend/app/schemas/`**, exercise the affected endpoint via `http.sh` to catch validation errors at the boundary.
-- **After editing a worker in `backend/app/workers/`**, check `.gg/eyes/logs.sh --service backend --grep "<worker_name>"` to confirm it fires without tracebacks.
-- **After modifying email-sending code in any service (campaigns, nudges, SendGrid templates)**, check `.gg/eyes/mail.sh latest` to verify the email was captured and the content/body is correct.
-- **After editing a migration in `backend/alembic/versions/`**, run the migration then use `http.sh` to hit a dependent endpoint and confirm no 500s.
-- **When the user reports a bug described in visual terms** ("the button is cut off", "the table looks wrong"), screenshot the page immediately with `visual-web.sh` and diagnose from the artifact.
-- **When `npm run build` or `uv run ruff check` passes but the change involved runtime behavior**, use `http.sh` or `logs.sh` to confirm things actually work at runtime — type-checking alone isn't enough.
+- After adding or modifying a FastAPI route under `backend/app/api/v1/` or `backend/app/api/webhooks/`, start/use the local backend and hit the affected URL with `.ezcoder/eyes/http.sh`; inspect the saved body and confirm the status code and response schema match the route contract.
+- After changing a Pydantic schema under `backend/app/schemas/` or OpenAPI-backed API client behavior under `frontend/src/lib/api/`, exercise a representative endpoint with `.ezcoder/eyes/http.sh` so boundary serialization/validation failures are caught outside type checks.
+- After editing auth, workspace scoping, billing, or public lead-capture flows in `backend/app/api/v1/` or `backend/app/services/`, use `.ezcoder/eyes/http.sh` with the relevant headers/body to verify expected 2xx/4xx behavior and that no cross-workspace or unauthenticated data appears in the redacted response.
+- After editing worker code under `backend/app/workers/` or startup/lifespan code in `backend/app/main.py`, inspect runtime output with `.ezcoder/eyes/logs.sh --file <backend-log-path> --grep "<worker_name>|ERROR|Traceback"` or `--service backend` when the process was started into `.ezcoder/eyes/out/backend.log`.
+- After touching Telnyx, Cal.com, Stripe, or Resend webhook handlers under `backend/app/api/webhooks/`, replay a minimal representative payload with `.ezcoder/eyes/http.sh ... POST @payload.json` and inspect logs for signature, parsing, idempotency, and traceback behavior.
+- After modifying email-sending code, templates, or notification flows in `backend/app/services/campaigns/`, `backend/app/services/nudges/`, `backend/app/services/approval/`, or SendGrid/Resend integration code, clear the inbox with `.ezcoder/eyes/mail.sh clear`, trigger the send, then use `.ezcoder/eyes/mail.sh count` and `.ezcoder/eyes/mail.sh latest` to verify recipients, subject, redacted body, and links.
+- After editing migrations under `backend/alembic/versions/` or models under `backend/app/models/`, run migrations locally, then use `.ezcoder/eyes/http.sh` on a dependent endpoint such as contacts, opportunities, appointments, or `/readyz` to confirm the app does not return 500s.
+- When a user reports a runtime bug that tests or type checks do not reproduce, combine `.ezcoder/eyes/http.sh` for the failing endpoint with `.ezcoder/eyes/logs.sh` for tracebacks before guessing from source.
+
+If a probe fails or returns unexpected results, investigate the artifact directly before assuming the probe itself is broken.
 
 ### When NOT to use
 
 - Docs-only changes, comments, formatting.
-- Refactors fully covered by existing tests that pass.
-- Dev server isn't running AND the task doesn't require runtime verification.
+- Refactors fully covered by tests that pass.
+- Dev server / simulator / sink isn't up AND the task doesn't require runtime verification.
 - Same probe already ran this turn on the same artifact — reuse the output.
-- Changes confined to `.css`/`tailwind.config` that are already visually verified.
+- Frontend-only visual/layout changes: no visual screenshot probe is currently verified in this checkout, so use existing lint/build/tests and escalate only if runtime visual proof is necessary.
 
 ### When to escalate a capability gap (the self-improvement loop)
 
 If you're about to **guess**, **skip verification**, or **hand-wave** about something a better probe would show you — STOP and surface the tradeoff inline. Phrasing like:
 
-> "I tried screenshotting but the failure is a JS error I can only see in the browser console — and there's no `browser_console` probe. Two paths: (a) ~3 min to add it, then I can diagnose properly. (b) Workaround: I'd guess from the DOM state. Your call?"
+> "I tried checking the endpoint, but the failure is only visible in the browser UI and there is no verified visual probe in this checkout. Two paths: (a) ~3 min to add/fix a visual probe, then I can diagnose properly. (b) Workaround: I'd infer from logs/API output. Your call?"
 
 Wait for the user's choice. **Don't escalate more than once per request** — if the user picked the workaround, don't re-ask in the same turn.
 
