@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Loader2, Users } from "lucide-react";
+import { Loader2, Users } from "lucide-react";
 import { motion } from "motion/react";
 import Link from "next/link";
 
@@ -18,41 +18,24 @@ import {
   TodayOverviewCard,
 } from "@/components/dashboard/today-overview";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { PageErrorState } from "@/components/ui/page-state";
 import { useDashboard } from "@/hooks/useDashboard";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 
-function ErrorState({ error }: { error: Error }) {
-  return (
-    <div className="p-6">
-      <Card className="border-destructive">
-        <CardContent className="flex items-center gap-4 py-6">
-          <AlertCircle className="size-8 text-destructive" />
-          <div>
-            <h3 className="font-semibold">Failed to load dashboard</h3>
-            <p className="text-sm text-muted-foreground">
-              {error.message || "An unexpected error occurred"}
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            className="ml-auto"
-            onClick={() => window.location.reload()}
-          >
-            Retry
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
 export function DashboardPage() {
   const workspaceId = useWorkspaceId();
-  const { data, isPending, error, isFetching } = useDashboard(workspaceId ?? "");
+  const { data, isPending, error, isFetching, refetch } = useDashboard(
+    workspaceId ?? "",
+  );
 
   if (error && !data) {
-    return <ErrorState error={error as Error} />;
+    return (
+      <PageErrorState
+        className="min-h-[400px]"
+        message={(error as Error).message || "Failed to load dashboard"}
+        onRetry={() => refetch()}
+      />
+    );
   }
 
   return (

@@ -3,6 +3,8 @@
 import { Mail, Sparkles } from "lucide-react";
 import { type ReactNode } from "react";
 
+import { ResourceListError } from "@/components/resource-list/resource-list-error";
+import { ResourceListLoading } from "@/components/resource-list/resource-list-loading";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -145,6 +147,15 @@ export function ComponentsGallery() {
               description="Import a CSV or create a contact to get started."
               icon={<Sparkles className="size-8" />}
               action={<Button size="sm">Add contact</Button>}
+            />
+          </Example>
+          <Example label="ResourceListLoading (wraps PageLoadingState)">
+            <ResourceListLoading />
+          </Example>
+          <Example label="ResourceListError (wraps PageErrorState)">
+            <ResourceListError
+              resourceName="contacts"
+              onRetry={() => undefined}
             />
           </Example>
         </Section>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { VoiceCampaignWizard } from "@/components/campaigns/voice-campaign-wizard";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { Button } from "@/components/ui/button";
+import { PageLoadingState } from "@/components/ui/page-state";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { agentsApi } from "@/lib/api/agents";
 import { phoneNumbersApi } from "@/lib/api/phone-numbers";
@@ -141,12 +142,7 @@ export default function NewVoiceCampaignPage() {
 
         {/* Wizard content */}
         {isPending ? (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="flex flex-col items-center gap-4">
-              <Loader2 className="size-8 animate-spin text-muted-foreground" />
-              <p className="text-muted-foreground">Loading campaign data...</p>
-            </div>
-          </div>
+          <PageLoadingState className="flex-1" message="Loading campaign data…" />
         ) : (
           <VoiceCampaignWizard
             workspaceId={workspaceId}

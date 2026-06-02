@@ -7,8 +7,6 @@ import {
   Calendar as CalendarIcon,
   Clock,
   Settings,
-  Loader2,
-  AlertCircle,
   Trash2,
 } from "lucide-react";
 import { motion } from "motion/react";
@@ -40,6 +38,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  PageErrorState,
+  PageLoadingState,
+} from "@/components/ui/page-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAppointments, useDeleteAppointment } from "@/hooks/useAppointments";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
@@ -113,19 +115,16 @@ export function CalendarPage() {
   };
 
   if (isPending) {
-    return (
-      <div className="p-6 flex items-center justify-center h-96">
-        <Loader2 className="size-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <PageLoadingState className="h-96" message="Loading appointments…" />;
   }
 
   if (error) {
     return (
-      <div className="p-6 flex flex-col items-center justify-center h-96 gap-2">
-        <AlertCircle className="size-8 text-destructive" />
-        <p className="text-muted-foreground">Failed to load appointments</p>
-      </div>
+      <PageErrorState
+        className="h-96"
+        message="Failed to load appointments"
+        onRetry={() => refetch()}
+      />
     );
   }
 

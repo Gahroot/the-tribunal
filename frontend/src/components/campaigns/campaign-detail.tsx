@@ -3,7 +3,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
-  Loader2,
   Play,
   Pause,
   RotateCcw,
@@ -25,6 +24,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { PageEmptyState, PageLoadingState } from "@/components/ui/page-state";
 import { useCampaignAnalytics } from "@/hooks/useCampaigns";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { campaignsApi } from "@/lib/api/campaigns";
@@ -122,37 +122,25 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
   });
 
   if (isPending) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="size-8 animate-spin text-muted-foreground" />
-          <p className="text-muted-foreground">Loading campaign...</p>
-        </div>
-      </div>
-    );
+    return <PageLoadingState className="h-full" message="Loading campaign…" />;
   }
 
   if (error || !campaign) {
     return (
-      <div className="p-6 max-w-2xl mx-auto">
-        <div className="flex items-center gap-4 mb-6">
-          <Button variant="ghost" size="icon" asChild>
-            <Link href="/campaigns" aria-label="Back to campaigns">
-              <ArrowLeft className="size-5" />
+      <PageEmptyState
+        className="p-6"
+        icon={<AlertCircle className="size-8 text-destructive" />}
+        title="Campaign not found"
+        description="The campaign could not be loaded. It may have been deleted."
+        action={
+          <Button asChild>
+            <Link href="/campaigns">
+              <ArrowLeft className="size-4" />
+              Back to campaigns
             </Link>
           </Button>
-        </div>
-        <div className="flex flex-col items-center gap-4 py-12">
-          <AlertCircle className="size-12 text-destructive" />
-          <h2 className="text-xl font-semibold">Campaign not found</h2>
-          <p className="text-muted-foreground text-center">
-            The campaign could not be loaded. It may have been deleted.
-          </p>
-          <Button asChild>
-            <Link href="/campaigns">Back to campaigns</Link>
-          </Button>
-        </div>
-      </div>
+        }
+      />
     );
   }
 

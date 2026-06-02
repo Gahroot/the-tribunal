@@ -1,9 +1,5 @@
-import { Loader2 } from "lucide-react";
+import { PageLoadingState } from "@/components/ui/page-state";
 
 export function ResourceListLoading() {
-  return (
-    <div className="flex items-center justify-center h-64">
-      <Loader2 className="size-8 animate-spin text-muted-foreground" />
-    </div>
-  );
+  return <PageLoadingState className="min-h-0 h-64" />;
 }
