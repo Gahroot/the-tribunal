@@ -5,8 +5,9 @@ import base64
 import binascii
 import json
 import time
+import uuid
 from collections.abc import AsyncIterator, Callable
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 import structlog
@@ -31,6 +32,7 @@ logger = structlog.get_logger()
 
 TOOL_TIMEOUT_SECONDS = 30.0
 OPENAI_REALTIME_CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets"
+OpenAIRealtimeAuthMode = Literal["api_key", "oauth", "client_secret"]
 
 
 class VoiceAgentSession(VoiceAgentBase):
@@ -59,24 +61,35 @@ class VoiceAgentSession(VoiceAgentBase):
         model: str | None = None,
         additional_headers: dict[str, str] | None = None,
         use_client_secret: bool = False,
+        auth_mode: OpenAIRealtimeAuthMode | None = None,
         credential_source: str | None = None,
+        realtime_session_id: str | None = None,
     ) -> None:
         """Initialize voice agent session.
 
         Args:
             api_key: OpenAI API key, OAuth access token, or another bearer token.
             agent: Optional Agent model for configuration.
-            use_client_secret: Mint an ephemeral Realtime client secret before
-                connecting. ChatGPT OAuth tokens require this path; direct
-                WebSocket auth only accepts Platform API keys.
+            use_client_secret: Deprecated compatibility flag for minting an
+                ephemeral Realtime client secret before connecting.
+            auth_mode: Realtime auth mode. ``oauth`` sends the OAuth bearer
+                directly with ChatGPT account headers; ``client_secret`` is
+                retained only for explicit ephemeral-secret compatibility.
             credential_source: Safe credential source label for diagnostics.
+            realtime_session_id: Optional stable Realtime session id sent as
+                ``x-session-id`` for Codex-compatible Realtime WebSocket routing.
         """
         super().__init__(agent)
         self.api_key = api_key
         self.model = model or settings.openai_realtime_model
         self.additional_headers = additional_headers or {}
-        self.use_client_secret = use_client_secret
+        resolved_auth_mode: OpenAIRealtimeAuthMode = auth_mode or (
+            "client_secret" if use_client_secret else "api_key"
+        )
+        self.auth_mode = resolved_auth_mode
+        self.use_client_secret = resolved_auth_mode == "client_secret"
         self.credential_source = credential_source or "unknown"
+        self.realtime_session_id = realtime_session_id or f"sess_{uuid.uuid4().hex}"
         self._connection_task: asyncio.Task[None] | None = None
         self._tool_callback: Callable[[str, str, dict[str, Any]], Any] | None = None
         self._tool_tasks: set[asyncio.Task[None]] = set()
@@ -94,7 +107,7 @@ class VoiceAgentSession(VoiceAgentBase):
         url = f"{self.BASE_URL}?model={self.model}"
         session_config = self._build_initial_session_config()
         bearer_token = self.api_key
-        connect_headers = dict(self.additional_headers)
+        connect_headers = self._build_connect_headers()
         self.logger.info(
             "========== CONNECTING TO OPENAI REALTIME API ==========",
             url=url,
@@ -102,12 +115,13 @@ class VoiceAgentSession(VoiceAgentBase):
             credential_configured=bool(self.api_key),
             credential_source=self.credential_source,
             use_client_secret=self.use_client_secret,
+            auth_mode=self.auth_mode,
         )
 
         try:
             if self.use_client_secret:
                 bearer_token = await self._mint_realtime_client_secret(session_config)
-                # The OAuth/account headers were needed to mint the ephemeral key.
+                # Any account headers were needed only to mint the ephemeral key.
                 # The WebSocket should authenticate with the short-lived key only.
                 connect_headers = {}
 
@@ -137,6 +151,7 @@ class VoiceAgentSession(VoiceAgentBase):
                 error=str(e),
                 credential_source=self.credential_source,
                 use_client_secret=self.use_client_secret,
+                auth_mode=self.auth_mode,
                 hint="Check if OpenAI credentials are valid",
             )
             return False
@@ -152,6 +167,13 @@ class VoiceAgentSession(VoiceAgentBase):
         """Disconnect from OpenAI Realtime API."""
         await self._cancel_tool_tasks()
         await self._disconnect_ws()
+
+    def _build_connect_headers(self) -> dict[str, str]:
+        """Build direct WebSocket headers for API-key or OAuth-backed sessions."""
+        headers = dict(self.additional_headers)
+        if self.auth_mode == "oauth":
+            headers.setdefault("x-session-id", self.realtime_session_id)
+        return headers
 
     def set_tool_callback(
         self,
@@ -180,7 +202,7 @@ class VoiceAgentSession(VoiceAgentBase):
         await self._send_event(build_response_create_event())
 
     async def _mint_realtime_client_secret(self, session_config: RealtimeSessionConfig) -> str:
-        """Mint an ephemeral Realtime client secret for OAuth-backed sessions."""
+        """Mint an ephemeral Realtime client secret for explicit compatibility sessions."""
         request_body = build_client_secret_request(session=session_config)
         start = time.monotonic()
         try:

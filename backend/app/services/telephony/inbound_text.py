@@ -68,15 +68,14 @@ class PushNotificationService(Protocol):
 
     async def send_to_workspace_members(
         self,
-        *,
         db: AsyncSession,
         workspace_id: str,
         title: str,
         body: str,
-        data: dict[str, str],
-        notification_type: str,
-        channel_id: str,
-    ) -> None:
+        data: dict[str, Any] | None = None,
+        notification_type: str | None = None,
+        channel_id: str | None = None,
+    ) -> bool:
         """Send a push notification to workspace members."""
         ...
 

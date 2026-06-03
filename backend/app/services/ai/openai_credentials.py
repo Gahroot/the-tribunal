@@ -28,6 +28,8 @@ logger = structlog.get_logger()
 _OPENAI_INTEGRATION_TYPE = "openai"
 _OPENAI_JWT_AUTH_CLAIM = "https://api.openai.com/auth"
 _DEFAULT_OPENAI_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
+_DEFAULT_OPENAI_OAUTH_ORIGINATOR = "codex_cli_rs"
+_DEFAULT_OPENAI_OAUTH_USER_AGENT = f"{_DEFAULT_OPENAI_OAUTH_ORIGINATOR}/0.0.0"
 _OAUTH_REFRESH_WINDOW_MS = 5 * 60 * 1000
 
 
@@ -57,9 +59,15 @@ class OpenAICredentialContext:
         headers = {"Authorization": f"Bearer {self.bearer_token}"}
         if self.organization_id:
             headers["OpenAI-Organization"] = self.organization_id
-        if self.is_oauth and self.account_id:
-            headers["chatgpt-account-id"] = self.account_id
-            headers["originator"] = "the-tribunal"
+        if self.is_oauth:
+            headers["originator"] = (
+                settings.openai_oauth_originator or _DEFAULT_OPENAI_OAUTH_ORIGINATOR
+            )
+            headers["User-Agent"] = (
+                settings.openai_oauth_user_agent or _DEFAULT_OPENAI_OAUTH_USER_AGENT
+            )
+            if self.account_id:
+                headers["ChatGPT-Account-ID"] = self.account_id
         return headers
 
 

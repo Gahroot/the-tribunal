@@ -45,7 +45,7 @@ OPENAI_OAUTH_SCOPE = "openid profile email offline_access api.connectors.read ap
 OPENAI_OAUTH_AUTH_CLAIM = "https://api.openai.com/auth"
 OPENAI_INTEGRATION_TYPE = "openai"
 OPENAI_OAUTH_STATE_TYPE = "openai_codex_oauth"
-OPENAI_OAUTH_ORIGINATOR = "the-tribunal"
+OPENAI_OAUTH_ORIGINATOR = "codex_cli_rs"
 LOCAL_CALLBACK_HOST = "127.0.0.1"
 LOCAL_CALLBACK_PATH = "/auth/callback"
 LOCAL_CALLBACK_PORTS = (1455, 1457)
@@ -126,6 +126,12 @@ def get_openai_oauth_client_id() -> str:
     """Return the configured OAuth client ID, defaulting to Codex CLI's public app."""
     configured = settings.openai_oauth_client_id.strip()
     return configured or DEFAULT_OPENAI_OAUTH_CLIENT_ID
+
+
+def get_openai_oauth_originator() -> str:
+    """Return the OpenAI OAuth originator value used for Codex-compatible flows."""
+    configured = settings.openai_oauth_originator.strip()
+    return configured or OPENAI_OAUTH_ORIGINATOR
 
 
 def _base64url(data: bytes) -> str:
@@ -521,7 +527,7 @@ def _build_openai_browser_oauth_start(workspace_id: uuid.UUID, user_id: int) -> 
             "state": state,
             "id_token_add_organizations": "true",
             "codex_cli_simplified_flow": "true",
-            "originator": OPENAI_OAUTH_ORIGINATOR,
+            "originator": get_openai_oauth_originator(),
         }
     )
     return OpenAIOAuthStart(

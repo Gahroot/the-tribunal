@@ -38,7 +38,7 @@ def _workspace_integration(credentials: dict[str, Any]) -> WorkspaceIntegration:
     )
 
 
-async def test_workspace_oauth_voice_session_uses_realtime_client_secret() -> None:
+async def test_workspace_oauth_voice_session_uses_direct_realtime_auth() -> None:
     integration = _workspace_integration(
         {
             "access_token": "oauth-access-token",
@@ -58,15 +58,49 @@ async def test_workspace_oauth_voice_session_uses_realtime_client_secret() -> No
     assert error is None
     assert session is not None
     assert session.api_key == "oauth-access-token"
-    assert session.use_client_secret is True
+    assert session.use_client_secret is False
+    assert session.auth_mode == "oauth"
     assert session.credential_source == "workspace_oauth"
     assert session.additional_headers == {
-        "chatgpt-account-id": "acct_123",
-        "originator": "the-tribunal",
+        "ChatGPT-Account-ID": "acct_123",
+        "originator": "codex_cli_rs",
+        "User-Agent": "codex_cli_rs/0.0.0",
     }
 
 
-async def test_oauth_voice_session_mints_client_secret_before_websocket_connect() -> None:
+async def test_oauth_voice_session_uses_direct_bearer_websocket_auth() -> None:
+    fake_ws = MagicMock()
+    fake_ws.send = AsyncMock()
+    session = VoiceAgentSession(
+        "oauth-access-token",
+        additional_headers={
+            "ChatGPT-Account-ID": "acct_123",
+            "originator": "codex_cli_rs",
+            "User-Agent": "codex_cli_rs/0.0.0",
+        },
+        auth_mode="oauth",
+        credential_source="workspace_oauth",
+        realtime_session_id="sess_test",
+    )
+
+    with patch(
+        "app.services.ai.voice_agent.connect",
+        new=AsyncMock(return_value=fake_ws),
+    ) as connect_mock:
+        connected = await session.connect()
+
+    assert connected is True
+    connect_headers = connect_mock.await_args.kwargs["additional_headers"]
+    assert connect_headers == {
+        "Authorization": "Bearer oauth-access-token",
+        "ChatGPT-Account-ID": "acct_123",
+        "originator": "codex_cli_rs",
+        "User-Agent": "codex_cli_rs/0.0.0",
+        "x-session-id": "sess_test",
+    }
+
+
+async def test_client_secret_voice_session_mints_client_secret_before_websocket_connect() -> None:
     captured_requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -83,8 +117,8 @@ async def test_oauth_voice_session_mints_client_secret_before_websocket_connect(
     fake_ws.send = AsyncMock()
     session = VoiceAgentSession(
         "oauth-access-token",
-        additional_headers={"chatgpt-account-id": "acct_123", "originator": "the-tribunal"},
-        use_client_secret=True,
+        additional_headers={"ChatGPT-Account-ID": "acct_123", "originator": "codex_cli_rs"},
+        auth_mode="client_secret",
         credential_source="workspace_oauth",
     )
 
@@ -100,7 +134,7 @@ async def test_oauth_voice_session_mints_client_secret_before_websocket_connect(
     assert connected is True
     assert captured_requests[0].url == httpx.URL(OPENAI_REALTIME_CLIENT_SECRETS_URL)
     assert captured_requests[0].headers["Authorization"] == "Bearer oauth-access-token"
-    assert captured_requests[0].headers["chatgpt-account-id"] == "acct_123"
+    assert captured_requests[0].headers["ChatGPT-Account-ID"] == "acct_123"
     connect_headers = connect_mock.await_args.kwargs["additional_headers"]
     assert connect_headers == {"Authorization": "Bearer ek-ephemeral"}
 
@@ -119,5 +153,6 @@ async def test_workspace_api_key_voice_session_uses_direct_realtime_auth() -> No
     assert session is not None
     assert session.api_key == "sk-workspace"
     assert session.use_client_secret is False
+    assert session.auth_mode == "api_key"
     assert session.credential_source == "workspace_api_key"
     assert session.additional_headers == {}

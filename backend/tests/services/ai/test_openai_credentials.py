@@ -61,6 +61,8 @@ def _reset_openai_settings() -> None:
     settings.openai_oauth_expires_at = None
     settings.openai_oauth_account_id = ""
     settings.openai_oauth_client_id = ""
+    settings.openai_oauth_originator = ""
+    settings.openai_oauth_user_agent = ""
 
 
 async def test_workspace_api_key_takes_precedence_over_env() -> None:

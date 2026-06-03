@@ -112,7 +112,7 @@ class VoiceSessionFactory:
                 for key, value in credential_context.openai_headers().items()
                 if key != "Authorization"
             },
-            use_client_secret=credential_context.is_oauth,
+            auth_mode="oauth" if credential_context.is_oauth else "api_key",
             credential_source=credential_context.source,
         ), None
 
@@ -134,7 +134,16 @@ class VoiceSessionFactory:
         return VoiceAgentSession(
             get_openai_bearer_token(),
             agent,
-            use_client_secret=bool(self.settings.openai_oauth_access_token),
+            additional_headers={
+                key: value
+                for key, value in {
+                    "ChatGPT-Account-ID": self.settings.openai_oauth_account_id,
+                    "originator": self.settings.openai_oauth_originator or "codex_cli_rs",
+                    "User-Agent": self.settings.openai_oauth_user_agent or "codex_cli_rs/0.0.0",
+                }.items()
+                if value and self.settings.openai_oauth_access_token
+            },
+            auth_mode="oauth" if self.settings.openai_oauth_access_token else "api_key",
             credential_source="env_oauth"
             if self.settings.openai_oauth_access_token
             else "env_api_key",

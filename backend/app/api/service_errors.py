@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
-from typing import NoReturn
+from collections.abc import Callable, Coroutine
+from typing import Any, NoReturn
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.routing import APIRoute
@@ -71,7 +71,7 @@ def raise_service_error(exc: ServiceError) -> NoReturn:
 class ServiceErrorRoute(APIRoute):
     """APIRoute that converts service-layer exceptions at the API boundary."""
 
-    def get_route_handler(self) -> Callable[[Request], Awaitable[Response]]:
+    def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
         original_route_handler = super().get_route_handler()
 
         async def service_error_route_handler(request: Request) -> Response:
@@ -88,8 +88,10 @@ def _request_id_for(request: Request) -> str:
     return str(getattr(request.state, "request_id", "") or "")
 
 
-async def service_error_exception_handler(request: Request, exc: ServiceError) -> JSONResponse:
+async def service_error_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Return service-layer errors in the canonical API error envelope."""
+    if not isinstance(exc, ServiceError):
+        raise exc
     payload = service_error_payload(exc)
     payload["request_id"] = _request_id_for(request)
     return JSONResponse(

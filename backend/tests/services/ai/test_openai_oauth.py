@@ -52,6 +52,8 @@ def _workspace_integration(credentials: dict[str, Any]) -> WorkspaceIntegration:
 def _reset_openai_oauth_settings() -> None:
     settings.openai_oauth_client_id = ""
     settings.openai_oauth_redirect_uri = ""
+    settings.openai_oauth_originator = ""
+    settings.openai_oauth_user_agent = ""
     settings.openai_api_key = ""
     settings.api_base_url = ""
     settings.public_base_url = "http://localhost:8000"
@@ -78,7 +80,7 @@ async def test_build_openai_oauth_start_uses_codex_client_and_encrypted_state(
     assert params["redirect_uri"] == ["http://localhost:1455/auth/callback"]
     assert params["code_challenge_method"] == ["S256"]
     assert params["codex_cli_simplified_flow"] == ["true"]
-    assert params["originator"] == ["the-tribunal"]
+    assert params["originator"] == ["codex_cli_rs"]
     assert "code_verifier" not in params
 
     decoded_state = openai_oauth._decode_state(params["state"][0])  # noqa: SLF001
