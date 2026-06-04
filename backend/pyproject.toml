@@ -24,7 +24,7 @@ dependencies = [
     "uvicorn[standard]>=0.47.0",
     # runtime requirement: lower bound only — fastapi pins the effective upper. Kept explicit so a future
     # fastapi downgrade cannot silently drag in pre-CVE-2025-54121 starlette. Real floor is fastapi's.
-    "starlette>=0.40.0",
+    "starlette>=1.0.1",
     # WebSocket client (Grok realtime, audio streaming)
     # feature floor: websockets 14 introduced the new asyncio API used in app/websockets/voice_bridge.py.
     "websockets>=14.0",
