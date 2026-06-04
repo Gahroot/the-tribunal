@@ -54,8 +54,10 @@ dependencies = [
     # security hardening: 2.2 added stricter IDN/RFC 6531 validation used by app/schemas/contact.py.
     "email-validator>=2.2.0",
     # Authentication & Encryption
-    # baseline: 2.8 is the first release with typed Algorithm enum we import in app/core/security.py.
-    "pyjwt[crypto]>=2.8.0",
+    # CVE fix: pyjwt 2.13.0 patches PYSEC-2026-175/177/178/179 (JWT verification/decoding flaws);
+    # do not lower below 2.13.0. Prior baseline: 2.8 first shipped the typed Algorithm enum we import
+    # in app/core/security.py.
+    "pyjwt[crypto]>=2.13.0",
     # security hardening: 23.1 hardened the default Argon2id parameters (mem cost, parallelism).
     "argon2-cffi>=23.1.0",
     # baseline: bcrypt 4.x rewrote to Rust; 4.0 is the floor that ships pre-built wheels for 3.12/3.13.
