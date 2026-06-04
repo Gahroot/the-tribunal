@@ -6,7 +6,6 @@ import {
   CreditCard,
   FlaskConical,
   Gift,
-  Headphones,
   LayoutDashboard,
   Lightbulb,
   LucideIcon,
@@ -79,7 +78,6 @@ export const workspaceNavItems: AppNavItem[] = [
     sidebar: true,
     commandPalette: true,
   },
-  // Opportunities remains intentionally hidden until the feature is complete.
   {
     title: "Campaigns",
     url: "/campaigns",
@@ -177,13 +175,6 @@ export const toolsNavItems: AppNavItem[] = [
     sidebar: true,
     commandPalette: true,
   },
-  {
-    title: "Realtor Dashboard",
-    url: "/realtor-dashboard",
-    icon: LayoutDashboard,
-    sidebar: true,
-    commandPalette: true,
-  },
 ];
 
 export const accountNavItems: AppNavItem[] = [
@@ -193,17 +184,6 @@ export const accountNavItems: AppNavItem[] = [
     icon: Settings,
     sidebar: true,
     commandPalette: true,
-  },
-];
-
-export const devNavItems: AppNavItem[] = [
-  {
-    title: "Voice Test",
-    url: "/voice-test",
-    icon: Headphones,
-    sidebar: true,
-    commandPalette: true,
-    devOnly: true,
   },
 ];
 
@@ -227,11 +207,6 @@ export const appNavSections: AppNavSection[] = [
   {
     title: "Account",
     items: accountNavItems,
-  },
-  {
-    title: "Dev",
-    items: devNavItems,
-    devOnly: true,
   },
 ];
 
@@ -257,12 +232,9 @@ export const breadcrumbLabels: Record<string, string> = {
   experiments: "Experiments",
   calendar: "Calendar",
   billing: "Billing",
-  "realtor-dashboard": "Realtor Dashboard",
   settings: "Settings",
   "find-leads": "Find Leads",
   "find-leads-ai": "Find Leads AI",
-  "voice-test": "Voice Test",
-  opportunities: "Opportunities",
   "pending-actions": "Pending Actions",
   new: "New",
   create: "Create",

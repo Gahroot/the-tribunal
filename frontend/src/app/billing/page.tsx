@@ -147,7 +147,7 @@ function BillingContent() {
               <Button
                 className="w-full"
                 variant="secondary"
-                onClick={() => router.push("/realtor-dashboard")}
+                onClick={() => router.push("/dashboard")}
               >
                 Go to Dashboard
               </Button>

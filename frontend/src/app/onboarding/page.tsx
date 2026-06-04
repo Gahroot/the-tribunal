@@ -138,7 +138,7 @@ function OnboardingFlow() {
       }
 
       toast.success("Campaign launched! Your leads are being contacted.");
-      router.push("/realtor-dashboard");
+      router.push("/dashboard");
     } catch (err) {
       toast.error(getApiErrorMessage(err, "Launch failed. Please try again."));
     } finally {
