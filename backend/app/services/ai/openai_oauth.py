@@ -798,7 +798,13 @@ async def get_openai_oauth_status(
     if integration is None or not integration.is_active:
         return OpenAIOAuthStatus(connected=False)
 
-    credentials = integration.credentials
+    # A credential blob we can't decrypt (corruption or a rotated encryption key)
+    # must surface as "not connected" rather than raising and 500-ing the
+    # settings/integrations page. ``safe_credentials`` logs and returns None.
+    credentials = integration.safe_credentials()
+    if credentials is None:
+        return OpenAIOAuthStatus(connected=False)
+
     access_token = _string_value(credentials.get("access_token"))
     refresh_token = _string_value(credentials.get("refresh_token"))
     account_id = _string_value(credentials.get("account_id"))

@@ -65,7 +65,14 @@ async def list_integrations(
             is_active=i.is_active,
             created_at=i.created_at,
             updated_at=i.updated_at,
-            masked_credentials=mask_credentials(i.credentials),
+            # A row whose credentials can't be decrypted (corruption or a rotated
+            # encryption key) must not 500 the whole settings page — surface it
+            # as present-but-unreadable so the rest of the list still renders.
+            masked_credentials=(
+                mask_credentials(credentials)
+                if (credentials := i.safe_credentials()) is not None
+                else {}
+            ),
         )
         for i in integrations
     ]

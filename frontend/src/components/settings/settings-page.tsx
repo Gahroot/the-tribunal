@@ -10,6 +10,7 @@ import { NudgeSettingsTab } from "@/components/settings/nudge-settings-tab";
 import { ProfileSettingsTab } from "@/components/settings/profile-settings-tab";
 import { TeamSettingsTab } from "@/components/settings/team-settings-tab";
 import { TagManagement } from "@/components/tags/tag-management";
+import { QueryErrorBoundary } from "@/components/ui/query-error-boundary";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const settingsTabs = [
@@ -45,35 +46,51 @@ export function SettingsPage() {
         </TabsList>
 
         <TabsContent value="profile">
-          <ProfileSettingsTab />
+          <QueryErrorBoundary message="Failed to load profile settings. Please try again.">
+            <ProfileSettingsTab />
+          </QueryErrorBoundary>
         </TabsContent>
 
         <TabsContent value="tags">
-          <TagManagement />
+          <QueryErrorBoundary message="Failed to load tags. Please try again.">
+            <TagManagement />
+          </QueryErrorBoundary>
         </TabsContent>
 
         <TabsContent value="notifications">
-          <NotificationsSettingsTab />
+          <QueryErrorBoundary message="Failed to load notification settings. Please try again.">
+            <NotificationsSettingsTab />
+          </QueryErrorBoundary>
         </TabsContent>
 
         <TabsContent value="nudges">
-          <NudgeSettingsTab />
+          <QueryErrorBoundary message="Failed to load nudge settings. Please try again.">
+            <NudgeSettingsTab />
+          </QueryErrorBoundary>
         </TabsContent>
 
         <TabsContent value="integrations">
-          <IntegrationsSettingsTab />
+          <QueryErrorBoundary message="Failed to load integrations. Please try again.">
+            <IntegrationsSettingsTab />
+          </QueryErrorBoundary>
         </TabsContent>
 
         <TabsContent value="billing">
-          <BillingSettingsTab />
+          <QueryErrorBoundary message="Failed to load billing settings. Please try again.">
+            <BillingSettingsTab />
+          </QueryErrorBoundary>
         </TabsContent>
 
         <TabsContent value="team">
-          <TeamSettingsTab />
+          <QueryErrorBoundary message="Failed to load team settings. Please try again.">
+            <TeamSettingsTab />
+          </QueryErrorBoundary>
         </TabsContent>
 
         <TabsContent value="lead-sources">
-          <LeadSourcesSettingsTab />
+          <QueryErrorBoundary message="Failed to load lead sources. Please try again.">
+            <LeadSourcesSettingsTab />
+          </QueryErrorBoundary>
         </TabsContent>
       </Tabs>
     </div>

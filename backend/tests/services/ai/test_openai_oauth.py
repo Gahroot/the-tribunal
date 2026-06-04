@@ -158,6 +158,20 @@ async def test_get_openai_oauth_status_reports_safe_snapshot() -> None:
     assert "secret" not in repr(status)
 
 
+async def test_get_openai_oauth_status_returns_disconnected_on_undecryptable_blob() -> None:
+    # A credential blob encrypted under a different key (or corrupted) must not
+    # raise InvalidToken out of the status endpoint and 500 the settings page.
+    integration = _workspace_integration({"access_token": "secret-access-token"})
+    integration.encrypted_credentials = "gAAAAABcorrupted-not-a-valid-fernet-token"
+    db = _AsyncDB(integration)
+
+    status = await get_openai_oauth_status(db, integration.workspace_id)
+
+    assert status.connected is False
+    assert status.account_id is None
+    assert status.api_key_configured is False
+
+
 async def test_disconnect_openai_oauth_preserves_api_key_credentials() -> None:
     integration = _workspace_integration(
         {

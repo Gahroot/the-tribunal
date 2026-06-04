@@ -4,12 +4,15 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+import structlog
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.encryption import decrypt_json, encrypt_json
+from app.core.encryption import InvalidToken, decrypt_json, encrypt_json
 from app.db.base import Base
+
+logger = structlog.get_logger()
 
 if TYPE_CHECKING:
     from app.models.agent import Agent
@@ -181,6 +184,26 @@ class WorkspaceIntegration(Base):
     def credentials(self, value: dict[str, Any]) -> None:
         """Encrypt and store credentials dict."""
         self.encrypted_credentials = encrypt_json(value)
+
+    def safe_credentials(self) -> dict[str, Any] | None:
+        """Decrypt credentials, returning ``None`` instead of raising on failure.
+
+        A corrupted blob or an encryption-key rotation makes :attr:`credentials`
+        raise ``InvalidToken``/``ValueError``. Read paths that surface integration
+        status (settings/integrations listings) must not turn one unreadable row
+        into a 500 that takes down the whole settings page, so they use this and
+        treat ``None`` as "present but unreadable".
+        """
+        try:
+            return self.credentials
+        except (InvalidToken, ValueError, TypeError) as exc:
+            logger.warning(
+                "integration_credentials_decrypt_failed",
+                workspace_id=str(self.workspace_id),
+                integration_type=self.integration_type,
+                error=str(exc),
+            )
+            return None
 
     def __repr__(self) -> str:
         return (
