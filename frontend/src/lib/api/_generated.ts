@@ -5105,6 +5105,150 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/roleplay/personas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Personas
+         * @description List built-in templates plus this workspace's custom personas.
+         */
+        get: operations["list_personas_api_v1_workspaces__workspace_id__roleplay_personas_get"];
+        put?: never;
+        /**
+         * Create Persona
+         * @description Create a custom prospect persona.
+         */
+        post: operations["create_persona_api_v1_workspaces__workspace_id__roleplay_personas_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/roleplay/personas/{persona_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Persona
+         * @description Get a persona by ID.
+         */
+        get: operations["get_persona_api_v1_workspaces__workspace_id__roleplay_personas__persona_id__get"];
+        /**
+         * Update Persona
+         * @description Update a custom persona (built-ins are read-only).
+         */
+        put: operations["update_persona_api_v1_workspaces__workspace_id__roleplay_personas__persona_id__put"];
+        post?: never;
+        /**
+         * Delete Persona
+         * @description Delete a custom persona.
+         */
+        delete: operations["delete_persona_api_v1_workspaces__workspace_id__roleplay_personas__persona_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/roleplay/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runs
+         * @description List rehearsal runs (newest first).
+         */
+        get: operations["list_runs_api_v1_workspaces__workspace_id__roleplay_runs_get"];
+        put?: never;
+        /**
+         * Create Run
+         * @description Start a rehearsal.
+         *
+         *     For ``rehearsee == "ai"`` the full conversation is simulated and scored
+         *     inline before responding. For ``rehearsee == "human"`` the run is returned
+         *     with the prospect's opening line so a rep can reply via ``/runs/{id}/turn``.
+         */
+        post: operations["create_run_api_v1_workspaces__workspace_id__roleplay_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/roleplay/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Run
+         * @description Get a rehearsal run with transcript and report.
+         */
+        get: operations["get_run_api_v1_workspaces__workspace_id__roleplay_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Run
+         * @description Delete a rehearsal run.
+         */
+        delete: operations["delete_run_api_v1_workspaces__workspace_id__roleplay_runs__run_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/roleplay/runs/{run_id}/score": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Score Run
+         * @description Score a rehearsal and finalize the report.
+         */
+        post: operations["score_run_api_v1_workspaces__workspace_id__roleplay_runs__run_id__score_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/roleplay/runs/{run_id}/turn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Advance Human Turn
+         * @description Submit a human rep's reply and get the prospect's response.
+         */
+        post: operations["advance_human_turn_api_v1_workspaces__workspace_id__roleplay_runs__run_id__turn_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/scorecard": {
         parameters: {
             query?: never;
@@ -8688,6 +8832,34 @@ export interface components {
             use_winning_message: boolean;
         };
         /**
+         * CreateRehearsalRequest
+         * @description Start a rehearsal of an agent (or human rep) against a persona.
+         */
+        CreateRehearsalRequest: {
+            /**
+             * Agent Id
+             * Format: uuid
+             */
+            agent_id: string;
+            /** Channel */
+            channel?: string | null;
+            /**
+             * Max Turns
+             * @default 6
+             */
+            max_turns: number;
+            /**
+             * Persona Id
+             * Format: uuid
+             */
+            persona_id: string;
+            /**
+             * Rehearsee
+             * @default ai
+             */
+            rehearsee: string;
+        };
+        /**
          * DashboardResponse
          * @description Complete dashboard response.
          */
@@ -9631,6 +9803,14 @@ export interface components {
             role_title?: string | null;
             /** Timezone */
             timezone?: string | null;
+        };
+        /**
+         * HumanTurnRequest
+         * @description A human rep's reply during a live rehearsal.
+         */
+        HumanTurnRequest: {
+            /** Message */
+            message: string;
         };
         /**
          * ImportLeadsRequest
@@ -12872,6 +13052,101 @@ export interface components {
          */
         ProspectIdentityKind: "phone" | "email" | "website" | "owner_name" | "multi";
         /**
+         * ProspectPersonaCreate
+         * @description Create a custom workspace persona.
+         */
+        ProspectPersonaCreate: {
+            /**
+             * Channel
+             * @default sms
+             */
+            channel: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Difficulty
+             * @default medium
+             */
+            difficulty: string;
+            /** Goal */
+            goal?: string | null;
+            /** Name */
+            name: string;
+            /** Objections */
+            objections?: string[];
+            /** Opening Message */
+            opening_message?: string | null;
+            /** Persona Prompt */
+            persona_prompt: string;
+            /** Slug */
+            slug?: string | null;
+        };
+        /**
+         * ProspectPersonaResponse
+         * @description A synthetic prospect persona.
+         */
+        ProspectPersonaResponse: {
+            /** Channel */
+            channel: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /** Difficulty */
+            difficulty: string;
+            /** Goal */
+            goal: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Builtin */
+            is_builtin: boolean;
+            /** Name */
+            name: string;
+            /** Objections */
+            objections: string[];
+            /** Opening Message */
+            opening_message: string | null;
+            /** Persona Prompt */
+            persona_prompt: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Workspace Id */
+            workspace_id: string | null;
+        };
+        /**
+         * ProspectPersonaUpdate
+         * @description Update a custom workspace persona.
+         */
+        ProspectPersonaUpdate: {
+            /** Channel */
+            channel?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Difficulty */
+            difficulty?: string | null;
+            /** Goal */
+            goal?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Objections */
+            objections?: string[] | null;
+            /** Opening Message */
+            opening_message?: string | null;
+            /** Persona Prompt */
+            persona_prompt?: string | null;
+        };
+        /**
          * ProspectStatus
          * @description Lead prospect lifecycle status.
          * @enum {string}
@@ -13399,6 +13674,129 @@ export interface components {
             id: string;
             /** Platform */
             platform: string | null;
+        };
+        /**
+         * RehearsalRunResponse
+         * @description Full rehearsal run including transcript and report.
+         */
+        RehearsalRunResponse: {
+            /** Agent Id */
+            agent_id: string | null;
+            /** Agent Name */
+            agent_name: string | null;
+            /** Booking Attempted */
+            booking_attempted: boolean | null;
+            /** Channel */
+            channel: string;
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error */
+            error: string | null;
+            /** Gaps */
+            gaps: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Max Turns */
+            max_turns: number;
+            /** Objection Coverage */
+            objection_coverage: number | null;
+            /** Overall Score */
+            overall_score: number | null;
+            /** Persona Id */
+            persona_id: string | null;
+            /** Persona Name */
+            persona_name: string | null;
+            /** Rehearsee */
+            rehearsee: string;
+            /** Scores */
+            scores: {
+                [key: string]: unknown;
+            };
+            /** Status */
+            status: string;
+            /** Strengths */
+            strengths: string[];
+            /** Suggestions */
+            suggestions: string[];
+            /** Summary */
+            summary: string | null;
+            /** Tone Score */
+            tone_score: number | null;
+            /** Transcript */
+            transcript: components["schemas"]["RehearsalTranscriptTurn"][];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+        };
+        /**
+         * RehearsalRunSummary
+         * @description Lightweight rehearsal run for list views.
+         */
+        RehearsalRunSummary: {
+            /** Agent Id */
+            agent_id: string | null;
+            /** Agent Name */
+            agent_name: string | null;
+            /** Booking Attempted */
+            booking_attempted: boolean | null;
+            /** Channel */
+            channel: string;
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Objection Coverage */
+            objection_coverage: number | null;
+            /** Overall Score */
+            overall_score: number | null;
+            /** Persona Id */
+            persona_id: string | null;
+            /** Persona Name */
+            persona_name: string | null;
+            /** Rehearsee */
+            rehearsee: string;
+            /** Status */
+            status: string;
+            /** Tone Score */
+            tone_score: number | null;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+        };
+        /**
+         * RehearsalTranscriptTurn
+         * @description One turn in a rehearsal transcript.
+         */
+        RehearsalTranscriptTurn: {
+            /** Content */
+            content: string;
+            /** Role */
+            role: string;
         };
         /**
          * RejectActionRequest
@@ -25495,6 +25893,369 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GeneratedReviewReply"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_personas_api_v1_workspaces__workspace_id__roleplay_personas_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProspectPersonaResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_persona_api_v1_workspaces__workspace_id__roleplay_personas_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProspectPersonaCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProspectPersonaResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_persona_api_v1_workspaces__workspace_id__roleplay_personas__persona_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                persona_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProspectPersonaResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_persona_api_v1_workspaces__workspace_id__roleplay_personas__persona_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                persona_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProspectPersonaUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProspectPersonaResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_persona_api_v1_workspaces__workspace_id__roleplay_personas__persona_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                persona_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_runs_api_v1_workspaces__workspace_id__roleplay_runs_get: {
+        parameters: {
+            query?: {
+                agent_id?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RehearsalRunSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_run_api_v1_workspaces__workspace_id__roleplay_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRehearsalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RehearsalRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_api_v1_workspaces__workspace_id__roleplay_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RehearsalRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_run_api_v1_workspaces__workspace_id__roleplay_runs__run_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    score_run_api_v1_workspaces__workspace_id__roleplay_runs__run_id__score_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RehearsalRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    advance_human_turn_api_v1_workspaces__workspace_id__roleplay_runs__run_id__turn_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HumanTurnRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RehearsalRunResponse"];
                 };
             };
             /** @description Validation Error */

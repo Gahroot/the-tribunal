@@ -19,3 +19,4 @@ export * from "./offer";
 export * from "./campaign";
 export * from "./nudge";
 export * from "./review";
+export * from "./roleplay";

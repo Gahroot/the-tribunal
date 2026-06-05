@@ -329,6 +329,15 @@ export const queryKeys = {
     appointments: (workspaceId: string) =>
       ["realtor-appointments", workspaceId] as const,
   },
+  roleplay: {
+    all: (workspaceId: string) => ["roleplay", workspaceId] as const,
+    personas: (workspaceId: string) =>
+      ["roleplay", workspaceId, "personas"] as const,
+    runs: (workspaceId: string, params?: QueryKeyParams | null) =>
+      ["roleplay", workspaceId, "runs", normalizeQueryKeyParams(params)] as const,
+    run: (workspaceId: string, runId: string) =>
+      ["roleplay", workspaceId, "run", runId] as const,
+  },
   scorecard: {
     all: (workspaceId: string) => ["scorecard", workspaceId] as const,
     range: (workspaceId: string, params?: QueryKeyParams | null) =>

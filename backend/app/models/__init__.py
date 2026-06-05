@@ -88,6 +88,13 @@ from app.models.review_request import (
     ReviewRequestChannel,
     ReviewRequestStatus,
 )
+from app.models.roleplay import (
+    PersonaDifficulty,
+    ProspectPersona,
+    RehearsalRun,
+    RehearsalStatus,
+    RehearseeType,
+)
 from app.models.segment import Segment
 from app.models.short_link import ShortLink
 from app.models.tag import ContactTag, Tag
@@ -153,6 +160,11 @@ __all__ = [
     "TestContactStatus",
     "PromptVersion",
     "PromptVersionStats",
+    "ProspectPersona",
+    "RehearsalRun",
+    "RehearsalStatus",
+    "RehearseeType",
+    "PersonaDifficulty",
     "CallOutcome",
     "CallFeedback",
     "BanditDecision",

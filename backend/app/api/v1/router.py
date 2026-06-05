@@ -42,6 +42,7 @@ from app.api.v1 import (
     prompt_versions,
     realtime,
     reviews,
+    roleplay,
     scorecard,
     scraping,
     segments,
@@ -292,6 +293,11 @@ api_router.include_router(
     reviews.router,
     prefix="/workspaces/{workspace_id}/reviews",
     tags=["Reviews"],
+)
+api_router.include_router(
+    roleplay.router,
+    prefix="/workspaces/{workspace_id}/roleplay",
+    tags=["Practice Arena"],
 )
 # Public review rating-gate landing page (no auth)
 api_router.include_router(

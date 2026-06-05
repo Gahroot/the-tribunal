@@ -244,12 +244,20 @@ export function AgentsList() {
           title="AI Agents"
           subtitle="Configure and manage your AI voice and text agents"
           action={
-            <Button asChild>
-              <Link href="/agents/create">
-                <Plus className="mr-2 size-4" />
-                Create Agent
-              </Link>
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" asChild>
+                <Link href="/agents/practice">
+                  <Sparkles className="mr-2 size-4" />
+                  Practice Arena
+                </Link>
+              </Button>
+              <Button asChild>
+                <Link href="/agents/create">
+                  <Plus className="mr-2 size-4" />
+                  Create Agent
+                </Link>
+              </Button>
+            </div>
           }
         />
       }
