@@ -80,6 +80,22 @@ export const stubDashboard: DashboardResponse = {
     no_shows_30d: 0,
     completed_30d: 0,
   },
+  revenue_stats: {
+    currency: "USD",
+    won_value: 0,
+    won_value_this_month: 0,
+    won_count: 0,
+    pipeline_value: 0,
+    open_count: 0,
+    lost_value: 0,
+    lost_count: 0,
+    appointments_booked_this_month: 0,
+    estimated_ai_cost_this_month: 0,
+    roi_multiple: null,
+    by_agent: [],
+    by_campaign: [],
+    by_prompt_version: [],
+  },
 };
 
 // ---------------------------------------------------------------------------

@@ -7252,6 +7252,9 @@
             "title": "Recent Activity",
             "type": "array"
           },
+          "revenue_stats": {
+            "$ref": "#/components/schemas/RevenueStats"
+          },
           "stats": {
             "$ref": "#/components/schemas/DashboardStats"
           },
@@ -7265,7 +7268,8 @@
           "campaign_stats",
           "agent_stats",
           "today_overview",
-          "appointment_stats"
+          "appointment_stats",
+          "revenue_stats"
         ],
         "title": "DashboardResponse",
         "type": "object"
@@ -19831,6 +19835,135 @@
           }
         },
         "title": "ReputationSummary",
+        "type": "object"
+      },
+      "RevenueAttributionStat": {
+        "description": "Revenue attributed to a single AI agent, campaign, or prompt version.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pipeline_value": {
+            "title": "Pipeline Value",
+            "type": "number"
+          },
+          "won_count": {
+            "title": "Won Count",
+            "type": "integer"
+          },
+          "won_value": {
+            "title": "Won Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "won_value",
+          "pipeline_value",
+          "won_count"
+        ],
+        "title": "RevenueAttributionStat",
+        "type": "object"
+      },
+      "RevenueStats": {
+        "description": "Dollar-denominated revenue/ROI ledger for the workspace.\n\nTraces closed-won opportunity revenue back to the AI touch chain (voice\nagent, prompt version, campaign) that booked the appointment behind the\ndeal, alongside an ROI multiple versus estimated AI cost.",
+        "properties": {
+          "appointments_booked_this_month": {
+            "title": "Appointments Booked This Month",
+            "type": "integer"
+          },
+          "by_agent": {
+            "items": {
+              "$ref": "#/components/schemas/RevenueAttributionStat"
+            },
+            "title": "By Agent",
+            "type": "array"
+          },
+          "by_campaign": {
+            "items": {
+              "$ref": "#/components/schemas/RevenueAttributionStat"
+            },
+            "title": "By Campaign",
+            "type": "array"
+          },
+          "by_prompt_version": {
+            "items": {
+              "$ref": "#/components/schemas/RevenueAttributionStat"
+            },
+            "title": "By Prompt Version",
+            "type": "array"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "estimated_ai_cost_this_month": {
+            "title": "Estimated Ai Cost This Month",
+            "type": "number"
+          },
+          "lost_count": {
+            "title": "Lost Count",
+            "type": "integer"
+          },
+          "lost_value": {
+            "title": "Lost Value",
+            "type": "number"
+          },
+          "open_count": {
+            "title": "Open Count",
+            "type": "integer"
+          },
+          "pipeline_value": {
+            "title": "Pipeline Value",
+            "type": "number"
+          },
+          "roi_multiple": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roi Multiple"
+          },
+          "won_count": {
+            "title": "Won Count",
+            "type": "integer"
+          },
+          "won_value": {
+            "title": "Won Value",
+            "type": "number"
+          },
+          "won_value_this_month": {
+            "title": "Won Value This Month",
+            "type": "number"
+          }
+        },
+        "required": [
+          "currency",
+          "won_value",
+          "won_value_this_month",
+          "won_count",
+          "pipeline_value",
+          "open_count",
+          "lost_value",
+          "lost_count",
+          "appointments_booked_this_month",
+          "estimated_ai_cost_this_month",
+          "roi_multiple",
+          "by_agent",
+          "by_campaign",
+          "by_prompt_version"
+        ],
+        "title": "RevenueStats",
         "type": "object"
       },
       "ReviewCreate": {

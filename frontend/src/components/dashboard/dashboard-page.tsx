@@ -12,6 +12,7 @@ import {
   AppointmentStatsCard,
 } from "@/components/dashboard/performance-metrics";
 import { RecentActivityFeed } from "@/components/dashboard/recent-activity-feed";
+import { RevenueRoiCard } from "@/components/dashboard/revenue-roi-card";
 import {
   NudgesCard,
   QuickActionsCard,
@@ -66,6 +67,17 @@ export function DashboardPage() {
       </div>
 
       <DashboardStatsGrid stats={data?.stats} isPending={isPending} />
+
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.12 }}
+      >
+        <RevenueRoiCard
+          revenueStats={data?.revenue_stats}
+          isPending={isPending}
+        />
+      </motion.div>
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}

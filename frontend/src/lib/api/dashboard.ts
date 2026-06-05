@@ -54,6 +54,32 @@ export interface AppointmentStats {
   completed_30d: number;
 }
 
+export interface RevenueAttributionStat {
+  id: string;
+  name: string;
+  won_value: number;
+  pipeline_value: number;
+  won_count: number;
+}
+
+export interface RevenueStats {
+  currency: string;
+  won_value: number;
+  won_value_this_month: number;
+  won_count: number;
+  pipeline_value: number;
+  open_count: number;
+  lost_value: number;
+  lost_count: number;
+  appointments_booked_this_month: number;
+  estimated_ai_cost_this_month: number;
+  /** null when estimated AI cost this month is 0 */
+  roi_multiple: number | null;
+  by_agent: RevenueAttributionStat[];
+  by_campaign: RevenueAttributionStat[];
+  by_prompt_version: RevenueAttributionStat[];
+}
+
 export interface DashboardResponse {
   stats: DashboardStats;
   recent_activity: RecentActivity[];
@@ -61,6 +87,7 @@ export interface DashboardResponse {
   agent_stats: AgentStat[];
   today_overview: TodayOverview;
   appointment_stats: AppointmentStats;
+  revenue_stats: RevenueStats;
 }
 
 export const dashboardApi = {

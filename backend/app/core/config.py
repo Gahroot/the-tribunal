@@ -137,6 +137,13 @@ class Settings(BaseSettings):
     # Enrichment
     enable_ai_enrichment: bool = True  # Toggle AI website summary
 
+    # Revenue / ROI estimation
+    # Simple, configurable unit-cost assumptions used by the dashboard ROI
+    # ledger to estimate AI spend from message/call volume. These are coarse
+    # blended estimates (telephony + model inference), not exact billing.
+    ai_cost_per_call_usd: float = 0.45  # blended cost of one AI voice call
+    ai_cost_per_sms_usd: float = 0.03  # blended cost of one outbound AI SMS
+
     # Demo landing page
     demo_workspace_id: str = ""  # Workspace ID for demo requests
     demo_agent_id: str = ""  # Agent ID for demo requests

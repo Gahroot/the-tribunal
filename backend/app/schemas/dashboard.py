@@ -69,6 +69,43 @@ class AppointmentStats(BaseModel):
     completed_30d: int
 
 
+class RevenueAttributionStat(BaseModel):
+    """Revenue attributed to a single AI agent, campaign, or prompt version."""
+
+    id: str
+    name: str
+    won_value: float  # closed-won revenue traced to this attribution key
+    pipeline_value: float  # open pipeline value traced to this attribution key
+    won_count: int  # number of closed-won opportunities
+
+
+class RevenueStats(BaseModel):
+    """Dollar-denominated revenue/ROI ledger for the workspace.
+
+    Traces closed-won opportunity revenue back to the AI touch chain (voice
+    agent, prompt version, campaign) that booked the appointment behind the
+    deal, alongside an ROI multiple versus estimated AI cost.
+    """
+
+    currency: str
+    # Money rollups (all amounts in ``currency``)
+    won_value: float  # all-time closed-won revenue
+    won_value_this_month: float  # closed-won revenue this calendar month
+    won_count: int
+    pipeline_value: float  # sum of open opportunity amounts
+    open_count: int
+    lost_value: float
+    lost_count: int
+    # ROI inputs
+    appointments_booked_this_month: int  # AI-attributed appointments this month
+    estimated_ai_cost_this_month: float  # estimated AI spend this month
+    roi_multiple: float | None  # won_value_this_month / cost; null when cost is 0
+    # Attribution breakdowns (top contributors, sorted by won then pipeline)
+    by_agent: list[RevenueAttributionStat]
+    by_campaign: list[RevenueAttributionStat]
+    by_prompt_version: list[RevenueAttributionStat]
+
+
 class DashboardResponse(BaseModel):
     """Complete dashboard response."""
 
@@ -78,3 +115,4 @@ class DashboardResponse(BaseModel):
     agent_stats: list[AgentStat]
     today_overview: TodayOverview
     appointment_stats: AppointmentStats
+    revenue_stats: RevenueStats

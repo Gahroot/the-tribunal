@@ -1,18 +1,22 @@
 """Dashboard statistics service."""
 
 import json
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import structlog
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.db.redis import get_redis
 from app.models.agent import Agent
 from app.models.appointment import Appointment
 from app.models.campaign import Campaign
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
+from app.models.opportunity import Opportunity
+from app.models.prompt_version import PromptVersion
 from app.models.workspace import Workspace
 from app.schemas.dashboard import (
     AgentStat,
@@ -21,12 +25,17 @@ from app.schemas.dashboard import (
     DashboardResponse,
     DashboardStats,
     RecentActivity,
+    RevenueAttributionStat,
+    RevenueStats,
     TodayOverview,
 )
 
 logger = structlog.get_logger()
 
 CACHE_TTL = 300  # 5 minutes
+
+# Max contributors returned in each revenue attribution breakdown.
+REVENUE_BREAKDOWN_LIMIT = 8
 
 
 def _format_time_ago(dt: datetime) -> str:
@@ -449,6 +458,257 @@ class DashboardService:
             completed_30d=completed_30d,
         )
 
+    async def get_revenue_stats(self, workspace: Workspace) -> RevenueStats:
+        """Compute the dollar-denominated revenue/ROI ledger.
+
+        Aggregates ``opportunity.amount`` by status and traces closed-won /
+        open pipeline back to the AI touch chain (voice agent, prompt version,
+        campaign) that booked the appointment behind the deal. Pairs the result
+        with an estimated AI cost to produce an ROI multiple.
+        """
+        settings = get_settings()
+        now = datetime.now(UTC)
+        month_start = now.replace(hour=0, minute=0, second=0, microsecond=0, day=1)
+
+        # --- Status rollup: sum(amount) + count grouped by status -----------
+        rollup_result = await self.db.execute(
+            select(
+                Opportunity.status,
+                func.count(),
+                func.coalesce(func.sum(Opportunity.amount), 0),
+            )
+            .where(Opportunity.workspace_id == workspace.id)
+            .group_by(Opportunity.status)
+        )
+        won_value = 0.0
+        won_count = 0
+        pipeline_value = 0.0
+        open_count = 0
+        lost_value = 0.0
+        lost_count = 0
+        for status, count, amount in rollup_result.all():
+            amount_f = float(amount or 0)
+            if status == "won":
+                won_value = amount_f
+                won_count = count
+            elif status == "open":
+                pipeline_value = amount_f
+                open_count = count
+            elif status == "lost":
+                lost_value = amount_f
+                lost_count = count
+
+        # --- Closed-won revenue this calendar month -------------------------
+        won_month_result = await self.db.execute(
+            select(func.coalesce(func.sum(Opportunity.amount), 0)).where(
+                Opportunity.workspace_id == workspace.id,
+                Opportunity.status == "won",
+                Opportunity.closed_date >= month_start.date(),
+            )
+        )
+        won_value_this_month = float(won_month_result.scalar() or 0)
+
+        by_agent, by_campaign, by_prompt_version = await self._get_revenue_attribution(workspace)
+
+        # --- Estimated AI cost this month -----------------------------------
+        workspace_conversations = (
+            select(Conversation.id).where(Conversation.workspace_id == workspace.id).subquery()
+        )
+        ai_calls_result = await self.db.execute(
+            select(func.count())
+            .select_from(Message)
+            .where(
+                Message.conversation_id.in_(select(workspace_conversations)),
+                Message.channel == "voice",
+                Message.is_ai.is_(True),
+                Message.created_at >= month_start,
+            )
+        )
+        ai_calls = ai_calls_result.scalar() or 0
+
+        ai_sms_result = await self.db.execute(
+            select(func.count())
+            .select_from(Message)
+            .where(
+                Message.conversation_id.in_(select(workspace_conversations)),
+                Message.channel == "sms",
+                Message.direction == "outbound",
+                Message.is_ai.is_(True),
+                Message.created_at >= month_start,
+            )
+        )
+        ai_sms = ai_sms_result.scalar() or 0
+
+        estimated_ai_cost = round(
+            ai_calls * settings.ai_cost_per_call_usd + ai_sms * settings.ai_cost_per_sms_usd, 2
+        )
+        roi_multiple: float | None = None
+        if estimated_ai_cost > 0:
+            roi_multiple = round(won_value_this_month / estimated_ai_cost, 1)
+
+        # --- AI-attributed appointments booked this month -------------------
+        appts_booked_result = await self.db.execute(
+            select(func.count())
+            .select_from(Appointment)
+            .where(
+                Appointment.workspace_id == workspace.id,
+                Appointment.agent_id.isnot(None),
+                Appointment.created_at >= month_start,
+            )
+        )
+        appointments_booked_this_month = appts_booked_result.scalar() or 0
+
+        return RevenueStats(
+            currency="USD",
+            won_value=round(won_value, 2),
+            won_value_this_month=round(won_value_this_month, 2),
+            won_count=won_count,
+            pipeline_value=round(pipeline_value, 2),
+            open_count=open_count,
+            lost_value=round(lost_value, 2),
+            lost_count=lost_count,
+            appointments_booked_this_month=appointments_booked_this_month,
+            estimated_ai_cost_this_month=estimated_ai_cost,
+            roi_multiple=roi_multiple,
+            by_agent=by_agent,
+            by_campaign=by_campaign,
+            by_prompt_version=by_prompt_version,
+        )
+
+    async def _get_revenue_attribution(
+        self, workspace: Workspace
+    ) -> tuple[
+        list[RevenueAttributionStat],
+        list[RevenueAttributionStat],
+        list[RevenueAttributionStat],
+    ]:
+        """Trace open/won opportunity revenue to its first AI touch.
+
+        Returns ``(by_agent, by_campaign, by_prompt_version)``. An opportunity
+        is attributed to the agent/campaign/prompt version of the earliest
+        AI-booked appointment for its primary contact; ranking to a single
+        appointment per contact avoids double-counting amounts.
+        """
+        appt_ranked = (
+            select(
+                Appointment.contact_id.label("contact_id"),
+                Appointment.agent_id.label("agent_id"),
+                Appointment.campaign_id.label("campaign_id"),
+                Message.prompt_version_id.label("prompt_version_id"),
+                func.row_number()
+                .over(
+                    partition_by=Appointment.contact_id,
+                    order_by=Appointment.scheduled_at.asc(),
+                )
+                .label("rn"),
+            )
+            .select_from(Appointment)
+            .outerjoin(Message, Message.id == Appointment.message_id)
+            .where(
+                Appointment.workspace_id == workspace.id,
+                Appointment.agent_id.isnot(None),
+            )
+            .subquery()
+        )
+        first_touch = (
+            select(
+                appt_ranked.c.contact_id,
+                appt_ranked.c.agent_id,
+                appt_ranked.c.campaign_id,
+                appt_ranked.c.prompt_version_id,
+            )
+            .where(appt_ranked.c.rn == 1)
+            .subquery()
+        )
+        attribution_result = await self.db.execute(
+            select(
+                first_touch.c.agent_id,
+                first_touch.c.campaign_id,
+                first_touch.c.prompt_version_id,
+                Opportunity.status,
+                Opportunity.amount,
+            )
+            .select_from(Opportunity)
+            .join(first_touch, first_touch.c.contact_id == Opportunity.primary_contact_id)
+            .where(
+                Opportunity.workspace_id == workspace.id,
+                Opportunity.primary_contact_id.isnot(None),
+                Opportunity.status.in_(["open", "won"]),
+            )
+        )
+
+        agent_acc: dict[str, dict[str, float]] = {}
+        campaign_acc: dict[str, dict[str, float]] = {}
+        prompt_acc: dict[str, dict[str, float]] = {}
+
+        def _accumulate(
+            acc: dict[str, dict[str, float]], key: object, status: str, amount: float
+        ) -> None:
+            if key is None:
+                return
+            bucket = acc.setdefault(str(key), {"won": 0.0, "pipeline": 0.0, "won_count": 0.0})
+            if status == "won":
+                bucket["won"] += amount
+                bucket["won_count"] += 1
+            elif status == "open":
+                bucket["pipeline"] += amount
+
+        for agent_id, campaign_id, prompt_version_id, status, amount in attribution_result.all():
+            amount_f = float(amount or 0)
+            _accumulate(agent_acc, agent_id, status, amount_f)
+            _accumulate(campaign_acc, campaign_id, status, amount_f)
+            _accumulate(prompt_acc, prompt_version_id, status, amount_f)
+
+        # --- Resolve display names for the attribution keys -----------------
+        agent_names: dict[str, str] = {}
+        if agent_acc:
+            agent_rows = await self.db.execute(
+                select(Agent.id, Agent.name).where(Agent.id.in_([uuid.UUID(k) for k in agent_acc]))
+            )
+            agent_names = {str(aid): name for aid, name in agent_rows.all()}
+
+        campaign_names: dict[str, str] = {}
+        if campaign_acc:
+            campaign_rows = await self.db.execute(
+                select(Campaign.id, Campaign.name).where(
+                    Campaign.id.in_([uuid.UUID(k) for k in campaign_acc])
+                )
+            )
+            campaign_names = {str(cid): name for cid, name in campaign_rows.all()}
+
+        prompt_names: dict[str, str] = {}
+        if prompt_acc:
+            prompt_rows = await self.db.execute(
+                select(PromptVersion.id, PromptVersion.version_number, Agent.name)
+                .join(Agent, Agent.id == PromptVersion.agent_id)
+                .where(PromptVersion.id.in_([uuid.UUID(k) for k in prompt_acc]))
+            )
+            prompt_names = {
+                str(pid): f"{name} v{version}" for pid, version, name in prompt_rows.all()
+            }
+
+        def _build(
+            acc: dict[str, dict[str, float]], names: dict[str, str], fallback: str
+        ) -> list[RevenueAttributionStat]:
+            rows = [
+                RevenueAttributionStat(
+                    id=key,
+                    name=names.get(key, fallback),
+                    won_value=round(bucket["won"], 2),
+                    pipeline_value=round(bucket["pipeline"], 2),
+                    won_count=int(bucket["won_count"]),
+                )
+                for key, bucket in acc.items()
+            ]
+            rows.sort(key=lambda r: (r.won_value, r.pipeline_value), reverse=True)
+            return rows[:REVENUE_BREAKDOWN_LIMIT]
+
+        by_agent = _build(agent_acc, agent_names, "Unknown agent")
+        by_campaign = _build(campaign_acc, campaign_names, "Unknown campaign")
+        by_prompt_version = _build(prompt_acc, prompt_names, "Unknown prompt")
+
+        return by_agent, by_campaign, by_prompt_version
+
     async def get_full_dashboard(self, workspace: Workspace) -> DashboardResponse:
         """Get full dashboard data with Redis caching (5-minute TTL)."""
         cache_key = f"dashboard:stats:{workspace.id}"
@@ -470,6 +730,7 @@ class DashboardService:
         agent_stats = await self.get_agent_stats(workspace)
         today_overview = await self.get_today_overview(workspace)
         appointment_stats = await self.get_appointment_stats(workspace)
+        revenue_stats = await self.get_revenue_stats(workspace)
 
         response = DashboardResponse(
             stats=stats,
@@ -478,6 +739,7 @@ class DashboardService:
             agent_stats=agent_stats,
             today_overview=today_overview,
             appointment_stats=appointment_stats,
+            revenue_stats=revenue_stats,
         )
 
         try:

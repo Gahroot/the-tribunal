@@ -8651,6 +8651,7 @@ export interface components {
             campaign_stats: components["schemas"]["CampaignStat"][];
             /** Recent Activity */
             recent_activity: components["schemas"]["RecentActivity"][];
+            revenue_stats: components["schemas"]["RevenueStats"];
             stats: components["schemas"]["DashboardStats"];
             today_overview: components["schemas"]["TodayOverview"];
         };
@@ -13371,6 +13372,60 @@ export interface components {
              * @default 0
              */
             total_reviews: number;
+        };
+        /**
+         * RevenueAttributionStat
+         * @description Revenue attributed to a single AI agent, campaign, or prompt version.
+         */
+        RevenueAttributionStat: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Pipeline Value */
+            pipeline_value: number;
+            /** Won Count */
+            won_count: number;
+            /** Won Value */
+            won_value: number;
+        };
+        /**
+         * RevenueStats
+         * @description Dollar-denominated revenue/ROI ledger for the workspace.
+         *
+         *     Traces closed-won opportunity revenue back to the AI touch chain (voice
+         *     agent, prompt version, campaign) that booked the appointment behind the
+         *     deal, alongside an ROI multiple versus estimated AI cost.
+         */
+        RevenueStats: {
+            /** Appointments Booked This Month */
+            appointments_booked_this_month: number;
+            /** By Agent */
+            by_agent: components["schemas"]["RevenueAttributionStat"][];
+            /** By Campaign */
+            by_campaign: components["schemas"]["RevenueAttributionStat"][];
+            /** By Prompt Version */
+            by_prompt_version: components["schemas"]["RevenueAttributionStat"][];
+            /** Currency */
+            currency: string;
+            /** Estimated Ai Cost This Month */
+            estimated_ai_cost_this_month: number;
+            /** Lost Count */
+            lost_count: number;
+            /** Lost Value */
+            lost_value: number;
+            /** Open Count */
+            open_count: number;
+            /** Pipeline Value */
+            pipeline_value: number;
+            /** Roi Multiple */
+            roi_multiple: number | null;
+            /** Won Count */
+            won_count: number;
+            /** Won Value */
+            won_value: number;
+            /** Won Value This Month */
+            won_value_this_month: number;
         };
         /**
          * ReviewCreate
