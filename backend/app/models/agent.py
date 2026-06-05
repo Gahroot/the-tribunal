@@ -104,6 +104,21 @@ class Agent(Base):
     # Call recording
     enable_recording: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
+    # Live human transfer / handoff (warm vs cold)
+    # Destination phone number the AI hands an active call to when the caller
+    # asks for a human or qualifies as hot. When NULL the transfer_call tool is
+    # not exposed even if listed in enabled_tools (falls back to workspace
+    # settings["transfer_destination_number"] if present).
+    transfer_destination_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # "warm" speaks a short briefing to the human before bridging; "cold"
+    # bridges immediately via the native Telnyx transfer command.
+    transfer_mode: Mapped[str] = mapped_column(
+        String(10), default="warm", server_default="warm", nullable=False
+    )
+    # Optional template for the spoken warm-transfer briefing. Supports
+    # {caller_name}, {intent}, {summary}. Falls back to a generated sentence.
+    transfer_briefing_template: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Appointment reminder settings
     reminder_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     reminder_minutes_before: Mapped[int] = mapped_column(Integer, default=30, nullable=False)

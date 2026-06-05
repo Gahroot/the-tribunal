@@ -119,6 +119,13 @@ class VoiceToolExecutor(BaseToolExecutor):
         if function_name == "send_application_link":
             return await self._execute_send_application_link()
 
+        if function_name == "transfer_call":
+            return await self._execute_transfer_call(
+                reason=arguments.get("reason", ""),
+                intent=arguments.get("intent"),
+                summary=arguments.get("summary"),
+            )
+
         self.log.warning("unknown_voice_tool", function_name=function_name)
         return {"success": False, "error": f"Unknown function: {function_name}"}
 
@@ -375,6 +382,268 @@ class VoiceToolExecutor(BaseToolExecutor):
             "success": True,
             "application_url": PRESTYJ_APPLICATION_URL,
             "message": "Application link sent by SMS.",
+        }
+
+    async def _execute_transfer_call(
+        self,
+        reason: str,
+        intent: str | None,
+        summary: str | None,
+    ) -> dict[str, Any]:
+        """Hand the active call to a human closer (warm or cold transfer).
+
+        Resolves the destination + mode from agent/workspace config, then:
+        - cold: issues the Telnyx ``transfer`` command (immediate bridge);
+        - warm: dials a new leg to the closer, stashes pending state in Redis,
+          and speaks a briefing \u2014 the voice webhook bridges on speak end.
+        """
+        from app.services.telephony.call_transfer import resolve_transfer_config
+        from app.services.telephony.telnyx_voice import TelnyxVoiceService
+
+        if not self.call_control_id or not settings.telnyx_api_key:
+            return {
+                "success": False,
+                "error": "Telephony is not configured for transfers.",
+            }
+
+        ctx = await self._load_transfer_context()
+        if ctx is None:
+            return {"success": False, "error": "Could not find the current call."}
+
+        resolution = resolve_transfer_config(self.agent, ctx["workspace_settings"])
+        if resolution is None:
+            return await self._reject_transfer_no_destination(ctx, reason, intent)
+
+        log = self.log.bind(
+            call_control_id=self.call_control_id,
+            transfer_mode=resolution.mode,
+        )
+        voice_service = TelnyxVoiceService(settings.telnyx_api_key)
+        try:
+            if resolution.mode == "cold":
+                return await self._do_cold_transfer(
+                    voice_service, resolution, ctx, reason, intent, log
+                )
+            return await self._do_warm_transfer(
+                voice_service, resolution, ctx, reason, intent, summary, log
+            )
+        except Exception as e:
+            log.exception("transfer_call_error", error=str(e))
+            return {"success": False, "error": f"Failed to transfer call: {e!s}"}
+        finally:
+            await voice_service.close()
+
+    async def _load_transfer_context(self) -> dict[str, Any] | None:
+        """Load workspace/contact/campaign context for the current call leg."""
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+
+        from app.db.session import AsyncSessionLocal
+        from app.models.conversation import Message as MessageModel
+        from app.models.workspace import Workspace
+
+        async with AsyncSessionLocal() as db:
+            msg_result = await db.execute(
+                select(MessageModel)
+                .options(selectinload(MessageModel.conversation))
+                .where(MessageModel.provider_message_id == self.call_control_id)
+            )
+            call_message = msg_result.scalar_one_or_none()
+            if not call_message or not call_message.conversation:
+                self.log.warning("transfer_no_call_message", call_control_id=self.call_control_id)
+                return None
+
+            conversation = call_message.conversation
+            workspace_id = self.workspace_id or conversation.workspace_id
+            ws_result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
+            workspace = ws_result.scalar_one_or_none()
+
+            return {
+                "workspace_id": workspace_id,
+                "workspace_settings": workspace.settings if workspace else None,
+                "workspace_phone": conversation.workspace_phone,
+                "contact_id": conversation.contact_id,
+                "message_id": call_message.id,
+                "campaign_id": call_message.campaign_id,
+            }
+
+    async def _reject_transfer_no_destination(
+        self,
+        ctx: dict[str, Any],
+        reason: str,
+        intent: str | None,
+    ) -> dict[str, Any]:
+        """Audit-log and return a friendly error when no destination is set."""
+        from app.services.telephony.call_transfer import log_transfer_audit
+
+        self.log.warning("transfer_no_destination_configured")
+        await log_transfer_audit(
+            workspace_id=ctx["workspace_id"],
+            agent_id=getattr(self.agent, "id", None),
+            message_id=ctx["message_id"],
+            contact_id=ctx["contact_id"],
+            campaign_id=ctx["campaign_id"],
+            decision="blocked",
+            reason="no_destination_configured",
+            payload={"reason": reason, "intent": intent},
+        )
+        return {
+            "success": False,
+            "error": (
+                "No human transfer destination is configured. "
+                "Apologize and continue assisting the caller yourself."
+            ),
+        }
+
+    async def _do_cold_transfer(
+        self,
+        voice_service: Any,
+        resolution: Any,
+        ctx: dict[str, Any],
+        reason: str,
+        intent: str | None,
+        log: Any,
+    ) -> dict[str, Any]:
+        """Issue the native Telnyx transfer command and audit the outcome."""
+        from app.services.telephony.call_transfer import log_transfer_audit
+
+        assert self.call_control_id is not None
+        ok = await voice_service.transfer_call(
+            call_control_id=self.call_control_id,
+            to_number=resolution.destination_number,
+            from_number=ctx["workspace_phone"],
+        )
+        await log_transfer_audit(
+            workspace_id=ctx["workspace_id"],
+            agent_id=getattr(self.agent, "id", None),
+            message_id=ctx["message_id"],
+            contact_id=ctx["contact_id"],
+            campaign_id=ctx["campaign_id"],
+            decision="executed" if ok else "failed",
+            reason=reason or "cold_transfer",
+            payload={
+                "mode": "cold",
+                "destination": resolution.destination_number,
+                "intent": intent,
+            },
+        )
+        if not ok:
+            return {
+                "success": False,
+                "error": "The transfer could not be started. Keep assisting the caller.",
+            }
+        log.info("cold_transfer_started")
+        return {
+            "success": True,
+            "transferred": True,
+            "mode": "cold",
+            "message": (
+                "Connecting the caller to a team member now. Let them know, then stop speaking."
+            ),
+        }
+
+    async def _do_warm_transfer(
+        self,
+        voice_service: Any,
+        resolution: Any,
+        ctx: dict[str, Any],
+        reason: str,
+        intent: str | None,
+        summary: str | None,
+        log: Any,
+    ) -> dict[str, Any]:
+        """Dial the closer, stash pending state, and speak a briefing.
+
+        The caller is bridged into the closer leg by the voice webhook handler
+        once the spoken briefing finishes (``call.speak.ended``).
+        """
+        from app.services.telephony.call_transfer import (
+            PendingTransfer,
+            build_briefing,
+            log_transfer_audit,
+            make_transfer_leg_client_state,
+            store_pending_transfer,
+        )
+
+        assert self.call_control_id is not None
+        api_base = settings.api_base_url or "https://example.com"
+        webhook_url = f"{api_base}/webhooks/telnyx/voice"
+        connection_id = settings.telnyx_connection_id
+        if not connection_id:
+            connection_id = await voice_service.get_call_control_application_id(webhook_url)
+        client_state = make_transfer_leg_client_state(self.call_control_id)
+        closer_ccid = await voice_service.dial_transfer_leg(
+            to_number=resolution.destination_number,
+            from_number=ctx["workspace_phone"],
+            connection_id=connection_id,
+            webhook_url=webhook_url,
+            client_state=client_state,
+        )
+        agent_id = getattr(self.agent, "id", None)
+        if not closer_ccid:
+            await log_transfer_audit(
+                workspace_id=ctx["workspace_id"],
+                agent_id=agent_id,
+                message_id=ctx["message_id"],
+                contact_id=ctx["contact_id"],
+                campaign_id=ctx["campaign_id"],
+                decision="failed",
+                reason=reason or "warm_transfer",
+                payload={
+                    "mode": "warm",
+                    "destination": resolution.destination_number,
+                    "intent": intent,
+                },
+            )
+            return {
+                "success": False,
+                "error": "Could not reach a team member right now. Keep assisting the caller.",
+            }
+
+        briefing = build_briefing(
+            template=resolution.briefing_template,
+            caller_name=self.get_contact_name(),
+            intent=intent,
+            summary=summary,
+        )
+        language = getattr(self.agent, "language", None) or "en-US"
+        await store_pending_transfer(
+            PendingTransfer(
+                caller_call_control_id=self.call_control_id,
+                closer_call_control_id=closer_ccid,
+                workspace_id=str(ctx["workspace_id"]),
+                agent_id=str(agent_id) if agent_id else None,
+                mode="warm",
+                briefing=briefing,
+                language=language,
+                created_at=datetime.now(UTC).isoformat(),
+            )
+        )
+        await log_transfer_audit(
+            workspace_id=ctx["workspace_id"],
+            agent_id=agent_id,
+            message_id=ctx["message_id"],
+            contact_id=ctx["contact_id"],
+            campaign_id=ctx["campaign_id"],
+            decision="executed",
+            reason=reason or "warm_transfer",
+            payload={
+                "mode": "warm",
+                "destination": resolution.destination_number,
+                "closer_call_control_id": closer_ccid,
+                "intent": intent,
+                "briefing": briefing,
+            },
+        )
+        log.info("warm_transfer_dialing", closer_call_control_id=closer_ccid)
+        return {
+            "success": True,
+            "transferred": True,
+            "mode": "warm",
+            "message": (
+                "Reaching a team member and briefing them now. "
+                "Tell the caller you're connecting them, then stop speaking."
+            ),
         }
 
     async def _execute_send_dtmf(self, digits: str) -> dict[str, Any]:

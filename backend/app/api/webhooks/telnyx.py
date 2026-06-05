@@ -16,6 +16,7 @@ from app.api.webhooks.telnyx_call_handlers import (
     handle_call_hangup,
     handle_call_initiated,
     handle_machine_detection,
+    handle_speak_ended,
 )
 from app.api.webhooks.telnyx_message_handlers import (
     handle_delivery_status,
@@ -43,6 +44,8 @@ _VOICE_HANDLERS: dict[str, EventHandler] = {
     "call.answered": handle_call_answered,
     "call.hangup": handle_call_hangup,
     "call.machine.detection.ended": handle_machine_detection,
+    # Completes warm transfers: bridge caller -> closer after the briefing.
+    "call.speak.ended": handle_speak_ended,
 }
 
 
@@ -101,6 +104,7 @@ async def telnyx_voice_webhook(request: Request) -> dict[str, str]:
     - call.answered: Call was answered
     - call.hangup: Call ended
     - call.machine.detection.ended: Voicemail/human detection result
+    - call.speak.ended: Spoken audio finished (used to bridge warm transfers)
     """
     log = logger.bind(endpoint="telnyx_voice_webhook")
 

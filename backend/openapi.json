@@ -586,6 +586,33 @@
             "title": "Tool Settings",
             "type": "object"
           },
+          "transfer_briefing_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transfer Briefing Template"
+          },
+          "transfer_destination_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transfer Destination Number"
+          },
+          "transfer_mode": {
+            "default": "warm",
+            "title": "Transfer Mode",
+            "type": "string"
+          },
           "value_reinforcement_enabled": {
             "default": false,
             "title": "Value Reinforcement Enabled",
@@ -864,6 +891,33 @@
             },
             "title": "Tool Settings",
             "type": "object"
+          },
+          "transfer_briefing_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transfer Briefing Template"
+          },
+          "transfer_destination_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transfer Destination Number"
+          },
+          "transfer_mode": {
+            "default": "warm",
+            "title": "Transfer Mode",
+            "type": "string"
           },
           "updated_at": {
             "format": "date-time",
@@ -1376,6 +1430,39 @@
               }
             ],
             "title": "Tool Settings"
+          },
+          "transfer_briefing_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transfer Briefing Template"
+          },
+          "transfer_destination_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transfer Destination Number"
+          },
+          "transfer_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transfer Mode"
           },
           "value_reinforcement_enabled": {
             "anyOf": [
@@ -23981,7 +24068,7 @@
     },
     "/api/v1/realtor/campaigns": {
       "post": {
-        "description": "Upload a CSV and launch a realtor lead-reactivation campaign in one call.\n\nSteps performed atomically:\n1. Read the uploaded CSV file.\n2. Import contacts using the standard ContactImportService.\n3. Find the workspace's realtor agent (by name or channel_mode=\"text\").\n4. Find the workspace's first active phone number.\n5. Create a Campaign with realtor defaults.\n6. Enroll all imported contacts in the campaign.\n7. Start the campaign (status → running).",
+        "description": "Upload a CSV and launch a realtor lead-reactivation campaign.",
         "operationId": "create_realtor_campaign_api_v1_realtor_campaigns_post",
         "requestBody": {
           "content": {
@@ -24147,7 +24234,7 @@
     },
     "/api/v1/realtor/onboard": {
       "post": {
-        "description": "Complete realtor onboarding in a single call.\n\nCreates an AI agent from the realtor template, stores the Cal.com\nintegration, and attempts to auto-purchase a phone number. The phone\nnumber step is best-effort — onboarding succeeds even if it fails.",
+        "description": "Complete realtor onboarding in a single call.",
         "operationId": "realtor_onboard_api_v1_realtor_onboard_post",
         "requestBody": {
           "content": {
@@ -24194,7 +24281,7 @@
     },
     "/api/v1/realtor/parse-calcom-url": {
       "post": {
-        "description": "Parse a Cal.com booking URL and resolve the event_type_id.\n\nExtracts username and slug from the URL, then calls the Cal.com v2 API\nusing the workspace's stored Cal.com API key (or the key supplied in the\nrequest body if none is stored yet).",
+        "description": "Parse a Cal.com booking URL and resolve the event_type_id.",
         "operationId": "parse_calcom_url_api_v1_realtor_parse_calcom_url_post",
         "requestBody": {
           "content": {
@@ -24241,7 +24328,7 @@
     },
     "/api/v1/realtor/verify-calcom": {
       "get": {
-        "description": "Verify a Cal.com API key by calling the /me endpoint.\n\nReturns { valid: true, username: \"...\" } on success,\nor { valid: false, username: null } for an invalid key.",
+        "description": "Verify a Cal.com API key by calling the /me endpoint.",
         "operationId": "verify_calcom_api_v1_realtor_verify_calcom_get",
         "parameters": [
           {
@@ -41778,7 +41865,7 @@
     },
     "/api/v1/workspaces/{workspace_id}/realtor/stats": {
       "get": {
-        "description": "Get realtor dashboard statistics for a workspace.\n\nReturns:\n- leads_uploaded: total contacts in the workspace\n- texts_sent: outbound messages\n- replies_received: inbound messages\n- appointments_booked: confirmed or completed appointments",
+        "description": "Get realtor dashboard statistics for a workspace.",
         "operationId": "get_realtor_stats_api_v1_workspaces__workspace_id__realtor_stats_get",
         "parameters": [
           {
@@ -44321,7 +44408,7 @@
     },
     "/webhooks/telnyx/voice": {
       "post": {
-        "description": "Handle incoming Telnyx voice webhooks.\n\nTelnyx sends webhooks for:\n- call.initiated: Incoming call received\n- call.answered: Call was answered\n- call.hangup: Call ended\n- call.machine.detection.ended: Voicemail/human detection result",
+        "description": "Handle incoming Telnyx voice webhooks.\n\nTelnyx sends webhooks for:\n- call.initiated: Incoming call received\n- call.answered: Call was answered\n- call.hangup: Call ended\n- call.machine.detection.ended: Voicemail/human detection result\n- call.speak.ended: Spoken audio finished (used to bridge warm transfers)",
         "operationId": "telnyx_voice_webhook_webhooks_telnyx_voice_post",
         "responses": {
           "200": {

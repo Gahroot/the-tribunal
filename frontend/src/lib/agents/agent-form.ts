@@ -85,6 +85,13 @@ export const autoEvaluationField = {
   autoEvaluate: z.boolean(),
 } as const;
 
+/** Live human transfer / handoff settings (edit screen). */
+export const transferFields = {
+  transferDestinationNumber: z.string().nullable().optional(),
+  transferMode: z.enum(["warm", "cold"]),
+  transferBriefingTemplate: z.string().nullable().optional(),
+} as const;
+
 // ---------------------------------------------------------------------------
 // Shared defaults
 // ---------------------------------------------------------------------------
@@ -115,6 +122,12 @@ export const TOOLS_DEFAULTS = {
 
 export const AUTO_EVALUATION_DEFAULT = {
   autoEvaluate: false,
+} as const;
+
+export const TRANSFER_DEFAULTS = {
+  transferDestinationNumber: null as string | null,
+  transferMode: "warm" as "warm" | "cold",
+  transferBriefingTemplate: null as string | null,
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -202,6 +215,8 @@ export const editAgentFormSchema = z.object({
   // Post-meeting SMS
   postMeetingSmsEnabled: z.boolean(),
   postMeetingTemplate: z.string().nullable().optional(),
+  // Live human transfer / handoff
+  ...transferFields,
   ...autoEvaluationField,
 });
 
@@ -237,6 +252,7 @@ export const EDIT_AGENT_FORM_DEFAULTS: EditAgentFormValues = {
   valueReinforcementTemplate: null,
   postMeetingSmsEnabled: false,
   postMeetingTemplate: null,
+  ...TRANSFER_DEFAULTS,
   ...AUTO_EVALUATION_DEFAULT,
 };
 
@@ -267,6 +283,9 @@ export const TAB_FIELDS: Record<string, (keyof EditAgentFormValues)[]> = {
     "valueReinforcementTemplate",
     "postMeetingSmsEnabled",
     "postMeetingTemplate",
+    "transferDestinationNumber",
+    "transferMode",
+    "transferBriefingTemplate",
     "autoEvaluate",
   ],
 };
@@ -342,6 +361,9 @@ export function buildUpdateAgentRequest(data: EditAgentFormValues): UpdateAgentR
     value_reinforcement_template: data.valueReinforcementTemplate ?? null,
     post_meeting_sms_enabled: data.postMeetingSmsEnabled,
     post_meeting_template: data.postMeetingTemplate ?? null,
+    transfer_destination_number: data.transferDestinationNumber?.trim() || null,
+    transfer_mode: data.transferMode,
+    transfer_briefing_template: data.transferBriefingTemplate?.trim() || null,
     auto_evaluate: data.autoEvaluate,
   };
 }
@@ -386,6 +408,12 @@ export function agentToEditFormValues(agent: Agent): EditAgentFormValues {
     valueReinforcementTemplate: agent.value_reinforcement_template ?? null,
     postMeetingSmsEnabled: agent.post_meeting_sms_enabled ?? false,
     postMeetingTemplate: agent.post_meeting_template ?? null,
+    transferDestinationNumber:
+      agent.transfer_destination_number ?? TRANSFER_DEFAULTS.transferDestinationNumber,
+    transferMode:
+      (agent.transfer_mode as "warm" | "cold") ?? TRANSFER_DEFAULTS.transferMode,
+    transferBriefingTemplate:
+      agent.transfer_briefing_template ?? TRANSFER_DEFAULTS.transferBriefingTemplate,
     autoEvaluate: agent.auto_evaluate ?? AUTO_EVALUATION_DEFAULT.autoEvaluate,
   };
 }

@@ -46,6 +46,9 @@ function makeAgent(overrides: Partial<Agent> = {}): Agent {
     ivr_post_dtmf_cooldown_ms: 1500,
     ivr_menu_buffer_silence_ms: 1000,
     enable_recording: true,
+    transfer_destination_number: null,
+    transfer_mode: "warm",
+    transfer_briefing_template: null,
     reminder_enabled: false,
     reminder_minutes_before: 60,
     reminder_offsets: [2880, 60],
@@ -200,6 +203,30 @@ describe("agentToEditFormValues round-trips through buildUpdateAgentRequest", ()
     expect(req.post_meeting_template).toBe(agent.post_meeting_template);
     expect(req.auto_evaluate).toBe(agent.auto_evaluate);
     expect(req.calcom_event_type_id).toBe(agent.calcom_event_type_id);
+  });
+
+  it("round-trips live transfer settings", () => {
+    const agent = makeAgent({
+      transfer_destination_number: "+15551234567",
+      transfer_mode: "cold",
+      transfer_briefing_template: "Hi {caller_name}",
+    });
+    const values = agentToEditFormValues(agent);
+    expect(values.transferDestinationNumber).toBe("+15551234567");
+    expect(values.transferMode).toBe("cold");
+    expect(values.transferBriefingTemplate).toBe("Hi {caller_name}");
+
+    const req = buildUpdateAgentRequest(values);
+    expect(req.transfer_destination_number).toBe("+15551234567");
+    expect(req.transfer_mode).toBe("cold");
+    expect(req.transfer_briefing_template).toBe("Hi {caller_name}");
+  });
+
+  it("normalizes a blank transfer destination to null", () => {
+    const req = buildUpdateAgentRequest(
+      agentToEditFormValues(makeAgent({ transfer_destination_number: "   " })),
+    );
+    expect(req.transfer_destination_number).toBeNull();
   });
 
   it("normalizes empty description to undefined in update request", () => {

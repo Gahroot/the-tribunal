@@ -64,6 +64,55 @@ DTMF_TOOL: dict[str, Any] = {
     },
 }
 
+# Live transfer / handoff tool.
+# Lets the AI hand the active call to a human closer when the caller asks for a
+# human or qualifies as a hot lead. The execution layer resolves warm vs cold
+# mode and the destination number from agent/workspace config, so the model
+# only needs to declare *why* it's transferring (intent + short context).
+TRANSFER_CALL_TOOL: dict[str, Any] = {
+    "type": "function",
+    "name": "transfer_call",
+    "description": (
+        "Transfer (hand off) the current live phone call to a human closer. "
+        "Call this ONLY when the caller explicitly asks to speak to a human, "
+        "is frustrated, or clearly qualifies as a hot lead that a person should "
+        "close now. The destination number and whether the human hears a spoken "
+        "briefing first (warm) or is connected immediately (cold) are configured "
+        "by the operator \u2014 you do NOT choose the number. "
+        "After you call this tool, briefly tell the caller you're connecting them "
+        "to a team member, then stop talking and WAIT \u2014 do not keep "
+        "conversing, the call is being handed off."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "reason": {
+                "type": "string",
+                "description": (
+                    "Short reason for the handoff, e.g. 'caller asked for a human', "
+                    "'hot lead ready to buy', or 'frustrated about billing'."
+                ),
+            },
+            "intent": {
+                "type": "string",
+                "description": (
+                    "One short phrase describing what the caller wants \u2014 spoken "
+                    "to the human in warm mode (e.g. 'wants pricing on the premium plan')."
+                ),
+            },
+            "summary": {
+                "type": "string",
+                "description": (
+                    "Optional 1\u20132 sentence briefing of key facts for the human "
+                    "closer (caller's situation, name, any numbers already discussed). "
+                    "Used only in warm mode."
+                ),
+            },
+        },
+        "required": ["reason"],
+    },
+}
+
 APPLICATION_LINK_SMS_TOOL: dict[str, Any] = {
     "type": "function",
     "name": "send_application_link",
@@ -253,6 +302,7 @@ def build_tools_list(
     enable_x_search: bool = False,
     enable_dtmf: bool = False,
     enable_application_link_sms: bool = False,
+    enable_transfer: bool = False,
     timezone: str = "America/New_York",
 ) -> list[dict[str, Any]]:
     """Build a complete tools list based on enabled features.
@@ -263,6 +313,7 @@ def build_tools_list(
         enable_x_search: Include Grok X/Twitter search tool
         enable_dtmf: Include DTMF tool for IVR navigation
         enable_application_link_sms: Include fixed Prestyj application-link SMS tool
+        enable_transfer: Include live human transfer/handoff tool
         timezone: Timezone for booking tools date context
 
     Returns:
@@ -281,6 +332,10 @@ def build_tools_list(
     if enable_dtmf:
         tools.append(DTMF_TOOL)
 
+    # Live human transfer / handoff
+    if enable_transfer:
+        tools.append(TRANSFER_CALL_TOOL)
+
     # Fixed Prestyj application-link SMS
     if enable_application_link_sms:
         tools.append(APPLICATION_LINK_SMS_TOOL)
@@ -290,6 +345,26 @@ def build_tools_list(
         tools.extend(get_booking_tools(timezone))
 
     return tools
+
+
+def is_transfer_enabled(agent: Any) -> bool:
+    """Return whether the live transfer/handoff tool should be exposed.
+
+    Transfer is opt-in: the agent must enable it (either a direct
+    ``"transfer_call"`` entry in ``enabled_tools`` or the integration-based
+    ``call_control`` + ``transfer_call`` pattern) AND have a destination number
+    resolvable (per-agent ``transfer_destination_number`` here; the executor
+    additionally falls back to workspace settings at call time).
+    """
+    if not agent:
+        return False
+
+    enabled_tools = agent.enabled_tools or []
+    tool_settings = agent.tool_settings or {}
+    call_control_tools = tool_settings.get("call_control", []) or []
+    return "transfer_call" in enabled_tools or (
+        "call_control" in enabled_tools and "transfer_call" in call_control_tools
+    )
 
 
 def get_tools_from_agent_config(
@@ -338,6 +413,7 @@ def get_tools_from_agent_config(
         enable_x_search="x_search" in enabled_tools,
         enable_dtmf=dtmf_enabled,
         enable_application_link_sms=application_link_sms_enabled,
+        enable_transfer=is_transfer_enabled(agent),
         timezone=timezone,
     )
 

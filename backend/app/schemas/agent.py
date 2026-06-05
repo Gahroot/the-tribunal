@@ -30,6 +30,17 @@ def _clamp_text_response_delay_value(value: object) -> object:
         return value
 
 
+_VALID_TRANSFER_MODES = {"warm", "cold"}
+
+
+def _normalize_transfer_mode(value: object) -> object:
+    """Coerce the transfer mode to 'warm'/'cold', defaulting unknowns to 'warm'."""
+    if not isinstance(value, str):
+        return value
+    normalized = value.strip().lower()
+    return normalized if normalized in _VALID_TRANSFER_MODES else "warm"
+
+
 class AgentCreate(BaseModel):
     """Schema for creating an agent."""
 
@@ -60,6 +71,10 @@ class AgentCreate(BaseModel):
     ivr_menu_buffer_silence_ms: int = 2000
     # Call recording
     enable_recording: bool = True
+    # Live human transfer / handoff
+    transfer_destination_number: str | None = None
+    transfer_mode: str = "warm"
+    transfer_briefing_template: str | None = None
     # Appointment reminder settings
     reminder_enabled: bool = True
     reminder_minutes_before: int = 30
@@ -94,6 +109,12 @@ class AgentCreate(BaseModel):
         """Accept legacy fast delays and clamp them to the supported range."""
         return _clamp_text_response_delay_value(value)
 
+    @field_validator("transfer_mode", mode="before")
+    @classmethod
+    def validate_transfer_mode(cls, value: object) -> object:
+        """Normalize the transfer mode to one of the supported values."""
+        return _normalize_transfer_mode(value)
+
 
 class AgentUpdate(BaseModel):
     """Schema for updating an agent."""
@@ -126,6 +147,10 @@ class AgentUpdate(BaseModel):
     ivr_menu_buffer_silence_ms: int | None = None
     # Call recording
     enable_recording: bool | None = None
+    # Live human transfer / handoff
+    transfer_destination_number: str | None = None
+    transfer_mode: str | None = None
+    transfer_briefing_template: str | None = None
     # Appointment reminder settings
     reminder_enabled: bool | None = None
     reminder_minutes_before: int | None = None
@@ -160,6 +185,14 @@ class AgentUpdate(BaseModel):
         """Accept legacy fast delays and clamp them to the supported range."""
         return _clamp_text_response_delay_value(value)
 
+    @field_validator("transfer_mode", mode="before")
+    @classmethod
+    def validate_transfer_mode(cls, value: object) -> object:
+        """Normalize the transfer mode, leaving None untouched for partial updates."""
+        if value is None:
+            return None
+        return _normalize_transfer_mode(value)
+
 
 class AgentResponse(BaseModel):
     """Agent response schema."""
@@ -190,6 +223,10 @@ class AgentResponse(BaseModel):
     ivr_menu_buffer_silence_ms: int
     # Call recording
     enable_recording: bool
+    # Live human transfer / handoff
+    transfer_destination_number: str | None = None
+    transfer_mode: str = "warm"
+    transfer_briefing_template: str | None = None
     # Appointment reminder settings
     reminder_enabled: bool
     reminder_minutes_before: int

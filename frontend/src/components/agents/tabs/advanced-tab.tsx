@@ -5,6 +5,7 @@ import type { EditAgentFormValues } from "@/components/agents/agent-edit-schema"
 import { PostMeetingSmsSection } from "@/components/agents/tabs/advanced/post-meeting-sms-section";
 import { RemindersSection } from "@/components/agents/tabs/advanced/reminders-section";
 import { TextSettingsSection } from "@/components/agents/tabs/advanced/text-settings-section";
+import { TransferSection } from "@/components/agents/tabs/advanced/transfer-section";
 import { ValueReinforcementSection } from "@/components/agents/tabs/advanced/value-reinforcement-section";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -79,6 +80,8 @@ export function AdvancedTab({ form, voiceProvider, agent }: AdvancedTabProps) {
       </Card>
 
       <RemindersSection control={control} />
+
+      <TransferSection control={control} />
 
       <Card>
         <CardHeader className="pb-3">

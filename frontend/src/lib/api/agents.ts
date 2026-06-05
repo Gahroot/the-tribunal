@@ -40,6 +40,10 @@ export interface CreateAgentRequest {
   ivr_post_dtmf_cooldown_ms?: number;
   ivr_menu_buffer_silence_ms?: number;
   enable_recording?: boolean;
+  // Live human transfer / handoff
+  transfer_destination_number?: string | null;
+  transfer_mode?: string;
+  transfer_briefing_template?: string | null;
   reminder_enabled?: boolean;
   reminder_minutes_before?: number;
   reminder_offsets?: number[];
@@ -70,6 +74,10 @@ export interface UpdateAgentRequest {
   ivr_post_dtmf_cooldown_ms?: number;
   ivr_menu_buffer_silence_ms?: number;
   enable_recording?: boolean;
+  // Live human transfer / handoff
+  transfer_destination_number?: string | null;
+  transfer_mode?: string;
+  transfer_briefing_template?: string | null;
   reminder_enabled?: boolean;
   reminder_minutes_before?: number;
   reminder_offsets?: number[];

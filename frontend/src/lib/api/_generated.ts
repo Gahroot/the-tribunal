@@ -588,16 +588,7 @@ export interface paths {
         put?: never;
         /**
          * Create Realtor Campaign
-         * @description Upload a CSV and launch a realtor lead-reactivation campaign in one call.
-         *
-         *     Steps performed atomically:
-         *     1. Read the uploaded CSV file.
-         *     2. Import contacts using the standard ContactImportService.
-         *     3. Find the workspace's realtor agent (by name or channel_mode="text").
-         *     4. Find the workspace's first active phone number.
-         *     5. Create a Campaign with realtor defaults.
-         *     6. Enroll all imported contacts in the campaign.
-         *     7. Start the campaign (status → running).
+         * @description Upload a CSV and launch a realtor lead-reactivation campaign.
          */
         post: operations["create_realtor_campaign_api_v1_realtor_campaigns_post"];
         delete?: never;
@@ -658,10 +649,6 @@ export interface paths {
         /**
          * Realtor Onboard
          * @description Complete realtor onboarding in a single call.
-         *
-         *     Creates an AI agent from the realtor template, stores the Cal.com
-         *     integration, and attempts to auto-purchase a phone number. The phone
-         *     number step is best-effort — onboarding succeeds even if it fails.
          */
         post: operations["realtor_onboard_api_v1_realtor_onboard_post"];
         delete?: never;
@@ -682,10 +669,6 @@ export interface paths {
         /**
          * Parse Calcom Url
          * @description Parse a Cal.com booking URL and resolve the event_type_id.
-         *
-         *     Extracts username and slug from the URL, then calls the Cal.com v2 API
-         *     using the workspace's stored Cal.com API key (or the key supplied in the
-         *     request body if none is stored yet).
          */
         post: operations["parse_calcom_url_api_v1_realtor_parse_calcom_url_post"];
         delete?: never;
@@ -704,9 +687,6 @@ export interface paths {
         /**
          * Verify Calcom
          * @description Verify a Cal.com API key by calling the /me endpoint.
-         *
-         *     Returns { valid: true, username: "..." } on success,
-         *     or { valid: false, username: null } for an invalid key.
          */
         get: operations["verify_calcom_api_v1_realtor_verify_calcom_get"];
         put?: never;
@@ -4917,12 +4897,6 @@ export interface paths {
         /**
          * Get Realtor Stats
          * @description Get realtor dashboard statistics for a workspace.
-         *
-         *     Returns:
-         *     - leads_uploaded: total contacts in the workspace
-         *     - texts_sent: outbound messages
-         *     - replies_received: inbound messages
-         *     - appointments_booked: confirmed or completed appointments
          */
         get: operations["get_realtor_stats_api_v1_workspaces__workspace_id__realtor_stats_get"];
         put?: never;
@@ -5710,6 +5684,7 @@ export interface paths {
          *     - call.answered: Call was answered
          *     - call.hangup: Call ended
          *     - call.machine.detection.ended: Voicemail/human detection result
+         *     - call.speak.ended: Spoken audio finished (used to bridge warm transfers)
          */
         post: operations["telnyx_voice_webhook_webhooks_telnyx_voice_post"];
         delete?: never;
@@ -6060,6 +6035,15 @@ export interface components {
             tool_settings: {
                 [key: string]: string[];
             };
+            /** Transfer Briefing Template */
+            transfer_briefing_template?: string | null;
+            /** Transfer Destination Number */
+            transfer_destination_number?: string | null;
+            /**
+             * Transfer Mode
+             * @default warm
+             */
+            transfer_mode: string;
             /**
              * Value Reinforcement Enabled
              * @default false
@@ -6185,6 +6169,15 @@ export interface components {
             tool_settings: {
                 [key: string]: string[];
             };
+            /** Transfer Briefing Template */
+            transfer_briefing_template?: string | null;
+            /** Transfer Destination Number */
+            transfer_destination_number?: string | null;
+            /**
+             * Transfer Mode
+             * @default warm
+             */
+            transfer_mode: string;
             /**
              * Updated At
              * Format: date-time
@@ -6305,6 +6298,12 @@ export interface components {
             tool_settings?: {
                 [key: string]: string[];
             } | null;
+            /** Transfer Briefing Template */
+            transfer_briefing_template?: string | null;
+            /** Transfer Destination Number */
+            transfer_destination_number?: string | null;
+            /** Transfer Mode */
+            transfer_mode?: string | null;
             /** Value Reinforcement Enabled */
             value_reinforcement_enabled?: boolean | null;
             /** Value Reinforcement Offset Minutes */

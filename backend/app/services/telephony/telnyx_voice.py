@@ -183,6 +183,14 @@ class TelnyxVoiceService:
             self.logger.exception("get_call_control_app_failed", error=str(e))
             raise ValueError(f"Failed to get Call Control Application: {e}") from e
 
+    async def get_call_control_application_id(self, webhook_url: str) -> str:
+        """Public accessor for the cached/created Call Control Application ID.
+
+        Used by the warm-transfer flow to originate the closer leg when no
+        explicit ``telnyx_connection_id`` is configured.
+        """
+        return await self._get_call_control_application_id(webhook_url)
+
     async def initiate_call(  # noqa: PLR0915
         self,
         to_number: str,
@@ -681,6 +689,256 @@ class TelnyxVoiceService:
                 "send_dtmf_failed",
                 call_control_id=call_control_id,
                 digits=digits,
+                error=str(e),
+            )
+            return False
+
+    async def transfer_call(
+        self,
+        call_control_id: str,
+        to_number: str,
+        from_number: str | None = None,
+        *,
+        client_state: str | None = None,
+        command_id: str | None = None,
+        timeout_secs: int = 30,
+    ) -> bool:
+        """Cold-transfer an active call to a new destination (Telnyx Call Control).
+
+        Uses ``POST /calls/{id}/actions/transfer``. Telnyx dials ``to_number``
+        and, on answer, bridges it to this call leg automatically. If the
+        transfer fails, Telnyx sends a ``call.hangup`` for the new leg and the
+        original call stays active.
+
+        Args:
+            call_control_id: Telnyx call control ID of the caller leg.
+            to_number: Destination DID/SIP URI for the human closer (E.164).
+            from_number: Caller ID for the destination. Defaults to the original
+                call's ``to`` number when omitted.
+            client_state: Optional base64 state echoed on subsequent webhooks.
+            command_id: Optional idempotency key to dedupe duplicate commands.
+            timeout_secs: Seconds to wait for the destination to answer.
+
+        Returns:
+            True if Telnyx accepted the transfer command, False otherwise.
+        """
+        self.logger.info(
+            "transferring_call",
+            call_control_id=call_control_id,
+            to=self._normalize_e164(to_number),
+        )
+        payload: dict[str, Any] = {
+            "to": self._normalize_e164(to_number),
+            "timeout_secs": max(5, min(600, timeout_secs)),
+        }
+        if from_number:
+            payload["from"] = self._normalize_e164(from_number)
+        if client_state:
+            payload["client_state"] = client_state
+        if command_id:
+            payload["command_id"] = command_id
+
+        try:
+            response = await self.client.post(
+                f"/calls/{call_control_id}/actions/transfer",
+                json=payload,
+            )
+            response.raise_for_status()
+            self.logger.info("call_transfer_requested", call_control_id=call_control_id)
+            return True
+        except httpx.HTTPStatusError as e:
+            self.logger.error(
+                "transfer_call_http_error",
+                call_control_id=call_control_id,
+                status_code=e.response.status_code,
+                response_text=e.response.text[:500] if e.response.text else "empty",
+            )
+            return False
+        except Exception as e:
+            self.logger.exception(
+                "transfer_call_failed",
+                call_control_id=call_control_id,
+                error=str(e),
+            )
+            return False
+
+    async def dial_transfer_leg(
+        self,
+        to_number: str,
+        from_number: str,
+        connection_id: str,
+        webhook_url: str,
+        client_state: str,
+        *,
+        command_id: str | None = None,
+        timeout_secs: int = 30,
+    ) -> str | None:
+        """Dial a new outbound leg to the human closer for a warm transfer.
+
+        Originates a fresh Call Control leg (``POST /calls``) that we later
+        brief (``speak``) and then bridge to the caller. The caller leg is left
+        active/parked while this leg rings.
+
+        Args:
+            to_number: Human closer's destination number (E.164).
+            from_number: Caller ID presented to the closer (workspace number).
+            connection_id: Telnyx Call Control Application/connection ID.
+            webhook_url: Voice webhook URL so this leg's events come back to us.
+            client_state: Base64 state marking this as a transfer leg + token.
+            command_id: Optional idempotency key to dedupe duplicate dials.
+            timeout_secs: Seconds to wait for the closer to answer.
+
+        Returns:
+            The new leg's ``call_control_id`` if dialing started, else None.
+        """
+        payload: dict[str, Any] = {
+            "to": self._normalize_e164(to_number),
+            "from": self._normalize_e164(from_number),
+            "connection_id": connection_id,
+            "webhook_url": webhook_url,
+            "webhook_url_method": "POST",
+            "audio_codec": "ulaw",
+            "client_state": client_state,
+            "timeout_secs": max(5, min(600, timeout_secs)),
+        }
+        if command_id:
+            payload["command_id"] = command_id
+
+        try:
+            with latency_ms_timer(telnyx_api_latency_ms):
+                response = await self.client.post("/calls", json=payload)
+            response.raise_for_status()
+            data = response.json().get("data", {})
+            new_ccid = data.get("call_control_id")
+            self.logger.info(
+                "transfer_leg_dialed",
+                new_call_control_id=new_ccid,
+                to=self._normalize_e164(to_number),
+            )
+            return str(new_ccid) if new_ccid else None
+        except httpx.HTTPStatusError as e:
+            self.logger.error(
+                "dial_transfer_leg_http_error",
+                status_code=e.response.status_code,
+                response_text=e.response.text[:500] if e.response.text else "empty",
+            )
+            return None
+        except Exception as e:
+            self.logger.exception("dial_transfer_leg_failed", error=str(e))
+            return None
+
+    async def speak_text(
+        self,
+        call_control_id: str,
+        text: str,
+        *,
+        voice: str = "female",
+        language: str = "en-US",
+        client_state: str | None = None,
+        command_id: str | None = None,
+    ) -> bool:
+        """Speak text on a call leg via ``POST /calls/{id}/actions/speak``.
+
+        Used to read the warm-transfer briefing to the human closer before the
+        caller is bridged in. Emits ``call.speak.started`` / ``call.speak.ended``
+        webhooks; we bridge on ``call.speak.ended``.
+
+        Args:
+            call_control_id: Leg to speak on (the human closer's leg).
+            text: Briefing text (<= 3000 chars per Telnyx limit).
+            voice: Telnyx voice spec (``female``/``male`` for basic, or
+                ``<Provider>.<Model>.<VoiceId>``).
+            language: Language code for synthesis.
+            client_state: Optional base64 state echoed on speak webhooks.
+            command_id: Optional idempotency key to dedupe duplicate commands.
+
+        Returns:
+            True if Telnyx accepted the speak command, False otherwise.
+        """
+        payload: dict[str, Any] = {
+            "payload": text[:3000],
+            "voice": voice,
+            "language": language,
+        }
+        if client_state:
+            payload["client_state"] = client_state
+        if command_id:
+            payload["command_id"] = command_id
+
+        try:
+            response = await self.client.post(
+                f"/calls/{call_control_id}/actions/speak",
+                json=payload,
+            )
+            response.raise_for_status()
+            self.logger.info("speak_requested", call_control_id=call_control_id)
+            return True
+        except httpx.HTTPStatusError as e:
+            self.logger.error(
+                "speak_text_http_error",
+                call_control_id=call_control_id,
+                status_code=e.response.status_code,
+                response_text=e.response.text[:500] if e.response.text else "empty",
+            )
+            return False
+        except Exception as e:
+            self.logger.exception(
+                "speak_text_failed", call_control_id=call_control_id, error=str(e)
+            )
+            return False
+
+    async def bridge_calls(
+        self,
+        call_control_id: str,
+        other_call_control_id: str,
+        *,
+        client_state: str | None = None,
+        command_id: str | None = None,
+    ) -> bool:
+        """Bridge two call legs via ``POST /calls/{id}/actions/bridge``.
+
+        Completes a warm transfer by merging the human closer's leg with the
+        caller's leg after the briefing has been spoken.
+
+        Args:
+            call_control_id: Leg the bridge command is issued on (closer leg).
+            other_call_control_id: The leg to bridge with (caller leg).
+            client_state: Optional base64 state echoed on subsequent webhooks.
+            command_id: Optional idempotency key to dedupe duplicate commands.
+
+        Returns:
+            True if Telnyx accepted the bridge command, False otherwise.
+        """
+        payload: dict[str, Any] = {"call_control_id": other_call_control_id}
+        if client_state:
+            payload["client_state"] = client_state
+        if command_id:
+            payload["command_id"] = command_id
+
+        try:
+            response = await self.client.post(
+                f"/calls/{call_control_id}/actions/bridge",
+                json=payload,
+            )
+            response.raise_for_status()
+            self.logger.info(
+                "calls_bridged",
+                call_control_id=call_control_id,
+                other_call_control_id=other_call_control_id,
+            )
+            return True
+        except httpx.HTTPStatusError as e:
+            self.logger.error(
+                "bridge_calls_http_error",
+                call_control_id=call_control_id,
+                status_code=e.response.status_code,
+                response_text=e.response.text[:500] if e.response.text else "empty",
+            )
+            return False
+        except Exception as e:
+            self.logger.exception(
+                "bridge_calls_failed",
+                call_control_id=call_control_id,
                 error=str(e),
             )
             return False
