@@ -553,6 +553,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/p/reviews/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Public Review Request
+         * @description Public landing-page data for a review-request token.
+         */
+        get: operations["get_public_review_request_api_v1_p_reviews__token__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/p/reviews/{token}/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Public Feedback
+         * @description Submit private feedback for a low rating (firewall path).
+         */
+        post: operations["submit_public_feedback_api_v1_p_reviews__token__feedback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/p/reviews/{token}/rate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Public Rating
+         * @description Submit a star rating; applies the rating gate routing.
+         */
+        post: operations["submit_public_rating_api_v1_p_reviews__token__rate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/realtime/token/{agent_id}": {
         parameters: {
             query?: never;
@@ -4907,6 +4967,144 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Reviews
+         * @description List collected reviews and private feedback for the workspace.
+         */
+        get: operations["list_reviews_api_v1_workspaces__workspace_id__reviews_get"];
+        put?: never;
+        /**
+         * Create Review
+         * @description Manually create a review (operator entry).
+         */
+        post: operations["create_review_api_v1_workspaces__workspace_id__reviews_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/reviews/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Review Requests
+         * @description List review requests for the workspace.
+         */
+        get: operations["list_review_requests_api_v1_workspaces__workspace_id__reviews_requests_get"];
+        put?: never;
+        /**
+         * Create Review Request
+         * @description Create and optionally dispatch a review-request SMS to a contact.
+         */
+        post: operations["create_review_request_api_v1_workspaces__workspace_id__reviews_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/reviews/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Review Settings
+         * @description Get reputation engine settings for the workspace.
+         */
+        get: operations["get_review_settings_api_v1_workspaces__workspace_id__reviews_settings_get"];
+        /**
+         * Update Review Settings
+         * @description Update reputation engine settings for the workspace.
+         */
+        put: operations["update_review_settings_api_v1_workspaces__workspace_id__reviews_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/reviews/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Reputation Summary
+         * @description Aggregate reputation metrics for the workspace dashboard.
+         */
+        get: operations["get_reputation_summary_api_v1_workspaces__workspace_id__reviews_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/reviews/{review_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Review
+         * @description Get a single review.
+         */
+        get: operations["get_review_api_v1_workspaces__workspace_id__reviews__review_id__get"];
+        /**
+         * Update Review
+         * @description Update a review's triage state or reply draft.
+         */
+        put: operations["update_review_api_v1_workspaces__workspace_id__reviews__review_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/reviews/{review_id}/generate-reply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Reply
+         * @description Draft an on-brand AI reply for a review.
+         *
+         *     The draft is persisted on the review so operators can edit before sending.
+         */
+        post: operations["generate_reply_api_v1_workspaces__workspace_id__reviews__review_id__generate_reply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/scraping/import": {
         parameters: {
             query?: never;
@@ -9165,6 +9363,18 @@ export interface components {
             title?: string | null;
         };
         /**
+         * GeneratedReviewReply
+         * @description AI-generated review reply draft.
+         */
+        GeneratedReviewReply: {
+            /** Error */
+            error?: string | null;
+            /** Reply */
+            reply?: string | null;
+            /** Success */
+            success: boolean;
+        };
+        /**
          * GeneratedSubheadline
          * @description Generated subheadline option.
          */
@@ -12074,6 +12284,38 @@ export interface components {
             total: number;
         };
         /**
+         * PaginatedReviewRequests
+         * @description Paginated review-request list.
+         */
+        PaginatedReviewRequests: {
+            /** Items */
+            items: components["schemas"]["ReviewRequestResponse"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Pages */
+            pages: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * PaginatedReviews
+         * @description Paginated reviews list.
+         */
+        PaginatedReviews: {
+            /** Items */
+            items: components["schemas"]["ReviewResponse"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Pages */
+            pages: number;
+            /** Total */
+            total: number;
+        };
+        /**
          * PaginatedVoiceCampaigns
          * @description Paginated voice campaigns response.
          */
@@ -12587,6 +12829,26 @@ export interface components {
          */
         ProspectStatus: "new" | "enriching" | "enriched" | "queued" | "contacted" | "replied" | "qualified" | "converted" | "suppressed" | "archived";
         /**
+         * PublicFeedbackResult
+         * @description Result of submitting private feedback.
+         */
+        PublicFeedbackResult: {
+            /** Message */
+            message: string;
+            /** Success */
+            success: boolean;
+        };
+        /**
+         * PublicFeedbackSubmit
+         * @description Recipient submits private feedback (low rating firewall).
+         */
+        PublicFeedbackSubmit: {
+            /** Body */
+            body: string;
+            /** Reviewer Name */
+            reviewer_name?: string | null;
+        };
+        /**
          * PublicOfferResponse
          * @description Public offer response - no sensitive data.
          */
@@ -12645,6 +12907,60 @@ export interface components {
             urgency_type?: string | null;
             /** Value Stack Items */
             value_stack_items?: components["schemas"]["ValueStackItem"][] | null;
+        };
+        /**
+         * PublicRatingResult
+         * @description Routing result after a public rating submission (the rating gate).
+         */
+        PublicRatingResult: {
+            /** Is Positive */
+            is_positive: boolean;
+            /** Message */
+            message: string;
+            /** Rating */
+            rating: number;
+            /** Redirect Url */
+            redirect_url?: string | null;
+            /**
+             * Show Feedback Form
+             * @default false
+             */
+            show_feedback_form: boolean;
+            /** Success */
+            success: boolean;
+        };
+        /**
+         * PublicRatingSubmit
+         * @description Recipient submits a star rating on the public landing page.
+         */
+        PublicRatingSubmit: {
+            /** Rating */
+            rating: number;
+        };
+        /**
+         * PublicReviewRequest
+         * @description Public view of a review request for the rating landing page.
+         */
+        PublicReviewRequest: {
+            /**
+             * Already Submitted
+             * @default false
+             */
+            already_submitted: boolean;
+            /** Business Name */
+            business_name?: string | null;
+            /** Contact First Name */
+            contact_first_name?: string | null;
+            /**
+             * Positive Threshold
+             * @default 4
+             */
+            positive_threshold: number;
+            /** Rating */
+            rating?: number | null;
+            status: components["schemas"]["ReviewRequestStatusSchema"];
+            /** Token */
+            token: string;
         };
         /**
          * PurchasePhoneNumberRequest
@@ -12800,6 +13116,16 @@ export interface components {
             min_score: number;
             /** Title */
             title: string;
+        };
+        /**
+         * RatingBucket
+         * @description Count of reviews at a given star rating.
+         */
+        RatingBucket: {
+            /** Count */
+            count: number;
+            /** Rating */
+            rating: number;
         };
         /**
          * RealtimeTokenRequest
@@ -12992,6 +13318,311 @@ export interface components {
         RejectSuggestionRequest: {
             /** Reason */
             reason?: string | null;
+        };
+        /**
+         * ReputationSummary
+         * @description Aggregate reputation metrics for a workspace dashboard.
+         */
+        ReputationSummary: {
+            /**
+             * Average Rating
+             * @default 0
+             */
+            average_rating: number;
+            /**
+             * New Count
+             * @default 0
+             */
+            new_count: number;
+            /**
+             * Private Feedback
+             * @default 0
+             */
+            private_feedback: number;
+            /**
+             * Public Reviews
+             * @default 0
+             */
+            public_reviews: number;
+            /** Rating Distribution */
+            rating_distribution?: components["schemas"]["RatingBucket"][];
+            /**
+             * Reputation Score
+             * @default 0
+             */
+            reputation_score: number;
+            /**
+             * Requests Rated
+             * @default 0
+             */
+            requests_rated: number;
+            /**
+             * Requests Sent
+             * @default 0
+             */
+            requests_sent: number;
+            /**
+             * Response Rate
+             * @default 0
+             */
+            response_rate: number;
+            /**
+             * Total Reviews
+             * @default 0
+             */
+            total_reviews: number;
+        };
+        /**
+         * ReviewCreate
+         * @description Manually create a review (operator entry).
+         */
+        ReviewCreate: {
+            /** Body */
+            body?: string | null;
+            /** Contact Id */
+            contact_id?: number | null;
+            /**
+             * Is Public
+             * @default false
+             */
+            is_public: boolean;
+            /** Rating */
+            rating: number;
+            /** Reviewer Name */
+            reviewer_name?: string | null;
+            /** @default manual */
+            source: components["schemas"]["ReviewSourceSchema"];
+        };
+        /**
+         * ReviewReplyGenerateRequest
+         * @description Request body for AI reply drafting.
+         */
+        ReviewReplyGenerateRequest: {
+            /** Tone */
+            tone?: string | null;
+        };
+        /**
+         * ReviewRequestCreate
+         * @description Create + dispatch a review request for a contact.
+         */
+        ReviewRequestCreate: {
+            /** Appointment Id */
+            appointment_id?: number | null;
+            /** Contact Id */
+            contact_id: number;
+            /**
+             * Send Now
+             * @default true
+             */
+            send_now: boolean;
+        };
+        /**
+         * ReviewRequestResponse
+         * @description An outbound review request.
+         */
+        ReviewRequestResponse: {
+            /** Agent Id */
+            agent_id?: string | null;
+            /** Appointment Id */
+            appointment_id?: number | null;
+            /** Channel */
+            channel: string;
+            /** Clicked At */
+            clicked_at?: string | null;
+            /** Contact Id */
+            contact_id: number;
+            /** Contact Name */
+            contact_name?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error */
+            error?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Rated At */
+            rated_at?: string | null;
+            /** Rating */
+            rating?: number | null;
+            /** Sent At */
+            sent_at?: string | null;
+            status: components["schemas"]["ReviewRequestStatusSchema"];
+            /** Token */
+            token: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+        };
+        /**
+         * ReviewRequestSendResult
+         * @description Result of attempting to dispatch a review request.
+         */
+        ReviewRequestSendResult: {
+            /** Detail */
+            detail?: string | null;
+            /** Message */
+            message: string;
+            /** Review Request Id */
+            review_request_id?: string | null;
+            status: components["schemas"]["ReviewRequestStatusSchema"];
+            /** Success */
+            success: boolean;
+        };
+        /**
+         * ReviewRequestStatusSchema
+         * @description Review-request lifecycle.
+         * @enum {string}
+         */
+        ReviewRequestStatusSchema: "pending" | "sent" | "clicked" | "rated" | "completed" | "failed";
+        /**
+         * ReviewResponse
+         * @description A collected review or private feedback item.
+         */
+        ReviewResponse: {
+            /** Body */
+            body?: string | null;
+            /** Contact Id */
+            contact_id?: number | null;
+            /** Contact Name */
+            contact_name?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Public */
+            is_public: boolean;
+            /** Rating */
+            rating: number;
+            /** Replied At */
+            replied_at?: string | null;
+            /** Reply Draft */
+            reply_draft?: string | null;
+            /** Reply Sent */
+            reply_sent: boolean;
+            /** Review Request Id */
+            review_request_id?: string | null;
+            /** Reviewer Name */
+            reviewer_name?: string | null;
+            sentiment: components["schemas"]["ReviewSentimentSchema"];
+            source: components["schemas"]["ReviewSourceSchema"];
+            status: components["schemas"]["ReviewStatusSchema"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+        };
+        /**
+         * ReviewSentimentSchema
+         * @description Sentiment bucket.
+         * @enum {string}
+         */
+        ReviewSentimentSchema: "positive" | "neutral" | "negative";
+        /**
+         * ReviewSettings
+         * @description Per-workspace reputation engine configuration.
+         */
+        ReviewSettings: {
+            /**
+             * Auto Request On Completion
+             * @default true
+             */
+            auto_request_on_completion: boolean;
+            /** Business Name */
+            business_name?: string | null;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /** Facebook Review Url */
+            facebook_review_url?: string | null;
+            /** Google Review Url */
+            google_review_url?: string | null;
+            /**
+             * Positive Threshold
+             * @default 4
+             */
+            positive_threshold: number;
+            /** Reply Tone */
+            reply_tone?: string | null;
+            /**
+             * Request Delay Minutes
+             * @default 60
+             */
+            request_delay_minutes: number;
+            /** Request Message Template */
+            request_message_template?: string | null;
+        };
+        /**
+         * ReviewSettingsUpdate
+         * @description Partial update for reputation settings.
+         */
+        ReviewSettingsUpdate: {
+            /** Auto Request On Completion */
+            auto_request_on_completion?: boolean | null;
+            /** Business Name */
+            business_name?: string | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Facebook Review Url */
+            facebook_review_url?: string | null;
+            /** Google Review Url */
+            google_review_url?: string | null;
+            /** Positive Threshold */
+            positive_threshold?: number | null;
+            /** Reply Tone */
+            reply_tone?: string | null;
+            /** Request Delay Minutes */
+            request_delay_minutes?: number | null;
+            /** Request Message Template */
+            request_message_template?: string | null;
+        };
+        /**
+         * ReviewSourceSchema
+         * @description Review origin.
+         * @enum {string}
+         */
+        ReviewSourceSchema: "sms_request" | "google" | "facebook" | "manual";
+        /**
+         * ReviewStatusSchema
+         * @description Operator triage state.
+         * @enum {string}
+         */
+        ReviewStatusSchema: "new" | "replied" | "resolved" | "dismissed";
+        /**
+         * ReviewUpdate
+         * @description Update a review's triage state or reply draft.
+         */
+        ReviewUpdate: {
+            /** Reply Draft */
+            reply_draft?: string | null;
+            /** Reply Sent */
+            reply_sent?: boolean | null;
+            status?: components["schemas"]["ReviewStatusSchema"] | null;
         };
         /**
          * SearchPhoneNumbersRequest
@@ -15100,6 +15731,107 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OptInResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_public_review_request_api_v1_p_reviews__token__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicReviewRequest"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_public_feedback_api_v1_p_reviews__token__feedback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublicFeedbackSubmit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicFeedbackResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_public_rating_api_v1_p_reviews__token__rate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublicRatingSubmit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicRatingResult"];
                 };
             };
             /** @description Validation Error */
@@ -24269,6 +25001,349 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RealtorStatsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reviews_api_v1_workspaces__workspace_id__reviews_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+                status?: string | null;
+                is_public?: boolean | null;
+                sentiment?: string | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedReviews"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_review_api_v1_workspaces__workspace_id__reviews_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_review_requests_api_v1_workspaces__workspace_id__reviews_requests_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+                status?: string | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedReviewRequests"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_review_request_api_v1_workspaces__workspace_id__reviews_requests_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewRequestCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRequestSendResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_review_settings_api_v1_workspaces__workspace_id__reviews_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewSettings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_review_settings_api_v1_workspaces__workspace_id__reviews_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewSettings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_reputation_summary_api_v1_workspaces__workspace_id__reviews_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReputationSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_review_api_v1_workspaces__workspace_id__reviews__review_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_review_api_v1_workspaces__workspace_id__reviews__review_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_reply_api_v1_workspaces__workspace_id__reviews__review_id__generate_reply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewReplyGenerateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeneratedReviewReply"];
                 };
             };
             /** @description Validation Error */

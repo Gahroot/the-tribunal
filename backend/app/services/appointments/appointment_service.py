@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from app.db.pagination import paginate
 from app.models.agent import Agent
-from app.models.appointment import Appointment
+from app.models.appointment import Appointment, AppointmentStatus
 from app.models.campaign import Campaign
 from app.models.contact import Contact
 from app.models.workspace import Workspace
@@ -148,9 +148,16 @@ class AppointmentService:
         workspace_id: uuid.UUID,
         appointment_id: int,
     ) -> Appointment:
-        """Get an appointment by ID, raising 404 if not found."""
+        """Get an appointment by ID, raising 404 if not found.
+
+        Eager-loads ``contact`` so ``AppointmentResponse`` can serialize the
+        nested contact summary without triggering an async lazy-load (which
+        raises ``MissingGreenlet``) after the request session has committed.
+        """
         result = await self.db.execute(
-            select(Appointment).where(
+            select(Appointment)
+            .options(selectinload(Appointment.contact))
+            .where(
                 Appointment.id == appointment_id,
                 Appointment.workspace_id == workspace_id,
             )
@@ -172,6 +179,7 @@ class AppointmentService:
         """Update an appointment's fields."""
         appointment = await self.get_appointment(workspace_id, appointment_id)
 
+        previous_status = appointment.status
         update_data = appointment_in.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             setattr(appointment, field, value)
@@ -185,6 +193,21 @@ class AppointmentService:
             appointment_id=appointment_id,
             status=appointment.status,
         )
+
+        # When an operator marks a job completed, enqueue a review request.
+        # No-ops unless the workspace enabled the reputation engine + auto
+        # trigger. Never let a reputation hiccup fail the appointment update.
+        if (
+            previous_status != AppointmentStatus.COMPLETED
+            and appointment.status == AppointmentStatus.COMPLETED
+        ):
+            try:
+                from app.services.reviews import ReviewService
+
+                await ReviewService(self.db).enqueue_for_appointment(appointment)
+            except Exception as exc:  # noqa: BLE001 — reputation is best-effort
+                self.log.warning("review_request_enqueue_failed", error=str(exc))
+
         return appointment
 
     async def delete_appointment(

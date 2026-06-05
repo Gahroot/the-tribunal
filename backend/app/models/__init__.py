@@ -76,6 +76,17 @@ from app.models.pipeline import Pipeline, PipelineStage
 from app.models.prompt_version import PromptVersion
 from app.models.prompt_version_stats import PromptVersionStats
 from app.models.refresh_token import RefreshToken
+from app.models.review import (
+    Review,
+    ReviewSentiment,
+    ReviewSource,
+    ReviewStatus,
+)
+from app.models.review_request import (
+    ReviewRequest,
+    ReviewRequestChannel,
+    ReviewRequestStatus,
+)
 from app.models.segment import Segment
 from app.models.short_link import ShortLink
 from app.models.tag import ContactTag, Tag
@@ -147,6 +158,13 @@ __all__ = [
     "DecisionType",
     "Tag",
     "ContactTag",
+    "Review",
+    "ReviewSentiment",
+    "ReviewSource",
+    "ReviewStatus",
+    "ReviewRequest",
+    "ReviewRequestChannel",
+    "ReviewRequestStatus",
     "Segment",
     "ShortLink",
     "DripCampaign",

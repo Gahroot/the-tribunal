@@ -28,6 +28,13 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const PUBLIC_PATHS = ["/login", "/register"];
 const PUBLIC_PATH_PREFIXES = ["/invite/", "/p/"];
 
+function isPublicPathname(pathname: string): boolean {
+  return (
+    PUBLIC_PATHS.includes(pathname) ||
+    PUBLIC_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+  );
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -37,6 +44,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAuthenticated = user !== null;
 
   const fetchUser = useCallback(async () => {
+    // Public surfaces (login/register, /invite/, and all /p/ pages such as the
+    // review rating-gate and offer landing pages) are visited by anonymous
+    // users. Probing /auth/me there would 401 and trip the axios interceptor's
+    // hard redirect to /login, breaking those public flows. Skip the probe and
+    // resolve to signed-out so the public page renders.
+    if (isPublicPathname(window.location.pathname)) {
+      setUser(null);
+      setIsLoading(false);
+      return;
+    }
+
     // Auth tokens live in httpOnly cookies — JS can’t check for them. We just
     // probe /auth/me; if the cookie is missing or expired the response
     // interceptor will attempt a refresh, and a final 401 means signed-out.
@@ -61,9 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (isLoading) return;
 
-    const isPublicPath =
-      PUBLIC_PATHS.includes(pathname) ||
-      PUBLIC_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+    const isPublicPath = isPublicPathname(pathname);
 
     if (!isAuthenticated && !isPublicPath) {
       router.replace("/login");

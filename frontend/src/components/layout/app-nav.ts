@@ -16,6 +16,7 @@ import {
   PhoneCall,
   Settings,
   Sparkles,
+  Star,
   Users,
   Zap,
 } from "lucide-react";
@@ -134,6 +135,13 @@ export const toolsNavItems: AppNavItem[] = [
     commandPalette: true,
   },
   {
+    title: "Reviews",
+    url: "/reviews",
+    icon: Star,
+    sidebar: true,
+    commandPalette: true,
+  },
+  {
     title: "Lead Magnets",
     url: "/lead-magnets",
     icon: Magnet,
@@ -226,6 +234,7 @@ export const breadcrumbLabels: Record<string, string> = {
   agents: "AI Agents",
   suggestions: "AI Suggestions",
   offers: "Offers",
+  reviews: "Reviews",
   "lead-magnets": "Lead Magnets",
   "phone-numbers": "Phone Numbers",
   automations: "Automations",

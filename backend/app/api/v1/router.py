@@ -41,6 +41,7 @@ from app.api.v1 import (
     phone_numbers,
     prompt_versions,
     realtime,
+    reviews,
     scraping,
     segments,
     settings,
@@ -280,6 +281,17 @@ api_router.include_router(
     drip_campaigns.router,
     prefix="/workspaces/{workspace_id}/drip-campaigns",
     tags=["Drip Campaigns"],
+)
+api_router.include_router(
+    reviews.router,
+    prefix="/workspaces/{workspace_id}/reviews",
+    tags=["Reviews"],
+)
+# Public review rating-gate landing page (no auth)
+api_router.include_router(
+    reviews.public_router,
+    prefix="/p/reviews",
+    tags=["Public Reviews"],
 )
 api_router.include_router(billing.router, prefix="/billing", tags=["Billing"])
 api_router.include_router(

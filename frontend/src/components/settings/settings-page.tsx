@@ -1,6 +1,6 @@
 "use client";
 
-import { User, Bell, Webhook, CreditCard, Building2, Tags, FileInput, HandHeart } from "lucide-react";
+import { User, Bell, Webhook, CreditCard, Building2, Tags, FileInput, HandHeart, Star } from "lucide-react";
 
 import { BillingSettingsTab } from "@/components/settings/billing-settings-tab";
 import { IntegrationsSettingsTab } from "@/components/settings/integrations-settings-tab";
@@ -8,6 +8,7 @@ import { LeadSourcesSettingsTab } from "@/components/settings/lead-sources-setti
 import { NotificationsSettingsTab } from "@/components/settings/notifications-settings-tab";
 import { NudgeSettingsTab } from "@/components/settings/nudge-settings-tab";
 import { ProfileSettingsTab } from "@/components/settings/profile-settings-tab";
+import { ReviewSettingsTab } from "@/components/settings/review-settings-tab";
 import { TeamSettingsTab } from "@/components/settings/team-settings-tab";
 import { TagManagement } from "@/components/tags/tag-management";
 import { QueryErrorBoundary } from "@/components/ui/query-error-boundary";
@@ -18,6 +19,7 @@ const settingsTabs = [
   { value: "tags", label: "Tags", icon: Tags },
   { value: "notifications", label: "Notifications", icon: Bell },
   { value: "nudges", label: "Nudges", icon: HandHeart },
+  { value: "reviews", label: "Reviews", icon: Star },
   { value: "integrations", label: "Integrations", icon: Webhook },
   { value: "billing", label: "Billing", icon: CreditCard },
   { value: "team", label: "Team", icon: Building2 },
@@ -36,7 +38,7 @@ export function SettingsPage() {
       </div>
 
       <Tabs defaultValue="profile" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-8 lg:w-auto lg:inline-grid">
+        <TabsList className="grid w-full grid-cols-9 lg:w-auto lg:inline-grid">
           {settingsTabs.map((tab) => (
             <TabsTrigger key={tab.value} value={tab.value} className="gap-2">
               <tab.icon className="size-4" />
@@ -66,6 +68,12 @@ export function SettingsPage() {
         <TabsContent value="nudges">
           <QueryErrorBoundary message="Failed to load nudge settings. Please try again.">
             <NudgeSettingsTab />
+          </QueryErrorBoundary>
+        </TabsContent>
+
+        <TabsContent value="reviews">
+          <QueryErrorBoundary message="Failed to load review settings. Please try again.">
+            <ReviewSettingsTab />
           </QueryErrorBoundary>
         </TabsContent>
 

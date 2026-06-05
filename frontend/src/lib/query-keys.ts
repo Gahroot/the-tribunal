@@ -115,6 +115,7 @@ const offers = createResourceQueryKeys("offers");
 const opportunities = createResourceQueryKeys("opportunities");
 const pendingActions = createResourceQueryKeys("pending-actions");
 const phoneNumbers = createResourceQueryKeys("phone-numbers");
+const reviews = createResourceQueryKeys("reviews");
 const segments = createResourceQueryKeys("segments");
 
 export const queryKeys = {
@@ -298,6 +299,19 @@ export const queryKeys = {
       phoneNumbers.list(workspaceId, { active_only: false }),
   },
   promptVersions: createResourceQueryKeys("prompt-versions"),
+  reviews: {
+    ...reviews,
+    summary: (workspaceId: string) =>
+      [...reviews.all(workspaceId), "summary"] as const,
+    settings: (workspaceId: string) =>
+      [...reviews.all(workspaceId), "settings"] as const,
+    requests: (workspaceId: string, params?: QueryKeyParams | null) =>
+      [...reviews.all(workspaceId), "requests", normalizeQueryKeyParams(params)] as const,
+  },
+  publicReviews: {
+    all: () => ["public-reviews"] as const,
+    byToken: (token: string) => ["public-reviews", token] as const,
+  },
   publicDemo: {
     all: () => ["public-demo"] as const,
     detail: (slug: string) => ["public-demo", "detail", slug] as const,

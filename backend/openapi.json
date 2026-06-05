@@ -9013,6 +9013,42 @@
         "title": "GeneratedQuizContent",
         "type": "object"
       },
+      "GeneratedReviewReply": {
+        "description": "AI-generated review reply draft.",
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "reply": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply"
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "title": "GeneratedReviewReply",
+        "type": "object"
+      },
       "GeneratedSubheadline": {
         "description": "Generated subheadline option.",
         "properties": {
@@ -17083,6 +17119,80 @@
         "title": "PaginatedPhoneNumbers",
         "type": "object"
       },
+      "PaginatedReviewRequests": {
+        "description": "Paginated review-request list.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewRequestResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "pages": {
+            "title": "Pages",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size",
+          "pages"
+        ],
+        "title": "PaginatedReviewRequests",
+        "type": "object"
+      },
+      "PaginatedReviews": {
+        "description": "Paginated reviews list.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "pages": {
+            "title": "Pages",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size",
+          "pages"
+        ],
+        "title": "PaginatedReviews",
+        "type": "object"
+      },
       "PaginatedVoiceCampaigns": {
         "description": "Paginated voice campaigns response.",
         "properties": {
@@ -18450,6 +18560,53 @@
         "title": "ProspectStatus",
         "type": "string"
       },
+      "PublicFeedbackResult": {
+        "description": "Result of submitting private feedback.",
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success",
+          "message"
+        ],
+        "title": "PublicFeedbackResult",
+        "type": "object"
+      },
+      "PublicFeedbackSubmit": {
+        "description": "Recipient submits private feedback (low rating firewall).",
+        "properties": {
+          "body": {
+            "maxLength": 5000,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "reviewer_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Name"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "title": "PublicFeedbackSubmit",
+        "type": "object"
+      },
       "PublicOfferResponse": {
         "description": "Public offer response - no sensitive data.",
         "properties": {
@@ -18664,6 +18821,128 @@
           "name"
         ],
         "title": "PublicOfferResponse",
+        "type": "object"
+      },
+      "PublicRatingResult": {
+        "description": "Routing result after a public rating submission (the rating gate).",
+        "properties": {
+          "is_positive": {
+            "title": "Is Positive",
+            "type": "boolean"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "rating": {
+            "title": "Rating",
+            "type": "integer"
+          },
+          "redirect_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redirect Url"
+          },
+          "show_feedback_form": {
+            "default": false,
+            "title": "Show Feedback Form",
+            "type": "boolean"
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success",
+          "rating",
+          "is_positive",
+          "message"
+        ],
+        "title": "PublicRatingResult",
+        "type": "object"
+      },
+      "PublicRatingSubmit": {
+        "description": "Recipient submits a star rating on the public landing page.",
+        "properties": {
+          "rating": {
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Rating",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rating"
+        ],
+        "title": "PublicRatingSubmit",
+        "type": "object"
+      },
+      "PublicReviewRequest": {
+        "description": "Public view of a review request for the rating landing page.",
+        "properties": {
+          "already_submitted": {
+            "default": false,
+            "title": "Already Submitted",
+            "type": "boolean"
+          },
+          "business_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Name"
+          },
+          "contact_first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact First Name"
+          },
+          "positive_threshold": {
+            "default": 4,
+            "title": "Positive Threshold",
+            "type": "integer"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReviewRequestStatusSchema"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "status"
+        ],
+        "title": "PublicReviewRequest",
         "type": "object"
       },
       "PurchasePhoneNumberRequest": {
@@ -18998,6 +19277,25 @@
           "description"
         ],
         "title": "QuizResult",
+        "type": "object"
+      },
+      "RatingBucket": {
+        "description": "Count of reviews at a given star rating.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "rating": {
+            "title": "Rating",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rating",
+          "count"
+        ],
+        "title": "RatingBucket",
         "type": "object"
       },
       "RealtimeTokenRequest": {
@@ -19474,6 +19772,794 @@
           }
         },
         "title": "RejectSuggestionRequest",
+        "type": "object"
+      },
+      "ReputationSummary": {
+        "description": "Aggregate reputation metrics for a workspace dashboard.",
+        "properties": {
+          "average_rating": {
+            "default": 0.0,
+            "title": "Average Rating",
+            "type": "number"
+          },
+          "new_count": {
+            "default": 0,
+            "title": "New Count",
+            "type": "integer"
+          },
+          "private_feedback": {
+            "default": 0,
+            "title": "Private Feedback",
+            "type": "integer"
+          },
+          "public_reviews": {
+            "default": 0,
+            "title": "Public Reviews",
+            "type": "integer"
+          },
+          "rating_distribution": {
+            "items": {
+              "$ref": "#/components/schemas/RatingBucket"
+            },
+            "title": "Rating Distribution",
+            "type": "array"
+          },
+          "reputation_score": {
+            "default": 0,
+            "title": "Reputation Score",
+            "type": "integer"
+          },
+          "requests_rated": {
+            "default": 0,
+            "title": "Requests Rated",
+            "type": "integer"
+          },
+          "requests_sent": {
+            "default": 0,
+            "title": "Requests Sent",
+            "type": "integer"
+          },
+          "response_rate": {
+            "default": 0.0,
+            "title": "Response Rate",
+            "type": "number"
+          },
+          "total_reviews": {
+            "default": 0,
+            "title": "Total Reviews",
+            "type": "integer"
+          }
+        },
+        "title": "ReputationSummary",
+        "type": "object"
+      },
+      "ReviewCreate": {
+        "description": "Manually create a review (operator entry).",
+        "properties": {
+          "body": {
+            "anyOf": [
+              {
+                "maxLength": 5000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id"
+          },
+          "is_public": {
+            "default": false,
+            "title": "Is Public",
+            "type": "boolean"
+          },
+          "rating": {
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Rating",
+            "type": "integer"
+          },
+          "reviewer_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Name"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ReviewSourceSchema",
+            "default": "manual"
+          }
+        },
+        "required": [
+          "rating"
+        ],
+        "title": "ReviewCreate",
+        "type": "object"
+      },
+      "ReviewReplyGenerateRequest": {
+        "description": "Request body for AI reply drafting.",
+        "properties": {
+          "tone": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tone"
+          }
+        },
+        "title": "ReviewReplyGenerateRequest",
+        "type": "object"
+      },
+      "ReviewRequestCreate": {
+        "description": "Create + dispatch a review request for a contact.",
+        "properties": {
+          "appointment_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appointment Id"
+          },
+          "contact_id": {
+            "title": "Contact Id",
+            "type": "integer"
+          },
+          "send_now": {
+            "default": true,
+            "title": "Send Now",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "contact_id"
+        ],
+        "title": "ReviewRequestCreate",
+        "type": "object"
+      },
+      "ReviewRequestResponse": {
+        "description": "An outbound review request.",
+        "properties": {
+          "agent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Id"
+          },
+          "appointment_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appointment Id"
+          },
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "clicked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clicked At"
+          },
+          "contact_id": {
+            "title": "Contact Id",
+            "type": "integer"
+          },
+          "contact_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Name"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "rated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rated At"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReviewRequestStatusSchema"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "contact_id",
+          "token",
+          "channel",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ReviewRequestResponse",
+        "type": "object"
+      },
+      "ReviewRequestSendResult": {
+        "description": "Result of attempting to dispatch a review request.",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "review_request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Request Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReviewRequestStatusSchema"
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success",
+          "status",
+          "message"
+        ],
+        "title": "ReviewRequestSendResult",
+        "type": "object"
+      },
+      "ReviewRequestStatusSchema": {
+        "description": "Review-request lifecycle.",
+        "enum": [
+          "pending",
+          "sent",
+          "clicked",
+          "rated",
+          "completed",
+          "failed"
+        ],
+        "title": "ReviewRequestStatusSchema",
+        "type": "string"
+      },
+      "ReviewResponse": {
+        "description": "A collected review or private feedback item.",
+        "properties": {
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id"
+          },
+          "contact_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Name"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_public": {
+            "title": "Is Public",
+            "type": "boolean"
+          },
+          "rating": {
+            "title": "Rating",
+            "type": "integer"
+          },
+          "replied_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replied At"
+          },
+          "reply_draft": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply Draft"
+          },
+          "reply_sent": {
+            "title": "Reply Sent",
+            "type": "boolean"
+          },
+          "review_request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Request Id"
+          },
+          "reviewer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Name"
+          },
+          "sentiment": {
+            "$ref": "#/components/schemas/ReviewSentimentSchema"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ReviewSourceSchema"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReviewStatusSchema"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "rating",
+          "source",
+          "sentiment",
+          "status",
+          "is_public",
+          "reply_sent",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ReviewResponse",
+        "type": "object"
+      },
+      "ReviewSentimentSchema": {
+        "description": "Sentiment bucket.",
+        "enum": [
+          "positive",
+          "neutral",
+          "negative"
+        ],
+        "title": "ReviewSentimentSchema",
+        "type": "string"
+      },
+      "ReviewSettings": {
+        "description": "Per-workspace reputation engine configuration.",
+        "properties": {
+          "auto_request_on_completion": {
+            "default": true,
+            "title": "Auto Request On Completion",
+            "type": "boolean"
+          },
+          "business_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Name"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "facebook_review_url": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Facebook Review Url"
+          },
+          "google_review_url": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Google Review Url"
+          },
+          "positive_threshold": {
+            "default": 4,
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Positive Threshold",
+            "type": "integer"
+          },
+          "reply_tone": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply Tone"
+          },
+          "request_delay_minutes": {
+            "default": 60,
+            "maximum": 10080.0,
+            "minimum": 0.0,
+            "title": "Request Delay Minutes",
+            "type": "integer"
+          },
+          "request_message_template": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Message Template"
+          }
+        },
+        "title": "ReviewSettings",
+        "type": "object"
+      },
+      "ReviewSettingsUpdate": {
+        "description": "Partial update for reputation settings.",
+        "properties": {
+          "auto_request_on_completion": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Request On Completion"
+          },
+          "business_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Name"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "facebook_review_url": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Facebook Review Url"
+          },
+          "google_review_url": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Google Review Url"
+          },
+          "positive_threshold": {
+            "anyOf": [
+              {
+                "maximum": 5.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Positive Threshold"
+          },
+          "reply_tone": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply Tone"
+          },
+          "request_delay_minutes": {
+            "anyOf": [
+              {
+                "maximum": 10080.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Delay Minutes"
+          },
+          "request_message_template": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Message Template"
+          }
+        },
+        "title": "ReviewSettingsUpdate",
+        "type": "object"
+      },
+      "ReviewSourceSchema": {
+        "description": "Review origin.",
+        "enum": [
+          "sms_request",
+          "google",
+          "facebook",
+          "manual"
+        ],
+        "title": "ReviewSourceSchema",
+        "type": "string"
+      },
+      "ReviewStatusSchema": {
+        "description": "Operator triage state.",
+        "enum": [
+          "new",
+          "replied",
+          "resolved",
+          "dismissed"
+        ],
+        "title": "ReviewStatusSchema",
+        "type": "string"
+      },
+      "ReviewUpdate": {
+        "description": "Update a review's triage state or reply draft.",
+        "properties": {
+          "reply_draft": {
+            "anyOf": [
+              {
+                "maxLength": 5000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply Draft"
+          },
+          "reply_sent": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply Sent"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewStatusSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "ReviewUpdate",
         "type": "object"
       },
       "SearchPhoneNumbersRequest": {
@@ -23937,6 +25023,155 @@
         "summary": "Submit Offer Optin",
         "tags": [
           "Public Offers"
+        ]
+      }
+    },
+    "/api/v1/p/reviews/{token}": {
+      "get": {
+        "description": "Public landing-page data for a review-request token.",
+        "operationId": "get_public_review_request_api_v1_p_reviews__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicReviewRequest"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Public Review Request",
+        "tags": [
+          "Public Reviews"
+        ]
+      }
+    },
+    "/api/v1/p/reviews/{token}/feedback": {
+      "post": {
+        "description": "Submit private feedback for a low rating (firewall path).",
+        "operationId": "submit_public_feedback_api_v1_p_reviews__token__feedback_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicFeedbackSubmit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicFeedbackResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Public Feedback",
+        "tags": [
+          "Public Reviews"
+        ]
+      }
+    },
+    "/api/v1/p/reviews/{token}/rate": {
+      "post": {
+        "description": "Submit a star rating; applies the rating gate routing.",
+        "operationId": "submit_public_rating_api_v1_p_reviews__token__rate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicRatingSubmit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicRatingResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Public Rating",
+        "tags": [
+          "Public Reviews"
         ]
       }
     },
@@ -41909,6 +43144,678 @@
         "summary": "Get Realtor Stats",
         "tags": [
           "Realtor Onboarding"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/reviews": {
+      "get": {
+        "description": "List collected reviews and private feedback for the workspace.",
+        "operationId": "list_reviews_api_v1_workspaces__workspace_id__reviews_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "is_public",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Public"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sentiment",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sentiment"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedReviews"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Reviews",
+        "tags": [
+          "Reviews"
+        ]
+      },
+      "post": {
+        "description": "Manually create a review (operator entry).",
+        "operationId": "create_review_api_v1_workspaces__workspace_id__reviews_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Create Review",
+        "tags": [
+          "Reviews"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/reviews/requests": {
+      "get": {
+        "description": "List review requests for the workspace.",
+        "operationId": "list_review_requests_api_v1_workspaces__workspace_id__reviews_requests_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedReviewRequests"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Review Requests",
+        "tags": [
+          "Reviews"
+        ]
+      },
+      "post": {
+        "description": "Create and optionally dispatch a review-request SMS to a contact.",
+        "operationId": "create_review_request_api_v1_workspaces__workspace_id__reviews_requests_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewRequestCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewRequestSendResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Create Review Request",
+        "tags": [
+          "Reviews"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/reviews/settings": {
+      "get": {
+        "description": "Get reputation engine settings for the workspace.",
+        "operationId": "get_review_settings_api_v1_workspaces__workspace_id__reviews_settings_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Review Settings",
+        "tags": [
+          "Reviews"
+        ]
+      },
+      "put": {
+        "description": "Update reputation engine settings for the workspace.",
+        "operationId": "update_review_settings_api_v1_workspaces__workspace_id__reviews_settings_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Update Review Settings",
+        "tags": [
+          "Reviews"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/reviews/summary": {
+      "get": {
+        "description": "Aggregate reputation metrics for the workspace dashboard.",
+        "operationId": "get_reputation_summary_api_v1_workspaces__workspace_id__reviews_summary_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReputationSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Reputation Summary",
+        "tags": [
+          "Reviews"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/reviews/{review_id}": {
+      "get": {
+        "description": "Get a single review.",
+        "operationId": "get_review_api_v1_workspaces__workspace_id__reviews__review_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Review",
+        "tags": [
+          "Reviews"
+        ]
+      },
+      "put": {
+        "description": "Update a review's triage state or reply draft.",
+        "operationId": "update_review_api_v1_workspaces__workspace_id__reviews__review_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Update Review",
+        "tags": [
+          "Reviews"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/reviews/{review_id}/generate-reply": {
+      "post": {
+        "description": "Draft an on-brand AI reply for a review.\n\nThe draft is persisted on the review so operators can edit before sending.",
+        "operationId": "generate_reply_api_v1_workspaces__workspace_id__reviews__review_id__generate_reply_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewReplyGenerateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeneratedReviewReply"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Generate Reply",
+        "tags": [
+          "Reviews"
         ]
       }
     },

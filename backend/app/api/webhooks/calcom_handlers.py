@@ -854,3 +854,14 @@ async def handle_meeting_ended(data: dict[str, Any], log: Any) -> None:  # noqa:
                         )
             except Exception as e:
                 log.warning("post_meeting_sms_setup_failed", error=str(e))
+
+            # Enqueue a review request (reputation engine). No-ops unless the
+            # workspace has the engine + auto-trigger enabled. The SMS itself is
+            # dispatched later by the review-request worker after the configured
+            # delay. Wrapped in try/except — never affects the webhook response.
+            try:
+                from app.services.reviews import ReviewService
+
+                await ReviewService(db).enqueue_for_appointment(appointment)
+            except Exception as e:
+                log.warning("review_request_enqueue_failed", error=str(e))

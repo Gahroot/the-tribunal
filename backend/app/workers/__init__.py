@@ -38,6 +38,7 @@ from app.workers.prompt_improvement_worker import _registry as prompt_improvemen
 from app.workers.prompt_stats_worker import _registry as prompt_stats_registry
 from app.workers.reminder_worker import _registry as reminder_registry
 from app.workers.reputation_worker import _registry as reputation_registry
+from app.workers.review_request_worker import _registry as review_request_registry
 from app.workers.transcript_analysis_worker import _registry as transcript_analysis_registry
 from app.workers.voice_campaign_worker import _registry as voice_campaign_registry
 
@@ -168,6 +169,11 @@ WORKER_SPECS: tuple[WorkerSpec, ...] = (
     WorkerSpec(
         name="noshow_reengagement_worker",
         registry=noshow_reengagement_registry,
+        dependencies=("postgres", "text_message_provider"),
+    ),
+    WorkerSpec(
+        name="review_request_worker",
+        registry=review_request_registry,
         dependencies=("postgres", "text_message_provider"),
     ),
     WorkerSpec(
