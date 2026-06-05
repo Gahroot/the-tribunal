@@ -24,6 +24,11 @@ from app.services.approval.approval_gate_service import approval_gate_service
 
 logger = structlog.get_logger()
 
+# Read-only tools that never mutate state and so bypass the HITL approval gate.
+# Gating a knowledge lookup behind operator approval would stall the live call
+# for a harmless retrieval, so it is always allowed to run.
+GATE_EXEMPT_TOOLS: frozenset[str] = frozenset({"search_knowledge"})
+
 PRESTYJ_APPLICATION_URL = "https://prestyj.com/founding-cohort"
 PRESTYJ_APPLICATION_SMS_BODY = (
     "Here is the Prestyj founding cohort application: "
@@ -77,7 +82,7 @@ class VoiceToolExecutor(BaseToolExecutor):
 
     # ── Main dispatch ───────────────────────────────────────────────
 
-    async def execute(
+    async def execute(  # noqa: PLR0911 - flat tool dispatch table
         self,
         function_name: str,
         arguments: dict[str, Any],
@@ -114,6 +119,12 @@ class VoiceToolExecutor(BaseToolExecutor):
         if function_name == "send_dtmf":
             return await self._execute_send_dtmf(
                 digits=arguments.get("digits", ""),
+            )
+
+        if function_name == "search_knowledge":
+            return await self._execute_search_knowledge(
+                query=arguments.get("query", ""),
+                top_k=arguments.get("top_k"),
             )
 
         if function_name == "send_application_link":
@@ -383,6 +394,43 @@ class VoiceToolExecutor(BaseToolExecutor):
             "application_url": PRESTYJ_APPLICATION_URL,
             "message": "Application link sent by SMS.",
         }
+
+    async def _execute_search_knowledge(
+        self,
+        query: str,
+        top_k: int | None = None,
+    ) -> dict[str, Any]:
+        """Retrieve on-demand knowledge passages for the current call.
+
+        Scoped to the call's workspace + agent (the call context): ``agent_id``
+        comes from the bound agent and ``workspace_id`` from the executor (or the
+        agent as a fallback). Returns ranked passages tagged with their source
+        document title so the model can cite them out loud.
+        """
+        from app.db.session import AsyncSessionLocal
+        from app.services.knowledge.search_tool import execute_knowledge_search
+
+        agent_id = getattr(self.agent, "id", None)
+        workspace_id = self.workspace_id or getattr(self.agent, "workspace_id", None)
+        if agent_id is None or workspace_id is None:
+            self.log.warning(
+                "search_knowledge_missing_scope",
+                has_agent_id=agent_id is not None,
+                has_workspace_id=workspace_id is not None,
+            )
+            return {
+                "success": False,
+                "error": "Knowledge base is not available for this call.",
+            }
+
+        async with AsyncSessionLocal() as db:
+            return await execute_knowledge_search(
+                db,
+                workspace_id=workspace_id,
+                agent_id=agent_id,
+                query=query,
+                top_k=top_k,
+            )
 
     async def _execute_transfer_call(
         self,
@@ -785,6 +833,18 @@ def create_tool_callback(
             function_name=function_name,
             arguments=arguments,
         )
+
+        # Read-only tools (e.g. knowledge lookups) skip the approval gate so a
+        # live call never stalls waiting for operator sign-off on a retrieval.
+        if function_name in GATE_EXEMPT_TOOLS:
+            result = await executor.execute(function_name, arguments)
+            log.info(
+                "tool_callback_completed",
+                call_id=call_id,
+                function_name=function_name,
+                result=result,
+            )
+            return result
 
         # Check approval gate (voice has no db session — gate opens its own)
         decision, gate_result = await approval_gate_service.check_and_execute_or_queue(

@@ -113,6 +113,46 @@ TRANSFER_CALL_TOOL: dict[str, Any] = {
     },
 }
 
+# On-demand knowledge retrieval tool.
+# Replaces static prompt-stuffing (the old ~4k-token CAG concat): instead of
+# dumping the whole knowledge base into the system prompt, the agent calls this
+# tool to pull only the passages it needs for the current question. Execution
+# runs hybrid (vector + keyword) retrieval scoped to the call's workspace + agent.
+SEARCH_KNOWLEDGE_TOOL: dict[str, Any] = {
+    "type": "function",
+    "name": "search_knowledge",
+    "description": (
+        "Search this business's knowledge base for facts you need to answer the "
+        "caller accurately \u2014 pricing, policies, FAQs, hours, product details, "
+        "or anything specific to this company. Call this BEFORE answering any "
+        "factual question instead of guessing. Pass a focused natural-language "
+        "query describing what you need to know. Returns ranked passages with the "
+        "document title each came from; ground your answer in those passages and "
+        "do NOT invent details that are not returned."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": (
+                    "What you need to find out, phrased as a focused question or "
+                    "keywords (e.g. 'cancellation policy for monthly plan', "
+                    "'weekend opening hours')."
+                ),
+            },
+            "top_k": {
+                "type": "integer",
+                "description": (
+                    "Optional number of passages to retrieve (1-10). Defaults to 5. "
+                    "Ask for more only when a broad question needs several sources."
+                ),
+            },
+        },
+        "required": ["query"],
+    },
+}
+
 APPLICATION_LINK_SMS_TOOL: dict[str, Any] = {
     "type": "function",
     "name": "send_application_link",
@@ -303,6 +343,7 @@ def build_tools_list(
     enable_dtmf: bool = False,
     enable_application_link_sms: bool = False,
     enable_transfer: bool = False,
+    enable_search_knowledge: bool = False,
     timezone: str = "America/New_York",
 ) -> list[dict[str, Any]]:
     """Build a complete tools list based on enabled features.
@@ -314,6 +355,7 @@ def build_tools_list(
         enable_dtmf: Include DTMF tool for IVR navigation
         enable_application_link_sms: Include fixed Prestyj application-link SMS tool
         enable_transfer: Include live human transfer/handoff tool
+        enable_search_knowledge: Include the on-demand knowledge retrieval tool
         timezone: Timezone for booking tools date context
 
     Returns:
@@ -327,6 +369,10 @@ def build_tools_list(
 
     if enable_x_search:
         tools.append(GROK_BUILTIN_TOOLS["x_search"])
+
+    # On-demand knowledge retrieval (replaces static CAG prompt-stuffing)
+    if enable_search_knowledge:
+        tools.append(SEARCH_KNOWLEDGE_TOOL)
 
     # DTMF for IVR
     if enable_dtmf:
@@ -414,8 +460,21 @@ def get_tools_from_agent_config(
         enable_dtmf=dtmf_enabled,
         enable_application_link_sms=application_link_sms_enabled,
         enable_transfer=is_transfer_enabled(agent),
+        enable_search_knowledge=is_search_knowledge_enabled(agent),
         timezone=timezone,
     )
+
+
+def is_search_knowledge_enabled(agent: Any) -> bool:
+    """Return whether the on-demand knowledge retrieval tool should be exposed.
+
+    Opt-in via ``"search_knowledge"`` in the agent's ``enabled_tools``. The tool
+    is only useful when the agent has an ingested knowledge base, so operators
+    enable it explicitly rather than paying the per-turn tool overhead always.
+    """
+    if not agent:
+        return False
+    return "search_knowledge" in (agent.enabled_tools or [])
 
 
 # Grok available voices (for validation)
@@ -445,6 +504,24 @@ def validate_grok_voice(voice_id: str) -> str | None:
 
 # OpenAI function calling format (for text agents)
 # These use the {"type": "function", "function": {...}} wrapper
+def get_text_search_knowledge_tool() -> dict[str, Any]:
+    """Knowledge retrieval tool in OpenAI function-calling format for text agents.
+
+    Mirrors :data:`SEARCH_KNOWLEDGE_TOOL` but wrapped in the
+    ``{"type": "function", "function": {...}}`` shape the chat completions API
+    expects. Lets the text/SMS agent pull only the passages it needs instead of
+    static prompt-stuffing the full knowledge base.
+    """
+    return {
+        "type": "function",
+        "function": {
+            "name": SEARCH_KNOWLEDGE_TOOL["name"],
+            "description": SEARCH_KNOWLEDGE_TOOL["description"],
+            "parameters": SEARCH_KNOWLEDGE_TOOL["parameters"],
+        },
+    }
+
+
 def get_text_booking_tools(timezone: str = "America/New_York") -> list[dict[str, Any]]:
     """Get booking tools in OpenAI function calling format for text agents.
 

@@ -172,6 +172,28 @@ You can use these auditory cues naturally in your responses to sound more human:
 
         return "\n".join(parts)
 
+    def get_knowledge_guidance(self) -> str:
+        """Get guidance for the on-demand ``search_knowledge`` tool.
+
+        Returned only when the agent has the tool enabled. Instructs the agent to
+        retrieve facts on demand rather than relying on prompt-stuffed context.
+        """
+        if not self.agent or not self.agent.enabled_tools:
+            return ""
+        if "search_knowledge" not in self.agent.enabled_tools:
+            return ""
+
+        return (
+            "\n\n# Knowledge Base\n"
+            "You have a search_knowledge tool connected to this business's "
+            "knowledge base (pricing, policies, FAQs, hours, product details). "
+            "BEFORE answering any specific factual question, call search_knowledge "
+            "with a focused query and base your answer ONLY on the passages it "
+            "returns. Do NOT guess or invent details. If the search returns "
+            "nothing relevant, say you don't have that information rather than "
+            "making something up."
+        )
+
     def get_ivr_navigation_guidance(
         self,
         ivr_status: "IVRStatus | None" = None,
@@ -438,6 +460,7 @@ AVAILABILITY ACCURACY RULES:
         include_identity: bool = True,
         include_realism: bool = False,
         include_search: bool = True,
+        include_knowledge: bool = True,
         include_telephony: bool = True,
         include_booking: bool = False,
         include_ivr_guidance: bool = True,
@@ -494,6 +517,10 @@ AVAILABILITY ACCURACY RULES:
         # 6. Search guidance
         if include_search:
             parts.append(self.get_search_guidance())
+
+        # 6b. Knowledge base (on-demand retrieval) guidance
+        if include_knowledge:
+            parts.append(self.get_knowledge_guidance())
 
         # 7. IVR/DTMF navigation guidance (before booking, critical for outbound)
         if include_ivr_guidance:

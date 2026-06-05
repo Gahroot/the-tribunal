@@ -32,7 +32,7 @@ from app.services.ai.text_prompt_builder import (
     build_text_instructions,
 )
 from app.services.ai.text_tool_executor import TextToolExecutor
-from app.services.ai.voice_tools import get_text_booking_tools
+from app.services.ai.voice_tools import get_text_booking_tools, get_text_search_knowledge_tool
 from app.services.knowledge.knowledge_context_service import knowledge_context_service
 
 logger = structlog.get_logger()
@@ -252,8 +252,16 @@ async def generate_text_response(  # noqa: PLR0915, PLR0912
         if extracted_email:
             log.info("email_extracted_from_history", email=extracted_email)
 
-    # Fetch knowledge base context for CAG
-    knowledge_context = await knowledge_context_service.get_context_for_agent(db, agent.id)
+    # Build a small high-priority knowledge preamble (must-know facts only).
+    # Bulk knowledge is reached on demand via the search_knowledge tool instead
+    # of statically prompt-stuffing the whole base into every request.
+    knowledge_context = await knowledge_context_service.get_preamble_for_agent(db, agent.id)
+
+    # Expose the on-demand knowledge tool when the operator enabled it or the
+    # agent has an ingested knowledge base to search.
+    knowledge_tool_enabled = "search_knowledge" in (agent.enabled_tools or []) or (
+        await knowledge_context_service.has_active_documents(db, agent.id)
+    )
 
     system_prompt = build_text_instructions(
         system_prompt=agent.system_prompt + booking_instructions,
@@ -283,9 +291,18 @@ async def generate_text_response(  # noqa: PLR0915, PLR0912
             "max_completion_tokens": 500,
         }
 
+        # Assemble the tool list: booking tools (if configured) plus the
+        # on-demand knowledge retrieval tool (if enabled). Both can coexist.
+        active_tools: list[dict[str, Any]] = []
+        if has_booking_tools:
+            active_tools.extend(get_text_booking_tools(timezone))
+        if knowledge_tool_enabled:
+            active_tools.append(get_text_search_knowledge_tool())
+        if active_tools:
+            api_params["tools"] = active_tools
+
         # Include tools if booking is configured
         if has_booking_tools:
-            api_params["tools"] = get_text_booking_tools(timezone)
             # Check if last message mentions booking-related keywords
             last_msg = messages[-1]["content"].lower() if messages else ""
 
@@ -330,6 +347,10 @@ async def generate_text_response(  # noqa: PLR0915, PLR0912
                 else:
                     api_params["tool_choice"] = "auto"
                     log.info("booking_tools_enabled")
+        elif knowledge_tool_enabled:
+            # Knowledge-only tool set: let the model decide when to look things up.
+            api_params["tool_choice"] = "auto"
+            log.info("knowledge_tool_enabled")
 
         # Make initial LLM call
         response = await asyncio.wait_for(

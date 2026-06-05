@@ -22,13 +22,14 @@ from __future__ import annotations
 import re
 import uuid
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import structlog
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.knowledge_chunk import KnowledgeChunk
+from app.models.knowledge_document import KnowledgeDocument
 from app.services.ai.embeddings import Embedder, embed_texts
 
 logger = structlog.get_logger()
@@ -88,6 +89,22 @@ class RetrievedChunk:
     distance: float
     # Combined normalized relevance score in ``[0, 1]`` (higher = better).
     score: float
+
+
+@dataclass(slots=True)
+class RetrievedPassage:
+    """A ranked retrieval result enriched with its source document title.
+
+    This is the citation-friendly shape returned to the on-demand
+    ``search_knowledge`` tool: the model gets the passage text plus the human
+    title of the document it came from so it can attribute facts out loud.
+    """
+
+    document_id: uuid.UUID
+    title: str
+    content: str
+    score: float
+    ordinal: int
 
 
 @dataclass(slots=True)
@@ -410,6 +427,58 @@ class KnowledgeRetrievalService:
             for entry in selected
         ]
         return await reranker(trimmed, chunks)
+
+    async def retrieve_passages(
+        self,
+        db: AsyncSession,
+        *,
+        workspace_id: uuid.UUID,
+        agent_id: uuid.UUID,
+        query: str,
+        top_k: int | None = None,
+        options: RetrieveOptions | None = None,
+    ) -> list[RetrievedPassage]:
+        """Retrieve the top-k chunks and enrich them with document titles.
+
+        Thin wrapper over :meth:`retrieve` for the on-demand ``search_knowledge``
+        tool: runs the hybrid pipeline (always scoped to ``workspace_id`` +
+        ``agent_id``), then resolves each surviving chunk's parent document title
+        in a single query so the model can cite sources. Order is preserved.
+        """
+        opts = options or RetrieveOptions()
+        if top_k is not None:
+            opts = replace(opts, top_k=top_k)
+
+        chunks = await self.retrieve(
+            db,
+            workspace_id=workspace_id,
+            agent_id=agent_id,
+            query=query,
+            options=opts,
+        )
+        if not chunks:
+            return []
+
+        document_ids = {chunk.document_id for chunk in chunks}
+        title_rows = (
+            await db.execute(
+                select(KnowledgeDocument.id, KnowledgeDocument.title).where(
+                    KnowledgeDocument.id.in_(document_ids)
+                )
+            )
+        ).all()
+        titles = {row.id: row.title for row in title_rows}
+
+        return [
+            RetrievedPassage(
+                document_id=chunk.document_id,
+                title=titles.get(chunk.document_id, "Untitled"),
+                content=chunk.content,
+                score=chunk.score,
+                ordinal=chunk.ordinal,
+            )
+            for chunk in chunks
+        ]
 
 
 knowledge_retrieval_service = KnowledgeRetrievalService()

@@ -44,6 +44,9 @@ from app.utils.background_tasks import spawn_background_task
 
 logger = structlog.get_logger()
 
+# Read-only tools that never mutate state and so bypass the HITL approval gate.
+GATE_EXEMPT_TOOLS: frozenset[str] = frozenset({"search_knowledge"})
+
 
 class TextToolExecutor(BaseToolExecutor):
     """Executes tool calls for text/SMS conversations.
@@ -97,6 +100,23 @@ class TextToolExecutor(BaseToolExecutor):
                 function_name=function_name,
                 arguments=arguments,
             )
+
+            # Read-only tools (e.g. knowledge lookups) skip the approval gate.
+            if function_name in GATE_EXEMPT_TOOLS:
+                result = await self.execute(function_name, arguments)
+                results.append(
+                    {
+                        "tool_call_id": tool_call.id,
+                        "role": "tool",
+                        "content": json.dumps(result),
+                    }
+                )
+                self.log.info(
+                    "tool_call_completed",
+                    tool_call_id=tool_call.id,
+                    success=result.get("success", False),
+                )
+                continue
 
             # Check approval gate
             decision, _gate_result = await approval_gate_service.check_and_execute_or_queue(
@@ -173,9 +193,37 @@ class TextToolExecutor(BaseToolExecutor):
                     "success": False,
                     "error": f"Failed to check availability: {e!s}",
                 }
+        if function_name == "search_knowledge":
+            return await self._execute_search_knowledge(
+                query=arguments.get("query", ""),
+                top_k=arguments.get("top_k"),
+            )
 
         self.log.warning("unknown_text_tool", function_name=function_name)
         return {"success": False, "error": f"Unknown function: {function_name}"}
+
+    # ── Knowledge retrieval ─────────────────────────────────────────
+
+    async def _execute_search_knowledge(
+        self,
+        query: str,
+        top_k: int | None = None,
+    ) -> dict[str, Any]:
+        """Retrieve on-demand knowledge passages for this conversation.
+
+        Scoped to the conversation's workspace + the bound agent, reusing the
+        conversation's existing DB session. Returns ranked passages tagged with
+        their source document title for citation.
+        """
+        from app.services.knowledge.search_tool import execute_knowledge_search
+
+        return await execute_knowledge_search(
+            self.db,
+            workspace_id=self.conversation.workspace_id,
+            agent_id=self.agent.id,
+            query=query,
+            top_k=top_k,
+        )
 
     # ── Text-only booking wrapper ───────────────────────────────────
 

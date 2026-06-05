@@ -20,6 +20,7 @@ from app.services.ai.embeddings import EmbeddingResult
 from app.services.knowledge.retrieval_service import (
     Candidate,
     KnowledgeRetrievalService,
+    RetrievedChunk,
     RetrieveOptions,
     ScoredCandidate,
     _build_keyword_stmt,
@@ -245,3 +246,70 @@ class TestRetrieveShortCircuits:
         )
         assert out == []
         db.execute.assert_not_awaited()
+
+
+# ── retrieve_passages() title enrichment ─────────────────────────────
+class TestRetrievePassages:
+    @pytest.mark.asyncio
+    async def test_empty_retrieval_skips_title_query(self) -> None:
+        service = KnowledgeRetrievalService()
+        service.retrieve = AsyncMock(return_value=[])  # type: ignore[method-assign]
+        db = AsyncMock()
+
+        out = await service.retrieve_passages(
+            db,
+            workspace_id=uuid.uuid4(),
+            agent_id=uuid.uuid4(),
+            query="pricing",
+        )
+        assert out == []
+        db.execute.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_enriches_chunks_with_document_titles(self) -> None:
+        doc_a = uuid.uuid4()
+        doc_b = uuid.uuid4()
+        chunks = [
+            RetrievedChunk(
+                chunk_id=uuid.uuid4(),
+                document_id=doc_a,
+                content="plans start at $49",
+                ordinal=0,
+                char_start=0,
+                char_end=18,
+                distance=0.1,
+                score=0.9,
+            ),
+            RetrievedChunk(
+                chunk_id=uuid.uuid4(),
+                document_id=doc_b,
+                content="unknown doc chunk",
+                ordinal=1,
+                char_start=0,
+                char_end=17,
+                distance=0.2,
+                score=0.6,
+            ),
+        ]
+        service = KnowledgeRetrievalService()
+        service.retrieve = AsyncMock(return_value=chunks)  # type: ignore[method-assign]
+
+        # Only doc_a has a title row; doc_b falls back to "Untitled".
+        title_row = type("Row", (), {"id": doc_a, "title": "Pricing"})()
+        title_result = type("Res", (), {"all": lambda self: [title_row]})()
+        db = AsyncMock()
+        db.execute.return_value = title_result
+
+        out = await service.retrieve_passages(
+            db,
+            workspace_id=uuid.uuid4(),
+            agent_id=uuid.uuid4(),
+            query="cost",
+            top_k=3,
+        )
+        assert [(p.title, p.content, p.score) for p in out] == [
+            ("Pricing", "plans start at $49", 0.9),
+            ("Untitled", "unknown doc chunk", 0.6),
+        ]
+        # top_k override is threaded into the underlying retrieve() options.
+        assert service.retrieve.await_args.kwargs["options"].top_k == 3
