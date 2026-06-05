@@ -1,6 +1,9 @@
 services:
   postgres:
-    image: postgres:17.2-alpine
+    # pgvector/pgvector bundles the `vector` extension on top of the official
+    # postgres:17 image (Debian variant). Required by the hybrid knowledge
+    # retrieval embedding column (see alembic b546d7e401fe_rag_chunks_pgvector).
+    image: pgvector/pgvector:pg17
     container_name: aicrm-postgres
     restart: unless-stopped
     environment:
