@@ -133,6 +133,16 @@ dependencies = [
     # wrapper around outbound Telnyx calls.
     "pybreaker>=1.4.1",
     "ez-pixel>=0.1.0",
+    # Knowledge ingestion (RAG): token-aware chunking + document text extraction.
+    # feature floor: tiktoken 0.8 is the first release shipping the cl100k_base wheels for
+    # Python 3.12/3.13 used by the token-aware splitter in app/services/knowledge/chunking.py.
+    "tiktoken>=0.8.0",
+    # feature floor: pypdf 5.1 is the maintained pure-Python PDF parser used for text extraction
+    # in app/services/knowledge/text_extraction.py (supersedes the unmaintained PyPDF2 line).
+    "pypdf>=5.1.0",
+    # feature floor: python-docx 1.1 carries the typing + lxml fixes used for .docx text extraction
+    # in app/services/knowledge/text_extraction.py.
+    "python-docx>=1.1.2",
 ]
 
 [project.scripts]

@@ -18,9 +18,29 @@ from app.schemas.knowledge_document import (
     KnowledgeDocumentResponse,
     KnowledgeDocumentUpdate,
 )
+from app.services.knowledge.ingestion_service import (
+    IngestionError,
+    knowledge_ingestion_service,
+)
 from app.services.knowledge.knowledge_context_service import knowledge_context_service
 
 router = APIRouter()
+
+
+async def _reindex_or_400(db: AsyncSession, doc: KnowledgeDocument) -> None:
+    """Chunk + embed ``doc`` inside the caller's transaction (no commit here).
+
+    Embedding failures surface as a 502 so the caller's transaction rolls back
+    and the document is never persisted half-indexed.
+    """
+    try:
+        await knowledge_ingestion_service.reindex_document(db, doc)
+    except IngestionError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to index knowledge document embeddings.",
+        ) from exc
 
 
 def _doc_to_response(doc: KnowledgeDocument) -> KnowledgeDocumentResponse:
@@ -128,6 +148,10 @@ async def create_document(
         token_count=token_count,
     )
     db.add(doc)
+    # Flush so the document gets its id before chunks reference it; both the
+    # document and its chunks/embeddings then commit in one transaction.
+    await db.flush()
+    await _reindex_or_400(db, doc)
     await db.commit()
     await db.refresh(doc)
 
@@ -196,9 +220,11 @@ async def update_document(
     for field, value in update_data.items():
         setattr(doc, field, value)
 
-    # Recompute token_count if content was changed
+    # Recompute token_count and re-index chunks/embeddings if content changed.
     if "content" in update_data:
         doc.token_count = knowledge_context_service.count_tokens(doc.content)
+        await db.flush()
+        await _reindex_or_400(db, doc)
 
     await db.commit()
     await db.refresh(doc)
