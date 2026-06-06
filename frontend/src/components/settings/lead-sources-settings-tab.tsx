@@ -612,6 +612,39 @@ export function LeadSourcesSettingsTab() {
         </Card>
       )}
 
+      {/* Speed-to-lead proof badge snippet */}
+      {sources && sources.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Speed-to-Lead Proof Badge</CardTitle>
+            <CardDescription>
+              Drop this on your lead form to show your answered-within-target
+              stat. It stays hidden until you enable the badge under Speed to
+              Lead and have enough measured leads.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <pre className="overflow-x-auto rounded-lg bg-muted p-4 text-xs">
+              <code>{`<div id="speed-to-lead-badge"></div>
+<script>
+  fetch("${sources[0].endpoint_url}/proof")
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (p) {
+      if (!p || !p.enabled || !p.headline) return;
+      var el = document.getElementById("speed-to-lead-badge");
+      el.textContent = p.headline + " \u00B7 last " + p.window_days + " days";
+      el.style.cssText =
+        "display:inline-flex;align-items:center;gap:8px;" +
+        "border-radius:9999px;border:1px solid #a7f3d0;" +
+        "background:#ecfdf5;color:#065f46;padding:6px 12px;" +
+        "font:500 14px system-ui,sans-serif;";
+    });
+</script>`}</code>
+            </pre>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Create/Edit Dialog */}
       {dialogOpen && workspaceId && (
         <LeadSourceDialog
