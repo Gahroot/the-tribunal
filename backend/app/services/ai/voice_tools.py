@@ -244,6 +244,76 @@ TAKE_MESSAGE_TOOL: dict[str, Any] = {
     },
 }
 
+# In-call payment / deposit collection tool.
+# SECURE BY DESIGN: this NEVER reads raw card numbers over the AI channel. The
+# execution layer creates a Stripe Checkout Session for the requested amount and
+# texts the hosted payment link to the caller, recording payment intent/status
+# against the contact/opportunity. Opt-in via ``collect_payment`` in the agent's
+# enabled_tools so only agents authorized to take money expose it.
+COLLECT_PAYMENT_TOOL: dict[str, Any] = {
+    "type": "function",
+    "name": "collect_payment",
+    "description": (
+        "Collect a payment or deposit from the CURRENT caller by texting them a "
+        "secure payment link. Use this ONLY after the caller explicitly agrees to "
+        "pay a specific amount (e.g. a booking deposit or invoice). "
+        "NEVER ask the caller to read out their card number, CVV, or expiry — you "
+        "do NOT take card details by voice. This tool sends a secure Stripe link "
+        "by SMS to the caller's phone; they complete payment there. "
+        "Confirm the amount and what it is for before calling this. After calling "
+        "it, tell the caller to check their phone for the payment link, and use "
+        "check_payment_status if they say they've paid."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "amount": {
+                "type": "number",
+                "description": (
+                    "The amount to charge in the major currency unit (e.g. dollars). "
+                    "For example 50 means $50.00. Must be a positive number you have "
+                    "confirmed with the caller."
+                ),
+            },
+            "description": {
+                "type": "string",
+                "description": (
+                    "Short description of what the payment is for, e.g. "
+                    "'booking deposit', 'invoice #1234'. Shown to the caller on the "
+                    "payment page."
+                ),
+            },
+            "currency": {
+                "type": "string",
+                "description": (
+                    "Optional ISO 4217 currency code (e.g. 'usd', 'gbp'). "
+                    "Defaults to USD when omitted."
+                ),
+            },
+        },
+        "required": ["amount"],
+    },
+}
+
+# Companion read-only tool: lets the agent confirm whether the most recent
+# in-call payment link has been paid yet. Read-only (no spend, no mutation of
+# external state) so it is gate-exempt and safe to poll during the live call.
+CHECK_PAYMENT_STATUS_TOOL: dict[str, Any] = {
+    "type": "function",
+    "name": "check_payment_status",
+    "description": (
+        "Check whether the payment link you just texted the CURRENT caller has "
+        "been paid. Call this when the caller says they have completed (or are "
+        "having trouble with) the payment. Takes no arguments — it checks this "
+        "call's most recent payment request. Do not invent a result; report only "
+        "what this tool returns."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {},
+    },
+}
+
 APPLICATION_LINK_SMS_TOOL: dict[str, Any] = {
     "type": "function",
     "name": "send_application_link",
@@ -437,6 +507,7 @@ def build_tools_list(
     enable_search_knowledge: bool = False,
     enable_lookup_caller_record: bool = False,
     enable_take_message: bool = False,
+    enable_collect_payment: bool = False,
     timezone: str = "America/New_York",
 ) -> list[dict[str, Any]]:
     """Build a complete tools list based on enabled features.
@@ -451,6 +522,7 @@ def build_tools_list(
         enable_search_knowledge: Include the on-demand knowledge retrieval tool
         enable_lookup_caller_record: Include the read-only caller record lookup tool
         enable_take_message: Include the "take a message" capture tool
+        enable_collect_payment: Include the in-call payment/deposit collection tool
         timezone: Timezone for booking tools date context
 
     Returns:
@@ -476,6 +548,11 @@ def build_tools_list(
     # Structured "take a message" capture for operator follow-up
     if enable_take_message:
         tools.append(TAKE_MESSAGE_TOOL)
+
+    # In-call payment / deposit collection (secure SMS link + status check)
+    if enable_collect_payment:
+        tools.append(COLLECT_PAYMENT_TOOL)
+        tools.append(CHECK_PAYMENT_STATUS_TOOL)
 
     # DTMF for IVR
     if enable_dtmf:
@@ -566,6 +643,7 @@ def get_tools_from_agent_config(
         enable_search_knowledge=is_search_knowledge_enabled(agent),
         enable_lookup_caller_record=is_lookup_caller_record_enabled(agent),
         enable_take_message=is_take_message_enabled(agent),
+        enable_collect_payment=is_collect_payment_enabled(agent),
         timezone=timezone,
     )
 
@@ -593,6 +671,19 @@ def is_lookup_caller_record_enabled(agent: Any) -> bool:
     if not agent:
         return False
     return "lookup_caller_record" in (agent.enabled_tools or [])
+
+
+def is_collect_payment_enabled(agent: Any) -> bool:
+    """Return whether the in-call payment/deposit collection tool should be exposed.
+
+    Opt-in via ``"collect_payment"`` in the agent's ``enabled_tools``. The tool
+    initiates real money movement (a Stripe payment link texted to the caller),
+    so it is enabled explicitly for agents authorized to take payments rather
+    than exposed on every agent by default.
+    """
+    if not agent:
+        return False
+    return "collect_payment" in (agent.enabled_tools or [])
 
 
 def is_take_message_enabled(agent: Any) -> bool:

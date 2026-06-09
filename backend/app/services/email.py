@@ -306,6 +306,73 @@ async def send_taken_message_notification(
     return True
 
 
+async def send_payment_received_notification(
+    to_email: str,
+    workspace_name: str,
+    amount: float,
+    currency: str,
+    description: str | None,
+    idempotency_key: uuid.UUID | None = None,
+) -> bool:
+    """Email an operator when a caller completes an in-call payment/deposit."""
+    amount_str = f"{amount:.2f} {currency.upper()}"
+    subject = f"Payment Received — {amount_str}"
+
+    body_style = (
+        "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; "
+        "line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;"
+    )
+    label_style = "color: #666; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;"
+    value_style = "font-size: 16px; font-weight: 600; color: #1a1a1a; margin: 2px 0 16px 0;"
+
+    # Description is operator/agent-supplied free text; escape so it can't inject markup.
+    safe_description = html_escape(description) if description else "(no description)"
+
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="{body_style}">
+    <div style="text-align: center; margin-bottom: 30px;">
+        <h1 style="color: #1a1a1a; margin-bottom: 5px;">Payment Received</h1>
+    </div>
+    <p>A caller just completed a payment for <strong>{html_escape(workspace_name)}</strong>.</p>
+    <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 24px 0;">
+        <p style="{label_style}">Amount</p>
+        <p style="{value_style}">{html_escape(amount_str)}</p>
+        <p style="{label_style}">For</p>
+        <p style="{value_style}">{safe_description}</p>
+    </div>
+    <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+    <p style="color: #999; font-size: 12px; text-align: center;">
+        Sent by your AI voice assistant
+    </p>
+</body>
+</html>"""
+
+    params: dict[str, Any] = {
+        "from": _from_address(),
+        "to": [to_email],
+        "subject": subject,
+        "html": html_content,
+    }
+
+    response = await _send(params, idempotency_key=idempotency_key)
+    if response is None:
+        return False
+
+    logger.info(
+        "payment_received_notification_sent",
+        to_email=to_email,
+        amount=amount,
+        currency=currency,
+        email_id=response.get("id"),
+    )
+    return True
+
+
 async def send_appointment_booked_notification(
     to_email: str,
     realtor_name: str,

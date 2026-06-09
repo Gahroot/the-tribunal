@@ -359,8 +359,21 @@ async def stripe_webhook(request: Request, db: DB) -> dict[str, str]:
 
 
 async def _handle_checkout_completed(session: dict[str, Any], db: DB) -> None:
-    """Mark workspace as subscribed after a successful checkout."""
-    workspace_id_str: str | None = (session.get("metadata") or {}).get("workspace_id")
+    """Mark workspace as subscribed after a successful checkout.
+
+    In-call payments (the ``collect_payment`` voice tool) reuse the same Stripe
+    webhook but run in ``payment`` mode and carry a ``call_payment_id`` in
+    metadata. Route those to the call-payment handler instead of the SaaS
+    subscription path so they mark a :class:`CallPayment` paid + notify operators.
+    """
+    metadata = session.get("metadata") or {}
+    if session.get("mode") == "payment" or metadata.get("call_payment_id"):
+        from app.services.payments import call_payment_service
+
+        await call_payment_service.handle_checkout_session_completed(session, db)
+        return
+
+    workspace_id_str: str | None = metadata.get("workspace_id")
     customer_id: str | None = session.get("customer")
 
     if not workspace_id_str or not customer_id:

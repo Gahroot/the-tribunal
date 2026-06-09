@@ -12,6 +12,7 @@ from app.models.automation_execution import AutomationExecution
 from app.models.bandit_decision import BanditDecision, DecisionType
 from app.models.call_feedback import CallFeedback
 from app.models.call_outcome import CallOutcome
+from app.models.call_payment import CallPayment, CallPaymentStatus
 from app.models.campaign import Campaign, CampaignContact
 from app.models.campaign_number_pool import CampaignNumberPool
 from app.models.campaign_report import CampaignReport
@@ -178,6 +179,8 @@ __all__ = [
     "PersonaDifficulty",
     "CallOutcome",
     "CallFeedback",
+    "CallPayment",
+    "CallPaymentStatus",
     "BanditDecision",
     "DecisionType",
     "Tag",

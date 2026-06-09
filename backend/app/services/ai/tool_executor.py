@@ -31,8 +31,11 @@ logger = structlog.get_logger()
 # ``take_message`` is included: it only captures a structured message + notifies
 # operators (no outbound action, no spend), and gating it behind approval would
 # stall the live call and risk losing the message the caller is dictating.
+# ``check_payment_status`` is included: it only reads the current call's most
+# recent payment status from Stripe (no spend, no mutation of external state),
+# so gating it behind approval would needlessly stall the live call.
 GATE_EXEMPT_TOOLS: frozenset[str] = frozenset(
-    {"search_knowledge", "lookup_caller_record", "take_message"}
+    {"search_knowledge", "lookup_caller_record", "take_message", "check_payment_status"}
 )
 
 _ALLOWED_MESSAGE_URGENCIES: frozenset[str] = frozenset({"low", "medium", "high"})
@@ -153,6 +156,16 @@ class VoiceToolExecutor(BaseToolExecutor):
                 preferred_callback_time=arguments.get("preferred_callback_time"),
                 message=arguments.get("message"),
             )
+
+        if function_name == "collect_payment":
+            return await self._execute_collect_payment(
+                amount=arguments.get("amount"),
+                description=arguments.get("description"),
+                currency=arguments.get("currency"),
+            )
+
+        if function_name == "check_payment_status":
+            return await self._execute_check_payment_status()
 
         if function_name == "send_application_link":
             return await self._execute_send_application_link()
@@ -420,6 +433,388 @@ class VoiceToolExecutor(BaseToolExecutor):
             "success": True,
             "application_url": PRESTYJ_APPLICATION_URL,
             "message": "Application link sent by SMS.",
+        }
+
+    @staticmethod
+    def _validate_payment_amount(amount: Any) -> tuple[float | None, dict[str, Any] | None]:
+        """Validate + normalize a model-supplied payment amount (major units).
+
+        Returns ``(amount, None)`` when valid or ``(None, error_dict)`` otherwise.
+        """
+        from app.services.payments import call_payment_service
+
+        try:
+            amount_value = round(float(amount), 2)
+        except (TypeError, ValueError):
+            return None, {"success": False, "error": "A valid payment amount is required."}
+        if amount_value < call_payment_service.MIN_PAYMENT_AMOUNT:
+            return None, {
+                "success": False,
+                "error": f"Amount must be at least {call_payment_service.MIN_PAYMENT_AMOUNT:.0f}.",
+            }
+        if amount_value > call_payment_service.MAX_PAYMENT_AMOUNT:
+            return None, {
+                "success": False,
+                "error": (
+                    "That amount is too high to collect on a call. Ask the caller to "
+                    "arrange it with the team instead."
+                ),
+            }
+        return amount_value, None
+
+    async def _execute_collect_payment(  # noqa: PLR0911, PLR0915 - sequential guard clauses
+        self,
+        *,
+        amount: Any,
+        description: str | None,
+        currency: str | None,
+    ) -> dict[str, Any]:
+        """Initiate in-call payment/deposit collection via a secure Stripe SMS link.
+
+        Never reads raw card data. Creates a :class:`CallPayment` row (pending),
+        opens a Stripe Checkout Session for the amount, texts the hosted link to
+        the caller, and records payment intent/status against the contact and an
+        open opportunity (if any). The caller completes payment on Stripe; the
+        billing webhook (or ``check_payment_status``) confirms completion.
+        """
+        import stripe
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+
+        from app.db.session import AsyncSessionLocal
+        from app.models.call_payment import CallPayment, CallPaymentStatus
+        from app.models.conversation import Message as MessageModel
+        from app.services.payments import call_payment_service
+
+        # Validate the amount up front (the model controls it, so guardrail it).
+        amount_value, amount_error = self._validate_payment_amount(amount)
+        if amount_error is not None:
+            return amount_error
+        assert amount_value is not None
+
+        if not self.call_control_id:
+            return {"success": False, "error": "No active call found for this payment."}
+        if not call_payment_service.is_payment_configured():
+            return {"success": False, "error": "Payments are not configured for this workspace."}
+
+        currency_code = (currency or "usd").strip().lower()[:3] or "usd"
+        clean_description = (description or "").strip()[:500] or "Payment"
+
+        async with AsyncSessionLocal() as db:
+            msg_result = await db.execute(
+                select(MessageModel)
+                .options(selectinload(MessageModel.conversation))
+                .where(MessageModel.provider_message_id == self.call_control_id)
+            )
+            call_message = msg_result.scalar_one_or_none()
+            if not call_message or not call_message.conversation:
+                self.log.warning(
+                    "collect_payment_no_call_message", call_control_id=self.call_control_id
+                )
+                return {"success": False, "error": "Could not find the current call conversation."}
+
+            conversation = call_message.conversation
+            workspace_id = self.workspace_id or conversation.workspace_id
+            contact_id = conversation.contact_id
+            opportunity_id = await self._resolve_open_opportunity_id(
+                db, workspace_id=workspace_id, contact_id=contact_id
+            )
+
+            payment = CallPayment(
+                workspace_id=workspace_id,
+                message_id=call_message.id,
+                conversation_id=conversation.id,
+                contact_id=contact_id,
+                opportunity_id=opportunity_id,
+                agent_id=call_message.agent_id,
+                amount=amount_value,
+                currency=currency_code,
+                description=clean_description,
+                status=CallPaymentStatus.PENDING,
+            )
+            db.add(payment)
+            await db.commit()
+            await db.refresh(payment)
+            payment_id = payment.id
+
+            metadata = {
+                "kind": call_payment_service.PAYMENT_KIND,
+                "workspace_id": str(workspace_id),
+                "call_payment_id": str(payment_id),
+            }
+            if contact_id is not None:
+                metadata["contact_id"] = str(contact_id)
+
+            try:
+                checkout = await call_payment_service.create_payment_checkout_session(
+                    amount=amount_value,
+                    currency=currency_code,
+                    product_name=clean_description,
+                    metadata=metadata,
+                )
+            except stripe.StripeError as exc:
+                payment.status = CallPaymentStatus.FAILED
+                await db.commit()
+                self.log.error(
+                    "collect_payment_stripe_error",
+                    call_control_id=self.call_control_id,
+                    call_payment_id=str(payment_id),
+                    error=str(exc),
+                )
+                return {
+                    "success": False,
+                    "error": "Could not create the payment link right now.",
+                }
+
+            if not checkout.url:
+                payment.status = CallPaymentStatus.FAILED
+                await db.commit()
+                return {
+                    "success": False,
+                    "error": "The payment provider did not return a link.",
+                }
+
+            payment.stripe_checkout_session_id = checkout.session_id
+            payment.stripe_payment_intent_id = checkout.payment_intent_id
+            payment.payment_link_url = checkout.url
+            await db.commit()
+
+            sms_message = await self._send_payment_link_sms(
+                db,
+                payment=payment,
+                conversation=conversation,
+                call_message=call_message,
+                workspace_id=workspace_id,
+                checkout=checkout,
+                amount_value=amount_value,
+                currency_code=currency_code,
+                description=clean_description,
+            )
+            payment.sms_message_id = getattr(sms_message, "id", None)
+            await db.commit()
+
+        if str(getattr(sms_message, "status", "")) == "failed":
+            self.log.warning(
+                "collect_payment_sms_failed",
+                call_control_id=self.call_control_id,
+                call_payment_id=str(payment_id),
+            )
+            return {
+                "success": False,
+                "payment_id": str(payment_id),
+                "error": (
+                    "I created the payment link but couldn't text it. "
+                    "Apologize and offer to have the team follow up."
+                ),
+            }
+
+        self.log.info(
+            "collect_payment_link_sent",
+            call_control_id=self.call_control_id,
+            call_payment_id=str(payment_id),
+            amount=amount_value,
+            currency=currency_code,
+        )
+        return {
+            "success": True,
+            "payment_id": str(payment_id),
+            "amount": amount_value,
+            "currency": currency_code,
+            "message": (
+                f"I've texted a secure payment link for {amount_value:.2f} "
+                f"{currency_code.upper()} to the caller. Ask them to check their phone "
+                "and complete the payment. Use check_payment_status once they say they've paid."
+            ),
+        }
+
+    async def _send_payment_link_sms(
+        self,
+        db: Any,
+        *,
+        payment: Any,
+        conversation: Any,
+        call_message: Any,
+        workspace_id: uuid.UUID,
+        checkout: Any,
+        amount_value: float,
+        currency_code: str,
+        description: str,
+    ) -> Any:
+        """Text the secure Stripe payment link to the caller and return the SMS row."""
+        from app.services.idempotency import derive_outbound_key
+        from app.services.telephony.text_provider import get_text_message_provider
+
+        sms_body = (
+            f"Here is your secure payment link for {amount_value:.2f} "
+            f"{currency_code.upper()} ({description}):\n\n{checkout.url}\n\n"
+            "This link is processed securely by Stripe."
+        )
+        idempotency_key = derive_outbound_key(
+            "voice_collect_payment_sms", payment.id, checkout.session_id
+        )
+        provider = get_text_message_provider("telnyx")
+        try:
+            return await provider.send_message(
+                to_number=conversation.contact_phone,
+                from_number=conversation.workspace_phone,
+                body=sms_body,
+                db=db,
+                workspace_id=workspace_id,
+                agent_id=call_message.agent_id,
+                campaign_id=call_message.campaign_id,
+                idempotency_key=idempotency_key,
+            )
+        finally:
+            await provider.close()
+
+    async def _resolve_open_opportunity_id(
+        self,
+        db: Any,
+        *,
+        workspace_id: uuid.UUID,
+        contact_id: int | None,
+    ) -> uuid.UUID | None:
+        """Best-effort: most recent open opportunity for this caller, if any."""
+        if contact_id is None:
+            return None
+        from sqlalchemy import or_, select
+
+        from app.models.opportunity import Opportunity, opportunity_contact_table
+
+        try:
+            result = await db.execute(
+                select(Opportunity.id)
+                .outerjoin(
+                    opportunity_contact_table,
+                    opportunity_contact_table.c.opportunity_id == Opportunity.id,
+                )
+                .where(
+                    Opportunity.workspace_id == workspace_id,
+                    Opportunity.status == "open",
+                    Opportunity.is_active.is_(True),
+                    or_(
+                        Opportunity.primary_contact_id == contact_id,
+                        opportunity_contact_table.c.contact_id == contact_id,
+                    ),
+                )
+                .order_by(Opportunity.created_at.desc())
+                .limit(1)
+            )
+            opportunity_id: uuid.UUID | None = result.scalars().first()
+            return opportunity_id
+        except Exception as exc:  # pragma: no cover - opportunity link is optional
+            self.log.warning("collect_payment_opportunity_lookup_failed", error=str(exc))
+            return None
+
+    async def _execute_check_payment_status(self) -> dict[str, Any]:  # noqa: PLR0911
+        """Confirm whether this call's most recent payment link has been paid.
+
+        Read-only with respect to the AI channel: it polls Stripe for the
+        Checkout Session status and, on first confirmation of payment, records
+        the paid status and notifies operators (idempotently).
+        """
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+
+        from app.db.session import AsyncSessionLocal
+        from app.models.call_payment import CallPayment, CallPaymentStatus
+        from app.models.conversation import Message as MessageModel
+        from app.services.payments import call_payment_service
+
+        not_found = {
+            "success": True,
+            "found": False,
+            "message": (
+                "There's no payment request on this call yet. If the caller wants to "
+                "pay, use collect_payment first."
+            ),
+        }
+
+        if not self.call_control_id:
+            return not_found
+
+        async with AsyncSessionLocal() as db:
+            msg_result = await db.execute(
+                select(MessageModel)
+                .options(selectinload(MessageModel.conversation))
+                .where(MessageModel.provider_message_id == self.call_control_id)
+            )
+            call_message = msg_result.scalar_one_or_none()
+            if not call_message or not call_message.conversation:
+                return not_found
+
+            conversation = call_message.conversation
+            pay_result = await db.execute(
+                select(CallPayment)
+                .where(CallPayment.conversation_id == conversation.id)
+                .order_by(CallPayment.created_at.desc())
+                .limit(1)
+            )
+            payment = pay_result.scalar_one_or_none()
+            if payment is None:
+                return not_found
+
+            if payment.status == CallPaymentStatus.PAID:
+                return {
+                    "success": True,
+                    "found": True,
+                    "paid": True,
+                    "status": "paid",
+                    "message": "The payment has been received. Thank the caller and continue.",
+                }
+
+            # Still pending locally — reconcile with Stripe.
+            if payment.stripe_checkout_session_id and call_payment_service.is_payment_configured():
+                try:
+                    session_status = await call_payment_service.retrieve_session_status(
+                        payment.stripe_checkout_session_id
+                    )
+                except Exception as exc:
+                    self.log.warning(
+                        "check_payment_status_stripe_error",
+                        call_payment_id=str(payment.id),
+                        error=str(exc),
+                    )
+                    session_status = None
+
+                if session_status is not None and session_status.payment_status == "paid":
+                    await call_payment_service.mark_call_payment_paid(
+                        db,
+                        payment,
+                        payment_intent_id=session_status.payment_intent_id,
+                    )
+                    return {
+                        "success": True,
+                        "found": True,
+                        "paid": True,
+                        "status": "paid",
+                        "message": (
+                            "The payment just came through. Thank the caller and continue."
+                        ),
+                    }
+                if session_status is not None and session_status.status == "expired":
+                    payment.status = CallPaymentStatus.EXPIRED
+                    await db.commit()
+                    return {
+                        "success": True,
+                        "found": True,
+                        "paid": False,
+                        "status": "expired",
+                        "message": (
+                            "The payment link expired. Offer to send a fresh link with "
+                            "collect_payment."
+                        ),
+                    }
+
+        return {
+            "success": True,
+            "found": True,
+            "paid": False,
+            "status": "pending",
+            "message": (
+                "I don't see the payment completed yet. Ask the caller to open the "
+                "texted link and finish, then check again."
+            ),
         }
 
     async def _execute_search_knowledge(
