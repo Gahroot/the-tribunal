@@ -62,13 +62,20 @@ class BaseToolExecutor:
             return {"success": False, "error": "Cal.com not configured for this agent"}
         return None
 
-    async def _resolve_event_type_id(self, required_skill: str | None) -> int | None:
+    async def _resolve_event_type_id(
+        self, required_skill: str | None, *, record: bool = True
+    ) -> int | None:
         """Resolve which Cal.com event type to book against for this attempt.
 
         Applies the agent's assignment strategy: for round-robin / skill-based
         agents it picks a staff member from the pool and uses their event type,
         recording the choice in ``self.assigned_staff``. Falls back to the
         agent's own ``calcom_event_type_id`` when no staff is selected.
+
+        ``record`` controls whether the selection consumes a round-robin turn.
+        Bookings record (default); availability checks pass ``record=False`` so
+        they only peek the staff member's event type without skewing
+        distribution.
         """
         self.assigned_staff = None
         strategy = self._assignment_strategy()
@@ -85,7 +92,11 @@ class BaseToolExecutor:
         try:
             async with AsyncSessionLocal() as db:
                 staff = await resolve_staff_for_booking(
-                    db, agent=self.agent, required_skill=required_skill, commit=True
+                    db,
+                    agent=self.agent,
+                    required_skill=required_skill,
+                    commit=True,
+                    record=record,
                 )
                 if staff and staff.calcom_event_type_id:
                     self.assigned_staff = staff_to_assignment_dict(staff)
@@ -116,7 +127,8 @@ class BaseToolExecutor:
         if error:
             return error
 
-        event_type_id = await self._resolve_event_type_id(required_skill)
+        # Peek only: an availability check must not consume a round-robin turn.
+        event_type_id = await self._resolve_event_type_id(required_skill, record=False)
         if not event_type_id:
             return {"success": False, "error": "No bookable calendar available"}
 

@@ -232,6 +232,20 @@ async def test_resolve_round_robin_bumps_counters() -> None:
 
 
 @pytest.mark.asyncio
+async def test_resolve_peek_does_not_bump_counters() -> None:
+    pool = [FakeStaff("Alice", assignment_count=0), FakeStaff("Bob", assignment_count=2)]
+    session = _FakeSession(pool)
+    chosen = await resolve_staff_for_booking(
+        session, agent=_agent(STRATEGY_ROUND_ROBIN), record=False
+    )
+    # Same deterministic selection, but no counter bump and no commit.
+    assert chosen is not None and chosen.name == "Alice"
+    assert chosen.assignment_count == 0
+    assert chosen.last_assigned_at is None
+    assert session.committed is False
+
+
+@pytest.mark.asyncio
 async def test_resolve_skill_based_matches() -> None:
     pool = [
         FakeStaff("Alice", skills=["mortgage"]),

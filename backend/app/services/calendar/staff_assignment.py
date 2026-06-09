@@ -129,6 +129,7 @@ async def resolve_staff_for_booking(
     agent: Agent,
     required_skill: str | None = None,
     commit: bool = True,
+    record: bool = True,
 ) -> BookableStaff | None:
     """Resolve and (optionally) record the staff member for a booking.
 
@@ -136,8 +137,13 @@ async def resolve_staff_for_booking(
     eligible staff, or no staff matches a requested skill — in which case the
     caller should fall back to ``agent.calcom_event_type_id``.
 
-    When a staff member is chosen its round-robin counters are bumped
-    (``assignment_count`` +1, ``last_assigned_at`` = now) and persisted.
+    When ``record`` is True (the default, used for an actual booking) the
+    chosen member's round-robin counters are bumped (``assignment_count`` +1,
+    ``last_assigned_at`` = now) and persisted. Pass ``record=False`` to *peek*
+    the selection — e.g. an availability check that needs the staff member's
+    event type but must not consume a round-robin turn. The deterministic
+    tie-break keeps a peek and the following booking on the same member as long
+    as no other booking lands in between.
     """
     strategy = getattr(agent, "assignment_strategy", STRATEGY_SINGLE) or STRATEGY_SINGLE
     if strategy not in VALID_STRATEGIES or strategy == STRATEGY_SINGLE:
@@ -168,6 +174,10 @@ async def resolve_staff_for_booking(
             pool_size=len(pool),
         )
         return None
+
+    if not record:
+        # Peek only — don't consume a round-robin turn (e.g. availability check).
+        return chosen
 
     chosen.assignment_count = (chosen.assignment_count or 0) + 1
     chosen.last_assigned_at = datetime.now(UTC)
