@@ -66,6 +66,59 @@ async def _send(
     return dict(response) if response else {}
 
 
+def _text_to_html(body: str) -> str:
+    """Wrap plain automation copy in a minimal, safe HTML email shell.
+
+    The body is operator-authored template output; escape it so it cannot
+    inject markup, then preserve line breaks as paragraph spacing.
+    """
+    body_style = (
+        "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; "
+        "line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;"
+    )
+    safe_body = html_escape(body).replace("\n", "<br>")
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="{body_style}">
+    <p>{safe_body}</p>
+</body>
+</html>"""
+
+
+async def send_automation_email(
+    to_email: str,
+    subject: str,
+    body: str,
+    idempotency_key: uuid.UUID | None = None,
+) -> bool:
+    """Send an automation-triggered email to a contact via Resend.
+
+    ``body`` is rendered template text (placeholders already substituted by the
+    automation worker). Returns True only when the provider accepted the send.
+    """
+    params: dict[str, Any] = {
+        "from": _from_address(),
+        "to": [to_email],
+        "subject": subject,
+        "html": _text_to_html(body),
+    }
+
+    response = await _send(params, idempotency_key=idempotency_key)
+    if response is None:
+        return False
+
+    logger.info(
+        "automation_email_sent",
+        to_email=to_email,
+        email_id=response.get("id"),
+    )
+    return True
+
+
 async def send_invitation_email(
     to_email: str,
     workspace_name: str,

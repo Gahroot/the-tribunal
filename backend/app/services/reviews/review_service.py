@@ -55,6 +55,11 @@ from app.schemas.review import (
     ReviewResponse,
     ReviewSettings,
 )
+from app.services.automations.events import (
+    EVENT_REVIEW_RECEIVED,
+    EVENT_REVIEW_REQUEST_RESPONSE,
+    emit_automation_event,
+)
 from app.services.calendar.reminder_service import resolve_from_number
 from app.services.idempotency import derive_outbound_key
 from app.services.rate_limiting.opt_out_manager import OptOutManager
@@ -446,6 +451,26 @@ class ReviewService:
                 rating=rating,
                 is_public=is_positive,
             )
+            # Fire automation triggers: a review/rating just came in.
+            event_payload = {
+                "rating": rating,
+                "is_positive": is_positive,
+                "review_request_id": str(review_request.id),
+            }
+            await emit_automation_event(
+                self.db,
+                workspace_id=workspace.id,
+                event_type=EVENT_REVIEW_REQUEST_RESPONSE,
+                contact_id=review_request.contact_id,
+                payload=event_payload,
+            )
+            await emit_automation_event(
+                self.db,
+                workspace_id=workspace.id,
+                event_type=EVENT_REVIEW_RECEIVED,
+                contact_id=review_request.contact_id,
+                payload=event_payload,
+            )
             await self.db.commit()
         else:
             # Re-derive routing from the original rating.
@@ -610,6 +635,14 @@ class ReviewService:
             is_public=is_public,
         )
         self.db.add(review)
+        await self.db.flush()
+        await emit_automation_event(
+            self.db,
+            workspace_id=workspace_id,
+            event_type=EVENT_REVIEW_RECEIVED,
+            contact_id=contact_id,
+            payload={"rating": rating, "source": source, "is_public": is_public},
+        )
         await self.db.commit()
         await self.db.refresh(review)
         return review

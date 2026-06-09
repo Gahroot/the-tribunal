@@ -47,6 +47,7 @@ from app.models.conversation import Conversation, Message, MessageChannel, Messa
 from app.models.phone_number import PhoneNumber
 from app.models.workspace import Workspace
 from app.services.ai.opt_out_detector import has_potential_opt_out_keywords
+from app.services.automations.events import EVENT_MISSED_CALL, emit_automation_event
 from app.services.outbound.delivery import (
     OutboundDeliveryChannel,
     OutboundDeliveryRequest,
@@ -312,6 +313,20 @@ async def send_missed_call_textback(  # noqa: PLR0911, PLR0912
         # Keep the conversation in AI SMS mode so the caller's reply re-enters
         # the bot and continues qualifying/booking.
         await _enter_ai_sms_mode(db, conversation, agent_id)
+
+        # Fire the missed-call automation trigger (best-effort; committed below).
+        await emit_automation_event(
+            db,
+            workspace_id=workspace_id,
+            event_type=EVENT_MISSED_CALL,
+            contact_id=conversation.contact_id,
+            payload={
+                "call_control_id": call_control_id,
+                "call_outcome": call_outcome,
+                "contact_phone": contact_phone,
+            },
+        )
+        await db.commit()
 
         log.info(
             "missed_call_textback_sent",

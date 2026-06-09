@@ -18,6 +18,10 @@ from app.schemas.knowledge_document import (
     KnowledgeDocumentResponse,
     KnowledgeDocumentUpdate,
 )
+from app.services.automations.events import (
+    EVENT_KNOWLEDGE_DOCUMENT_UPLOADED,
+    emit_automation_event,
+)
 from app.services.knowledge.ingestion_service import (
     IngestionError,
     knowledge_ingestion_service,
@@ -152,6 +156,18 @@ async def create_document(
     # document and its chunks/embeddings then commit in one transaction.
     await db.flush()
     await _reindex_or_400(db, doc)
+    await emit_automation_event(
+        db,
+        workspace_id=workspace_id,
+        event_type=EVENT_KNOWLEDGE_DOCUMENT_UPLOADED,
+        contact_id=None,
+        payload={
+            "document_id": str(doc.id),
+            "agent_id": str(agent_id),
+            "title": doc.title,
+            "doc_type": doc.doc_type,
+        },
+    )
     await db.commit()
     await db.refresh(doc)
 

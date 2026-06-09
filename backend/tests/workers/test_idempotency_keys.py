@@ -446,6 +446,7 @@ class TestAdditionalRetrySendKeys:
                 automation,
                 contact,
                 {"message": "hi"},
+                {},
                 db,
             )
 

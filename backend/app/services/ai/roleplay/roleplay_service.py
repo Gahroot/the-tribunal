@@ -32,6 +32,7 @@ from app.services.ai.roleplay.agent_responder import (
 from app.services.ai.roleplay.default_personas import DEFAULT_PERSONAS
 from app.services.ai.roleplay.prospect_simulator import generate_prospect_reply
 from app.services.ai.roleplay.report_scorer import score_rehearsal
+from app.services.automations.events import EVENT_ROLEPLAY_COMPLETED, emit_automation_event
 from app.services.exceptions import NotFoundError, ValidationError
 
 logger = structlog.get_logger()
@@ -291,6 +292,7 @@ class RoleplayService:
             await self._apply_report(run, client, persona)
             run.status = RehearsalStatus.COMPLETED
             run.completed_at = datetime.now(UTC)
+            await self._emit_completed_event(run)
         except Exception as exc:  # noqa: BLE001 - persist failure, never 500 silently
             logger.exception("rehearsal_run_failed", run_id=str(run.id))
             run.status = RehearsalStatus.FAILED
@@ -346,6 +348,7 @@ class RoleplayService:
             await self._apply_report(run, client, persona)
             run.status = RehearsalStatus.COMPLETED
             run.completed_at = datetime.now(UTC)
+            await self._emit_completed_event(run)
         except Exception as exc:  # noqa: BLE001
             logger.exception("rehearsal_score_failed", run_id=str(run.id))
             run.status = RehearsalStatus.FAILED
@@ -353,6 +356,25 @@ class RoleplayService:
         await self.db.commit()
         await self.db.refresh(run)
         return run
+
+    async def _emit_completed_event(self, run: RehearsalRun) -> None:
+        """Queue the ``roleplay_completed`` automation trigger for a scored run."""
+        await emit_automation_event(
+            self.db,
+            workspace_id=run.workspace_id,
+            event_type=EVENT_ROLEPLAY_COMPLETED,
+            contact_id=None,
+            payload={
+                "run_id": str(run.id),
+                "agent_id": str(run.agent_id) if run.agent_id else None,
+                "agent_name": run.agent_name,
+                "persona_name": run.persona_name,
+                "overall_score": run.overall_score,
+                "rehearsee": run.rehearsee.value
+                if hasattr(run.rehearsee, "value")
+                else str(run.rehearsee),
+            },
+        )
 
     async def _apply_report(
         self,

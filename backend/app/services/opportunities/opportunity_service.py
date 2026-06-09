@@ -28,6 +28,11 @@ from app.schemas.opportunity import (
     PipelineStageUpdate,
     PipelineUpdate,
 )
+from app.services.automations.events import (
+    EVENT_DEAL_STAGE_CHANGED,
+    EVENT_OPPORTUNITY_CREATED,
+    emit_automation_event,
+)
 from app.services.exceptions import NotFoundError
 from app.services.opportunities.default_pipeline import DEFAULT_PIPELINE_STAGES
 from app.services.opportunities.opportunity_filters import apply_opportunity_filters
@@ -263,6 +268,20 @@ class OpportunityService:
             **opportunity_in.model_dump(),
         )
         self.db.add(opportunity)
+        await self.db.flush()
+        await emit_automation_event(
+            self.db,
+            workspace_id=workspace_id,
+            event_type=EVENT_OPPORTUNITY_CREATED,
+            contact_id=opportunity.primary_contact_id,
+            payload={
+                "opportunity_id": str(opportunity.id),
+                "name": opportunity.name,
+                "amount": float(opportunity.amount) if opportunity.amount is not None else None,
+                "stage": stage.name if stage else None,
+                "source": opportunity.source,
+            },
+        )
         await self.db.commit()
         # Refresh line_items so the response can serialize the (empty) collection
         # without triggering a lazy load outside the async greenlet.
@@ -326,6 +345,20 @@ class OpportunityService:
             opportunity.stage_id = opportunity_in.stage_id
             opportunity.probability = stage.probability
             opportunity.stage_changed_at = datetime.now(UTC)
+
+            await emit_automation_event(
+                self.db,
+                workspace_id=workspace_id,
+                event_type=EVENT_DEAL_STAGE_CHANGED,
+                contact_id=opportunity.primary_contact_id,
+                payload={
+                    "opportunity_id": str(opportunity.id),
+                    "name": opportunity.name,
+                    "old_stage": old_stage.name if old_stage else None,
+                    "stage": stage.name,
+                    "probability": stage.probability,
+                },
+            )
 
         # Simple field updates
         for field in [

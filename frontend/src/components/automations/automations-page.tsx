@@ -19,6 +19,16 @@ import {
   ArrowRight,
   Settings2,
   Loader2,
+  Star,
+  TrendingUp,
+  PhoneMissed,
+  GraduationCap,
+  FileText,
+  CalendarCheck,
+  CalendarX,
+  UserPlus,
+  Megaphone,
+  Timer,
   type LucideIcon,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -56,7 +66,9 @@ import { PageEmptyState, PageErrorState } from "@/components/ui/page-state";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -75,20 +87,54 @@ import { queryKeys } from "@/lib/query-keys";
 import { formatDate } from "@/lib/utils/date";
 import type { Automation, AutomationTriggerType, AutomationActionType } from "@/types";
 
-const triggerTypeConfig: Record<AutomationTriggerType, { label: string; icon: LucideIcon; color: string }> = {
-  event: { label: "Event", icon: Zap, color: "text-warning" },
-  schedule: { label: "Schedule", icon: Clock, color: "text-info" },
-  condition: { label: "Condition", icon: Settings2, color: "text-primary" },
+const triggerTypeConfig: Record<AutomationTriggerType, { label: string; icon: LucideIcon; color: string; description: string }> = {
+  event: { label: "Event", icon: Zap, color: "text-warning", description: "When an event occurs" },
+  schedule: { label: "Schedule", icon: Clock, color: "text-info", description: "Runs on a schedule" },
+  condition: { label: "Condition", icon: Settings2, color: "text-primary", description: "When conditions are met" },
+  appointment_booked: { label: "Appointment Booked", icon: CalendarCheck, color: "text-success", description: "When a contact books an appointment" },
+  booking_created: { label: "Booking Created", icon: CalendarCheck, color: "text-success", description: "When a booking is created" },
+  no_show: { label: "No-show", icon: CalendarX, color: "text-destructive", description: "When a contact misses an appointment" },
+  contact_tagged: { label: "Contact Tagged", icon: Tag, color: "text-primary", description: "When a contact gets a specific tag" },
+  never_booked: { label: "Never Booked", icon: UserPlus, color: "text-warning", description: "When a contact never booked after engaging" },
+  review_received: { label: "Review Received", icon: Star, color: "text-warning", description: "When a new review or rating comes in" },
+  review_request_response: { label: "Review Request Response", icon: Star, color: "text-warning", description: "When a contact responds to a review request" },
+  opportunity_created: { label: "Opportunity Created", icon: TrendingUp, color: "text-success", description: "When a new deal is created" },
+  deal_stage_changed: { label: "Deal Stage Changed", icon: TrendingUp, color: "text-info", description: "When a deal moves to a new stage" },
+  missed_call: { label: "Missed Call", icon: PhoneMissed, color: "text-destructive", description: "When an inbound call goes unanswered" },
+  roleplay_completed: { label: "Roleplay Completed", icon: GraduationCap, color: "text-primary", description: "When a practice-arena rehearsal finishes" },
+  knowledge_document_uploaded: { label: "Knowledge Doc Uploaded", icon: FileText, color: "text-info", description: "When a knowledge document is added" },
 };
 
 const actionTypeConfig: Record<AutomationActionType, { label: string; icon: LucideIcon }> = {
   send_sms: { label: "Send SMS", icon: MessageSquare },
   send_email: { label: "Send Email", icon: Mail },
   make_call: { label: "Make Call", icon: Phone },
-  update_status: { label: "Update Status", icon: Settings2 },
+  enroll_campaign: { label: "Enroll in Campaign", icon: Megaphone },
+  apply_tag: { label: "Apply Tag", icon: Tag },
   add_tag: { label: "Add Tag", icon: Tag },
+  wait: { label: "Wait", icon: Timer },
+  delay: { label: "Delay", icon: Timer },
+  update_status: { label: "Update Status", icon: Settings2 },
   assign_agent: { label: "Assign Agent", icon: UserCheck },
 };
+
+// Triggers offered in the builder dropdown, grouped for readability.
+const TRIGGER_OPTIONS: { group: string; values: AutomationTriggerType[] }[] = [
+  { group: "General", values: ["event", "schedule", "condition"] },
+  { group: "Appointments", values: ["appointment_booked", "booking_created", "no_show", "never_booked"] },
+  { group: "Contacts & Pipeline", values: ["contact_tagged", "opportunity_created", "deal_stage_changed"] },
+  { group: "Engagement", values: ["review_received", "review_request_response", "missed_call", "roleplay_completed", "knowledge_document_uploaded"] },
+];
+
+// Actions offered in the builder dropdown.
+const ACTION_OPTIONS: AutomationActionType[] = [
+  "send_sms",
+  "send_email",
+  "make_call",
+  "enroll_campaign",
+  "apply_tag",
+  "wait",
+];
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -311,24 +357,23 @@ export function AutomationsPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="event">
-                      <div className="flex items-center gap-2">
-                        <Zap className="size-4 text-warning" />
-                        Event-based
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="schedule">
-                      <div className="flex items-center gap-2">
-                        <Clock className="size-4 text-info" />
-                        Scheduled
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="condition">
-                      <div className="flex items-center gap-2">
-                        <Settings2 className="size-4 text-primary" />
-                        Condition-based
-                      </div>
-                    </SelectItem>
+                    {TRIGGER_OPTIONS.map((group) => (
+                      <SelectGroup key={group.group}>
+                        <SelectLabel>{group.group}</SelectLabel>
+                        {group.values.map((value) => {
+                          const cfg = triggerTypeConfig[value];
+                          const Icon = cfg.icon;
+                          return (
+                            <SelectItem key={value} value={value}>
+                              <div className="flex items-center gap-2">
+                                <Icon className={`size-4 ${cfg.color}`} />
+                                {cfg.label}
+                              </div>
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectGroup>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -342,11 +387,18 @@ export function AutomationsPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="send_sms">Send SMS</SelectItem>
-                    <SelectItem value="send_email">Send Email</SelectItem>
-                    <SelectItem value="make_call">Make Call</SelectItem>
-                    <SelectItem value="add_tag">Add Tag</SelectItem>
-                    <SelectItem value="assign_agent">Assign Agent</SelectItem>
+                    {ACTION_OPTIONS.map((value) => {
+                      const cfg = actionTypeConfig[value];
+                      const Icon = cfg.icon;
+                      return (
+                        <SelectItem key={value} value={value}>
+                          <div className="flex items-center gap-2">
+                            <Icon className="size-4 text-muted-foreground" />
+                            {cfg.label}
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -463,7 +515,12 @@ export function AutomationsPage() {
         >
           <AnimatePresence mode="popLayout">
             {filteredAutomations.map((automation) => {
-              const trigger = triggerTypeConfig[automation.trigger_type];
+              const trigger = triggerTypeConfig[automation.trigger_type] ?? {
+                label: automation.trigger_type,
+                icon: Zap,
+                color: "text-muted-foreground",
+                description: "Custom trigger",
+              };
               const TriggerIcon = trigger.icon;
 
               return (
@@ -550,9 +607,7 @@ export function AutomationsPage() {
                         <div className="flex-1">
                           <p className="text-sm font-medium">{trigger.label} Trigger</p>
                           <p className="text-xs text-muted-foreground">
-                            {automation.trigger_type === "event" && "When a contact is created"}
-                            {automation.trigger_type === "schedule" && "Runs on schedule"}
-                            {automation.trigger_type === "condition" && "When conditions are met"}
+                            {trigger.description}
                           </p>
                         </div>
                       </div>

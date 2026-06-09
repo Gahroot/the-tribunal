@@ -164,11 +164,15 @@ class TestQuietHours:
 
 
 class _Result:
-    def __init__(self, scalar: Any = None) -> None:
+    def __init__(self, scalar: Any = None, first: Any = None) -> None:
         self._scalar = scalar
+        self._first = first
 
     def scalar_one_or_none(self) -> Any:
         return self._scalar
+
+    def first(self) -> Any:
+        return self._first
 
 
 CALL_ID = "v3:missed-call-control-001"
@@ -205,11 +209,13 @@ def _build_world(
     workspace.settings = {"missed_call_textback": block, "timezone": "UTC"}
 
     db = MagicMock()
-    # execute() is called for: Message lookup, then recent-inbound opt-out lookup.
+    # execute() is called for: Message lookup, recent-inbound opt-out lookup,
+    # then the automation-event active-listener check (returns no listener).
     db.execute = AsyncMock(
         side_effect=[
             _Result(scalar=message),
             _Result(scalar=recent_inbound_body),
+            _Result(first=None),
         ]
     )
 

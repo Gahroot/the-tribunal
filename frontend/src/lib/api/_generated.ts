@@ -7992,7 +7992,7 @@ export interface components {
             };
             /**
              * Type
-             * @description Action type: send_sms, send_email, make_call, add_tag, assign_agent
+             * @description Action type: send_sms, send_email, make_call, enroll_campaign, apply_tag/add_tag, wait/delay
              */
             type: string;
         };

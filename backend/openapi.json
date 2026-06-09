@@ -3872,7 +3872,7 @@
             "type": "object"
           },
           "type": {
-            "description": "Action type: send_sms, send_email, make_call, add_tag, assign_agent",
+            "description": "Action type: send_sms, send_email, make_call, enroll_campaign, apply_tag/add_tag, wait/delay",
             "title": "Type",
             "type": "string"
           }
@@ -3922,7 +3922,7 @@
           },
           "trigger_type": {
             "default": "event",
-            "pattern": "^(event|schedule|condition)$",
+            "pattern": "^(event|schedule|condition|appointment_booked|booking_created|no_show|contact_tagged|never_booked|review_received|review_request_response|opportunity_created|deal_stage_changed|missed_call|roleplay_completed|knowledge_document_uploaded)$",
             "title": "Trigger Type",
             "type": "string"
           }
@@ -4112,7 +4112,7 @@
           "trigger_type": {
             "anyOf": [
               {
-                "pattern": "^(event|schedule|condition)$",
+                "pattern": "^(event|schedule|condition|appointment_booked|booking_created|no_show|contact_tagged|never_booked|review_received|review_request_response|opportunity_created|deal_stage_changed|missed_call|roleplay_completed|knowledge_document_uploaded)$",
                 "type": "string"
               },
               {

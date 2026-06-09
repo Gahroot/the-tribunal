@@ -1,7 +1,39 @@
 // Automation types
 
-export type AutomationTriggerType = "schedule" | "event" | "condition";
-export type AutomationActionType = "send_sms" | "send_email" | "make_call" | "update_status" | "add_tag" | "assign_agent";
+// Generic/legacy trigger kinds plus the concrete event/polling triggers the
+// backend automation worker evaluates.
+export type AutomationTriggerType =
+  | "schedule"
+  | "event"
+  | "condition"
+  // Polling triggers (contact-centric)
+  | "appointment_booked"
+  | "booking_created"
+  | "no_show"
+  | "contact_tagged"
+  | "never_booked"
+  // Event triggers (emitted by services)
+  | "review_received"
+  | "review_request_response"
+  | "opportunity_created"
+  | "deal_stage_changed"
+  | "missed_call"
+  | "roleplay_completed"
+  | "knowledge_document_uploaded";
+
+// Action types the backend automation worker can execute, plus UI-only kinds
+// retained for backward compatibility with existing automations.
+export type AutomationActionType =
+  | "send_sms"
+  | "send_email"
+  | "make_call"
+  | "enroll_campaign"
+  | "apply_tag"
+  | "add_tag"
+  | "wait"
+  | "delay"
+  | "update_status"
+  | "assign_agent";
 
 export interface AutomationAction {
   type: AutomationActionType;

@@ -2,42 +2,63 @@
 
 Poll cycle
 ----------
-1. Load all active automations.
-2. For each automation evaluate its trigger to find matching contacts that have
-   NOT yet been processed (no row in ``automation_executions``).
-3. For each new matching contact, execute every action in the automation's
-   ``actions`` list.
-4. Record an ``AutomationExecution`` row so the contact is not re-processed.
+1. Drain pending ``automation_events`` (event-based triggers) and run matching
+   automations against each event's contact.
+2. Load all active automations and evaluate polling triggers to find matching
+   contacts that have NOT yet been processed (no row in ``automation_executions``).
+3. For each new matching contact/event, execute every action in the automation's
+   ``actions`` list (each gated through the approval system).
+4. Record an ``AutomationExecution`` row so the contact/event is not re-processed.
 5. Update ``automation.last_evaluated_at`` so subsequent cycles can bound
    contact queries by recency (avoiding full-table scans on large datasets).
 
 Supported trigger_type values
 ------------------------------
-- ``appointment_booked``  / ``booking_created``  : contact.last_appointment_status == "scheduled"
-- ``no_show``                                     : contact.last_appointment_status == "no_show"
-- ``contact_tagged``                              : contact has a specific tag, tagged recently
-- ``never_booked``                                : contact has conversations but no appointments,
-                                                    last contact older than N days
+Polling triggers (evaluated against ``contacts``):
+
+- ``appointment_booked`` / ``booking_created`` : contact.last_appointment_status == "scheduled"
+- ``no_show``                                  : contact.last_appointment_status == "no_show"
+- ``contact_tagged``                           : contact has a specific tag, tagged recently
+- ``never_booked``                             : contact has conversations but no appointments
+
+Event triggers (drained from ``automation_events``, emitted by services):
+
+- ``review_received`` / ``review_request_response`` : a review / rating came in
+- ``opportunity_created`` / ``deal_stage_changed``  : pipeline activity
+- ``missed_call``                                   : inbound call went unanswered
+- ``roleplay_completed``                            : a practice-arena run finished
+- ``knowledge_document_uploaded``                   : a knowledge doc was added
 
 Supported action type values
 -----------------------------
 - ``send_sms``       : send an SMS via Telnyx using a resolved from-number
+- ``send_email``     : send an email via Resend to the contact's email
+- ``make_call``      : initiate an outbound AI voice call via Telnyx
 - ``enroll_campaign``: create a CampaignContact record (idempotent via upsert)
-- ``apply_tag``      : add a normalized workspace tag to the contact
+- ``apply_tag`` / ``add_tag`` : add a normalized workspace tag to the contact
 - ``wait`` / ``delay``: no-op in the current cycle (action is recorded as
                         "scheduled" and re-evaluated on subsequent poll)
+
+Actions that target a contact (SMS/email/call/tag/enroll) are skipped with a
+warning when an event has no associated contact (e.g. roleplay/knowledge).
 """
 
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, exists, not_, select
+from sqlalchemy import and_, exists, func, not_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.models.automation import Automation
+from app.models.automation_event import (
+    EVENT_STATUS_PENDING,
+    EVENT_STATUS_PROCESSED,
+    AutomationEvent,
+)
 from app.models.automation_execution import AutomationExecution
 from app.models.campaign import Campaign, CampaignContact, CampaignContactStatus, CampaignStatus
 from app.models.contact import Contact
@@ -45,8 +66,11 @@ from app.models.conversation import Conversation
 from app.models.phone_number import PhoneNumber
 from app.models.tag import ContactTag, Tag
 from app.services.approval.approval_gate_service import approval_gate_service
+from app.services.automations.events import AUTOMATION_EVENT_TRIGGERS
+from app.services.email import send_automation_email
 from app.services.idempotency import derive_outbound_key, derive_worker_retry_key
 from app.services.tags import TagService
+from app.services.telephony.telnyx_voice import TelnyxVoiceService
 from app.services.telephony.text_provider import get_text_message_provider
 from app.workers.base import BaseWorker, WorkerRegistry
 from app.workers.retryable import RetryableWorker
@@ -54,11 +78,20 @@ from app.workers.retryable import RetryableWorker
 # Maximum contacts to process per automation per poll cycle.
 MAX_CONTACTS_PER_AUTOMATION = 50
 
+# Maximum queued events to drain per poll cycle.
+MAX_EVENTS_PER_CYCLE = 100
+
 # Default look-back window when last_evaluated_at is None (first run).
 DEFAULT_LOOKBACK_DAYS = 30
 
 # Default "never booked" inactivity threshold (days).
 DEFAULT_NEVER_BOOKED_DAYS = 7
+
+# Action types that require an associated contact. Skipped (with a warning) when
+# an event trigger has no contact (e.g. roleplay_completed, knowledge upload).
+_CONTACT_ACTIONS = frozenset(
+    {"send_sms", "send_email", "make_call", "enroll_campaign", "apply_tag", "add_tag"}
+)
 
 
 class AutomationWorker(RetryableWorker, BaseWorker):
@@ -76,25 +109,82 @@ class AutomationWorker(RetryableWorker, BaseWorker):
     # ------------------------------------------------------------------ #
 
     async def _process_items(self) -> None:
-        """Load active automations and evaluate each one."""
+        """Drain queued events, then evaluate active polling automations."""
         async with AsyncSessionLocal() as db:
+            # 1) Event-based triggers (review/opportunity/missed_call/...).
+            await self._process_events(db)
+
+            # 2) Polling triggers evaluated against contacts.
             result = await db.execute(select(Automation).where(Automation.is_active.is_(True)))
             automations = result.scalars().all()
 
-            if not automations:
-                return
-
-            self.logger.debug("Evaluating automations", count=len(automations))
-
-            for automation in automations:
-                await self.execute_with_retry(
-                    self._evaluate_automation,
-                    automation,
-                    db,
-                    item_key=derive_worker_retry_key("automation", automation.id),
-                )
+            if automations:
+                self.logger.debug("Evaluating automations", count=len(automations))
+                for automation in automations:
+                    await self.execute_with_retry(
+                        self._evaluate_automation,
+                        automation,
+                        db,
+                        item_key=derive_worker_retry_key("automation", automation.id),
+                    )
 
             await db.commit()
+
+    # ------------------------------------------------------------------ #
+    # Event-based triggers                                                 #
+    # ------------------------------------------------------------------ #
+
+    async def _process_events(self, db: AsyncSession) -> None:
+        """Drain pending ``automation_events`` and run matching automations."""
+        result = await db.execute(
+            select(AutomationEvent)
+            .where(AutomationEvent.status == EVENT_STATUS_PENDING)
+            .order_by(AutomationEvent.created_at)
+            .limit(MAX_EVENTS_PER_CYCLE)
+        )
+        events = list(result.scalars().all())
+        if not events:
+            return
+
+        self.logger.info("Draining automation events", count=len(events))
+        for event in events:
+            await self.execute_with_retry(
+                self._process_event,
+                event,
+                db,
+                item_key=derive_worker_retry_key("automation_event", event.id),
+            )
+
+    async def _process_event(self, event: AutomationEvent, db: AsyncSession) -> None:
+        """Run every active automation listening for ``event``'s type.
+
+        The event is marked ``processed`` once all matching automations have
+        been attempted. Per-(automation, event) dedupe (via the partial unique
+        index and an explicit pre-check) keeps retries from double-running.
+        Per-automation failures are recorded on the execution row and never
+        abort the whole event (mirrors the contact-trigger path).
+        """
+        log = self.logger.bind(event_id=str(event.id), event_type=event.event_type)
+
+        matches = await db.execute(
+            select(Automation).where(
+                Automation.workspace_id == event.workspace_id,
+                Automation.is_active.is_(True),
+                func.lower(Automation.trigger_type) == event.event_type.lower(),
+            )
+        )
+        automations = list(matches.scalars().all())
+
+        contact: Contact | None = None
+        if event.contact_id is not None:
+            contact = await db.get(Contact, event.contact_id)
+
+        for automation in automations:
+            await self._execute_event_for_automation(automation, event, contact, db)
+
+        event.status = EVENT_STATUS_PROCESSED
+        event.processed_at = datetime.now(UTC)
+        log.info("Automation event processed", matched=len(automations))
 
     # ------------------------------------------------------------------ #
     # Automation evaluation                                                #
@@ -173,6 +263,11 @@ class AutomationWorker(RetryableWorker, BaseWorker):
                 automation.trigger_config.get("inactivity_days", DEFAULT_NEVER_BOOKED_DAYS)
             )
             contacts = await self._contacts_never_booked(base_filters, inactivity_days, db)
+
+        elif trigger in AUTOMATION_EVENT_TRIGGERS:
+            # Event-based triggers are handled by the event-draining path
+            # (_process_events), not by polling contacts — skip silently.
+            return []
 
         else:
             self.logger.warning(
@@ -292,14 +387,7 @@ class AutomationWorker(RetryableWorker, BaseWorker):
         contact: Contact,
         db: AsyncSession,
     ) -> None:
-        """Execute all actions for *automation* against *contact*,
-        then record the execution."""
-
-        log = self.logger.bind(
-            automation_id=str(automation.id),
-            contact_id=contact.id,
-        )
-
+        """Execute all actions for *automation* against a polling-matched *contact*."""
         execution = AutomationExecution(
             automation_id=automation.id,
             contact_id=contact.id,
@@ -307,6 +395,63 @@ class AutomationWorker(RetryableWorker, BaseWorker):
         )
         db.add(execution)
         await db.flush()  # get execution.id without committing
+        await self._run_actions(automation, contact, {}, execution, db)
+
+    async def _execute_event_for_automation(
+        self,
+        automation: Automation,
+        event: AutomationEvent,
+        contact: Contact | None,
+        db: AsyncSession,
+    ) -> None:
+        """Execute *automation*'s actions for a single drained *event*.
+
+        Idempotent per (automation, event): a pre-check (backed by the partial
+        unique index ``uq_automation_execution_event``) means re-draining the
+        same event never re-runs an automation that already executed for it.
+        """
+        existing = await db.execute(
+            select(AutomationExecution.id)
+            .where(
+                AutomationExecution.automation_id == automation.id,
+                AutomationExecution.event_id == event.id,
+            )
+            .limit(1)
+        )
+        if existing.first() is not None:
+            return
+
+        execution = AutomationExecution(
+            automation_id=automation.id,
+            contact_id=event.contact_id,
+            event_id=event.id,
+            status="pending",
+        )
+        db.add(execution)
+        await db.flush()
+        await self._run_actions(automation, contact, event.payload or {}, execution, db)
+
+    async def _run_actions(  # noqa: PLR0912 - action dispatch is inherently branchy
+        self,
+        automation: Automation,
+        contact: Contact | None,
+        payload: dict[str, Any],
+        execution: AutomationExecution,
+        db: AsyncSession,
+    ) -> None:
+        """Run an automation's action list against *contact*, recording results.
+
+        Shared by the polling-trigger and event-trigger paths. ``contact`` may
+        be ``None`` for event triggers without an associated contact; actions
+        that require one are skipped with a warning. ``payload`` provides extra
+        template tokens (e.g. ``{rating}``, ``{stage}``) for message rendering.
+        Never raises — failures are recorded on the execution row.
+        """
+        log = self.logger.bind(
+            automation_id=str(automation.id),
+            contact_id=contact.id if contact else None,
+            execution_id=str(execution.id),
+        )
 
         try:
             for action in automation.actions:
@@ -326,7 +471,7 @@ class AutomationWorker(RetryableWorker, BaseWorker):
                     context={
                         "source": "automation",
                         "automation_id": str(automation.id),
-                        "contact_id": contact.id,
+                        "contact_id": contact.id if contact else None,
                     },
                 )
 
@@ -337,13 +482,25 @@ class AutomationWorker(RetryableWorker, BaseWorker):
                     log.warning("automation_action_blocked", action_type=action_type)
                     continue
 
-                if action_type == "send_sms":
-                    await self._action_send_sms(automation, contact, action_config, db)
+                # Actions targeting a contact are skipped when the (event)
+                # trigger has none. Checking here lets mypy narrow ``contact``.
+                if action_type in _CONTACT_ACTIONS and contact is None:
+                    log.warning("automation_action_requires_contact", action_type=action_type)
+                    continue
 
-                elif action_type == "enroll_campaign":
+                if action_type == "send_sms" and contact is not None:
+                    await self._action_send_sms(automation, contact, action_config, payload, db)
+
+                elif action_type == "send_email" and contact is not None:
+                    await self._action_send_email(automation, contact, action_config, payload, db)
+
+                elif action_type == "make_call" and contact is not None:
+                    await self._action_make_call(automation, contact, action_config, db)
+
+                elif action_type == "enroll_campaign" and contact is not None:
                     await self._action_enroll_campaign(automation, contact, action_config, db)
 
-                elif action_type == "apply_tag":
+                elif action_type in ("apply_tag", "add_tag") and contact is not None:
                     await self._action_apply_tag(contact, action_config, db)
 
                 elif action_type in ("wait", "delay"):
@@ -383,13 +540,15 @@ class AutomationWorker(RetryableWorker, BaseWorker):
         automation: Automation,
         contact: Contact,
         config: dict[str, Any],
+        payload: dict[str, Any],
         db: AsyncSession,
     ) -> None:
         """Send an SMS to the contact.
 
         Config keys:
             message (str): Template string; supports {first_name}, {last_name},
-                           {full_name}, {company_name}.
+                           {full_name}, {company_name}, {email}, and any event
+                           payload token (e.g. {rating}, {stage}).
         """
         message_template: str = config.get("message", "")
         if not message_template:
@@ -406,7 +565,7 @@ class AutomationWorker(RetryableWorker, BaseWorker):
             )
             return
 
-        message_body = self._render_template(message_template, contact)
+        message_body = self._render_template(message_template, contact, payload)
 
         from_number = await self._resolve_from_number(db, contact.id, automation.workspace_id)
         if not from_number:
@@ -434,6 +593,124 @@ class AutomationWorker(RetryableWorker, BaseWorker):
             )
         finally:
             await sms_service.close()
+
+    async def _action_send_email(
+        self,
+        automation: Automation,
+        contact: Contact,
+        config: dict[str, Any],
+        payload: dict[str, Any],
+        db: AsyncSession,
+    ) -> None:
+        """Send a transactional email to the contact via Resend.
+
+        Config keys:
+            subject (str): Subject template (placeholders supported).
+            message / body (str): Body template (placeholders supported). Plain
+                text is rendered into a simple HTML paragraph block.
+        """
+        subject_template: str = config.get("subject", "")
+        body_template: str = config.get("message") or config.get("body") or ""
+        if not subject_template or not body_template:
+            self.logger.warning(
+                "send_email action missing subject or body",
+                automation_id=str(automation.id),
+            )
+            return
+
+        if not contact.email:
+            self.logger.warning("Contact has no email", contact_id=contact.id)
+            return
+
+        subject = self._render_template(subject_template, contact, payload)
+        body = self._render_template(body_template, contact, payload)
+        idempotency_key = derive_outbound_key("automation_email", automation.id, contact.id)
+
+        sent = await send_automation_email(
+            to_email=contact.email,
+            subject=subject,
+            body=body,
+            idempotency_key=idempotency_key,
+        )
+        if sent:
+            self.logger.info(
+                "Automation email sent",
+                contact_id=contact.id,
+                to=contact.email,
+            )
+        else:
+            self.logger.warning(
+                "Automation email not sent (provider unavailable or failed)",
+                contact_id=contact.id,
+            )
+
+    async def _action_make_call(
+        self,
+        automation: Automation,
+        contact: Contact,
+        config: dict[str, Any],
+        db: AsyncSession,
+    ) -> None:
+        """Initiate an outbound AI voice call to the contact via Telnyx.
+
+        Config keys:
+            agent_id (str, optional): Voice agent UUID to handle the call.
+            connection_id (str, optional): Telnyx connection id override.
+        """
+        if not settings.telnyx_api_key:
+            self.logger.warning(
+                "make_call action skipped: Telnyx not configured",
+                automation_id=str(automation.id),
+            )
+            return
+        if not contact.phone_number:
+            self.logger.warning("Contact has no phone number", contact_id=contact.id)
+            return
+
+        from_number = await self._resolve_from_number(
+            db, contact.id, automation.workspace_id, voice=True
+        )
+        if not from_number:
+            self.logger.warning(
+                "No voice from-number available for workspace",
+                workspace_id=str(automation.workspace_id),
+            )
+            return
+
+        agent_id: uuid.UUID | None = None
+        agent_id_str = str(config.get("agent_id", "")).strip()
+        if agent_id_str:
+            try:
+                agent_id = uuid.UUID(agent_id_str)
+            except ValueError:
+                self.logger.warning("make_call has invalid agent_id", agent_id=agent_id_str)
+                return
+
+        api_base = settings.api_base_url or "http://localhost:8000"
+        webhook_url = f"{api_base}/webhooks/telnyx/voice"
+        connection_id = str(config.get("connection_id", "")) or settings.telnyx_connection_id
+
+        voice_service = TelnyxVoiceService(settings.telnyx_api_key)
+        idempotency_key = derive_outbound_key("automation_call", automation.id, contact.id)
+        try:
+            await voice_service.initiate_call(
+                to_number=contact.phone_number,
+                from_number=from_number,
+                connection_id=connection_id or None,
+                webhook_url=webhook_url,
+                db=db,
+                workspace_id=automation.workspace_id,
+                contact_phone=contact.phone_number,
+                agent_id=agent_id,
+                idempotency_key=idempotency_key,
+            )
+        finally:
+            await voice_service.close()
+        self.logger.info(
+            "Automation call initiated",
+            contact_id=contact.id,
+            to=contact.phone_number,
+        )
 
     async def _action_enroll_campaign(
         self,
@@ -552,16 +829,30 @@ class AutomationWorker(RetryableWorker, BaseWorker):
     # Helpers                                                              #
     # ------------------------------------------------------------------ #
 
-    def _render_template(self, template: str, contact: Contact) -> str:
-        """Replace simple {placeholder} tokens in a message template."""
+    def _render_template(
+        self,
+        template: str,
+        contact: Contact,
+        payload: dict[str, Any] | None = None,
+    ) -> str:
+        """Replace simple {placeholder} tokens in a message template.
+
+        Contact tokens take precedence; event ``payload`` keys fill in extras
+        like ``{rating}`` or ``{stage}``. Unknown tokens are left untouched.
+        """
         full_name = " ".join(filter(None, [contact.first_name, contact.last_name]))
         replacements: dict[str, str] = {
-            "first_name": contact.first_name or "",
-            "last_name": contact.last_name or "",
-            "full_name": full_name,
-            "company_name": contact.company_name or "",
-            "email": contact.email or "",
+            str(key): "" if value is None else str(value) for key, value in (payload or {}).items()
         }
+        replacements.update(
+            {
+                "first_name": contact.first_name or "",
+                "last_name": contact.last_name or "",
+                "full_name": full_name,
+                "company_name": contact.company_name or "",
+                "email": contact.email or "",
+            }
+        )
         result = template
         for key, value in replacements.items():
             result = result.replace(f"{{{key}}}", value)
@@ -572,12 +863,15 @@ class AutomationWorker(RetryableWorker, BaseWorker):
         db: AsyncSession,
         contact_id: int,
         workspace_id: uuid.UUID,
+        *,
+        voice: bool = False,
     ) -> str | None:
-        """Resolve the best from-number for an outbound automation SMS.
+        """Resolve the best from-number for an outbound automation message/call.
 
         Strategy 1: Reuse the number from an existing conversation with this
                      contact in this workspace.
-        Strategy 2: Any active, SMS-enabled phone number owned by the workspace.
+        Strategy 2: Any active phone number owned by the workspace that has the
+                     required capability (``voice_enabled`` or ``sms_enabled``).
         """
         # Strategy 1 — existing conversation
         result = await db.execute(
@@ -595,14 +889,17 @@ class AutomationWorker(RetryableWorker, BaseWorker):
         if phone:
             return str(phone)
 
-        # Strategy 2 — any workspace number
+        # Strategy 2 — any workspace number with the required capability
+        capability = (
+            PhoneNumber.voice_enabled.is_(True) if voice else PhoneNumber.sms_enabled.is_(True)
+        )
         result = await db.execute(
             select(PhoneNumber.phone_number)
             .where(
                 and_(
                     PhoneNumber.workspace_id == workspace_id,
                     PhoneNumber.is_active.is_(True),
-                    PhoneNumber.sms_enabled.is_(True),
+                    capability,
                 )
             )
             .order_by(PhoneNumber.created_at)
