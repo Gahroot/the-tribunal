@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.sql.elements import ColumnElement
@@ -31,7 +31,18 @@ _COLUMN_MAP: dict[str, Any] = {
     "email": Contact.email,
     "first_name": Contact.first_name,
     "last_name": Contact.last_name,
+    "sms_consent_status": Contact.sms_consent_status,
+    "engagement_score": Contact.engagement_score,
+    "noshow_count": Contact.noshow_count,
+    "last_appointment_status": Contact.last_appointment_status,
 }
+
+# Nested ``qualification_signals`` JSONB sub-signals that expose a
+# ``{"detected": bool, ...}`` shape. Filtered via ``_resolve_contact_extra``
+# rather than ``_COLUMN_MAP`` because they live under a JSONB column.
+_QUALIFICATION_SIGNAL_FIELDS: frozenset[str] = frozenset(
+    {"budget", "authority", "need", "timeline"}
+)
 
 _BASE_LIST_FILTER_SPECS: tuple[FilterSpec, ...] = (
     FilterSpec("status_filter", Contact.status),
@@ -135,9 +146,36 @@ def _build_simple_tag_condition(
 
 
 def _resolve_contact_extra(field: str, operator: str, value: Any) -> ColumnElement[bool] | None:
-    """Resolve non-column contact filter fields (currently only ``tags``)."""
+    """Resolve non-column contact filter fields (``tags`` and JSONB signals)."""
     if field == "tags":
         return _build_tag_condition(operator, value)
+    if field.startswith("qualification_signals."):
+        return _build_qualification_signal_condition(field, operator, value)
+    return None
+
+
+def _build_qualification_signal_condition(
+    field: str,
+    operator: str,
+    value: Any,
+) -> ColumnElement[bool] | None:
+    """Filter on a nested ``qualification_signals.<signal>`` detection flag.
+
+    Fields look like ``qualification_signals.budget`` and resolve to the
+    ``{"detected": bool}`` flag for that BANT signal. ``is_true`` matches
+    detected signals; ``is_false`` matches undetected/missing signals
+    (treating SQL ``NULL`` as not detected).
+    """
+    _, _, signal = field.partition(".")
+    if signal not in _QUALIFICATION_SIGNAL_FIELDS:
+        return None
+
+    detected = Contact.qualification_signals[(signal, "detected")].as_boolean()
+
+    if operator == "is_true" or (operator == "equals" and value in (True, "true")):
+        return cast("ColumnElement[bool]", detected.is_(True))
+    if operator == "is_false" or (operator == "equals" and value in (False, "false")):
+        return cast("ColumnElement[bool]", detected.isnot(True))
     return None
 
 

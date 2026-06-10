@@ -127,6 +127,97 @@ const FIELD_OPTIONS: FieldOption[] = [
       { value: "skipped", label: "Skipped" },
     ],
   },
+  {
+    value: "sms_consent_status",
+    label: "SMS Consent",
+    operators: [
+      { value: "equals", label: "is" },
+      { value: "not_equals", label: "is not" },
+    ],
+    valueType: "select",
+    options: [
+      { value: "opted_in", label: "Opted in" },
+      { value: "opted_out", label: "Opted out" },
+      { value: "pending", label: "Pending" },
+      { value: "unknown", label: "Unknown" },
+    ],
+  },
+  {
+    value: "engagement_score",
+    label: "Engagement Score",
+    operators: [
+      { value: "gte", label: ">=" },
+      { value: "lte", label: "<=" },
+      { value: "gt", label: ">" },
+      { value: "lt", label: "<" },
+      { value: "equals", label: "equals" },
+    ],
+    valueType: "number",
+  },
+  {
+    value: "noshow_count",
+    label: "No-Shows",
+    operators: [
+      { value: "gte", label: ">=" },
+      { value: "lte", label: "<=" },
+      { value: "gt", label: ">" },
+      { value: "equals", label: "equals" },
+    ],
+    valueType: "number",
+  },
+  {
+    value: "last_appointment_status",
+    label: "Last Appointment",
+    operators: [
+      { value: "equals", label: "is" },
+      { value: "not_equals", label: "is not" },
+      { value: "is_null", label: "is empty" },
+      { value: "is_not_null", label: "is not empty" },
+    ],
+    valueType: "select",
+    options: [
+      { value: "scheduled", label: "Scheduled" },
+      { value: "completed", label: "Completed" },
+      { value: "cancelled", label: "Cancelled" },
+      { value: "no_show", label: "No-show" },
+    ],
+  },
+  {
+    value: "qualification_signals.budget",
+    label: "Budget Signal",
+    operators: [
+      { value: "is_true", label: "detected" },
+      { value: "is_false", label: "not detected" },
+    ],
+    valueType: "boolean",
+  },
+  {
+    value: "qualification_signals.authority",
+    label: "Authority Signal",
+    operators: [
+      { value: "is_true", label: "detected" },
+      { value: "is_false", label: "not detected" },
+    ],
+    valueType: "boolean",
+  },
+  {
+    value: "qualification_signals.need",
+    label: "Need Signal",
+    operators: [
+      { value: "is_true", label: "detected" },
+      { value: "is_false", label: "not detected" },
+    ],
+    valueType: "boolean",
+  },
+  {
+    value: "qualification_signals.timeline",
+    label: "Timeline Signal",
+    operators: [
+      { value: "is_true", label: "detected" },
+      { value: "is_false", label: "not detected" },
+    ],
+    valueType: "boolean",
+  },
 ];
 
 interface ContactFilterBuilderProps {

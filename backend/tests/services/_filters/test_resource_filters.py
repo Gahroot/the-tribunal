@@ -152,6 +152,86 @@ class TestContactFiltersBehaviorPreserved:
         sql = _sql(stmt).lower()
         assert "not in" in sql
 
+    def test_filter_rules_sms_consent_status(self) -> None:
+        stmt = apply_contact_filters(
+            select(Contact),
+            _WORKSPACE_ID,
+            filter_rules=[
+                {"field": "sms_consent_status", "operator": "equals", "value": "opted_in"},
+            ],
+        )
+        assert "contacts.sms_consent_status = 'opted_in'" in _sql(stmt)
+
+    def test_filter_rules_engagement_score_range(self) -> None:
+        stmt = apply_contact_filters(
+            select(Contact),
+            _WORKSPACE_ID,
+            filter_rules=[
+                {"field": "engagement_score", "operator": "gte", "value": 10},
+                {"field": "engagement_score", "operator": "lte", "value": 90},
+            ],
+        )
+        sql = _sql(stmt)
+        assert "contacts.engagement_score >= 10" in sql
+        assert "contacts.engagement_score <= 90" in sql
+
+    def test_filter_rules_noshow_count(self) -> None:
+        stmt = apply_contact_filters(
+            select(Contact),
+            _WORKSPACE_ID,
+            filter_rules=[
+                {"field": "noshow_count", "operator": "gt", "value": 0},
+            ],
+        )
+        assert "contacts.noshow_count > 0" in _sql(stmt)
+
+    def test_filter_rules_last_appointment_status(self) -> None:
+        stmt = apply_contact_filters(
+            select(Contact),
+            _WORKSPACE_ID,
+            filter_rules=[
+                {"field": "last_appointment_status", "operator": "equals", "value": "no_show"},
+            ],
+        )
+        assert "contacts.last_appointment_status = 'no_show'" in _sql(stmt)
+
+    def test_filter_rules_qualification_signal_detected(self) -> None:
+        stmt = apply_contact_filters(
+            select(Contact),
+            _WORKSPACE_ID,
+            filter_rules=[
+                {"field": "qualification_signals.budget", "operator": "is_true"},
+            ],
+        )
+        sql = _sql(stmt).lower()
+        assert "qualification_signals" in sql
+        assert "budget" in sql
+        assert "detected" in sql
+
+    def test_filter_rules_qualification_signal_not_detected(self) -> None:
+        stmt = apply_contact_filters(
+            select(Contact),
+            _WORKSPACE_ID,
+            filter_rules=[
+                {"field": "qualification_signals.timeline", "operator": "is_false"},
+            ],
+        )
+        sql = _sql(stmt).lower()
+        assert "qualification_signals" in sql
+        assert "timeline" in sql
+        assert "is not true" in sql
+
+    def test_filter_rules_unknown_qualification_signal_ignored(self) -> None:
+        stmt = apply_contact_filters(
+            select(Contact),
+            _WORKSPACE_ID,
+            filter_rules=[
+                {"field": "qualification_signals.unsupported", "operator": "is_true"},
+            ],
+        )
+        # Unsupported sub-signal produces no condition, so no WHERE is added.
+        assert "where" not in _sql(stmt).lower()
+
 
 # ---------------------------------------------------------------------------
 # Campaigns

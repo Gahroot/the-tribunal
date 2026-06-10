@@ -21,6 +21,14 @@ const FIELD_LABELS: Record<string, string> = {
   email: "Email",
   first_name: "First Name",
   last_name: "Last Name",
+  sms_consent_status: "SMS Consent",
+  engagement_score: "Engagement Score",
+  noshow_count: "No-Shows",
+  last_appointment_status: "Last Appointment",
+  "qualification_signals.budget": "Budget Signal",
+  "qualification_signals.authority": "Authority Signal",
+  "qualification_signals.need": "Need Signal",
+  "qualification_signals.timeline": "Timeline Signal",
 };
 
 const OPERATOR_LABELS: Record<string, string> = {
