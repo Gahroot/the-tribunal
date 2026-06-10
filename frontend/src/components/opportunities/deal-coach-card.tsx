@@ -85,7 +85,13 @@ export function DealCoachCard({ workspaceId, opportunityId }: DealCoachCardProps
 
   const draftMutation = useMutation({
     mutationFn: () =>
-      opportunitiesApi.draftCoachAction(workspaceId, opportunityId),
+      // Queue the exact draft the operator is looking at, so an LLM-generated
+      // card isn't re-synthesized into a different message on click.
+      opportunitiesApi.draftCoachAction(workspaceId, opportunityId, {
+        channel: card?.drafted_action.channel,
+        body: card?.drafted_action.body,
+        description: card?.drafted_action.description,
+      }),
     onSuccess: (res) => {
       if (res.decision === "blocked") {
         toast.error("This action is blocked by your approval policy.");
