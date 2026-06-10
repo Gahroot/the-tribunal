@@ -105,6 +105,57 @@ class CallContext:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+async def _attach_returning_caller_context(
+    *,
+    db: Any,
+    context: CallContext,
+    workspace_id: Any,
+    contact_id: int,
+    current_message_id: Any,
+    log: Any,
+) -> None:
+    """Detect a returning caller and inject a recap into the call context.
+
+    Best-effort: any failure (DB hiccup, embedding outage) is logged and
+    swallowed so returning-caller recognition never blocks taking the call. When
+    the caller is returning, a voice-friendly recap is attached to
+    ``context.contact_info['returning_summary']`` (so it flows through every
+    provider's prompt builder) and a compact signal is recorded on
+    ``context.metadata``.
+    """
+    try:
+        from app.services.ai.caller_memory_service import (
+            build_returning_caller_summary,
+            detect_returning_caller,
+        )
+
+        info = await detect_returning_caller(
+            db,
+            workspace_id=workspace_id,
+            contact_id=contact_id,
+            current_message_id=current_message_id,
+        )
+        if not info.is_returning:
+            return
+
+        summary = build_returning_caller_summary(info, timezone=context.timezone)
+        if summary and context.contact_info is not None:
+            context.contact_info["returning_summary"] = summary
+        context.metadata["returning_caller"] = {
+            "is_returning": True,
+            "prior_call_count": info.prior_call_count,
+            "memory_count": len(info.memories),
+        }
+        log.info(
+            "returning_caller_detected",
+            contact_id=contact_id,
+            prior_call_count=info.prior_call_count,
+            memory_count=len(info.memories),
+        )
+    except Exception as e:  # noqa: BLE001 - recognition must never break a call
+        log.warning("returning_caller_detection_failed", error=str(e))
+
+
 async def lookup_call_context(
     call_id: str,
     log: Any = None,
@@ -199,6 +250,18 @@ async def lookup_call_context(
                     "notes": contact.notes,
                 }
                 log.info("found_contact_for_call", contact_id=str(contact.id))
+
+                # Returning-caller recognition: detect prior calls / stored
+                # caller memories for this contact and inject a recap so the
+                # agent greets them as a returning caller instead of cold.
+                await _attach_returning_caller_context(
+                    db=db,
+                    context=context,
+                    workspace_id=conversation.workspace_id,
+                    contact_id=conversation.contact_id,
+                    current_message_id=message.id,
+                    log=log,
+                )
 
         # Look up offer info from campaign if applicable
         campaign_contact_result = await db.execute(

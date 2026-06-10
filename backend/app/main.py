@@ -35,6 +35,7 @@ from app.core.telemetry import configure_tracing, instrument_app
 from app.db.redis import close_redis
 from app.db.session import engine
 from app.services.ai.openai_credentials import is_openai_configured
+from app.websockets.call_supervisor import router as call_supervisor_router
 from app.websockets.voice_bridge import router as voice_bridge_router
 from app.websockets.voice_test import router as voice_test_router
 from app.workers import start_all_workers, stop_all_workers
@@ -520,6 +521,7 @@ app.include_router(resend_webhook_router, prefix="/webhooks/resend", tags=["webh
 # Include WebSocket routers
 app.include_router(voice_bridge_router, tags=["voice"])
 app.include_router(voice_test_router, tags=["voice"])
+app.include_router(call_supervisor_router, tags=["voice"])
 
 # Mount static files for lead magnets and other assets.
 # Anchor on the backend repo root (parent of the ``app`` package) so the mount

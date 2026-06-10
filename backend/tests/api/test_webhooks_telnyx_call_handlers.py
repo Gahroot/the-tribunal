@@ -74,6 +74,8 @@ def _make_log() -> MagicMock:
 @pytest.fixture(autouse=True)
 def _stub_metrics_and_push(monkeypatch: pytest.MonkeyPatch) -> dict[str, MagicMock]:
     """Silence Prometheus counters + push notifications globally."""
+    from app.services.telephony.inbound_screening import ScreeningOutcome, SpamDecision
+
     stubs: dict[str, MagicMock] = {}
 
     monkeypatch.setattr(
@@ -81,6 +83,27 @@ def _stub_metrics_and_push(monkeypatch: pytest.MonkeyPatch) -> dict[str, MagicMo
         "observe_voice_call_started",
         MagicMock(return_value=None),
     )
+
+    # Default: screening allows the call and no routing reason is inferred, so
+    # handle_call_initiated never issues extra DB queries unless a test opts in.
+    screener = MagicMock()
+    screener.screen = AsyncMock(
+        return_value=ScreeningOutcome(decision=SpamDecision.ALLOW, reason=None)
+    )
+    monkeypatch.setattr(handlers, "_inbound_screener", screener)
+    stubs["screener"] = screener
+
+    classify = AsyncMock(return_value=None)
+    monkeypatch.setattr(handlers, "classify_inbound_reason", classify)
+    stubs["classify_inbound_reason"] = classify
+
+    reject = AsyncMock(return_value=None)
+    monkeypatch.setattr(handlers, "_reject_inbound_call", reject)
+    stubs["reject"] = reject
+
+    take_voicemail = AsyncMock(return_value=None)
+    monkeypatch.setattr(handlers, "take_inbound_voicemail", take_voicemail)
+    stubs["take_inbound_voicemail"] = take_voicemail
     monkeypatch.setattr(
         handlers,
         "observe_voice_call_completed",
@@ -248,6 +271,137 @@ async def test_call_initiated_is_idempotent_on_retry(
     db.commit.assert_not_awaited()
     _stub_metrics_and_push["push"].send_to_workspace_members.assert_not_awaited()
     _stub_metrics_and_push["auto_answer"].assert_not_awaited()
+
+
+def _added_message(db: MagicMock) -> Any:
+    """Return the Message instance passed to ``db.add`` (or None)."""
+    for call in db.add.call_args_list:
+        obj = call.args[0]
+        if type(obj).__name__ == "Message":
+            return obj
+    return None
+
+
+async def test_call_initiated_rejects_spam_caller(
+    monkeypatch: pytest.MonkeyPatch,
+    call_initiated: dict[str, Any],
+    _stub_metrics_and_push: dict[str, MagicMock],
+) -> None:
+    """A caller screened as REJECT is hung up before answering: no push, no
+    auto-answer, and the decision is persisted on the call Message."""
+    from app.services.telephony.inbound_screening import ScreeningOutcome, SpamDecision
+
+    _stub_metrics_and_push["screener"].screen = AsyncMock(
+        return_value=ScreeningOutcome(decision=SpamDecision.REJECT, reason="global_opt_out")
+    )
+
+    workspace_id = uuid.uuid4()
+    phone_record = MagicMock()
+    phone_record.workspace_id = workspace_id
+    phone_record.phone_number = "+12125550100"
+    phone_record.assigned_agent_id = None
+
+    db = _make_db(
+        execute_returns=[
+            _Result(scalar=phone_record),
+            _Result(scalar=None),  # message dedupe
+            _Result(scalar=None),  # conversation lookup
+            _Result(scalar=None),  # contact lookup
+        ]
+    )
+    _patch_session_local(monkeypatch, db)
+
+    log = _make_log()
+    await handlers.handle_call_initiated(call_initiated, log)
+
+    message = _added_message(db)
+    assert message is not None
+    assert message.screening_decision == "reject"
+    assert message.screening_reason == "global_opt_out"
+
+    _stub_metrics_and_push["reject"].assert_awaited_once()
+    _stub_metrics_and_push["auto_answer"].assert_not_awaited()
+    _stub_metrics_and_push["push"].send_to_workspace_members.assert_not_awaited()
+    log.info.assert_any_call(
+        "inbound_call_rejected_spam",
+        screening_reason="global_opt_out",
+        call_control_id="v3:call-control-id-initiated-001",
+    )
+
+
+async def test_call_initiated_challenge_routes_to_voicemail(
+    monkeypatch: pytest.MonkeyPatch,
+    call_initiated: dict[str, Any],
+    _stub_metrics_and_push: dict[str, MagicMock],
+) -> None:
+    """A CHALLENGE outcome answers to voicemail instead of the AI agent."""
+    from app.services.telephony.inbound_screening import ScreeningOutcome, SpamDecision
+
+    _stub_metrics_and_push["screener"].screen = AsyncMock(
+        return_value=ScreeningOutcome(decision=SpamDecision.CHALLENGE, reason="reputation_suspect")
+    )
+
+    workspace_id = uuid.uuid4()
+    phone_record = MagicMock()
+    phone_record.workspace_id = workspace_id
+    phone_record.phone_number = "+12125550100"
+    phone_record.assigned_agent_id = None
+
+    db = _make_db(
+        execute_returns=[
+            _Result(scalar=phone_record),
+            _Result(scalar=None),
+            _Result(scalar=None),
+            _Result(scalar=None),
+        ]
+    )
+    _patch_session_local(monkeypatch, db)
+
+    await handlers.handle_call_initiated(call_initiated, _make_log())
+
+    message = _added_message(db)
+    assert message.screening_decision == "challenge"
+    # Voicemail challenge runs; the AI auto-answer path does not.
+    _stub_metrics_and_push["take_inbound_voicemail"].assert_awaited_once()
+    _stub_metrics_and_push["auto_answer"].assert_not_awaited()
+    # Operators are still notified of the (challenged) incoming call.
+    _stub_metrics_and_push["push"].send_to_workspace_members.assert_awaited_once()
+
+
+async def test_call_initiated_passes_routing_reason_to_auto_answer(
+    monkeypatch: pytest.MonkeyPatch,
+    call_initiated: dict[str, Any],
+    _stub_metrics_and_push: dict[str, MagicMock],
+) -> None:
+    """A classified caller reason is persisted and forwarded to auto-answer for
+    reason-based agent routing."""
+    _stub_metrics_and_push["classify_inbound_reason"] = AsyncMock(return_value="billing")
+    monkeypatch.setattr(
+        handlers, "classify_inbound_reason", _stub_metrics_and_push["classify_inbound_reason"]
+    )
+
+    workspace_id = uuid.uuid4()
+    phone_record = MagicMock()
+    phone_record.workspace_id = workspace_id
+    phone_record.phone_number = "+12125550100"
+    phone_record.assigned_agent_id = None
+
+    db = _make_db(
+        execute_returns=[
+            _Result(scalar=phone_record),
+            _Result(scalar=None),
+            _Result(scalar=None),
+            _Result(scalar=None),
+        ]
+    )
+    _patch_session_local(monkeypatch, db)
+
+    await handlers.handle_call_initiated(call_initiated, _make_log())
+
+    message = _added_message(db)
+    assert message.routing_reason == "billing"
+    _stub_metrics_and_push["auto_answer"].assert_awaited_once()
+    assert _stub_metrics_and_push["auto_answer"].await_args.kwargs["reason"] == "billing"
 
 
 # --------------------------------------------------------------------------- #
@@ -788,3 +942,104 @@ async def test_speak_ended_ignores_non_transfer_speak(
     await handlers.handle_speak_ended({"call_control_id": "some-leg"}, _make_log())
 
     voice_service.bridge_calls.assert_not_awaited()
+
+
+# --------------------------------------------------------------------------- #
+# handle_recording_saved (AI voicemail pipeline dispatch)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def recording_saved() -> dict[str, Any]:
+    return load_telnyx_payload("call_recording_saved.json")
+
+
+async def test_recording_saved_missing_fields_is_no_op(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services.telephony import voicemail as vm_module
+
+    process = AsyncMock(return_value=False)
+    monkeypatch.setattr(vm_module, "process_voicemail_recording", process)
+
+    await handlers.handle_recording_saved({"call_control_id": ""}, _make_log())
+
+    process.assert_not_awaited()
+
+
+async def test_recording_saved_voicemail_client_state_runs_followup(
+    monkeypatch: pytest.MonkeyPatch,
+    recording_saved: dict[str, Any],
+) -> None:
+    """A voicemail-tagged recording dispatches with ``run_followup=True``."""
+    from app.services.telephony import voicemail as vm_module
+
+    process = AsyncMock(return_value=True)
+    monkeypatch.setattr(vm_module, "process_voicemail_recording", process)
+    # AsyncSessionLocal must NOT be needed when the client_state already marks
+    # the recording as a voicemail.
+    monkeypatch.setattr(
+        handlers,
+        "AsyncSessionLocal",
+        MagicMock(side_effect=AssertionError("no db lookup needed")),
+    )
+
+    await handlers.handle_recording_saved(recording_saved, _make_log())
+
+    process.assert_awaited_once()
+    kwargs = process.await_args.kwargs
+    assert kwargs["call_control_id"] == "v3:call-control-id-voicemail-001"
+    assert kwargs["recording_url"].endswith(".mp3")
+    assert kwargs["run_followup"] is True
+
+
+async def test_recording_saved_inbound_unanswered_runs_followup_via_db(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No client_state marker, but an unanswered inbound call -> voicemail."""
+    from app.services.telephony import voicemail as vm_module
+
+    process = AsyncMock(return_value=True)
+    monkeypatch.setattr(vm_module, "process_voicemail_recording", process)
+
+    db = _make_db(execute_returns=[_Result(scalar=None)])
+    db.execute = AsyncMock(
+        return_value=type("_R", (), {"first": lambda self: ("inbound", "no_answer")})()
+    )
+    _patch_session_local(monkeypatch, db)
+
+    payload = {
+        "call_control_id": "v3:cc-rec-001",
+        "client_state": None,
+        "recording_urls": {"mp3": "https://x/rec.mp3"},
+    }
+    await handlers.handle_recording_saved(payload, _make_log())
+
+    process.assert_awaited_once()
+    assert process.await_args.kwargs["run_followup"] is True
+
+
+async def test_recording_saved_answered_call_skips_followup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An answered (completed) call recording is transcribed but not triaged."""
+    from app.services.telephony import voicemail as vm_module
+
+    process = AsyncMock(return_value=True)
+    monkeypatch.setattr(vm_module, "process_voicemail_recording", process)
+
+    db = _make_db(execute_returns=[])
+    db.execute = AsyncMock(
+        return_value=type("_R", (), {"first": lambda self: ("outbound", "completed")})()
+    )
+    _patch_session_local(monkeypatch, db)
+
+    payload = {
+        "call_control_id": "v3:cc-rec-002",
+        "client_state": None,
+        "recording_urls": {"mp3": "https://x/rec.mp3"},
+    }
+    await handlers.handle_recording_saved(payload, _make_log())
+
+    process.assert_awaited_once()
+    assert process.await_args.kwargs["run_followup"] is False

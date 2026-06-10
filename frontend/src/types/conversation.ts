@@ -77,10 +77,18 @@ export interface FollowupSendResponse {
   message_body: string;
 }
 
-// Call outcome signals (populated by transcript analysis worker)
+// Call outcome signals.
+// `sentiment`/`sentiment_score` are populated live during the call by the voice
+// bridge's streaming sentiment scorer (`sentiment_live: true`), then refined
+// post-call by the transcript analysis worker (`analyzed: true`). The remaining
+// fields are populated only by the post-call worker.
 export interface CallSignals {
   sentiment?: "positive" | "neutral" | "negative";
   sentiment_score?: number;
+  // True while sentiment is being scored live during an in-progress call.
+  sentiment_live?: boolean;
+  // True once sustained negative sentiment triggered an escalation.
+  sentiment_escalated?: boolean;
   intents?: string[];
   topics?: string[];
   summary?: string;

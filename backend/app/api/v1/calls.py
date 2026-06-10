@@ -18,8 +18,11 @@ from app.schemas.call import (
     CallCreate,
     CallResponse,
     CapturedMessageResponse,
+    LiveCallResponse,
+    LiveCallsResponse,
     PaginatedCalls,
 )
+from app.services.calls.live_call_registry import get_live_call_registry
 from app.services.telephony.telnyx_voice import TelnyxVoiceService
 
 router = APIRouter()
@@ -269,6 +272,25 @@ async def list_calls(
         pages=result.pages,
         completed_count=completed_count,
         total_duration_seconds=int(total_duration),
+    )
+
+
+@router.get("/live", response_model=LiveCallsResponse)
+async def list_live_calls(
+    workspace_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> LiveCallsResponse:
+    """List calls currently in progress in this workspace (supervision roster).
+
+    Backed by the in-process live-call registry, so it reflects calls served by
+    this backend instance. Used by the operator live-call panel to expose
+    monitor / whisper / barge controls.
+    """
+    snapshots = get_live_call_registry().list_for_workspace(workspace_id)
+    return LiveCallsResponse(
+        items=[LiveCallResponse(**snapshot.as_dict()) for snapshot in snapshots]
     )
 
 

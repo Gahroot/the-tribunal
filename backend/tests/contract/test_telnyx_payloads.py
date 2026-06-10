@@ -76,6 +76,7 @@ def patched_voice_handlers(monkeypatch: pytest.MonkeyPatch) -> dict[str, AsyncMo
         "call.answered": AsyncMock(),
         "call.hangup": AsyncMock(),
         "call.machine.detection.ended": AsyncMock(),
+        "call.recording.saved": AsyncMock(),
     }
     for event_type, mock in handlers.items():
         monkeypatch.setitem(telnyx_router_module._VOICE_HANDLERS, event_type, mock)
@@ -179,15 +180,15 @@ async def test_call_hangup_payload_dispatches_with_duration_and_cause(
     assert parsed_payload["duration_seconds"] == 85
 
 
-async def test_recording_saved_payload_is_accepted_even_when_unhandled(
+async def test_recording_saved_payload_dispatches_to_handler(
     telnyx_signer: TelnyxSigner,
     patched_voice_handlers: dict[str, AsyncMock],
 ) -> None:
-    """``call.recording.saved`` is currently an unhandled event.
+    """``call.recording.saved`` dispatches to the AI voicemail handler.
 
-    The router must still return 200 (so Telnyx stops retrying) and the
-    voice dispatch handlers must NOT fire. Recordings are picked up from
-    the ``call.hangup`` payload's ``recordings`` array in production.
+    The router must return 200 (so Telnyx stops retrying) and route the
+    parsed payload to ``handle_recording_saved`` so recordings can be
+    transcribed and triaged. Other voice handlers must NOT fire.
     """
     fixture = load_fixture("telnyx", "recording_saved.json")
     assert _event_type_from(fixture) == "call.recording.saved"
@@ -199,12 +200,16 @@ async def test_recording_saved_payload_is_accepted_even_when_unhandled(
     assert status == 200
     assert body == {"status": "ok"}
 
-    for handler in patched_voice_handlers.values():
-        handler.assert_not_called()
+    handler = patched_voice_handlers["call.recording.saved"]
+    handler.assert_awaited_once()
+    parsed_payload = handler.await_args.args[0]
+    assert parsed_payload == _payload_from(fixture)
+    patched_voice_handlers["call.hangup"].assert_not_called()
+    patched_voice_handlers["call.machine.detection.ended"].assert_not_called()
 
     # Contract: a recording fixture carries at least one URL the handler
-    # can persist later. We pin the documented field shape so the
-    # ingestion code keeps matching what Telnyx sends today.
+    # can persist. We pin the documented field shape so the ingestion
+    # code keeps matching what Telnyx sends today.
     rec_payload = _payload_from(fixture)
     assert rec_payload["recording_urls"]["mp3"].endswith(".mp3")
     assert "recording_started_at" in rec_payload

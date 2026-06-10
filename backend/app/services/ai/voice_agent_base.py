@@ -19,7 +19,7 @@ import asyncio
 import base64
 import json
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
 import structlog
@@ -33,6 +33,7 @@ from app.services.ai.ivr_detector import (
     IVRMode,
     IVRStatus,
 )
+from app.services.ai.live_sentiment import LiveSentimentScorer, SentimentUpdate
 from app.services.ai.prompt_builder import VoicePromptBuilder
 from app.services.ai.protocols import (
     InterruptibleProtocol,
@@ -96,6 +97,12 @@ class VoiceAgentBase(ABC):
         self._ivr_mode: IVRMode = IVRMode.UNKNOWN
         self._ivr_navigation_goal: str | None = None
 
+        # Live (during-call) sentiment scoring + escalation
+        self._sentiment_scorer: LiveSentimentScorer | None = None
+        self._sentiment_callback: Callable[[SentimentUpdate], Awaitable[None]] | None = None
+        self._sentiment_tasks: set[asyncio.Task[None]] = set()
+        self._last_sentiment: SentimentUpdate | None = None
+
     # -------------------------------------------------------------------------
     # VoiceAgentProtocol implementations (shared logic)
     # -------------------------------------------------------------------------
@@ -157,6 +164,7 @@ class VoiceAgentBase(ABC):
                 }
             )
             self.logger.info("user_transcript_completed", user_said=text)
+            self._score_live_sentiment(text)
 
     def _add_agent_transcript(self, text: str) -> None:
         """Add agent speech to transcript.
@@ -200,6 +208,86 @@ class VoiceAgentBase(ABC):
                 transcript=json.dumps(self._transcript_entries, indent=2),
                 entry_count=len(self._transcript_entries),
             )
+
+    # -------------------------------------------------------------------------
+    # Live (during-call) sentiment scoring
+    # -------------------------------------------------------------------------
+
+    def enable_live_sentiment(
+        self,
+        scorer: LiveSentimentScorer,
+        on_update: Callable[[SentimentUpdate], Awaitable[None]],
+    ) -> None:
+        """Enable streaming sentiment scoring over the caller's live transcript.
+
+        Args:
+            scorer: Configured :class:`LiveSentimentScorer` (threshold + window).
+            on_update: Async callback invoked after each scored caller utterance.
+                Receives the :class:`SentimentUpdate`; the bridge uses it to
+                persist live signals and emit escalation events.
+        """
+        self._sentiment_scorer = scorer
+        self._sentiment_callback = on_update
+        self.logger.info(
+            "live_sentiment_enabled",
+            negative_threshold=scorer.negative_threshold,
+            sustained_turns=scorer.sustained_turns,
+            smoothing=scorer.smoothing,
+        )
+
+    @property
+    def last_sentiment(self) -> SentimentUpdate | None:
+        """Most recent live sentiment update, if scoring is enabled."""
+        return self._last_sentiment
+
+    def _score_live_sentiment(self, text: str) -> None:
+        """Feed a completed caller utterance to the live sentiment scorer.
+
+        Synchronous (called from the transcript path); any I/O the callback
+        needs (DB persistence, operator notification, transfer) is scheduled on
+        the event loop so it never blocks the audio relay.
+        """
+        if self._sentiment_scorer is None:
+            return
+
+        try:
+            update = self._sentiment_scorer.add_utterance(text)
+        except Exception as e:  # never let scoring break the call
+            self.logger.warning("live_sentiment_scoring_failed", error=str(e))
+            return
+
+        self._last_sentiment = update
+        self.logger.info(
+            "live_sentiment_update",
+            sentiment=update.sentiment,
+            sentiment_score=round(update.score, 3),
+            utterance_score=round(update.utterance_score, 3),
+            consecutive_negative=update.consecutive_negative,
+            escalate=update.escalate,
+            turns=update.turns,
+        )
+
+        if self._sentiment_callback is None:
+            return
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self.logger.debug("live_sentiment_no_event_loop")
+            return
+
+        task = loop.create_task(self._run_sentiment_callback(update))
+        self._sentiment_tasks.add(task)
+        task.add_done_callback(self._sentiment_tasks.discard)
+
+    async def _run_sentiment_callback(self, update: SentimentUpdate) -> None:
+        """Invoke the sentiment callback, swallowing errors."""
+        if self._sentiment_callback is None:
+            return
+        try:
+            await self._sentiment_callback(update)
+        except Exception as e:
+            self.logger.exception("live_sentiment_callback_failed", error=str(e))
 
     # -------------------------------------------------------------------------
     # Interruption handling helpers

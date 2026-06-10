@@ -23,16 +23,20 @@ class ResolvedAgent:
     Attributes:
         agent: The resolved Agent model instance
         source: Description of where the agent came from
+        reason: Classified caller reason used for routing, when applicable
     """
 
     agent: Agent
     source: str
+    reason: str | None = None
 
 
 class VoiceAgentResolver:
     """Resolves the appropriate voice agent for incoming calls.
 
     Priority order:
+    0. Reason-based routing (workspace.settings["call_routing"][reason]) when a
+       classified caller ``reason`` is supplied and maps to a valid agent
     1. Campaign voice agent (campaign.voice_agent_id)
     2. Campaign general agent (campaign.agent_id) if it supports voice
     3. Conversation's assigned agent (from test call or manual assignment)
@@ -48,6 +52,7 @@ class VoiceAgentResolver:
         conversation: Any | None,
         phone_record: PhoneNumber,
         log: Any | None = None,
+        reason: str | None = None,
     ) -> ResolvedAgent | None:
         """Resolve the voice agent for an incoming call.
 
@@ -56,12 +61,21 @@ class VoiceAgentResolver:
             conversation: Conversation model instance (optional)
             phone_record: PhoneNumber record for the destination number
             log: Optional logger instance
+            reason: Classified caller intent (e.g. "billing", "sales"). When
+                provided and the workspace defines a matching route, the mapped
+                agent takes priority over the default resolution order.
 
         Returns:
             ResolvedAgent with agent and source, or None if no valid agent found
         """
         if log is None:
             log = self.logger
+
+        # Priority 0: Reason-based routing to a department-specific agent.
+        if reason:
+            result = await self._resolve_from_reason(db, conversation, phone_record, reason, log)
+            if result:
+                return result
 
         # Priority 1 & 2: Check if conversation is part of a campaign
         if conversation:
@@ -86,6 +100,50 @@ class VoiceAgentResolver:
                 return result
 
         return None
+
+    async def _resolve_from_reason(
+        self,
+        db: AsyncSession,
+        conversation: Any | None,
+        phone_record: PhoneNumber,
+        reason: str,
+        log: Any,
+    ) -> ResolvedAgent | None:
+        """Route to a department agent using the workspace's reason→agent map.
+
+        Args:
+            db: Database session
+            conversation: Conversation model instance (optional)
+            phone_record: PhoneNumber record for the destination number
+            reason: Classified caller intent
+            log: Logger instance
+
+        Returns:
+            ResolvedAgent if a valid mapped agent is found, None otherwise
+        """
+        from app.services.telephony.inbound_routing import (
+            find_conversation_workspace_id,
+            get_workspace_routing_map,
+        )
+
+        workspace_id = await find_conversation_workspace_id(conversation, phone_record)
+        if workspace_id is None:
+            return None
+
+        routing_map = await get_workspace_routing_map(db, workspace_id)
+        agent_id = routing_map.get(reason.lower())
+        if agent_id is None:
+            log.debug("no_reason_route_configured", reason=reason)
+            return None
+
+        result = await self._check_agent(db, agent_id, f"reason_routing:{reason}", log)
+        if result is None:
+            log.info("reason_route_agent_invalid", reason=reason, agent_id=str(agent_id))
+            return None
+
+        log.info("routed_by_reason", reason=reason, agent_id=str(agent_id))
+        result.reason = reason
+        return result
 
     async def _resolve_from_campaign(
         self,

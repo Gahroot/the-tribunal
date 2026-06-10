@@ -127,6 +127,20 @@ class TestVoicePromptBuilder:
         assert "John Doe" in context
         assert "Acme Corp" in context
 
+    def test_build_context_section_renders_returning_summary(self) -> None:
+        """Returning-caller recap threaded through contact_info is rendered."""
+        builder = VoicePromptBuilder()
+        contact_info = {
+            "name": "John Doe",
+            "returning_summary": (
+                "\n### Returning Caller (recall prior conversations)\n"
+                "- Prior completed calls: 2\n  - (Jun 01) Asked about pricing."
+            ),
+        }
+        context = builder.build_context_section(contact_info=contact_info)
+        assert "Returning Caller" in context
+        assert "Asked about pricing." in context
+
     def test_build_context_section_outbound(self) -> None:
         """Test context section for outbound calls."""
         builder = VoicePromptBuilder()

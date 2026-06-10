@@ -38,6 +38,23 @@ export interface CallsListResponse {
   total_duration_seconds: number;
 }
 
+export interface LiveCall {
+  call_id: string;
+  workspace_id: string;
+  direction: string;
+  agent_name: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  started_at: string;
+  duration_seconds: number;
+  supervisor_count: number;
+  barged: boolean;
+}
+
+export interface LiveCallsResponse {
+  items: LiveCall[];
+}
+
 export interface CallStatsResponse {
   total_calls: number;
   completed_calls: number;
@@ -74,6 +91,12 @@ export const callsApi = {
   hangup: async (workspaceId: string, callId: string): Promise<{ success: boolean }> => {
     return apiPost<{ success: boolean }>(
       `/api/v1/workspaces/${workspaceId}/calls/${callId}/hangup`
+    );
+  },
+
+  listLive: async (workspaceId: string): Promise<LiveCallsResponse> => {
+    return apiGet<LiveCallsResponse>(
+      `/api/v1/workspaces/${workspaceId}/calls/live`
     );
   },
 };

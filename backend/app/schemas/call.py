@@ -57,6 +57,27 @@ class CallResponse(BaseModel):
     captured_messages: list[CapturedMessageResponse] = []
 
 
+class LiveCallResponse(BaseModel):
+    """A live (in-progress) call available for operator supervision."""
+
+    call_id: str
+    workspace_id: str
+    direction: str
+    agent_name: str | None = None
+    contact_name: str | None = None
+    contact_phone: str | None = None
+    started_at: str
+    duration_seconds: int
+    supervisor_count: int
+    barged: bool
+
+
+class LiveCallsResponse(BaseModel):
+    """Roster of live calls in a workspace."""
+
+    items: list[LiveCallResponse]
+
+
 class PaginatedCalls(BaseModel):
     """Paginated calls response."""
 

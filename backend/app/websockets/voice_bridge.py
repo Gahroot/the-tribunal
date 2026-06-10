@@ -42,6 +42,7 @@ from app.services.audio import (
     convert_openai_to_telnyx,
     convert_telnyx_to_openai,
 )
+from app.services.calls.live_call_registry import LiveCall, get_live_call_registry
 from app.websockets.connection_limits import (
     HeartbeatMonitor,
     acquire_connection_slot,
@@ -247,8 +248,72 @@ async def _setup_voice_session(
             is_outbound=is_outbound,
         )
 
+    # Enable streaming (during-call) sentiment scoring + escalation.
+    _maybe_enable_live_sentiment(
+        voice_session,
+        agent,
+        contact_info,
+        log,
+        call_control_id=call_control_id,
+        workspace_id=workspace_id,
+    )
+
     if agent and agent.initial_greeting:
         log.info("initial_greeting_prepared", greeting_length=len(agent.initial_greeting))
+
+
+def _maybe_enable_live_sentiment(
+    voice_session: VoiceSessionType,
+    agent: Any,
+    contact_info: dict[str, Any] | None,
+    log: Any,
+    *,
+    call_control_id: str | None,
+    workspace_id: uuid.UUID | None,
+) -> None:
+    """Configure streaming sentiment scoring + escalation on the session.
+
+    Lexicon scoring runs inline on each caller utterance; escalation side
+    effects (persist live signals, operator push, optional auto-transfer) are
+    scheduled off the audio path by the agent base. No-ops when disabled or the
+    session does not support live sentiment.
+    """
+    if (
+        not settings.voice_live_sentiment_enabled
+        or workspace_id is None
+        or not hasattr(voice_session, "enable_live_sentiment")
+    ):
+        return
+
+    from app.services.ai.live_sentiment import LiveSentimentScorer
+    from app.services.ai.live_sentiment_escalation import build_live_sentiment_handler
+
+    threshold = float(
+        getattr(agent, "sentiment_escalation_threshold", None)
+        or settings.voice_sentiment_escalation_threshold
+    )
+    sustained_turns = int(
+        getattr(agent, "sentiment_sustained_turns", None)
+        or settings.voice_sentiment_sustained_turns
+    )
+    scorer = LiveSentimentScorer(
+        negative_threshold=threshold,
+        sustained_turns=sustained_turns,
+        smoothing=settings.voice_sentiment_smoothing,
+    )
+    handler = build_live_sentiment_handler(
+        call_id=call_control_id or "",
+        workspace_id=workspace_id,
+        agent=agent,
+        contact_info=contact_info,
+        log=log,
+    )
+    voice_session.enable_live_sentiment(scorer, handler)
+    log.info(
+        "live_sentiment_scoring_enabled",
+        negative_threshold=threshold,
+        sustained_turns=sustained_turns,
+    )
 
 
 @router.websocket("/voice/stream/{call_id}")
@@ -588,6 +653,24 @@ async def _voice_stream_bridge_body(  # noqa: PLR0912, PLR0915
             ws_still_connected=_ws_status(),
         )
 
+        # Register this call on the live-call roster so authenticated operators
+        # can monitor / whisper / barge in for its duration. In-process only:
+        # supervision is served by the same backend that owns the Telnyx socket.
+        live_call = LiveCall(
+            call_id=call_id,
+            workspace_id=workspace_id or "",
+            telnyx_ws=websocket,
+            voice_session=voice_session,
+            direction="outbound" if is_outbound else "inbound",
+            agent_name=agent.name if agent else None,
+            contact_name=contact_info.get("name") if contact_info else None,
+            contact_phone=contact_info.get("phone") if contact_info else None,
+            log=log,
+        )
+        registry = get_live_call_registry()
+        if workspace_id:
+            registry.register(live_call)
+
         # Start bidirectional audio relay
         log.info(
             "starting_relay_task",
@@ -602,12 +685,17 @@ async def _voice_stream_bridge_body(  # noqa: PLR0912, PLR0915
                 log,
                 is_outbound=is_outbound,
                 stream_already_started=bool(gate_result),
+                live_call=live_call if workspace_id else None,
             )
         )
 
         # Wait for relay to complete (it will run until disconnect)
         log.info("waiting_for_relay_completion")
-        await relay_task
+        try:
+            await relay_task
+        finally:
+            if workspace_id:
+                registry.unregister(call_id)
         log.info("relay_task_completed")
 
     except WebSocketDisconnect:
@@ -641,6 +729,23 @@ async def _voice_stream_bridge_body(  # noqa: PLR0912, PLR0915
                     transcript_json = voice_session.get_transcript_json()
                     if transcript_json:
                         await _save_call_transcript_wrapper(call_id, transcript_json, log)
+                        # Persist a cross-call caller memory: summarize this
+                        # completed call and store it (embedded) so a future
+                        # call with this contact can recall the conversation,
+                        # not just CRM fields. Best-effort — never block teardown
+                        # on a summarizer/embedding failure.
+                        try:
+                            from app.services.ai.caller_memory_service import (
+                                summarize_and_store_call,
+                            )
+
+                            await summarize_and_store_call(
+                                call_id,
+                                transcript_json=transcript_json,
+                                log=log,
+                            )
+                        except Exception as e:
+                            log.warning("caller_memory_store_failed", error=str(e))
                 except Exception as e:
                     log.exception("failed_to_save_transcript", error=str(e))
 
@@ -669,6 +774,7 @@ async def _relay_audio(
     *,
     is_outbound: bool = False,
     stream_already_started: bool = False,
+    live_call: Any = None,
 ) -> None:
     """Relay audio bidirectionally between Telnyx and voice provider.
 
@@ -721,11 +827,18 @@ async def _relay_audio(
             stream_id_holder,
             is_outbound=is_outbound,
             stream_already_started=stream_already_started,
+            live_call=live_call,
         )
     )
     recv_task = asyncio.create_task(
         _receive_from_provider_and_send_to_telnyx(
-            websocket, voice_session, log, greeting_triggered, stream_id_holder, interruption_event
+            websocket,
+            voice_session,
+            log,
+            greeting_triggered,
+            stream_id_holder,
+            interruption_event,
+            live_call=live_call,
         )
     )
 
@@ -779,6 +892,7 @@ async def _receive_from_telnyx_and_send_to_provider(  # noqa: PLR0912, PLR0915
     *,
     is_outbound: bool = False,
     stream_already_started: bool = False,
+    live_call: Any = None,
 ) -> None:
     """Receive audio from Telnyx and send to voice provider.
 
@@ -899,6 +1013,12 @@ async def _receive_from_telnyx_and_send_to_provider(  # noqa: PLR0912, PLR0915
                         audio_chunks_received += 1
                         total_audio_bytes += len(audio_mulaw)
 
+                        # Fan the caller's audio out to any attached operators
+                        # (live-call supervision "listen"). Best-effort and
+                        # non-blocking — never adds latency to the AI path.
+                        if live_call is not None:
+                            live_call.publish("caller", audio_mulaw)
+
                         # Check if OpenAI with g711_ulaw - send directly, no conversion
                         is_openai_ulaw = isinstance(voice_session, VoiceAgentSession)
                         if is_openai_ulaw:
@@ -975,6 +1095,7 @@ async def _receive_from_provider_and_send_to_telnyx(  # noqa: PLR0912, PLR0915
     greeting_triggered: asyncio.Event,
     stream_id_holder: dict[str, str],
     interruption_event: asyncio.Event | None = None,
+    live_call: Any = None,
 ) -> None:
     """Receive audio from voice provider and send to Telnyx.
 
@@ -1007,18 +1128,26 @@ async def _receive_from_provider_and_send_to_telnyx(  # noqa: PLR0912, PLR0915
     audio_buffer = bytearray()
 
     async def send_audio_to_telnyx(audio_data: bytes) -> None:
-        """Send audio chunk to Telnyx via WebSocket."""
+        """Send audio chunk to Telnyx via WebSocket.
+
+        When a :class:`LiveCall` is attached, every frame is routed through it
+        so AI audio and operator barge-in audio serialize on one lock and never
+        interleave on the wire.
+        """
         nonlocal audio_chunks_sent, total_audio_bytes
 
-        audio_b64 = base64.b64encode(audio_data).decode("utf-8")
-        # Telnyx format: NO stream_id needed (unlike Twilio)
-        message = json.dumps(
-            {
-                "event": "media",
-                "media": {"payload": audio_b64},
-            }
-        )
-        await websocket.send_text(message)
+        if live_call is not None:
+            await live_call.send_to_telnyx_mulaw(audio_data)
+        else:
+            # Telnyx format: NO stream_id needed (unlike Twilio)
+            audio_b64 = base64.b64encode(audio_data).decode("utf-8")
+            message = json.dumps(
+                {
+                    "event": "media",
+                    "media": {"payload": audio_b64},
+                }
+            )
+            await websocket.send_text(message)
 
         audio_chunks_sent += 1
         total_audio_bytes += len(audio_data)
@@ -1029,7 +1158,6 @@ async def _receive_from_provider_and_send_to_telnyx(  # noqa: PLR0912, PLR0915
                 "sent_audio_to_telnyx",
                 chunk_num=audio_chunks_sent,
                 bytes_sent=len(audio_data),
-                payload_length=len(audio_b64),
                 first_bytes_hex=audio_data[:10].hex() if audio_data else "empty",
             )
 
@@ -1085,12 +1213,24 @@ async def _receive_from_provider_and_send_to_telnyx(  # noqa: PLR0912, PLR0915
                     # Grok outputs PCM16 24kHz - convert to μ-law 8kHz for Telnyx
                     audio_mulaw = convert_openai_to_telnyx(audio_chunk, log)
 
+                # Operator barge-in / take-over: while an operator holds the
+                # call the AI is muted — drop its audio so the caller only hears
+                # the operator. The operator's mic audio is written to Telnyx
+                # directly via the LiveCall.
+                if live_call is not None and live_call.ai_muted:
+                    audio_buffer.clear()
+                    continue
+
                 # Check for interruption - clear buffer and skip sending
                 if interruption_event and interruption_event.is_set():
                     audio_buffer.clear()
                     interruption_event.clear()
                     log.info("audio_buffer_cleared_on_interruption")
                     continue
+
+                # Mirror the AI's audio to attached operators (listen).
+                if live_call is not None:
+                    live_call.publish("agent", audio_mulaw)
 
                 # Add to buffer
                 audio_buffer.extend(audio_mulaw)

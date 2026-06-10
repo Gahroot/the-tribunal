@@ -959,6 +959,46 @@ class VoiceAgentSession(VoiceAgentBase):
         except Exception as e:
             self.logger.exception("cancel_response_error", error=str(e))
 
+    async def inject_operator_guidance(self, text: str) -> None:
+        """Inject private supervisor guidance into the conversation.
+
+        Used by live-call supervision ("whisper"): an operator steers the AI's
+        next response without the caller hearing it. We add a system-role
+        conversation item but deliberately do NOT call ``response.create`` —
+        the guidance shapes the AI's next natural turn rather than forcing it
+        to speak immediately over the caller.
+
+        Args:
+            text: Operator guidance to fold into the AI's instructions.
+        """
+        if not self.ws:
+            self.logger.warning("cannot_inject_guidance_ws_not_connected")
+            return
+        guidance = (text or "").strip()
+        if not guidance:
+            return
+        event = {
+            "type": "conversation.item.create",
+            "item": {
+                "type": "message",
+                "role": "system",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": (
+                            "[Live supervisor guidance \u2014 follow this on your next "
+                            f"turn; do not read it aloud]: {guidance}"
+                        ),
+                    }
+                ],
+            },
+        }
+        try:
+            await self._send_event(event)
+            self.logger.info("operator_guidance_injected", chars=len(guidance))
+        except Exception as e:
+            self.logger.exception("inject_operator_guidance_error", error=str(e))
+
     async def _send_event(self, event: dict[str, Any]) -> None:
         """Send event to WebSocket.
 

@@ -1,0 +1,30 @@
+{
+  "data": {
+    "event_type": "call.recording.saved",
+    "id": "f7e7b3f4-1f2f-4f8e-9b22-aaa000000008",
+    "occurred_at": "2026-05-15T18:01:35.000Z",
+    "record_type": "event",
+    "payload": {
+      "call_control_id": "v3:call-control-id-voicemail-001",
+      "call_leg_id": "leg-id-voicemail-001",
+      "call_session_id": "session-id-voicemail-001",
+      "channels": "single",
+      "client_state": "dm9pY2VtYWls",
+      "connection_id": "1234567890",
+      "recording_started_at": "2026-05-15T18:00:05.000Z",
+      "recording_ended_at": "2026-05-15T18:01:30.000Z",
+      "recording_urls": {
+        "mp3": "https://recordings.telnyx.example/rec-voicemail-001.mp3",
+        "wav": "https://recordings.telnyx.example/rec-voicemail-001.wav"
+      },
+      "public_recording_urls": {
+        "mp3": "https://public.recordings.telnyx.example/rec-voicemail-001.mp3",
+        "wav": "https://public.recordings.telnyx.example/rec-voicemail-001.wav"
+      }
+    }
+  },
+  "meta": {
+    "attempt": 1,
+    "delivered_to": "https://example.com/webhooks/telnyx/voice"
+  }
+}

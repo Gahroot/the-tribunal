@@ -65,6 +65,22 @@ class CallOutcomeService:
         existing = existing_result.scalar_one_or_none()
 
         if existing:
+            # A placeholder outcome may have been created mid-call to carry live
+            # sentiment signals (see ``upsert_live_call_signals``). Finalize it
+            # here so prompt-version counters / bandit reward still fire exactly
+            # once, on the real (hangup/judge) classification.
+            if (existing.signals or {}).get("live_only"):
+                log.info("finalizing_live_outcome", existing_id=str(existing.id))
+                return await self._finalize_live_outcome(
+                    db=db,
+                    outcome=existing,
+                    outcome_type=outcome_type,
+                    prompt_version_id=prompt_version_id,
+                    signals=signals,
+                    classified_by=classified_by,
+                    classification_confidence=classification_confidence,
+                    raw_hangup_cause=raw_hangup_cause,
+                )
             log.info("outcome_already_exists", existing_id=str(existing.id))
             # Update existing instead
             return await self.update_outcome(
@@ -110,6 +126,53 @@ class CallOutcomeService:
         except Exception as e:
             # Don't fail outcome creation if reward recording fails
             log.warning("bandit_reward_recording_failed", error=str(e))
+
+        return outcome
+
+    async def _finalize_live_outcome(
+        self,
+        db: AsyncSession,
+        outcome: CallOutcome,
+        *,
+        outcome_type: str,
+        prompt_version_id: uuid.UUID | None,
+        signals: dict[str, Any] | None,
+        classified_by: str,
+        classification_confidence: float | None,
+        raw_hangup_cause: str | None,
+    ) -> CallOutcome:
+        """Promote a mid-call placeholder outcome to its final classification.
+
+        Merges the final signals over the live ones, clears the ``live_only``
+        marker, and runs the same counter/reward side effects a fresh
+        ``create_outcome`` would have, so live pre-creation does not change
+        analytics behavior.
+        """
+        merged = dict(outcome.signals or {})
+        if signals:
+            merged.update(signals)
+        merged.pop("live_only", None)
+
+        outcome.outcome_type = OutcomeType(outcome_type)
+        outcome.signals = merged
+        outcome.classified_by = ClassifiedBy(classified_by)
+        if classification_confidence is not None:
+            outcome.classification_confidence = classification_confidence
+        if raw_hangup_cause is not None:
+            outcome.raw_hangup_cause = raw_hangup_cause
+        if prompt_version_id is not None and outcome.prompt_version_id is None:
+            outcome.prompt_version_id = prompt_version_id
+
+        await db.commit()
+        await db.refresh(outcome)
+
+        if outcome.prompt_version_id:
+            await self._update_version_counters(db, outcome.prompt_version_id, outcome_type, merged)
+
+        try:
+            await record_bandit_reward(db, outcome)
+        except Exception as e:
+            logger.warning("bandit_reward_recording_failed", error=str(e))
 
         return outcome
 
@@ -298,3 +361,40 @@ async def create_outcome_from_hangup(
         classified_by="hangup_cause",
         raw_hangup_cause=hangup_cause,
     )
+
+
+async def upsert_live_call_signals(
+    db: AsyncSession,
+    message_id: uuid.UUID,
+    signals: dict[str, Any],
+) -> CallOutcome:
+    """Merge live (during-call) signals onto a call's outcome record.
+
+    Used to surface streaming sentiment (``sentiment`` / ``sentiment_score``)
+    on the conversation timeline *while the call is still in progress*, rather
+    than only after the post-call transcript analysis worker runs.
+
+    If no ``CallOutcome`` exists yet (the hangup webhook has not fired), a
+    placeholder is created and flagged with ``live_only=True`` so that
+    :meth:`CallOutcomeService.create_outcome` later finalizes it with the real
+    classification and counter/reward side effects.
+    """
+    result = await db.execute(select(CallOutcome).where(CallOutcome.message_id == message_id))
+    outcome = result.scalar_one_or_none()
+
+    if outcome is None:
+        outcome = CallOutcome(
+            message_id=message_id,
+            outcome_type=OutcomeType.COMPLETED,
+            signals={"live_only": True, **signals},
+            classified_by=ClassifiedBy.LLM_JUDGE,
+        )
+        db.add(outcome)
+    else:
+        merged = dict(outcome.signals or {})
+        merged.update(signals)
+        outcome.signals = merged
+
+    await db.commit()
+    await db.refresh(outcome)
+    return outcome

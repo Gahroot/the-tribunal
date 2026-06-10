@@ -576,6 +576,11 @@ class TelnyxVoiceService:
         call_control_id: str,
         channels: str = "dual",
         format: str = "mp3",
+        *,
+        client_state: str | None = None,
+        command_id: str | None = None,
+        play_beep: bool = False,
+        max_length_secs: int | None = None,
     ) -> bool:
         """Start recording an active call.
 
@@ -583,6 +588,11 @@ class TelnyxVoiceService:
             call_control_id: Telnyx call control ID
             channels: Recording channels - "single" or "dual" (separate tracks)
             format: Recording format - "mp3" or "wav"
+            client_state: Optional base64 state echoed on ``call.recording.saved``
+                so the recording webhook can recognise voicemail captures.
+            command_id: Optional idempotency key to dedupe duplicate commands.
+            play_beep: Play a beep before recording starts (voicemail prompt).
+            max_length_secs: Optional hard cap on the recording length.
 
         Returns:
             True if successful, False otherwise
@@ -599,6 +609,14 @@ class TelnyxVoiceService:
                 "format": format,
                 "channels": channels,
             }
+            if client_state:
+                payload["client_state"] = client_state
+            if command_id:
+                payload["command_id"] = command_id
+            if play_beep:
+                payload["play_beep"] = True
+            if max_length_secs is not None:
+                payload["max_length"] = max(1, max_length_secs)
 
             response = await self.client.post(
                 f"/calls/{call_control_id}/actions/record_start",
@@ -628,6 +646,41 @@ class TelnyxVoiceService:
                 error=str(e),
             )
             return False
+
+    async def start_voicemail_recording(
+        self,
+        call_control_id: str,
+        *,
+        command_id: str | None = None,
+        max_length_secs: int = 180,
+    ) -> bool:
+        """Record an inbound voicemail message and tag it for the webhook.
+
+        Triggers a single-channel recording with a beep prompt and stamps the
+        recording with a voicemail ``client_state`` marker. When Telnyx fires
+        ``call.recording.saved`` for this leg, the recording webhook handler
+        decodes the marker (:func:`is_voicemail_client_state`) and runs the AI
+        voicemail pipeline (transcribe -> classify -> follow-up -> notify).
+
+        Args:
+            call_control_id: Telnyx call control ID of the inbound caller leg.
+            command_id: Optional idempotency key to dedupe duplicate commands.
+            max_length_secs: Hard cap on the captured message length.
+
+        Returns:
+            True if Telnyx accepted the record command, False otherwise.
+        """
+        from app.services.telephony.voicemail import encode_voicemail_client_state
+
+        return await self.start_recording(
+            call_control_id,
+            channels="single",
+            format="mp3",
+            client_state=encode_voicemail_client_state(),
+            command_id=command_id,
+            play_beep=True,
+            max_length_secs=max_length_secs,
+        )
 
     async def send_dtmf(
         self,

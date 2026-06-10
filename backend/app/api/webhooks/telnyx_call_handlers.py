@@ -16,10 +16,13 @@ from app.db.session import AsyncSessionLocal
 from app.models.phone_number import PhoneNumber
 from app.services.push_notifications import push_notification_service
 from app.services.telephony.call_outcome_classifier import CallOutcomeClassifier
+from app.services.telephony.inbound_routing import classify_inbound_reason
+from app.services.telephony.inbound_screening import InboundCallScreener
 from app.services.telephony.voice_agent_resolver import VoiceAgentResolver
 
 _call_classifier = CallOutcomeClassifier()
 _voice_agent_resolver = VoiceAgentResolver()
+_inbound_screener = InboundCallScreener()
 
 # Terminal message statuses set by the hangup classifier. If a Message is
 # already in one of these states when a hangup webhook arrives, it's a Telnyx
@@ -28,7 +31,7 @@ _voice_agent_resolver = VoiceAgentResolver()
 _TERMINAL_HANGUP_STATUSES = frozenset({"completed", "failed", "no_answer"})
 
 
-async def handle_call_initiated(payload: dict[Any, Any], log: Any) -> None:
+async def handle_call_initiated(payload: dict[Any, Any], log: Any) -> None:  # noqa: PLR0915
     """Handle incoming call."""
     call_control_id = payload.get("call_control_id", "")
     call_state = payload.get("state", "")
@@ -134,6 +137,33 @@ async def handle_call_initiated(payload: dict[Any, Any], log: Any) -> None:
         observe_voice_call_started(workspace_id)
         log.info("call_initiated_processed", message_id=str(message.id))
 
+        # Inbound spam screening: check the caller against opt-out / blocklist
+        # / reputation and apply the workspace spam policy. The outcome is
+        # persisted on the call's Message row for audit and downstream UI.
+        screening = await _inbound_screener.screen(db, workspace_id, from_number, log)
+        message.screening_decision = screening.decision.value
+        message.screening_reason = screening.reason
+
+        # Reason-based routing: classify the caller's intent early (from a
+        # returning caller's history) so the call can be routed to the right
+        # department agent/queue when answered.
+        routing_reason = await classify_inbound_reason(db, workspace_id, conversation, log)
+        if routing_reason:
+            message.routing_reason = routing_reason
+
+        await db.commit()
+
+        # Reject screened-out spam callers before answering. We hang up the
+        # ringing leg; no agent is engaged and no push is sent.
+        if screening.is_rejected:
+            log.info(
+                "inbound_call_rejected_spam",
+                screening_reason=screening.reason,
+                call_control_id=call_control_id,
+            )
+            await _reject_inbound_call(call_control_id, log)
+            return
+
         # Push notification for incoming call
         try:
             await push_notification_service.send_to_workspace_members(
@@ -152,12 +182,27 @@ async def handle_call_initiated(payload: dict[Any, Any], log: Any) -> None:
         except Exception as e:
             log.exception("push_notification_failed", error=str(e))
 
-        # Auto-answer calls if phone number has an assigned active agent
+        # Screen-with-a-challenge: route suspicious callers to voicemail/identity
+        # capture instead of engaging the AI agent. A human can review the
+        # recording before any callback.
+        if screening.needs_challenge:
+            log.info(
+                "inbound_call_challenged",
+                screening_reason=screening.reason,
+                call_control_id=call_control_id,
+            )
+            await take_inbound_voicemail(call_control_id, log)
+            return
+
+        # Auto-answer calls if phone number has an assigned active agent. The
+        # classified routing reason picks a department-specific agent when the
+        # workspace defines a route for it.
         await auto_answer_call_if_agent_assigned(
             call_control_id=call_control_id,
             phone_record=phone_record,
             conversation=conversation,
             log=log,
+            reason=message.routing_reason,
         )
 
 
@@ -693,11 +738,126 @@ async def handle_machine_detection(payload: dict[Any, Any], log: Any) -> None:
             log.exception("missed_call_textback_failed", error=str(e))
 
 
+async def handle_recording_saved(payload: dict[Any, Any], log: Any) -> None:
+    """Handle ``call.recording.saved`` — transcribe + run the voicemail pipeline.
+
+    Idempotent: :func:`process_voicemail_recording` collapses duplicate Telnyx
+    retries via a Redis claim plus a DB transcript guard. The follow-up pipeline
+    (classify intent/urgency, create an opportunity, notify operators, optional
+    callback/text-back) only runs for inbound voicemail captures; ordinary call
+    recordings just get their transcript persisted.
+    """
+    from app.services.telephony.voicemail import (
+        extract_recording_url,
+        is_voicemail_client_state,
+        process_voicemail_recording,
+    )
+
+    call_control_id = payload.get("call_control_id", "")
+    client_state = payload.get("client_state")
+    recording_url = extract_recording_url(payload)
+
+    log = log.bind(call_control_id=call_control_id)
+    log.info("processing_recording_saved", has_url=bool(recording_url))
+
+    if not call_control_id or not recording_url:
+        log.warning("recording_saved_missing_fields")
+        return
+
+    is_voicemail = is_voicemail_client_state(client_state)
+    run_followup = is_voicemail
+
+    # Fall back to message state: an inbound call that was never answered by a
+    # human/AI and rolled to a recording is treated as a voicemail too.
+    if not run_followup:
+        from app.models.conversation import Message
+
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(Message.direction, Message.status).where(
+                    Message.provider_message_id == call_control_id
+                )
+            )
+            row = result.first()
+        if row is not None:
+            direction, status = row
+            run_followup = str(direction) == "inbound" and str(status) in (
+                "ringing",
+                "no_answer",
+                "failed",
+            )
+
+    await process_voicemail_recording(
+        call_control_id=call_control_id,
+        recording_url=recording_url,
+        run_followup=run_followup,
+        log=log,
+    )
+
+
+async def take_inbound_voicemail(
+    call_control_id: str,
+    log: Any,
+) -> None:
+    """Answer an unattended inbound call and record a voicemail message.
+
+    Used when no voice-capable agent is available to take an inbound call. We
+    answer, speak a short greeting, and start a tagged voicemail recording. The
+    resulting ``call.recording.saved`` webhook drives the AI voicemail pipeline.
+    """
+    from app.services.telephony.telnyx_voice import TelnyxVoiceService
+
+    if not settings.telnyx_api_key:
+        log.warning("no_telnyx_api_key_for_voicemail")
+        return
+
+    greeting = (
+        "Sorry, we're unable to take your call right now. "
+        "Please leave a message after the tone and we'll get back to you."
+    )
+
+    voice_service = TelnyxVoiceService(settings.telnyx_api_key)
+    try:
+        answered = await voice_service.answer_call(call_control_id)
+        if not answered:
+            log.error("voicemail_answer_failed", call_control_id=call_control_id)
+            return
+        await voice_service.speak_text(call_control_id=call_control_id, text=greeting)
+        recorded = await voice_service.start_voicemail_recording(call_control_id)
+        if recorded:
+            log.info("voicemail_recording_started", call_control_id=call_control_id)
+        else:
+            log.warning("voicemail_recording_failed", call_control_id=call_control_id)
+    except Exception as e:
+        log.exception("take_inbound_voicemail_error", error=str(e))
+    finally:
+        await voice_service.close()
+
+
+async def _reject_inbound_call(call_control_id: str, log: Any) -> None:
+    """Hang up a screened-out (spam) inbound call before it is answered."""
+    from app.services.telephony.telnyx_voice import TelnyxVoiceService
+
+    if not settings.telnyx_api_key:
+        log.warning("no_telnyx_api_key_for_spam_rejection")
+        return
+
+    voice_service = TelnyxVoiceService(settings.telnyx_api_key)
+    try:
+        await voice_service.hangup_call(call_control_id)
+        log.info("inbound_spam_call_hung_up", call_control_id=call_control_id)
+    except Exception as e:
+        log.exception("inbound_spam_call_hangup_failed", error=str(e))
+    finally:
+        await voice_service.close()
+
+
 async def auto_answer_call_if_agent_assigned(
     call_control_id: str,
     phone_record: PhoneNumber,
     conversation: Any,
     log: Any,
+    reason: str | None = None,
 ) -> None:
     """Auto-answer incoming call if an active agent is assigned."""
     from app.models.conversation import Conversation
@@ -718,7 +878,9 @@ async def auto_answer_call_if_agent_assigned(
         return
 
     async with AsyncSessionLocal() as db:
-        resolved = await _voice_agent_resolver.resolve(db, conversation, phone_record, log)
+        resolved = await _voice_agent_resolver.resolve(
+            db, conversation, phone_record, log, reason=reason
+        )
 
         if not resolved:
             log.info(
@@ -726,6 +888,10 @@ async def auto_answer_call_if_agent_assigned(
                 phone_number=phone_record.phone_number,
                 hint="Assign a voice-capable agent to the phone number or campaign",
             )
+            # No agent available to take the call — answer it ourselves and
+            # record a voicemail so the caller can still leave a message. The
+            # recording webhook then runs the AI voicemail pipeline.
+            await take_inbound_voicemail(call_control_id, log)
             return
 
         log.info(
@@ -733,6 +899,7 @@ async def auto_answer_call_if_agent_assigned(
             agent_id=str(resolved.agent.id),
             agent_name=resolved.agent.name,
             agent_source=resolved.source,
+            routing_reason=resolved.reason,
             call_control_id=call_control_id,
         )
 

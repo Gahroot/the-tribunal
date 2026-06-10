@@ -361,6 +361,18 @@ class Message(Base):
     transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
     booking_outcome: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
+    # === Inbound spam screening & reason-based routing ===
+    # Populated for inbound calls by the call.initiated handler.
+    # ``screening_decision`` is one of allow / low_priority / challenge /
+    # reject (see :class:`app.services.telephony.inbound_screening.SpamDecision`)
+    # and ``screening_reason`` records why (e.g. global_opt_out, blocklist,
+    # reputation_spam, high_call_volume). ``routing_reason`` is the classified
+    # caller intent used to pick the destination agent/queue (billing, sales,
+    # support, ...).
+    screening_decision: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    screening_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    routing_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
     # Prompt version attribution for calls
     prompt_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

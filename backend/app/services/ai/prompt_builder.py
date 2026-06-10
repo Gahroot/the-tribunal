@@ -486,6 +486,11 @@ AVAILABILITY ACCURACY RULES:
             parts.append(
                 f"\n### Lead Intake Notes (use this to personalize the conversation):\n{notes}"
             )
+        # Returning-caller recap (prior calls + stored caller memories). Built by
+        # the caller-memory service and threaded through contact_info so it
+        # renders identically for every voice provider.
+        if contact_info.get("returning_summary"):
+            parts.append(contact_info["returning_summary"])
         return parts
 
     def _build_offer_section(self, offer_info: dict[str, Any], is_outbound: bool) -> list[str]:
