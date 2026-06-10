@@ -31,7 +31,14 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: {
+        ...devices["Desktop Chrome"],
+        // Taller-than-default viewport so modal dialogs (New Appointment, Add
+        // Contact) render their footer actions within the viewport. The shadcn
+        // dialogs are fixed-centered and not internally scrollable, so a short
+        // viewport clips the Cancel/Submit buttons and makes them unclickable.
+        viewport: { width: 1280, height: 1100 },
+      },
     },
   ],
 

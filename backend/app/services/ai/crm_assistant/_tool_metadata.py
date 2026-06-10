@@ -238,9 +238,7 @@ _TOOL_POLICY_OVERRIDES: dict[str, CRMToolMetadata] = {
             pending_message="Approval required before I can assign this AI responder.",
         ),
         approved_executor=execute_approved_crm_assistant_tool,
-        description_template=(
-            "Assign AI responder {agent_id} to conversation {conversation_id}"
-        ),
+        description_template=("Assign AI responder {agent_id} to conversation {conversation_id}"),
     ),
     "create_offer_draft": CRMToolMetadata(
         name="create_offer_draft",

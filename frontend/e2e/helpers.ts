@@ -28,7 +28,9 @@ export async function loginViaUI(page: Page): Promise<void> {
     );
   }
   await page.goto("/login");
-  await expect(page.getByRole("heading", { name: /welcome back/i })).toBeVisible();
+  // The login card title ("Welcome back") renders as a styled <div>, not a
+  // semantic heading, so match on text rather than role.
+  await expect(page.getByText(/welcome back/i)).toBeVisible();
 
   await page.getByLabel(/email/i).fill(TEST_USER.email);
   await page.getByLabel(/password/i).fill(TEST_USER.password);

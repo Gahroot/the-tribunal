@@ -116,10 +116,7 @@ async def _check_worker_heartbeats() -> tuple[bool, dict[str, bool], str | None]
             # bounded pool, raising ``MaxConnectionsError`` and reporting every
             # worker as down.
             values = await client.mget(keys)
-            return {
-                label: value is not None
-                for label, value in zip(labels, values, strict=True)
-            }
+            return {label: value is not None for label, value in zip(labels, values, strict=True)}
 
         per_worker = await asyncio.wait_for(_run(), timeout=_PROBE_TIMEOUT_SECONDS)
     except TimeoutError:

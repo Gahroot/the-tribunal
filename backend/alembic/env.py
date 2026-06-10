@@ -22,6 +22,45 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+def _descending_op_index_names() -> frozenset[str]:
+    """Names of indexes that declare a descending ``postgresql_ops`` ordering.
+
+    SQLAlchemy's autogenerate cannot compare expression/functional indexes: a
+    ``col DESC`` index reflected from PostgreSQL is rendered as an opaque
+    expression, while the ORM side declares it via ``postgresql_ops``. The two
+    never compare equal, so ``alembic check`` reports a phantom drop+recreate on
+    every run even though the database already matches the model exactly.
+
+    We auto-detect these indexes from the metadata (rather than hard-coding
+    names) so newly added ``DESC`` indexes are suppressed automatically. The
+    indexes are still authored explicitly in their owning migrations; we only
+    exclude them from the autogenerate *comparison*.
+    """
+    names: set[str] = set()
+    for table in target_metadata.tables.values():
+        for index in table.indexes:
+            ops = index.kwargs.get("postgresql_ops") or {}
+            if any(str(value).upper().startswith("DESC") for value in ops.values()):
+                if index.name:
+                    names.add(index.name)
+    return frozenset(names)
+
+
+_DESCENDING_OP_INDEX_NAMES = _descending_op_index_names()
+
+
+def include_object(obj, name, type_, reflected, compare_to):  # noqa: ANN001, ANN201
+    """Exclude known expression-index false positives from autogenerate.
+
+    Applies to both the reflected (database) and metadata (ORM) sides so the
+    index is never proposed for drop or recreate. See
+    :func:`_descending_op_index_names` for the rationale.
+    """
+    if type_ == "index" and name in _DESCENDING_OP_INDEX_NAMES:
+        return False
+    return True
+
+
 def get_url() -> str:
     """Get database URL from settings."""
     return settings.database_url
@@ -35,6 +74,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_object=include_object,
     )
 
     with context.begin_transaction():
@@ -43,7 +83,11 @@ def run_migrations_offline() -> None:
 
 def do_run_migrations(connection: Connection) -> None:
     """Run migrations with a connection."""
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        include_object=include_object,
+    )
 
     with context.begin_transaction():
         context.run_migrations()

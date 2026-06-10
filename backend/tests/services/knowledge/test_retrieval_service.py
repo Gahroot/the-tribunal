@@ -11,10 +11,9 @@ Covers the three behaviours that lock the noledge port in place:
 from __future__ import annotations
 
 import uuid
+from unittest.mock import AsyncMock
 
 import pytest
-
-from unittest.mock import AsyncMock
 
 from app.services.ai.embeddings import EmbeddingResult
 from app.services.knowledge.retrieval_service import (

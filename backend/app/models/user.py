@@ -47,18 +47,14 @@ class User(Base):
         Boolean, default=True, nullable=False
     )
     # Per-type preferences for actionable-event notifications (push + email).
-    notification_push_reviews: Mapped[bool] = mapped_column(
-        Boolean, default=True, nullable=False
-    )
+    notification_push_reviews: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     notification_push_deal_alerts: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False
     )
     notification_push_missed_call_textback: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False
     )
-    notification_push_roleplay: Mapped[bool] = mapped_column(
-        Boolean, default=True, nullable=False
-    )
+    notification_push_roleplay: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     notification_push_automations: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False
     )

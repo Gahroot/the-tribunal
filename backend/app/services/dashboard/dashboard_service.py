@@ -855,12 +855,8 @@ class DashboardService:
             select(
                 func.count(),
                 func.count().filter(RehearsalRun.created_at >= week_ago),
-                func.count().filter(
-                    RehearsalRun.status == RehearsalStatus.COMPLETED.value
-                ),
-                func.avg(RehearsalRun.overall_score).filter(
-                    RehearsalRun.overall_score.isnot(None)
-                ),
+                func.count().filter(RehearsalRun.status == RehearsalStatus.COMPLETED.value),
+                func.avg(RehearsalRun.overall_score).filter(RehearsalRun.overall_score.isnot(None)),
                 func.max(RehearsalRun.created_at),
             ).where(RehearsalRun.workspace_id == workspace.id)
         )
