@@ -8,6 +8,7 @@ import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 
+import { SetupGate } from "@/components/onboarding/setup-gate";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Breadcrumb,
@@ -48,6 +49,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { NoWorkspaceGate } from "@/components/workspaces/no-workspace-gate";
+import { useSetupStatus } from "@/hooks/useSetupStatus";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { nudgesApi } from "@/lib/api/nudges";
 import { pendingActionsApi } from "@/lib/api/pending-actions";
@@ -59,6 +61,7 @@ import {
   appNavSections,
   breadcrumbLabels,
   isNavItemVisible,
+  setupNavItem,
   type AppNavBadgeKey,
   type AppNavItem,
   type AppNavSection,
@@ -126,6 +129,7 @@ export function AppSidebar({ children }: AppSidebarProps) {
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
   const workspaceId = useWorkspaceId();
+  const { needsSetup } = useSetupStatus();
   const { data: nudgeStats } = useQuery({
     queryKey: queryKeys.nudges.stats(workspaceId ?? ""),
     queryFn: () => nudgesApi.getStats(workspaceId!),
@@ -236,6 +240,13 @@ export function AppSidebar({ children }: AppSidebarProps) {
         </SidebarHeader>
 
         <SidebarContent className="app-scrollbar">
+          {needsSetup && (
+            <SidebarGroup>
+              <SidebarGroupContent>
+                <SidebarMenu>{renderSidebarItem(setupNavItem)}</SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
           {visibleSidebarSections.map((section, index) => (
             <Fragment key={section.title}>
               {index > 0 && <SidebarSeparator />}
@@ -358,6 +369,7 @@ export function AppSidebar({ children }: AppSidebarProps) {
           <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
         )}
         <main className="app-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <SetupGate />
           <NoWorkspaceGate>{children}</NoWorkspaceGate>
         </main>
       </SidebarInset>

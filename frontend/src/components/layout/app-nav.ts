@@ -22,6 +22,7 @@ import {
   Megaphone,
   Phone,
   PhoneCall,
+  Rocket,
   Settings,
   Sparkles,
   Star,
@@ -48,6 +49,19 @@ export interface AppNavSection {
   defaultOpen?: boolean;
   devOnly?: boolean;
 }
+
+/**
+ * First-run setup entry (finding RF-002). Rendered at the top of the sidebar
+ * only while the workspace is unconfigured, so users who skip the auto-redirect
+ * to /onboarding can always find their way back to finish setup.
+ */
+export const setupNavItem: AppNavItem = {
+  title: "Finish setup",
+  url: "/onboarding",
+  icon: Rocket,
+  sidebar: true,
+  commandPalette: true,
+};
 
 export const workspaceNavItems: AppNavItem[] = [
   {

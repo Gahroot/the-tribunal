@@ -1,12 +1,14 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useQueryClient } from "@tanstack/react-query";
 import { Calendar, Database, Rocket, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { toast } from "sonner";
 
+import { Button } from "@/components/ui/button";
 import { WizardContainer } from "@/components/wizard/wizard-container";
 import type { WizardStepDef } from "@/hooks/useWizard";
 import {
@@ -14,6 +16,8 @@ import {
   onboard,
   parseCalcomUrl,
 } from "@/lib/api/realtor";
+import { markAutoRedirectedToOnboarding } from "@/lib/onboarding-status";
+import { queryKeys } from "@/lib/query-keys";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 import { useWorkspace } from "@/providers/workspace-provider";
 
@@ -42,6 +46,7 @@ const STEPS = [
 
 function OnboardingFlow() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { currentWorkspaceId } = useWorkspace();
   const extras = useOnboardingExtras();
 
@@ -54,6 +59,22 @@ function OnboardingFlow() {
   const [currentStepId, setCurrentStepId] =
     useState<OnboardingStepId>("fub");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Landing here (whether auto-redirected for a fresh workspace or arriving by
+  // choice) counts as the one-time first-run nudge, so the app shell never
+  // force-redirects back into the wizard and traps a user who wants to skip.
+  useEffect(() => {
+    if (currentWorkspaceId) {
+      markAutoRedirectedToOnboarding(currentWorkspaceId);
+    }
+  }, [currentWorkspaceId]);
+
+  const handleSkip = useCallback(() => {
+    if (currentWorkspaceId) {
+      markAutoRedirectedToOnboarding(currentWorkspaceId);
+    }
+    router.push("/today");
+  }, [currentWorkspaceId, router]);
 
   const currentStepIndex = useMemo(
     () => STEPS.findIndex((s) => s.id === currentStepId),
@@ -137,6 +158,13 @@ function OnboardingFlow() {
         });
       }
 
+      // The onboard call created the workspace's first agent, so refresh the
+      // setup probe immediately — otherwise the cold-start card/nav linger on
+      // the cached "zero agents" result (finding RF-002).
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.agents.all(currentWorkspaceId),
+      });
+
       toast.success("Campaign launched! Your leads are being contacted.");
       router.push("/dashboard");
     } catch (err) {
@@ -149,12 +177,18 @@ function OnboardingFlow() {
     extras.csvFile,
     extras.fubImportCount,
     form,
+    queryClient,
     router,
   ]);
 
   return (
     <FormProvider {...form}>
-      <div className="flex min-h-screen items-center justify-center bg-background px-4 py-12">
+      <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 py-12">
+        <div className="mb-3 flex w-full max-w-2xl justify-end">
+          <Button variant="ghost" size="sm" onClick={handleSkip}>
+            Skip for now
+          </Button>
+        </div>
         <div className="w-full max-w-2xl border rounded-xl overflow-hidden shadow-xl bg-card min-h-[640px] flex flex-col">
           <WizardContainer
             steps={STEPS}
