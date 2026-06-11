@@ -1,9 +1,10 @@
 "use client";
 
-import { Check, Copy, ExternalLink, Link2 } from "lucide-react";
+import { Check, Copy, ExternalLink, Link2, LockKeyhole } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +17,8 @@ interface EmbedCodeBlockProps {
   values: EmbedFormValues;
   baseUrl: string;
   publicId: string;
+  canCopySnippets: boolean;
+  blockedReason: string;
 }
 
 /**
@@ -69,6 +72,8 @@ export function EmbedCodeBlock({
   values,
   baseUrl,
   publicId,
+  canCopySnippets,
+  blockedReason,
 }: EmbedCodeBlockProps) {
   const [copiedTab, setCopiedTab] = useState<string | null>(null);
 
@@ -119,6 +124,23 @@ export function EmbedCodeBlock({
   }, [baseUrl, publicId, modePath, values.theme, values.display]);
 
   const shareLink = `${baseUrl}/embed/${publicId}/fullpage?theme=${values.theme}`;
+
+  if (!canCopySnippets) {
+    return (
+      <Alert className="border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+        <LockKeyhole className="h-4 w-4" />
+        <AlertTitle>Installation code locked until your domain is saved</AlertTitle>
+        <AlertDescription className="space-y-2">
+          <p>{blockedReason}</p>
+          <p>
+            Add the domain where this widget will run, then save changes. Until
+            the saved allowlist includes that domain, backend embed requests
+            will be blocked.
+          </p>
+        </AlertDescription>
+      </Alert>
+    );
+  }
 
   return (
     <div className="space-y-6">

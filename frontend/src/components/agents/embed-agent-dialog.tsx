@@ -42,6 +42,9 @@ const DEFAULT_VALUES: EmbedFormValues = {
   display: "floating",
 };
 
+const hasConfiguredDomain = (domains: string[] | undefined) =>
+  domains?.some((domain) => domain.trim().length > 0) ?? false;
+
 /**
  * Inner content for the embed-agent dialog. Owns the form state and routes
  * pieces of it into the extracted `EmbedConfigForm`, `EmbedCodeBlock`, and
@@ -89,10 +92,10 @@ function EmbedDialogContent({
   const updateMutation = useMutation({
     mutationFn: (data: EmbedSettingsUpdate) =>
       agentsApi.updateEmbedSettings(workspaceId, agentId, data),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: queryKeys.agents.embed(workspaceId, agentId),
-      });
+    onSuccess: (savedSettings) => {
+      const queryKey = queryKeys.agents.embed(workspaceId, agentId);
+      queryClient.setQueryData(queryKey, savedSettings);
+      void queryClient.invalidateQueries({ queryKey });
       toast.success("Embed settings saved");
       setLocalChanges({});
     },
@@ -139,6 +142,28 @@ function EmbedDialogContent({
 
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
   const publicId = embedSettings?.public_id || "";
+  const savedEmbedEnabled = embedSettings?.embed_enabled === true;
+  const hasSavedAllowedDomain = hasConfiguredDomain(
+    embedSettings?.allowed_domains,
+  );
+  const hasSavedPublicId = Boolean(publicId);
+  const hasUnsavedAccessChanges =
+    localChanges.embedEnabled !== undefined ||
+    localChanges.allowedDomains !== undefined;
+  const canCopySnippets =
+    savedEmbedEnabled &&
+    hasSavedAllowedDomain &&
+    hasSavedPublicId &&
+    !hasUnsavedAccessChanges;
+  const embedCodeBlockedReason = !savedEmbedEnabled
+    ? "Enable embedding and save this agent before copying the installation code."
+    : !hasSavedAllowedDomain
+      ? "Add the domain where this widget will run, or it will be blocked."
+      : !hasSavedPublicId
+        ? "Save embedding settings before copying the installation code."
+        : hasUnsavedAccessChanges
+          ? "Save your embedding and allowed-domain changes before copying the installation code."
+          : "";
 
   if (isPending) {
     return (
@@ -191,6 +216,8 @@ function EmbedDialogContent({
                 values={values}
                 baseUrl={baseUrl}
                 publicId={publicId}
+                canCopySnippets={canCopySnippets}
+                blockedReason={embedCodeBlockedReason}
               />
             </div>
 
