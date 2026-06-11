@@ -47,6 +47,7 @@ import {
   SidebarSeparator,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { NoWorkspaceGate } from "@/components/workspaces/no-workspace-gate";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { nudgesApi } from "@/lib/api/nudges";
 import { pendingActionsApi } from "@/lib/api/pending-actions";
@@ -357,7 +358,7 @@ export function AppSidebar({ children }: AppSidebarProps) {
           <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
         )}
         <main className="app-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-          {children}
+          <NoWorkspaceGate>{children}</NoWorkspaceGate>
         </main>
       </SidebarInset>
     </SidebarProvider>

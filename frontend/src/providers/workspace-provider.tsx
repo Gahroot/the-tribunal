@@ -5,6 +5,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -73,6 +74,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }, [isAuthenticated, selectedWorkspaceId, workspaces]);
 
   const currentWorkspaceId = currentWorkspace?.workspace.id ?? null;
+
+  // Persist the resolved selection so a missing or stale stored id (e.g. a
+  // workspace the user was removed from, or a brand-new user who just landed in
+  // their auto-provisioned personal workspace) converges to a real id instead
+  // of leaving the dashboard wedged on `null` (finding RF-001).
+  useEffect(() => {
+    if (currentWorkspaceId && currentWorkspaceId !== getStoredWorkspaceId()) {
+      setStoredWorkspaceId(currentWorkspaceId);
+    }
+  }, [currentWorkspaceId]);
 
   const setCurrentWorkspace = useCallback(
     (workspaceId: string) => {

@@ -44,6 +44,7 @@ from app.services.rate_limiting.auth_limiter import (
     enforce_change_password_rate_limit,
     enforce_ws_ticket_rate_limit,
 )
+from app.services.workspaces import ensure_personal_workspace
 
 router = APIRouter()
 
@@ -134,6 +135,13 @@ async def register(
         full_name=user_in.full_name,
     )
     db.add(user)
+    await db.flush()
+
+    # Every new user must land in a usable default workspace (owner membership +
+    # default pipeline); without one /auth/me returns default_workspace_id=null
+    # and every workspace-scoped page freezes on its loading skeleton (RF-001).
+    await ensure_personal_workspace(db, user)
+
     await db.commit()
     await db.refresh(user)
 
@@ -182,6 +190,11 @@ async def login(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Inactive user",
         )
+
+    # Belt-and-suspenders for accounts created before auto-provisioning (or any
+    # path that left a user with zero memberships): heal on first login so they
+    # never hit the infinite-skeleton dead end. Idempotent for everyone else.
+    await ensure_personal_workspace(db, user)
 
     tokens = await TokenRotationService(db).issue_pair(user)
     await db.commit()
