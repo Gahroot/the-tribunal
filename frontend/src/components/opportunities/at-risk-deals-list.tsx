@@ -1,9 +1,11 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ShieldCheck } from "lucide-react";
+import { AlertTriangle, KanbanSquare, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   PageEmptyState,
@@ -47,6 +49,15 @@ export function AtRiskDealsList({
     ...POLL_60S,
   });
 
+  // Distinguish "deals exist but all healthy" from "no deals at all" so the
+  // empty state never falsely reassures a workspace that has zero opportunities.
+  const { data: opportunitiesData } = useQuery({
+    queryKey: queryKeys.opportunities.list(workspaceId, { page_size: 1 }),
+    queryFn: () => opportunitiesApi.list(workspaceId, { page_size: 1 }),
+    enabled: !!workspaceId,
+  });
+  const hasNoOpportunities = opportunitiesData?.total === 0;
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-3">
@@ -69,11 +80,24 @@ export function AtRiskDealsList({
             onRetry={() => void refetch()}
           />
         ) : !data.items.length ? (
-          <PageEmptyState
-            icon={<ShieldCheck className="h-10 w-10" />}
-            title="No deals at risk"
-            description="Every open deal looks healthy right now."
-          />
+          hasNoOpportunities ? (
+            <PageEmptyState
+              icon={<KanbanSquare className="h-10 w-10" />}
+              title="No deals yet"
+              description="There are no opportunities to coach. Create your first deal to start tracking pipeline health."
+              action={
+                <Button asChild size="sm">
+                  <Link href="/opportunities">Create a deal</Link>
+                </Button>
+              }
+            />
+          ) : (
+            <PageEmptyState
+              icon={<ShieldCheck className="h-10 w-10" />}
+              title="No deals at risk"
+              description="Every open deal looks healthy right now."
+            />
+          )
         ) : (
           <ul className="divide-y">
             {data.items.map((deal) => (

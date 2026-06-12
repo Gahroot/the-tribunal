@@ -12,11 +12,12 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { KanbanSquare, MoreVertical } from "lucide-react";
+import { KanbanSquare, MoreVertical, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,6 +39,7 @@ import { getApiErrorMessage } from "@/lib/utils/errors";
 import { formatCurrency } from "@/lib/utils/number";
 import type { Opportunity, Pipeline, PipelineStage } from "@/types";
 
+import { OpportunityCreateSheet } from "./opportunity-create-sheet";
 import { OpportunityDetailSheet } from "./opportunity-detail-sheet";
 
 const BOARD_PAGE_SIZE = 200;
@@ -108,6 +110,8 @@ function PipelineBoard({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createStageId, setCreateStageId] = useState<string | undefined>(undefined);
 
   const sensors = useSensors(
     // Require a small drag distance so a plain click still opens the card.
@@ -214,6 +218,11 @@ function PipelineBoard({
     setDetailOpen(true);
   }
 
+  function openCreate(stageId?: string) {
+    setCreateStageId(stageId);
+    setCreateOpen(true);
+  }
+
   if (isPending) {
     return <PageLoadingState message="Loading opportunities…" />;
   }
@@ -229,32 +238,45 @@ function PipelineBoard({
 
   return (
     <>
-      <DndContext
-        sensors={sensors}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-      >
-        <div className="flex h-full gap-4 overflow-x-auto pb-4">
-          {stages.map((stage) => (
-            <StageColumn
-              key={stage.id}
-              stage={stage}
-              stages={stages}
-              opportunities={byStage.get(stage.id) ?? []}
-              onOpen={openDetail}
-              onMove={(opportunityId, stageId) =>
-                moveMutation.mutate({ opportunityId, stageId })
-              }
-            />
-          ))}
+      <div className="flex h-full flex-col gap-4">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm font-medium text-muted-foreground">
+            {pipeline.name}
+          </span>
+          <Button size="sm" onClick={() => openCreate()} data-testid="add-opportunity">
+            <Plus className="mr-1.5 h-4 w-4" />
+            Add Opportunity
+          </Button>
         </div>
 
-        <DragOverlay>
-          {activeOpportunity ? (
-            <OpportunityCardBody opportunity={activeOpportunity} dragging />
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+        <DndContext
+          sensors={sensors}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+        >
+          <div className="flex flex-1 gap-4 overflow-x-auto pb-4">
+            {stages.map((stage) => (
+              <StageColumn
+                key={stage.id}
+                stage={stage}
+                stages={stages}
+                opportunities={byStage.get(stage.id) ?? []}
+                onOpen={openDetail}
+                onAdd={() => openCreate(stage.id)}
+                onMove={(opportunityId, stageId) =>
+                  moveMutation.mutate({ opportunityId, stageId })
+                }
+              />
+            ))}
+          </div>
+
+          <DragOverlay>
+            {activeOpportunity ? (
+              <OpportunityCardBody opportunity={activeOpportunity} dragging />
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+      </div>
 
       <OpportunityDetailSheet
         workspaceId={workspaceId}
@@ -262,6 +284,15 @@ function PipelineBoard({
         stages={stages}
         open={detailOpen}
         onOpenChange={setDetailOpen}
+      />
+
+      <OpportunityCreateSheet
+        workspaceId={workspaceId}
+        pipelineId={pipeline.id}
+        stages={stages}
+        defaultStageId={createStageId}
+        open={createOpen}
+        onOpenChange={setCreateOpen}
       />
     </>
   );
@@ -272,12 +303,14 @@ function StageColumn({
   stages,
   opportunities,
   onOpen,
+  onAdd,
   onMove,
 }: {
   stage: PipelineStage;
   stages: PipelineStage[];
   opportunities: Opportunity[];
   onOpen: (opportunityId: string) => void;
+  onAdd: () => void;
   onMove: (opportunityId: string, stageId: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
@@ -308,9 +341,19 @@ function StageColumn({
 
       <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-2">
         {opportunities.length === 0 ? (
-          <p className="px-2 py-6 text-center text-xs text-muted-foreground">
-            No opportunities
-          </p>
+          <div className="flex flex-col items-center gap-2 px-2 py-6 text-center">
+            <p className="text-xs text-muted-foreground">No opportunities</p>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-muted-foreground"
+              onClick={onAdd}
+              data-testid={`add-opportunity-${stage.id}`}
+            >
+              <Plus className="mr-1 h-3.5 w-3.5" />
+              Add deal
+            </Button>
+          </div>
         ) : (
           opportunities.map((opportunity) => (
             <OpportunityCard
