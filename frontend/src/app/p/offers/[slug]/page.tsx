@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useState, use } from "react";
 
+import { LeadMagnetContent } from "@/components/lead-magnets/lead-magnet-content";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -176,7 +177,7 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
                       className="flex items-start gap-3 p-3 rounded-lg bg-primary/5 border border-primary/10"
                     >
                       <Gift className="size-5 text-primary mt-0.5 flex-shrink-0" />
-                      <div className="flex-1">
+                      <div className="flex-1 space-y-3">
                         <div className="flex items-center justify-between">
                           <span className="font-medium">{lm.name}</span>
                           {lm.estimated_value && (
@@ -186,10 +187,11 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
                           )}
                         </div>
                         {lm.description && (
-                          <p className="text-sm text-muted-foreground mt-1">
+                          <p className="text-sm text-muted-foreground">
                             {lm.description}
                           </p>
                         )}
+                        <LeadMagnetContent magnet={lm} />
                       </div>
                     </div>
                   ))}

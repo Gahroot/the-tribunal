@@ -24,11 +24,15 @@ import {
   Calculator,
   FileEdit,
   Clapperboard,
+  Eye,
+  Link as LinkIcon,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
+import { toast } from "sonner";
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
+import { LeadMagnetContent } from "@/components/lead-magnets/lead-magnet-content";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -117,6 +121,7 @@ export default function LeadMagnetsPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingMagnet, setEditingMagnet] = useState<LeadMagnet | null>(null);
   const [deleteMagnetId, setDeleteMagnetId] = useState<string | null>(null);
+  const [previewMagnet, setPreviewMagnet] = useState<LeadMagnet | null>(null);
 
   const [formData, setFormData] = useState<CreateLeadMagnetRequest>({
     name: "",
@@ -342,6 +347,23 @@ export default function LeadMagnetsPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setPreviewMagnet(magnet)}>
+                            <Eye className="size-4 mr-2" />
+                            Preview
+                          </DropdownMenuItem>
+                          {magnet.content_url && (
+                            <DropdownMenuItem
+                              onClick={() => {
+                                void navigator.clipboard.writeText(
+                                  magnet.content_url,
+                                );
+                                toast.success("Content link copied to clipboard");
+                              }}
+                            >
+                              <LinkIcon className="size-4 mr-2" />
+                              Copy content link
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem onClick={() => openEditDialog(magnet)}>
                             <Edit className="size-4 mr-2" />
                             Edit
@@ -498,6 +520,26 @@ export default function LeadMagnetsPage() {
                 ? "Update Lead Magnet"
                 : "Create Lead Magnet"}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Preview (what a lead sees) */}
+      <Dialog
+        open={!!previewMagnet}
+        onOpenChange={(open) => {
+          if (!open) setPreviewMagnet(null);
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Preview: {previewMagnet?.name}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This is what a lead sees and can interact with on your offer page.
+          </p>
+          <div className="py-2">
+            {previewMagnet && <LeadMagnetContent magnet={previewMagnet} />}
           </div>
         </DialogContent>
       </Dialog>
