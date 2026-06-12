@@ -225,11 +225,20 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
               </Button>
             </div>
 
+            <div className="flex items-start gap-2 p-3 bg-warning/10 border border-warning/20 rounded-lg text-sm text-warning">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>
+                Every contact needs a <strong>phone number</strong>. The Tribunal follows up by
+                AI voice and SMS, so email-only lists can&apos;t be imported yet — add a phone
+                column before uploading.
+              </span>
+            </div>
+
             <div className="bg-muted/50 rounded-lg p-4 text-sm">
               <p className="font-medium mb-2">Required columns:</p>
               <ul className="list-disc list-inside text-muted-foreground space-y-1">
                 <li><code className="text-xs bg-muted px-1 rounded">first_name</code> - Contact&apos;s first name</li>
-                <li><code className="text-xs bg-muted px-1 rounded">phone_number</code> - Phone number</li>
+                <li><code className="text-xs bg-muted px-1 rounded">phone_number</code> - Phone number (used for voice/SMS follow-up)</li>
               </ul>
               <p className="font-medium mt-3 mb-2">Optional columns:</p>
               <ul className="list-disc list-inside text-muted-foreground space-y-1">
@@ -265,6 +274,7 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
                     <AlertCircle className="h-4 w-4 shrink-0" />
                     <span>
                       Map both <strong>First Name</strong> and <strong>Phone Number</strong> to continue.
+                      A phone number is required because follow-up runs over AI voice and SMS.
                     </span>
                   </div>
                 )}

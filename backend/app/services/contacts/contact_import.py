@@ -222,11 +222,12 @@ def _process_csv_row(
     phone_raw = _get_csv_field(row, column_mapping, "phone_number") or ""
     phone_number = clean_phone_number(phone_raw)
     if not phone_number:
-        errors.append(
-            ImportErrorDetail(
-                row=row_num, field="phone_number", error=f"Invalid phone: {phone_raw}"
-            )
+        message = (
+            "Phone number is required (used for voice/SMS follow-up)"
+            if not phone_raw
+            else f"Invalid phone number: {phone_raw}"
         )
+        errors.append(ImportErrorDetail(row=row_num, field="phone_number", error=message))
         return None, False
 
     if skip_duplicates and phone_number in existing_phones:
@@ -406,7 +407,10 @@ class ContactImportService:
         if not column_mapping["first_name"]:
             raise ValueError("CSV must have a 'first_name' column")
         if not column_mapping["phone_number"]:
-            raise ValueError("CSV must have a 'phone_number' column")
+            raise ValueError(
+                "A phone number column is required — every contact needs a phone number "
+                "for voice/SMS follow-up. Map a phone column to continue."
+            )
 
         # Get existing phone numbers
         existing_phones = (
