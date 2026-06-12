@@ -122,7 +122,8 @@ export function PendingActionsPage() {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Pending Actions</h1>
             <p className="text-sm text-muted-foreground">
-              Review and approve AI agent actions before they execute
+              Review and approve AI agent actions before they execute. Unattended
+              actions are auto-rejected (never sent) when they expire.
             </p>
           </div>
           {stats && stats.pending > 0 && (
@@ -182,7 +183,7 @@ export function PendingActionsPage() {
               <div className="text-2xl font-bold">
                 {statsLoading ? "-" : (stats?.expired ?? 0)}
               </div>
-              <p className="text-xs text-muted-foreground">Timed out</p>
+              <p className="text-xs text-muted-foreground">Timed out — auto-rejected</p>
             </CardContent>
           </Card>
           <Card>

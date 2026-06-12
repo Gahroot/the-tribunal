@@ -195,7 +195,13 @@ export function OutboundWorkflowCard({
             icon={<ShieldCheck className="size-4" />}
             label="Approval action"
             title={details.approvalLabel ?? "Ready for human review"}
-            description={action?.expires_at ? `Expires ${formatRelative(action.expires_at)}` : undefined}
+            description={
+              action?.expires_at
+                ? action.status === "pending"
+                  ? `Auto-rejected ${formatRelative(action.expires_at)} — won't launch unless you approve`
+                  : `Expires ${formatRelative(action.expires_at)}`
+                : undefined
+            }
           />
           <WorkflowSection
             icon={<Rocket className="size-4" />}

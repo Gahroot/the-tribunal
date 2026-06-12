@@ -33,6 +33,16 @@ const ACTION_TYPE_LABELS: Record<string, string> = {
   apply_tag: "Apply Tag",
 };
 
+// Verb describing what *won't* happen if the operator ignores the action until
+// it expires. At expiry the worker auto-rejects (never auto-executes), so the
+// outcome is always "this won't happen unless you approve".
+const ACTION_TYPE_INACTION_VERB: Record<string, string> = {
+  book_appointment: "won't book unless you approve",
+  send_sms: "won't send unless you approve",
+  enroll_campaign: "won't enroll unless you approve",
+  apply_tag: "won't apply unless you approve",
+};
+
 function getStatusBadge(status: string) {
   switch (status) {
     case "pending":
@@ -122,12 +132,16 @@ export function PendingActionCard({
               Created{" "}
               {formatRelative(action.created_at)}
             </span>
-            {action.expires_at && (
-              <span>
-                Expires{" "}
-                {formatRelative(action.expires_at)}
-              </span>
-            )}
+            {action.expires_at &&
+              (isPending ? (
+                <span className="text-amber-600 dark:text-amber-400">
+                  Auto-rejected {formatRelative(action.expires_at)} —{" "}
+                  {ACTION_TYPE_INACTION_VERB[action.action_type] ??
+                    "won't run unless you approve"}
+                </span>
+              ) : (
+                <span>Expires {formatRelative(action.expires_at)}</span>
+              ))}
             {action.rejection_reason && (
               <span className="italic">Reason: {action.rejection_reason}</span>
             )}
