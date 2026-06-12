@@ -15,6 +15,7 @@ from app.services.segments.segment_repository import (
     delete_segment,
     get_segment_by_id,
     list_segments,
+    preview_segment_contacts,
     resolve_segment_contacts,
     update_segment,
 )
@@ -115,6 +116,17 @@ class SegmentService:
             )
         ids, total = await resolve_segment_contacts(segment, self.db)
         return {"ids": ids, "total": total}
+
+    async def preview_segment(
+        self,
+        workspace_id: uuid.UUID,
+        definition: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Compute how many contacts match an unsaved filter definition."""
+        _contacts, total = await preview_segment_contacts(
+            workspace_id, definition, self.db, limit=0
+        )
+        return {"total": total}
 
     async def refresh_segment(
         self,

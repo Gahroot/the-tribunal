@@ -24831,6 +24831,33 @@
         "title": "SegmentListResponse",
         "type": "object"
       },
+      "SegmentPreviewRequest": {
+        "description": "Schema for previewing how many contacts match a filter definition.",
+        "properties": {
+          "definition": {
+            "$ref": "#/components/schemas/FilterDefinition"
+          }
+        },
+        "required": [
+          "definition"
+        ],
+        "title": "SegmentPreviewRequest",
+        "type": "object"
+      },
+      "SegmentPreviewResponse": {
+        "description": "Schema for a live segment preview count.",
+        "properties": {
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total"
+        ],
+        "title": "SegmentPreviewResponse",
+        "type": "object"
+      },
       "SegmentResponse": {
         "description": "Schema for segment response.",
         "properties": {
@@ -50917,6 +50944,65 @@
           }
         ],
         "summary": "Create Segment",
+        "tags": [
+          "Segments"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/segments/preview": {
+      "post": {
+        "description": "Preview how many contacts match an unsaved filter definition.",
+        "operationId": "preview_segment_api_v1_workspaces__workspace_id__segments_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SegmentPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Preview Segment",
         "tags": [
           "Segments"
         ]

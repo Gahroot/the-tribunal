@@ -368,6 +368,8 @@ export const queryKeys = {
     ...segments,
     contacts: (workspaceId: string, segmentId: string) =>
       [...segments.detail(workspaceId, segmentId), "contacts"] as const,
+    preview: (workspaceId: string, definition: unknown) =>
+      [...segments.all(workspaceId), "preview", JSON.stringify(definition ?? null)] as const,
   },
   settings: {
     all: (workspaceId: string) => ["settings", workspaceId] as const,

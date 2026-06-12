@@ -9,6 +9,8 @@ from app.schemas.segment import (
     SegmentContactsResponse,
     SegmentCreate,
     SegmentListResponse,
+    SegmentPreviewRequest,
+    SegmentPreviewResponse,
     SegmentResponse,
     SegmentUpdate,
 )
@@ -49,6 +51,21 @@ async def create_segment(
         description=segment_in.description,
         is_dynamic=segment_in.is_dynamic,
     )
+
+
+@router.post("/preview", response_model=SegmentPreviewResponse)
+async def preview_segment(
+    request: Request,
+    workspace_id: uuid.UUID,
+    preview_in: SegmentPreviewRequest,
+    current_user: CurrentUser,
+    db: DB,
+) -> SegmentPreviewResponse:
+    """Preview how many contacts match an unsaved filter definition."""
+    workspace = await get_workspace(request, workspace_id, current_user, db)
+    service = SegmentService(db)
+    result = await service.preview_segment(workspace.id, preview_in.definition.model_dump())
+    return SegmentPreviewResponse(**result)
 
 
 @router.get("/{segment_id}", response_model=SegmentResponse)

@@ -11,6 +11,7 @@ import {
   X,
   Loader2,
 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useState, useRef, useCallback, useEffect } from "react";
 
 import { ContactFilterBuilder } from "@/components/filters/contact-filter-builder";
@@ -52,6 +53,7 @@ export function VirtualContactSelector({
   const [advancedFilters, setAdvancedFilters] = useState<FilterDefinition | null>(null);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   const debouncedSearch = useDebounce(search, 300);
+  const searchParams = useSearchParams();
 
   const parentRef = useRef<HTMLDivElement>(null);
 
@@ -89,6 +91,18 @@ export function VirtualContactSelector({
       segmentMutation.mutate(segmentId);
     }
   };
+
+  // Pre-select a segment when arriving from the Segments page
+  // ("Use in campaign" routes here with ?segmentId=<id>).
+  const segmentIdParam = searchParams.get("segmentId");
+  const segmentMutate = segmentMutation.mutate;
+  useEffect(() => {
+    if (!segmentIdParam) return;
+    setSelectedSegmentId(segmentIdParam);
+    segmentMutate(segmentIdParam);
+    // Only run on mount / when the param changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segmentIdParam]);
 
   // Fetch IDs for selection (with optional limit)
   const selectMutation = useMutation({

@@ -69,3 +69,15 @@ class SegmentContactsResponse(BaseModel):
 
     ids: list[int]
     total: int
+
+
+class SegmentPreviewRequest(BaseModel):
+    """Schema for previewing how many contacts match a filter definition."""
+
+    definition: FilterDefinition
+
+
+class SegmentPreviewResponse(BaseModel):
+    """Schema for a live segment preview count."""
+
+    total: int

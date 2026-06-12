@@ -26,6 +26,10 @@ export interface SegmentContactsResponse {
   total: number;
 }
 
+export interface SegmentPreviewResponse {
+  total: number;
+}
+
 const baseApi = createApiClient<Segment, CreateSegmentRequest, UpdateSegmentRequest>({
   resourcePath: "segments",
 }) as FullApiClient<Segment, CreateSegmentRequest, UpdateSegmentRequest>;
@@ -42,6 +46,16 @@ export const segmentsApi = {
   refresh: async (workspaceId: string, segmentId: string): Promise<Segment> => {
     return apiPost<Segment>(
       `/api/v1/workspaces/${workspaceId}/segments/${segmentId}/refresh`
+    );
+  },
+
+  preview: async (
+    workspaceId: string,
+    definition: FilterDefinition
+  ): Promise<SegmentPreviewResponse> => {
+    return apiPost<SegmentPreviewResponse>(
+      `/api/v1/workspaces/${workspaceId}/segments/preview`,
+      { definition }
     );
   },
 };

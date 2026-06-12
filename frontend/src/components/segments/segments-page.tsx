@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Layers, RefreshCw, Trash2, Users } from "lucide-react";
+import { Layers, Megaphone, RefreshCw, Trash2, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -27,6 +27,7 @@ import { segmentsApi } from "@/lib/api/segments";
 import { queryKeys } from "@/lib/query-keys";
 import { formatRelative } from "@/lib/utils/date";
 import { formatNumber } from "@/lib/utils/number";
+import type { Segment } from "@/types";
 
 export function SegmentsPage() {
   const workspaceId = useWorkspaceId();
@@ -53,6 +54,17 @@ export function SegmentsPage() {
     },
     onError: () => toast.error("Failed to refresh segment"),
   });
+
+  const viewContacts = (segment: Segment) => {
+    const params = new URLSearchParams({
+      filters: JSON.stringify(segment.definition),
+    });
+    router.push(`/contacts?${params.toString()}`);
+  };
+
+  const openInCampaign = (segmentId: string) => {
+    router.push(`/campaigns/sms/new?segmentId=${encodeURIComponent(segmentId)}`);
+  };
 
   const handleDelete = async (segmentId: string, name: string) => {
     if (!window.confirm(`Delete segment "${name}"? This cannot be undone.`)) {
@@ -134,7 +146,23 @@ export function SegmentsPage() {
                     </p>
                   )}
                 </CardContent>
-                <CardFooter className="gap-2">
+                <CardFooter className="flex-wrap gap-2">
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => viewContacts(segment)}
+                  >
+                    <Users className="size-4" />
+                    View contacts
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openInCampaign(segment.id)}
+                  >
+                    <Megaphone className="size-4" />
+                    Use in campaign
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"

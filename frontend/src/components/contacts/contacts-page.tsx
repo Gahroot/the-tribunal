@@ -84,6 +84,25 @@ export function ContactsPage() {
     setContactsPage,
   } = useContactStore();
 
+  // Pre-apply a segment's filter definition when navigated here with
+  // ?filters=<json> (e.g. "View contacts" from the Segments page).
+  const filtersParam = searchParams.get("filters");
+  useEffect(() => {
+    if (!filtersParam) return;
+    try {
+      const parsed = JSON.parse(filtersParam) as typeof filters;
+      if (parsed && Array.isArray(parsed.rules) && parsed.rules.length > 0) {
+        setFilters(parsed);
+      }
+    } catch {
+      // Ignore malformed filter params.
+    }
+    const urlParams = new URLSearchParams(searchParams.toString());
+    urlParams.delete("filters");
+    const newUrl = urlParams.size > 0 ? `/contacts?${urlParams.toString()}` : "/contacts";
+    router.replace(newUrl, { scroll: false });
+  }, [filtersParam, searchParams, router, setFilters]);
+
   // Debounced search input: local state updates immediately, store updates after delay
   const [inputValue, setInputValue] = useState(searchQuery);
 

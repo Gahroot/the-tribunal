@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Trash2, Filter } from "lucide-react";
+import { Plus, Trash2, Filter, Loader2, Users } from "lucide-react";
 import { useState } from "react";
 
 import { FilterChip } from "@/components/filters/filter-chip";
@@ -20,6 +20,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useSegmentPreview } from "@/hooks/useSegments";
+import { formatNumber } from "@/lib/utils/number";
 import type { FilterRule, FilterDefinition } from "@/types";
 
 interface FieldOption {
@@ -239,6 +241,11 @@ export function ContactFilterBuilder({
   const [saveSegmentOpen, setSaveSegmentOpen] = useState(false);
   const rules = filters?.rules ?? [];
   const logic = filters?.logic ?? "and";
+
+  const { data: preview, isFetching: isPreviewFetching } = useSegmentPreview(
+    workspaceId,
+    filters,
+  );
 
   const addRule = () => {
     const newRule: FilterRule = {
@@ -462,6 +469,23 @@ export function ContactFilterBuilder({
               <Plus className="h-3.5 w-3.5" />
               Add filter
             </Button>
+
+            {rules.length > 0 && (
+              <div className="flex items-center gap-2 border-t pt-3 text-xs text-muted-foreground">
+                {isPreviewFetching ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Users className="h-3.5 w-3.5" />
+                )}
+                <span>
+                  {preview
+                    ? `~${formatNumber(preview.total)} contact${
+                        preview.total === 1 ? "" : "s"
+                      } match`
+                    : "Counting matches…"}
+                </span>
+              </div>
+            )}
           </div>
         </PopoverContent>
       </Popover>

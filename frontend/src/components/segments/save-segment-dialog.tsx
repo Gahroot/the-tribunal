@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Save } from "lucide-react";
+import { Loader2, Save, Users } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -15,7 +15,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useCreateSegment } from "@/hooks/useSegments";
+import { useCreateSegment, useSegmentPreview } from "@/hooks/useSegments";
+import { formatNumber } from "@/lib/utils/number";
 import type { FilterDefinition } from "@/types";
 
 interface SaveSegmentDialogProps {
@@ -34,6 +35,10 @@ export function SaveSegmentDialog({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const createSegment = useCreateSegment(workspaceId);
+  const { data: preview, isFetching: isPreviewFetching } = useSegmentPreview(
+    workspaceId,
+    open ? filters : null,
+  );
 
   const handleSave = async () => {
     if (!name.trim()) return;
@@ -89,6 +94,20 @@ export function SaveSegmentDialog({
             <p>
               Logic: {filters.logic === "or" ? "Match any" : "Match all"} rule
               {filters.rules.length !== 1 ? "s" : ""}
+            </p>
+            <p className="mt-2 flex items-center gap-2 text-foreground">
+              {isPreviewFetching ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Users className="h-3.5 w-3.5" />
+              )}
+              <span>
+                {preview
+                  ? `~${formatNumber(preview.total)} contact${
+                      preview.total === 1 ? "" : "s"
+                    } match`
+                  : "Counting matches…"}
+              </span>
             </p>
           </div>
         </div>
