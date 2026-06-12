@@ -15,7 +15,11 @@ from app.schemas.scraping import (
     ImportLeadsResponse,
 )
 from app.services.rate_limiting.scraping_limiter import enforce_scraping_rate_limit
-from app.services.scraping.google_places import GooglePlacesError, GooglePlacesService
+from app.services.scraping.google_places import (
+    GooglePlacesError,
+    GooglePlacesNotConfiguredError,
+    GooglePlacesService,
+)
 from app.services.tags import TagService
 from app.utils.phone import normalize_phone_safe
 
@@ -54,6 +58,20 @@ async def search_businesses(
             total_found=len(business_results),
             query=request.query,
         )
+    except GooglePlacesNotConfiguredError as e:
+        # Machine-readable code so the UI can render an actionable "add a Google
+        # Places API key in Settings" banner instead of a generic failure.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "provider_not_configured",
+                "message": (
+                    "Find Leads needs a Google Places API key. "
+                    "Add it in Settings to search for businesses."
+                ),
+                "details": {"provider": "google_places"},
+            },
+        ) from e
     except GooglePlacesError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

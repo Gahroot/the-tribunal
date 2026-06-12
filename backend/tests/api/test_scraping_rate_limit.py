@@ -207,6 +207,60 @@ class TestFindLeadsAISearchRateLimit:
         fake_service_instance.search_businesses.assert_not_called()
 
 
+class TestProviderNotConfigured:
+    """A missing Google Places key yields a machine-readable 503 code.
+
+    The route returns a structured ``provider_not_configured`` detail so the UI
+    can render an actionable "add a key in Settings" banner instead of a generic
+    "search failed" toast (distinct from an empty / no-results response).
+    """
+
+    async def test_search_returns_provider_not_configured_code(
+        self, client: AsyncClient
+    ) -> None:
+        from app.services.scraping.google_places import GooglePlacesNotConfiguredError
+
+        async def allow(_: uuid.UUID) -> None:
+            return None
+
+        async def fake_get_workspace(*_args: object, **_kwargs: object) -> MagicMock:
+            ws = MagicMock()
+            ws.id = uuid.UUID(WORKSPACE_ID)
+            return ws
+
+        fake_service_instance = AsyncMock()
+        fake_service_instance.search_businesses = AsyncMock(
+            side_effect=GooglePlacesNotConfiguredError("Google Places API key not configured")
+        )
+        fake_service_instance.close = AsyncMock()
+
+        with (
+            patch(
+                "app.api.v1.scraping.get_workspace",
+                side_effect=fake_get_workspace,
+            ),
+            patch(
+                "app.api.v1.scraping.enforce_scraping_rate_limit",
+                side_effect=allow,
+            ),
+            patch(
+                "app.api.v1.scraping.GooglePlacesService",
+                return_value=fake_service_instance,
+            ),
+        ):
+            resp = await client.post(
+                f"/api/v1/workspaces/{WORKSPACE_ID}/scraping/search",
+                json={"query": "plumbers in austin", "max_results": 10},
+            )
+
+        assert resp.status_code == 503
+        detail = resp.json()["detail"]
+        assert detail["code"] == "provider_not_configured"
+        assert detail["details"]["provider"] == "google_places"
+        # The paid client was still closed even on the error path.
+        fake_service_instance.close.assert_awaited_once()
+
+
 class TestUnderLimitPassesThrough:
     """When the limiter is satisfied, the route proceeds to Google Places."""
 

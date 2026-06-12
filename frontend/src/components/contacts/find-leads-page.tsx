@@ -12,6 +12,7 @@ import {
   type LeadFilterState,
 } from "@/components/contacts/shared/lead-filters";
 import { LeadResultsList } from "@/components/contacts/shared/lead-results-list";
+import { ProviderNotConfiguredBanner } from "@/components/shared/provider-not-configured-banner";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -35,7 +36,7 @@ import {
   type ImportLeadsResponse,
 } from "@/lib/api/scraping";
 import { messages } from "@/lib/messages";
-import { getApiErrorMessage } from "@/lib/utils/errors";
+import { getApiErrorCode, getApiErrorMessage } from "@/lib/utils/errors";
 
 export function FindLeadsPage() {
   const workspaceId = useWorkspaceId();
@@ -53,6 +54,7 @@ export function FindLeadsPage() {
   const [defaultStatus, setDefaultStatus] = useState("new");
   const [importResult, setImportResult] = useState<ImportLeadsResponse | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [notConfigured, setNotConfigured] = useState(false);
 
   const searchMutation = useMutation({
     mutationFn: async () => {
@@ -60,6 +62,7 @@ export function FindLeadsPage() {
       return scrapingApi.search(workspaceId, query, maxResults);
     },
     onSuccess: (data) => {
+      setNotConfigured(false);
       setResults(data.results);
       setHasSearched(true);
       setImportResult(null);
@@ -70,6 +73,13 @@ export function FindLeadsPage() {
       toast.success(messages.findLeads.found(data.results.length));
     },
     onError: (error) => {
+      // Surface a missing Google Places key as a persistent, actionable banner
+      // instead of a generic toast the user can't act on.
+      if (getApiErrorCode(error) === "provider_not_configured") {
+        setNotConfigured(true);
+        return;
+      }
+      setNotConfigured(false);
       toast.error(getApiErrorMessage(error, messages.findLeads.searchFailed));
     },
   });
@@ -128,6 +138,13 @@ export function FindLeadsPage() {
         <p className="text-muted-foreground">
           Search Google Places for businesses and import them as contacts for your SMS campaigns.
         </p>
+
+        {notConfigured && (
+          <ProviderNotConfiguredBanner
+            title="Find Leads needs a Google Places API key"
+            description="Add a Google Places API key in Settings to search for businesses."
+          />
+        )}
 
         {/* Search Bar */}
         <div className="flex gap-2 max-w-2xl">

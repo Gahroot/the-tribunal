@@ -16,6 +16,7 @@ import {
   toSearchRequest,
   type AdLibrarySearchValues,
 } from "@/components/ad-library/search-form";
+import { ProviderNotConfiguredBanner } from "@/components/shared/provider-not-configured-banner";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   PageEmptyState,
@@ -30,7 +31,9 @@ import {
   type AdLibraryJob,
 } from "@/lib/api/ad-library";
 import { queryKeys } from "@/lib/query-keys";
-import { getApiErrorMessage } from "@/lib/utils/errors";
+import { getApiErrorCode, getApiErrorMessage } from "@/lib/utils/errors";
+
+const PROVIDER_UNAVAILABLE_CODE = "ad_library_provider_unavailable";
 
 export function AdLibraryClient() {
   const workspaceId = useWorkspaceId();
@@ -40,6 +43,7 @@ export function AdLibraryClient() {
   const [selected, setSelected] = useState<AdAdvertiser | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [notConfigured, setNotConfigured] = useState(false);
 
   const invalidateAdvertisers = useCallback(() => {
     if (workspaceId) {
@@ -98,10 +102,18 @@ export function AdLibraryClient() {
       return adLibraryApi.search(workspaceId, toSearchRequest(values));
     },
     onSuccess: (created) => {
+      setNotConfigured(false);
       setJob(created);
       toast.success("Ad library search started");
     },
     onError: (error) => {
+      // A missing Meta/Google provider token is an actionable config gap, not a
+      // transient failure — show a persistent banner pointing at Settings.
+      if (getApiErrorCode(error) === PROVIDER_UNAVAILABLE_CODE) {
+        setNotConfigured(true);
+        return;
+      }
+      setNotConfigured(false);
       toast.error(getApiErrorMessage(error, "Couldn't start the search"));
     },
   });
@@ -140,6 +152,13 @@ export function AdLibraryClient() {
         onSubmit={(values) => searchMutation.mutate(values)}
         isSubmitting={searchMutation.isPending}
       />
+
+      {notConfigured && (
+        <ProviderNotConfiguredBanner
+          title="Ad Library needs a provider token"
+          description="Add a Meta Ad Library access token in Settings to track advertisers."
+        />
+      )}
 
       {liveJob ? <JobStatusBanner job={liveJob} /> : null}
 

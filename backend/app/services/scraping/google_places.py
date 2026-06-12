@@ -28,6 +28,17 @@ class GooglePlacesError(Exception):
     pass
 
 
+class GooglePlacesNotConfiguredError(GooglePlacesError):
+    """Raised when no Google Places API key is configured.
+
+    Distinct from runtime/auth failures so the API boundary can return a
+    machine-readable ``provider_not_configured`` code — the UI renders an
+    actionable "add a key in Settings" banner instead of a generic failure.
+    """
+
+    pass
+
+
 class GooglePlacesAuthError(GooglePlacesError):
     """Authentication error with Google Places API."""
 
@@ -97,7 +108,7 @@ class GooglePlacesService:
         )
 
         if not self.api_key:
-            raise GooglePlacesError("Google Places API key not configured")
+            raise GooglePlacesNotConfiguredError("Google Places API key not configured")
 
         try:
             client = await self.get_client()

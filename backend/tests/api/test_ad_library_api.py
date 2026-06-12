@@ -24,7 +24,11 @@ from httpx import ASGITransport, AsyncClient
 from app.api.deps import get_current_user, get_db, get_workspace
 from app.api.v1 import ad_library as ad_library_module
 from app.models.lead_discovery_job import DiscoveryJobStatus, DiscoverySourceType
-from app.services.ad_intelligence.errors import AdLibraryNotFoundError
+from app.services.ad_intelligence.errors import (
+    AdLibraryNotFoundError,
+    AdLibraryProviderUnavailableError,
+)
+from app.services.lead_discovery.errors import LeadDiscoveryAuthError
 
 WS_ID = uuid.uuid4()
 JOB_ID = uuid.uuid4()
@@ -153,6 +157,51 @@ class TestAdLibraryHappyPath:
         body = resp.json()
         assert body["id"] == str(JOB_ID)
         assert body["status"] == "pending"
+
+    async def test_search_without_provider_credentials_503(self, client: AsyncClient) -> None:
+        # No usable provider credentials -> fail fast with a machine-readable
+        # code so the UI shows an actionable banner instead of a job that sits
+        # PENDING forever.
+        with patch.object(
+            ad_library_module.AdLibraryService,
+            "create_search_job",
+            new=AsyncMock(
+                side_effect=AdLibraryProviderUnavailableError(
+                    "No Meta Ad Library credentials configured for this workspace",
+                    details={"provider": "meta"},
+                )
+            ),
+        ):
+            resp = await client.post(
+                f"{PREFIX}/search",
+                json={"platform": "meta", "country": "US", "search_terms": "roofing"},
+            )
+        assert resp.status_code == 503
+        detail = resp.json()["detail"]
+        assert detail["code"] == "ad_library_provider_unavailable"
+        assert detail["details"]["provider"] == "meta"
+
+    async def test_create_search_job_checks_provider_config(self) -> None:
+        # Unit-level: the service pre-flights provider config and translates a
+        # provider auth failure into a typed provider-unavailable error before
+        # enqueuing any job.
+        from app.schemas.ad_library import AdLibrarySearchRequest
+        from app.services.ad_intelligence.ad_library_service import AdLibraryService
+
+        db = AsyncMock()
+        service = AdLibraryService(db)
+        request = AdLibrarySearchRequest(
+            platform="meta", country="US", search_terms="roofing"
+        )
+        with patch(
+            "app.services.ad_intelligence.ad_library_service.build_provider",
+            new=AsyncMock(side_effect=LeadDiscoveryAuthError("no creds")),
+        ), pytest.raises(AdLibraryProviderUnavailableError) as excinfo:
+            await service.create_search_job(WS_ID, request, requested_by_id=1)
+        assert excinfo.value.details == {"provider": "meta"}
+        # No job was persisted when the provider is unavailable.
+        db.add.assert_not_called()
+        db.commit.assert_not_called()
 
     async def test_get_unknown_job_404(self, client: AsyncClient) -> None:
         with patch.object(

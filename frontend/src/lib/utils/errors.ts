@@ -25,3 +25,21 @@ export function getApiErrorMessage(err: unknown, fallback: string): string {
   if (err instanceof Error && err.message) return err.message;
   return fallback;
 }
+
+/**
+ * Extracts the machine-readable error `code` from the canonical backend error
+ * envelope (`{ code, message, request_id }`) on an Axios-style error.
+ *
+ * Returns `null` when no structured code is present (network errors, plain
+ * `Error`s, or the legacy FastAPI `detail` string shape). Use this to branch UI
+ * on specific server conditions (e.g. `provider_not_configured`) rather than
+ * brittle message-string matching.
+ */
+export function getApiErrorCode(err: unknown): string | null {
+  if (typeof err === "object" && err !== null && "response" in err) {
+    const axErr = err as { response?: { data?: { code?: unknown } } };
+    const code = axErr.response?.data?.code;
+    if (typeof code === "string" && code.length > 0) return code;
+  }
+  return null;
+}

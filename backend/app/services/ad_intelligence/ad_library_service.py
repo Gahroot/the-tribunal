@@ -45,6 +45,7 @@ from app.schemas.ad_library import (
 )
 from app.services.ad_intelligence.errors import (
     AdLibraryNotFoundError,
+    AdLibraryProviderUnavailableError,
 )
 from app.services.ad_intelligence.icp import IcpProfile, ranked_advertiser_query
 from app.services.ad_intelligence.monitors import (
@@ -55,6 +56,8 @@ from app.services.ad_intelligence.monitors import (
     monitor_to_response_dict,
 )
 from app.services.ad_intelligence.prospecting import generate_prospect_for_advertiser
+from app.services.ad_intelligence.provider_factory import build_provider
+from app.services.lead_discovery.errors import LeadDiscoveryAuthError
 from app.services.outbound.promotion import ProspectPromotionService
 
 logger = structlog.get_logger()
@@ -84,6 +87,12 @@ class AdLibraryService:
         requested_by_id: int | None = None,
     ) -> LeadDiscoveryJob:
         """Create a pending ad-library discovery job for the worker to run."""
+        # Fail fast when no usable provider credentials are configured: enqueuing
+        # the job anyway leaves it PENDING forever (or FAILED only after the
+        # worker runs). A synchronous 503 with a machine-readable code lets the
+        # UI distinguish "not configured" from "no results" and point the user
+        # at Settings.
+        await self._ensure_provider_configured(workspace_id, request)
         source_type = _PLATFORM_TO_SOURCE.get(
             request.platform.value, DiscoverySourceType.META_AD_LIBRARY
         )
@@ -129,6 +138,29 @@ class AdLibraryService:
             platform=request.platform.value,
         )
         return job
+
+    async def _ensure_provider_configured(
+        self, workspace_id: uuid.UUID, request: AdLibrarySearchRequest
+    ) -> None:
+        """Raise :class:`AdLibraryProviderUnavailableError` if no provider creds.
+
+        ``build_provider`` resolves per-workspace + settings credentials without
+        any network I/O, so this is a cheap pre-flight check. The provider's
+        lazy HTTP client is never opened here; ``close()`` is a no-op.
+        """
+        try:
+            provider = await build_provider(
+                self._db,
+                workspace_id=workspace_id,
+                platform=request.platform.value,
+                use_thirdparty=request.use_thirdparty_fallback,
+            )
+        except LeadDiscoveryAuthError as exc:
+            raise AdLibraryProviderUnavailableError(
+                str(exc),
+                details={"provider": request.platform.value},
+            ) from exc
+        await provider.close()
 
     async def get_job(self, workspace_id: uuid.UUID, job_id: uuid.UUID) -> LeadDiscoveryJob:
         """Return a discovery job scoped to the workspace, or 404."""
