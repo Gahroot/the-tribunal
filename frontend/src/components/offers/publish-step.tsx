@@ -1,6 +1,8 @@
 "use client";
 
-import { Globe, Copy, ExternalLink } from "lucide-react";
+import { Globe, Copy, Check, ExternalLink } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -19,6 +21,16 @@ interface PublishStepProps {
 }
 
 export function PublishStep({ formData, onFieldChange, existingOffer }: PublishStepProps) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyLink = () => {
+    const url = `${window.location.origin}/p/offers/${formData.public_slug}`;
+    void navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+    toast.success("Link copied");
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between p-4 border rounded-lg">
@@ -74,12 +86,14 @@ export function PublishStep({ formData, onFieldChange, existingOffer }: PublishS
                 type="button"
                 variant="ghost"
                 size="sm"
-                onClick={() => {
-                  const url = `${window.location.origin}/p/offers/${formData.public_slug}`;
-                  navigator.clipboard.writeText(url);
-                }}
+                onClick={handleCopyLink}
+                aria-label={copied ? "Copied" : "Copy public link"}
               >
-                <Copy className="size-4" />
+                {copied ? (
+                  <Check className="size-4 text-green-500" />
+                ) : (
+                  <Copy className="size-4" />
+                )}
               </Button>
               {existingOffer?.is_public && existingOffer?.public_slug && (
                 <Button

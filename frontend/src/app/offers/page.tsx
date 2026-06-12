@@ -13,10 +13,13 @@ import {
   Copy,
   Eye,
   Layers,
+  Link2,
+  ExternalLink,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { toast } from "sonner";
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import {
@@ -51,6 +54,11 @@ const discountTypeIcons: Record<DiscountType, React.ReactNode> = {
   fixed: <DollarSign className="size-4" />,
   free_service: <Gift className="size-4" />,
 };
+
+function getPublicOfferUrl(slug: string) {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  return `${origin}/p/offers/${slug}`;
+}
 
 function formatDiscount(offer: Offer) {
   switch (offer.discount_type) {
@@ -291,12 +299,39 @@ export default function OffersPage() {
                             <Edit className="size-4 mr-2" />
                             Edit
                           </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => router.push(`/offers/${offer.id}`)}
-                          >
-                            <Eye className="size-4 mr-2" />
-                            Preview
-                          </DropdownMenuItem>
+                          {offer.is_public && offer.public_slug ? (
+                            <>
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  window.open(
+                                    getPublicOfferUrl(offer.public_slug!),
+                                    "_blank",
+                                  )
+                                }
+                              >
+                                <ExternalLink className="size-4 mr-2" />
+                                Open public page
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  void navigator.clipboard.writeText(
+                                    getPublicOfferUrl(offer.public_slug!),
+                                  );
+                                  toast.success("Link copied");
+                                }}
+                              >
+                                <Link2 className="size-4 mr-2" />
+                                Copy public link
+                              </DropdownMenuItem>
+                            </>
+                          ) : (
+                            <DropdownMenuItem
+                              onClick={() => router.push(`/offers/${offer.id}`)}
+                            >
+                              <Eye className="size-4 mr-2" />
+                              Preview
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem
                             onClick={() => duplicateMutation.mutate(offer)}
                           >
