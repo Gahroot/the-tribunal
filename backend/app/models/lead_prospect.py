@@ -44,6 +44,7 @@ if TYPE_CHECKING:
         OutboundSequenceEnrollment,
         OutboundSequenceStepAttempt,
     )
+    from app.models.prospect_signal import ProspectSignal
     from app.models.workspace import Workspace
 
 
@@ -289,6 +290,11 @@ class LeadProspect(Base):
     )
     sequence_step_attempts: Mapped[list["OutboundSequenceStepAttempt"]] = relationship(
         "OutboundSequenceStepAttempt",
+        back_populates="prospect",
+        cascade="all, delete-orphan",
+    )
+    prospect_signals: Mapped[list["ProspectSignal"]] = relationship(
+        "ProspectSignal",
         back_populates="prospect",
         cascade="all, delete-orphan",
     )

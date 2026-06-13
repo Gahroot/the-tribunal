@@ -5,12 +5,17 @@ import api, { apiGet, apiPost } from "@/lib/api";
 export interface RealtorOnboardRequest {
   calcom_api_key: string;
   calcom_event_type_id: number;
+  area_code?: string;
 }
 
 export interface RealtorOnboardResponse {
   workspace_id: string;
   agent_id: string;
-  phone_number: string;
+  phone_number_id: string | null;
+  phone_number: string | null;
+  /** False when no SMS number was auto-provisioned — campaigns can't launch yet. */
+  phone_provisioned: boolean;
+  calcom_connected: boolean;
   message: string;
 }
 

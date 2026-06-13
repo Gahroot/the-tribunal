@@ -1,42 +1,47 @@
 """Token/cookie session layer for self-scraping the public Ad Library.
 
-The public Ad Library website is powered by an internal endpoint
-``POST https://www.facebook.com/ads/library/async/search_ads/`` that returns
-``for (;;);``-prefixed JSON with ads under ``payload.results``. Calling it
-requires a valid **LSD CSRF token** plus the session cookies the website sets,
-which we harvest by loading the Ad Library page once and reusing them across
-calls within a short TTL budget.
+The public Ad Library website is powered by Meta's internal GraphQL endpoint
+``POST https://www.facebook.com/api/graphql/``. It is driven with **persisted
+queries**: the client sends a Relay ``doc_id`` plus a URL-encoded ``variables``
+JSON blob and a ``fb_api_req_friendly_name``, authenticated with an **LSD CSRF
+token** (and, when present, ``fb_dtsg``) plus the session cookies the website
+sets. We harvest those tokens by loading the Ad Library page once and reusing
+them across calls within a short TTL budget.
+
+.. note::
+   Meta retired the older ``POST .../ads/library/async/search_ads/`` (and the
+   sibling ``async/search_typeahead/``) form endpoints — both now return HTTP
+   404. This module targets ``/api/graphql/`` instead.
 
 Two interchangeable strategies implement :class:`ScrapeSession`:
 
 * :class:`TokenHttpSession` — lightweight, no browser. GETs the Ad Library page
-  over ``httpx``, regexes the LSD token out of the HTML, keeps the cookie jar,
-  and POSTs the async endpoints reusing them. Cheapest; most brittle to WAF /
-  markup churn. Caches the harvested token+cookies in Redis (shared across
-  replicas) with ``meta_scrape_session_ttl_seconds`` TTL and re-bootstraps once
-  on 401/403.
+  over ``httpx``, regexes the LSD/DTSG tokens out of the HTML, keeps the cookie
+  jar, and POSTs ``/api/graphql/`` reusing them. Cheapest; most brittle.
+  **Cannot** clear the initial HTTP 403 JS challenge (it can't run JS), so it is
+  unsuitable for live scraping today — kept for tests/DI and future use. Caches
+  the harvested token+cookies in Redis (shared across replicas) with
+  ``meta_scrape_session_ttl_seconds`` TTL and re-bootstraps once on 401/403.
 * :class:`HeadlessSession` — heavier, lazily imported. Drives Playwright
-  Chromium to the Ad Library page (a real browser produces valid tokens and a
-  browser-grade TLS fingerprint), extracts the LSD token, then issues the async
-  POSTs through the browser context's request API so cookies + fingerprint are
-  reused. Survives token/markup churn better; needs the optional ``playwright``
-  dependency.
-
-Both honor an optional residential/ISP proxy (``meta_scrape_proxy_url``), which
-is effectively required from datacenter IPs (Railway) where Meta serves
-403/login challenges to datacenter egress.
+  Chromium to the Ad Library page (a real browser transparently clears the JS
+  challenge and produces valid tokens + a browser-grade TLS fingerprint),
+  extracts the LSD/DTSG tokens, then issues the GraphQL POSTs through the
+  browser context's request API so cookies + fingerprint are reused. **Required**
+  for live scraping; needs the optional ``playwright`` dependency.
 
 Neither session decides *policy*: the compliance gate and rate limiting live in
-the provider. This module only owns the token/cookie/proxy/transport lifecycle
-and the ``for (;;);`` envelope decoding.
+the provider. This module only owns the token/cookie/transport lifecycle and the
+GraphQL envelope decoding.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import time
 from typing import TYPE_CHECKING, Any, ClassVar, Protocol, runtime_checkable
+from urllib.parse import parse_qsl
 
 import httpx
 import structlog
@@ -55,8 +60,10 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 logger = structlog.get_logger()
 
 AD_LIBRARY_URL = "https://www.facebook.com/ads/library/"
-ASYNC_BASE = "https://www.facebook.com/ads/library/async"
-# A current, desktop Chrome UA. The async endpoint rejects obviously-bot UAs.
+# The current internal endpoint the Ad Library website posts persisted GraphQL
+# queries to. (The retired ``.../ads/library/async/*`` endpoints 404.)
+GRAPHQL_URL = "https://www.facebook.com/api/graphql/"
+# A current, desktop Chrome UA. The endpoint rejects obviously-bot UAs.
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
@@ -70,7 +77,13 @@ _LSD_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r'name="lsd"\s+value="([^"]+)"'),
     re.compile(r'"lsd":\{"token":"([^"]+)"\}'),
 )
-# Leading anti-JSON-hijacking guard the async endpoints prepend.
+# ``fb_dtsg`` token shapes (used by GraphQL writes; harmless to send on reads).
+_DTSG_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r'\["DTSGInitialData",\[\],\{"token":"([^"]+)"\}'),
+    re.compile(r'"DTSGInitData",\[\],\{"token":"([^"]+)"'),
+    re.compile(r'name="fb_dtsg"\s+value="([^"]+)"'),
+)
+# Leading anti-JSON-hijacking guard Meta sometimes prepends to JSON responses.
 _FOR_LOOP_GUARD = re.compile(r"^\s*for\s*\(\s*;\s*;\s*\)\s*;")
 
 
@@ -88,36 +101,68 @@ def extract_lsd(html: str) -> str | None:
     return None
 
 
-def decode_async_payload(text: str) -> dict[str, Any]:
-    """Strip the ``for (;;);`` guard and decode the async JSON envelope.
+def extract_dtsg(html: str) -> str | None:
+    """Pull the ``fb_dtsg`` token out of the Ad Library page HTML, if present."""
+    for pattern in _DTSG_PATTERNS:
+        match = pattern.search(html)
+        if match:
+            return match.group(1)
+    return None
+
+
+def decode_graphql_payload(text: str) -> dict[str, Any]:
+    """Decode the ``/api/graphql/`` JSON envelope.
+
+    Strips the optional ``for (;;);`` anti-hijacking guard, then parses the
+    first JSON object (the endpoint can emit newline-delimited ``@defer``/
+    ``@stream`` chunks; the Ad Library query returns a single object).
 
     Raises:
-        LeadDiscoveryProviderError: when the body is not valid JSON after the
-            guard is removed (markup/anti-bot HTML instead of JSON).
+        LeadDiscoveryProviderError: when the body is not valid JSON (markup /
+            anti-bot HTML / JS challenge page instead of JSON) or carries a
+            GraphQL ``errors`` envelope.
     """
     stripped = _FOR_LOOP_GUARD.sub("", text, count=1).strip()
-    try:
-        decoded: Any = json.loads(stripped)
-    except ValueError as exc:
+    decoded: Any = None
+    if stripped:
+        first_line = stripped.split("\n", 1)[0].strip()
+        for candidate in (first_line, stripped):
+            try:
+                decoded = json.loads(candidate)
+                break
+            except ValueError:
+                decoded = None
+    if decoded is None:
         raise LeadDiscoveryProviderError(
-            "Ad Library async endpoint returned a non-JSON body "
-            "(likely a login/challenge page; a residential proxy may be required)"
-        ) from exc
+            "Ad Library GraphQL endpoint returned a non-JSON body "
+            "(likely a login or JS-challenge page; the headless strategy is required)"
+        )
     if not isinstance(decoded, dict):
-        raise LeadDiscoveryProviderError("Ad Library async endpoint returned an unexpected shape")
+        raise LeadDiscoveryProviderError("Ad Library GraphQL endpoint returned an unexpected shape")
+    errors = decoded.get("errors")
+    if errors and not decoded.get("data"):
+        message = ""
+        if isinstance(errors, list) and errors and isinstance(errors[0], dict):
+            message = str(errors[0].get("message") or "")
+        raise LeadDiscoveryProviderError(
+            f"Ad Library GraphQL endpoint returned errors: {message or 'unknown'}"
+        )
     return decoded
 
 
 @runtime_checkable
 class ScrapeSession(Protocol):
-    """Transport that POSTs the Ad Library async endpoints with a live token."""
+    """Transport that POSTs the Ad Library GraphQL endpoint with a live token."""
 
-    async def post(self, path: str, form: Mapping[str, Any]) -> dict[str, Any]:
-        """POST ``form`` to ``async/<path>/`` and return the decoded envelope.
+    async def graphql(
+        self, friendly_name: str, doc_id: str, variables: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """POST a persisted GraphQL query and return the decoded JSON envelope.
 
-        Implementations inject the LSD token + ``__a=1`` and the harvested
-        cookies, strip the ``for (;;);`` guard, and map transport failures to
-        the discovery error hierarchy (401/403 -> auth, 429 -> rate-limit).
+        Implementations inject the LSD (+ ``fb_dtsg``) tokens, URL-encode the
+        ``variables`` JSON blob and ``doc_id``, attach the harvested cookies,
+        and map transport failures to the discovery error hierarchy (401/403 ->
+        auth, 429 -> rate-limit).
         """
         ...
 
@@ -126,8 +171,46 @@ class ScrapeSession(Protocol):
         ...
 
 
+def _graphql_body(
+    *,
+    friendly_name: str,
+    doc_id: str,
+    variables: Mapping[str, Any],
+    lsd: str,
+    dtsg: str | None,
+) -> dict[str, str]:
+    """Build the form body the Ad Library website posts to ``/api/graphql/``."""
+    body: dict[str, str] = {
+        "av": "0",
+        "__user": "0",
+        "__a": "1",
+        "__req": "1",
+        "dpr": "1",
+        "fb_api_caller_class": "RelayModern",
+        "fb_api_req_friendly_name": friendly_name,
+        "variables": json.dumps(variables, separators=(",", ":")),
+        "server_timestamps": "true",
+        "doc_id": doc_id,
+        "lsd": lsd,
+    }
+    if dtsg:
+        body["fb_dtsg"] = dtsg
+    return body
+
+
+def _graphql_headers(*, friendly_name: str, lsd: str) -> dict[str, str]:
+    return {
+        "X-FB-LSD": lsd,
+        "X-FB-Friendly-Name": friendly_name,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Origin": "https://www.facebook.com",
+        "Referer": AD_LIBRARY_URL,
+        "X-Requested-With": "XMLHttpRequest",
+    }
+
+
 class TokenHttpSession:
-    """Browser-free LSD-token + cookie session over ``httpx``."""
+    """Browser-free LSD-token + cookie GraphQL session over ``httpx``."""
 
     strategy: ClassVar[str] = "token_http"
 
@@ -153,9 +236,10 @@ class TokenHttpSession:
         )
         self._client = client
         self._owns_client = client is None
-        # In-process cache of the harvested token (reused across paginated
+        # In-process cache of the harvested tokens (reused across paginated
         # calls within one search so we bootstrap at most once per search).
         self._lsd: str | None = None
+        self._dtsg: str | None = None
         self._cookies: dict[str, str] = {}
         self._fetched_at: float = 0.0
         self._logger = logger.bind(component="meta_scrape_session", strategy=self.strategy)
@@ -188,12 +272,12 @@ class TokenHttpSession:
             return self._lsd or ""
         cached = await self._read_cache()
         if cached is not None:
-            self._lsd, self._cookies, self._fetched_at = cached
+            self._lsd, self._dtsg, self._cookies, self._fetched_at = cached
             return self._lsd
         return await self._bootstrap()
 
     async def _bootstrap(self) -> str:
-        """Load the Ad Library page, harvest the LSD token + cookies, cache them."""
+        """Load the Ad Library page, harvest the LSD/DTSG tokens + cookies, cache them."""
         client = await self._get_client()
         try:
             response = await client.get(AD_LIBRARY_URL, params={"active_status": "all"})
@@ -205,7 +289,7 @@ class TokenHttpSession:
         if response.status_code in (401, 403):
             raise LeadDiscoveryAuthError(
                 f"Ad Library page rejected the request (status {response.status_code}); "
-                "a residential proxy is likely required from this IP"
+                "the page served a login/JS challenge — use META_SCRAPE_STRATEGY=headless"
             )
         if response.status_code != 200:
             raise LeadDiscoveryProviderError(
@@ -216,9 +300,11 @@ class TokenHttpSession:
         if not lsd:
             raise LeadDiscoveryProviderError(
                 "Could not extract an LSD token from the Ad Library page "
-                "(markup changed or a challenge page was served)"
+                "(markup changed or a JS-challenge page was served — the token_http "
+                "strategy cannot run JS; use META_SCRAPE_STRATEGY=headless)"
             )
         self._lsd = lsd
+        self._dtsg = extract_dtsg(response.text)
         self._cookies = {c.name: c.value for c in client.cookies.jar if c.value is not None}
         self._fetched_at = time.monotonic()
         await self._write_cache()
@@ -227,6 +313,7 @@ class TokenHttpSession:
 
     async def _invalidate(self) -> None:
         self._lsd = None
+        self._dtsg = None
         self._cookies = {}
         self._fetched_at = 0.0
         try:
@@ -235,7 +322,7 @@ class TokenHttpSession:
         except Exception as exc:  # noqa: BLE001 - cache is best-effort
             self._logger.debug("scrape_session_cache_clear_failed", error=type(exc).__name__)
 
-    async def _read_cache(self) -> tuple[str, dict[str, str], float] | None:
+    async def _read_cache(self) -> tuple[str, str | None, dict[str, str], float] | None:
         try:
             redis = await get_redis()
             raw = await redis.get(_SESSION_CACHE_KEY)
@@ -247,6 +334,8 @@ class TokenHttpSession:
         try:
             data = json.loads(raw)
             lsd = str(data["lsd"])
+            dtsg_raw = data.get("dtsg")
+            dtsg = str(dtsg_raw) if dtsg_raw else None
             cookies = {str(k): str(v) for k, v in dict(data.get("cookies", {})).items()}
         except (ValueError, KeyError, TypeError):
             return None
@@ -254,7 +343,7 @@ class TokenHttpSession:
         client = await self._get_client()
         for name, value in cookies.items():
             client.cookies.set(name, value, domain=".facebook.com")
-        return lsd, cookies, time.monotonic()
+        return lsd, dtsg, cookies, time.monotonic()
 
     async def _write_cache(self) -> None:
         try:
@@ -262,67 +351,119 @@ class TokenHttpSession:
             await redis.setex(
                 _SESSION_CACHE_KEY,
                 max(1, self._ttl_seconds),
-                json.dumps({"lsd": self._lsd, "cookies": self._cookies}),
+                json.dumps({"lsd": self._lsd, "dtsg": self._dtsg, "cookies": self._cookies}),
             )
         except Exception as exc:  # noqa: BLE001 - cache is best-effort
             self._logger.debug("scrape_session_cache_write_failed", error=type(exc).__name__)
 
     # ------------------------------------------------------------------
-    # Async POST
+    # GraphQL POST
     # ------------------------------------------------------------------
 
-    async def post(self, path: str, form: Mapping[str, Any]) -> dict[str, Any]:
-        """POST to ``async/<path>/`` reusing the LSD token + cookies.
+    async def graphql(
+        self, friendly_name: str, doc_id: str, variables: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """POST a persisted GraphQL query reusing the LSD/DTSG tokens + cookies.
 
         Re-bootstraps the token exactly once on a 401/403 (stale token/cookies)
         before surfacing an auth error, so a single token expiry self-heals.
         """
-        lsd = await self._ensure_token()
+        await self._ensure_token()
         try:
-            return await self._post_once(path, form, lsd)
+            return await self._post_once(friendly_name, doc_id, variables)
         except LeadDiscoveryAuthError:
             # Token/cookies likely went stale mid-budget; refresh once and retry.
-            self._logger.info("scrape_session_reauth", path=path)
+            self._logger.info("scrape_session_reauth", friendly_name=friendly_name)
             await self._invalidate()
-            lsd = await self._bootstrap()
-            return await self._post_once(path, form, lsd)
+            await self._bootstrap()
+            return await self._post_once(friendly_name, doc_id, variables)
 
-    async def _post_once(self, path: str, form: Mapping[str, Any], lsd: str) -> dict[str, Any]:
+    async def _post_once(
+        self, friendly_name: str, doc_id: str, variables: Mapping[str, Any]
+    ) -> dict[str, Any]:
         client = await self._get_client()
-        body = {**form, "__a": "1", "lsd": lsd}
-        headers = {
-            "X-FB-LSD": lsd,
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Origin": "https://www.facebook.com",
-            "Referer": AD_LIBRARY_URL,
-            "X-Requested-With": "XMLHttpRequest",
-        }
-        url = f"{ASYNC_BASE}/{path}/"
+        lsd = self._lsd or ""
+        body = _graphql_body(
+            friendly_name=friendly_name,
+            doc_id=doc_id,
+            variables=variables,
+            lsd=lsd,
+            dtsg=self._dtsg,
+        )
+        headers = _graphql_headers(friendly_name=friendly_name, lsd=lsd)
         try:
-            response = await client.post(url, data=body, headers=headers)
+            response = await client.post(GRAPHQL_URL, data=body, headers=headers)
         except httpx.TimeoutException as exc:
-            raise LeadDiscoveryProviderError(f"Ad Library async request timed out: {exc}") from exc
+            raise LeadDiscoveryProviderError(
+                f"Ad Library GraphQL request timed out: {exc}"
+            ) from exc
         except httpx.RequestError as exc:
-            raise LeadDiscoveryProviderError(f"Ad Library async request failed: {exc}") from exc
+            raise LeadDiscoveryProviderError(f"Ad Library GraphQL request failed: {exc}") from exc
 
         if response.status_code == 200:
-            return decode_async_payload(response.text)
+            return decode_graphql_payload(response.text)
         if response.status_code == 429:
             self._logger.warning("scrape_rate_limited", status=response.status_code)
-            raise LeadDiscoveryRateLimitError("Ad Library async endpoint throttled (429)")
+            raise LeadDiscoveryRateLimitError("Ad Library GraphQL endpoint throttled (429)")
         if response.status_code in (401, 403):
             self._logger.warning("scrape_auth_error", status=response.status_code)
             raise LeadDiscoveryAuthError(
-                f"Ad Library async endpoint rejected the token (status {response.status_code})"
+                f"Ad Library GraphQL endpoint rejected the token (status {response.status_code})"
             )
         self._logger.warning("scrape_provider_error", status=response.status_code)
         raise LeadDiscoveryProviderError(
-            f"Ad Library async endpoint error (status {response.status_code})"
+            f"Ad Library GraphQL endpoint error (status {response.status_code})"
         )
 
 
+# A neutral keyword used only to make the page fire its own search query during
+# bootstrap so we can capture a valid request-body template.
+_SEED_QUERY = "marketing"
+_SEED_URL = (
+    f"{AD_LIBRARY_URL}?active_status=all&ad_type=all&country=US"
+    f"&q={_SEED_QUERY}&search_type=keyword_unordered&media_type=all"
+)
+
+
+# In-page fetch executed inside the authenticated page's JS context. Posting
+# from the page (vs Playwright's APIRequestContext) is what makes Meta accept the
+# request: the browser attaches the matching cookies, Origin, and ``sec-fetch-*``
+# headers. Returns the HTTP status + raw body so the caller can map errors.
+_GRAPHQL_FETCH_JS = """async (payload) => {
+  const params = new URLSearchParams();
+  for (const k in payload.body) params.append(k, payload.body[k]);
+  const r = await fetch('/api/graphql/', {
+    method: 'POST',
+    body: params,
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      'x-fb-friendly-name': payload.friendly_name,
+      'x-fb-lsd': payload.lsd,
+    },
+    credentials: 'include',
+  });
+  return { status: r.status, body: await r.text() };
+}"""
+
+
 class HeadlessSession:
-    """Playwright-Chromium LSD session (lazily imported, proxy-friendly)."""
+    """Playwright-Chromium GraphQL session (lazily imported).
+
+    Beyond ``doc_id`` / ``variables`` / ``lsd``, Meta's ``/api/graphql/`` rejects
+    requests (error 1357054) unless they also carry the page's session-level
+    boilerplate — ``jazoest``, ``__spin_*``, ``__rev``, ``__hs``, ``__csr``,
+    ``__dyn`` and friends — which are derived from the bootstrap JS and rotate
+    per session. Rather than re-deriving them, we let the page issue its own
+    ``AdLibrarySearchPaginationQuery`` during bootstrap, capture that request's
+    full form body as a **template**, and reuse the boilerplate for every
+    subsequent call (the boilerplate is query-agnostic), swapping only
+    ``fb_api_req_friendly_name`` / ``doc_id`` / ``variables`` / ``__req``.
+
+    The POST itself is issued via ``fetch`` **inside the page's JS context**
+    (not Playwright's separate request context), because Meta rejects replays
+    that don't originate from the page with the right cookies/Origin/sec-fetch
+    headers. The bootstrap page is therefore kept alive for the session.
+    """
 
     strategy: ClassVar[str] = "headless"
 
@@ -338,7 +479,11 @@ class HeadlessSession:
         self._playwright: Any = None
         self._browser: Any = None
         self._context: Any = None
+        self._page: Any = None
         self._lsd: str | None = None
+        # Captured request-body template (session boilerplate) reused per call.
+        self._template: dict[str, str] | None = None
+        self._req_counter = 0
         self._logger = logger.bind(component="meta_scrape_session", strategy=self.strategy)
 
     async def _ensure_context(self) -> Any:
@@ -361,53 +506,106 @@ class HeadlessSession:
         self._context = await self._browser.new_context(user_agent=DEFAULT_USER_AGENT)
         return self._context
 
-    async def _ensure_token(self) -> str:
-        if self._lsd:
-            return self._lsd
+    async def _ensure_session(self) -> dict[str, str]:
+        """Bootstrap a request-body template by sniffing the page's own search call.
+
+        Keeps the page alive afterwards so subsequent GraphQL POSTs can be issued
+        from its JS context.
+        """
+        if self._template is not None and self._page is not None:
+            return self._template
         context = await self._ensure_context()
         page = await context.new_page()
-        try:
-            await page.goto(f"{AD_LIBRARY_URL}?active_status=all", wait_until="domcontentloaded")
-            html = await page.content()
-        finally:
+        captured: dict[str, str] = {}
+
+        def _on_request(req: Any) -> None:
+            if captured or req.method != "POST":
+                return
+            if not req.url.rstrip("/").endswith("/api/graphql"):
+                return
+            data = req.post_data or ""
+            if "AdLibrarySearchPaginationQuery" in data:
+                captured.update(dict(parse_qsl(data, keep_blank_values=True)))
+
+        page.on("request", _on_request)
+        # The first load returns a 403 JS challenge that POSTs ``/__rd_verify…``
+        # then reloads. ``networkidle`` lets the browser clear it transparently;
+        # ``domcontentloaded`` would capture the pre-reload challenge stub.
+        await page.goto(_SEED_URL, wait_until="networkidle")
+        html = await page.content()
+        # Give the page time to fire its own search query, scrolling to nudge
+        # lazy result loading if it has not fired yet.
+        for _ in range(6):
+            if captured:
+                break
+            await page.mouse.wheel(0, 3000)
+            await page.wait_for_timeout(1500)
+        page.remove_listener("request", _on_request)
+
+        lsd = captured.get("lsd") or extract_lsd(html)
+        if not captured or not lsd:
             await page.close()
-        lsd = extract_lsd(html)
-        if not lsd:
             raise LeadDiscoveryProviderError(
-                "Could not extract an LSD token from the headless Ad Library page"
+                "Headless bootstrap could not capture a valid Ad Library GraphQL "
+                "request template (the JS challenge did not clear or no search "
+                "query fired; check egress/UA or retry)"
             )
         self._lsd = lsd
-        self._logger.info("scrape_session_bootstrapped")
-        return lsd
+        self._template = captured
+        self._page = page
+        self._logger.info(
+            "scrape_session_bootstrapped", template_fields=len(captured), has_lsd=bool(lsd)
+        )
+        return captured
 
-    async def post(self, path: str, form: Mapping[str, Any]) -> dict[str, Any]:
-        """POST through the browser context so cookies + fingerprint are reused."""
-        lsd = await self._ensure_token()
-        context = await self._ensure_context()
-        body = {**{k: str(v) for k, v in form.items()}, "__a": "1", "lsd": lsd}
+    async def graphql(
+        self, friendly_name: str, doc_id: str, variables: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """POST via in-page ``fetch`` reusing the captured body template."""
+        template = await self._ensure_session()
+        self._req_counter += 1
+        body = dict(template)
+        body["fb_api_req_friendly_name"] = friendly_name
+        body["fb_api_caller_class"] = "RelayModern"
+        body["doc_id"] = doc_id
+        body["variables"] = json.dumps(variables, separators=(",", ":"))
+        body["server_timestamps"] = "true"
+        # Advance the per-request counter the way the live client does.
+        body["__req"] = str(self._req_counter)
+        lsd = self._lsd or template.get("lsd", "")
+        payload = {"body": body, "friendly_name": friendly_name, "lsd": lsd}
         try:
-            response = await context.request.post(
-                f"{ASYNC_BASE}/{path}/",
-                form=body,
-                headers={"X-FB-LSD": lsd, "Referer": AD_LIBRARY_URL},
-            )
+            result = await self._page.evaluate(_GRAPHQL_FETCH_JS, payload)
         except Exception as exc:  # noqa: BLE001 - playwright raises broad errors
-            raise LeadDiscoveryProviderError(f"Headless async request failed: {exc}") from exc
+            raise LeadDiscoveryProviderError(f"Headless GraphQL request failed: {exc}") from exc
 
-        status = response.status
+        status = int(result.get("status", 0))
+        text = str(result.get("body", ""))
         if status == 200:
-            return decode_async_payload(await response.text())
+            return decode_graphql_payload(text)
         if status == 429:
-            raise LeadDiscoveryRateLimitError("Ad Library async endpoint throttled (429)")
+            raise LeadDiscoveryRateLimitError("Ad Library GraphQL endpoint throttled (429)")
         if status in (401, 403):
-            # Drop the token so the next call re-bootstraps a fresh browser token.
-            self._lsd = None
+            # Drop the session so the next call re-bootstraps a fresh template.
+            await self._reset_page()
             raise LeadDiscoveryAuthError(
-                f"Headless async endpoint rejected the token (status {status})"
+                f"Headless GraphQL endpoint rejected the token (status {status})"
             )
-        raise LeadDiscoveryProviderError(f"Headless async endpoint error (status {status})")
+        raise LeadDiscoveryProviderError(f"Headless GraphQL endpoint error (status {status})")
+
+    async def _reset_page(self) -> None:
+        self._lsd = None
+        self._template = None
+        if self._page is not None:
+            with contextlib.suppress(Exception):  # best-effort teardown
+                await self._page.close()
+            self._page = None
 
     async def close(self) -> None:
+        if self._page is not None:
+            with contextlib.suppress(Exception):  # best-effort teardown
+                await self._page.close()
+            self._page = None
         if self._context is not None:
             await self._context.close()
             self._context = None
@@ -429,7 +627,8 @@ def build_session(
 
     Args:
         strategy: ``token_http`` (default) or ``headless``. Falls back to
-            ``meta_scrape_strategy``.
+            ``meta_scrape_strategy``. Live scraping requires ``headless`` to
+            clear the JS challenge.
         proxy_url: Optional residential proxy URL.
         client: Optional injected ``httpx.AsyncClient`` (token_http only).
     """

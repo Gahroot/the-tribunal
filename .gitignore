@@ -91,6 +91,9 @@ htmlcov/
 .env*
 !.env.example
 
+# Local secret material (never commit)
+meta_ads.rtf
+
 # IDE
 .idea/
 .vscode/

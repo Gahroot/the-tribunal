@@ -4,12 +4,16 @@ Both the licensed third-party provider
 (:mod:`app.services.ad_intelligence.providers.meta_thirdparty`) and the
 self-scrape provider
 (:mod:`app.services.ad_intelligence.providers.meta_scraper`) receive ad dicts in
-the **same** internal Meta shape the public Ad Library ``search_ads`` endpoint
-returns:
+the **same** internal Meta ad-node shape. The self-scrape provider sources nodes
+from the public Ad Library ``/api/graphql/``
+``AdLibrarySearchPaginationQuery`` connection
+(``edges[].node.collated_results[]``); the licensed third-party provider hands
+flat lists. Either way each ad node carries:
 
 * ``ad_archive_id`` / ``adArchiveID`` ids,
-* ``snapshot.body.text`` / ``snapshot.caption`` / ``snapshot.cards[]`` /
-  ``snapshot.link_url`` / ``snapshot.display_format`` creative fields,
+* ``snapshot.body.text`` / ``snapshot.caption`` / ``snapshot.title`` /
+  ``snapshot.cards[]`` / ``snapshot.link_url`` / ``snapshot.cta_text`` /
+  ``snapshot.display_format`` creative fields,
 * ``start_date`` / ``end_date`` epoch seconds,
 * ``is_active`` flag and ``publisher_platform`` list.
 
@@ -43,16 +47,29 @@ _DISPLAY_FORMAT_MEDIA = {
 
 
 def flatten(items: list[Any]) -> list[dict[str, Any]]:
-    """Flatten one level of nesting.
+    """Collapse provider envelopes to a flat list of ad-node dicts.
 
-    Both the third-party envelopes and the internal ``payload.results`` wrap
-    each ad (or ad group) in a list, so ``results`` is a list-of-lists of ad
-    dicts. This collapses that to a flat list of dicts.
+    Handles three shapes uniformly:
+
+    * GraphQL connection **edges** — ``{"node": {"collated_results": [ad, ...]}}``
+      (the Ad Library ``AdLibrarySearchPaginationQuery`` response); each collated
+      ad node is emitted.
+    * **list-of-lists** — the third-party ``results`` envelope wraps each ad (or
+      ad group) in a list; the inner dicts are emitted.
+    * **plain ad dicts** — emitted as-is.
     """
     out: list[dict[str, Any]] = []
     for item in items:
         if isinstance(item, dict):
-            out.append(item)
+            node = item.get("node")
+            if isinstance(node, dict):
+                collated = node.get("collated_results")
+                if isinstance(collated, list):
+                    out.extend(x for x in collated if isinstance(x, dict))
+                else:
+                    out.append(node)
+            else:
+                out.append(item)
         elif isinstance(item, list):
             out.extend(x for x in item if isinstance(x, dict))
     return out
@@ -100,7 +117,12 @@ def normalize_ad(ad: dict[str, Any]) -> NormalizedAd:
     snapshot: dict[str, Any] = raw_snapshot if isinstance(raw_snapshot, dict) else {}
     ad_id = _str(ad.get("ad_archive_id") or ad.get("id") or ad.get("adArchiveID")) or ""
 
-    body = _str(_dig(snapshot, "body", "text") or _dig(ad, "body") or _dig(ad, "ad_creative_body"))
+    body = _str(
+        _dig(snapshot, "body", "text")
+        or snapshot.get("body")
+        or _dig(ad, "body")
+        or _dig(ad, "ad_creative_body")
+    )
     caption = _str(snapshot.get("caption") or ad.get("caption"))
     raw_cards = snapshot.get("cards")
     cards: list[dict[str, Any]] = raw_cards if isinstance(raw_cards, list) else []
@@ -123,6 +145,12 @@ def normalize_ad(ad: dict[str, Any]) -> NormalizedAd:
     if media_type == "unknown" and len(cards) > 1:
         media_type = "carousel"
 
+    # The GraphQL ad node has no ``url`` field; synthesize the public Ad Library
+    # deep link from the archive id so downstream audit rows stay linkable.
+    snapshot_url = _str(ad.get("url") or ad.get("snapshot_url"))
+    if snapshot_url is None and ad_id:
+        snapshot_url = f"https://www.facebook.com/ads/library/?id={ad_id}"
+
     return NormalizedAd(
         ad_external_id=ad_id,
         body=body,
@@ -130,8 +158,8 @@ def normalize_ad(ad: dict[str, Any]) -> NormalizedAd:
         link_caption=caption,
         link_url=link_url,
         link_host=link_host,
-        cta_type=_str(snapshot.get("cta_type") or ad.get("cta_type")),
-        snapshot_url=_str(ad.get("url") or ad.get("snapshot_url")),
+        cta_type=_str(snapshot.get("cta_type") or snapshot.get("cta_text") or ad.get("cta_type")),
+        snapshot_url=snapshot_url,
         media_type=media_type,
         platforms=platforms,
         ad_delivery_start_time=start,

@@ -37,7 +37,17 @@ from app.models.lead_prospect import (
 )
 from app.services.ad_intelligence import email_finder
 from app.services.ad_intelligence.contact_tracing import ContactTracer, TracedContact
+from app.services.lead_discovery.email_patterns import candidate_emails
+from app.services.lead_discovery.email_verifier import (
+    EmailVerificationStatus,
+    verify_email,
+)
 from app.services.scraping.enrichment_service import enrich_contact_data
+from app.services.signals.aggregator import SignalAggregator
+from app.services.signals.providers.ad_tech import AdTechSignalProvider
+from app.services.signals.providers.ads import AdsSignalProvider
+from app.services.signals.providers.funding import FundingSignalProvider
+from app.services.signals.providers.hiring import HiringSignalProvider
 from app.workers.base import BaseWorker, WorkerRegistry
 
 MAX_PROSPECTS_PER_TICK = 5
@@ -77,8 +87,10 @@ class ProspectEnrichmentWorker(BaseWorker):
 
         try:
             traced = await self._trace_contact(db, prospect)
-            await self._enrich_business_intel(db, prospect)
+            ad_pixels = await self._enrich_business_intel(db, prospect)
             await self._maybe_find_email(db, prospect, traced)
+            await self._reveal_and_verify_email(db, prospect, traced)
+            await self._run_signals(db, prospect, ad_pixels)
 
             prospect.status = ProspectStatus.ENRICHED
             prospect.last_enriched_at = datetime.now(UTC)
@@ -133,10 +145,16 @@ class ProspectEnrichmentWorker(BaseWorker):
         )
         return traced
 
-    async def _enrich_business_intel(self, db: AsyncSession, prospect: LeadProspect) -> None:
-        """Enrich business intel + lead score from the prospect's website."""
+    async def _enrich_business_intel(
+        self, db: AsyncSession, prospect: LeadProspect
+    ) -> dict[str, bool] | None:
+        """Enrich business intel + lead score from the prospect's website.
+
+        Returns the detected ad/analytics pixels so the signal aggregator can
+        emit an ``ad_tech`` signal without re-fetching the page.
+        """
         if not prospect.website_url:
-            return
+            return None
         result = await enrich_contact_data(
             website_url=prospect.website_url,
             company_name=prospect.company_name or "",
@@ -163,6 +181,9 @@ class ProspectEnrichmentWorker(BaseWorker):
             response={"enrichment_status": result.get("enrichment_status")},
             score_delta=score_delta,
         )
+        business_intel = result.get("business_intel")
+        pixels = business_intel.get("ad_pixels") if isinstance(business_intel, dict) else None
+        return pixels if isinstance(pixels, dict) else None
 
     async def _maybe_find_email(
         self, db: AsyncSession, prospect: LeadProspect, traced: TracedContact
@@ -194,6 +215,90 @@ class ProspectEnrichmentWorker(BaseWorker):
             extracted={"email": True, "confidence": found.confidence},
             response={"domain": domain, "source": found.source},
         )
+
+    async def _reveal_and_verify_email(
+        self, db: AsyncSession, prospect: LeadProspect, traced: TracedContact
+    ) -> None:
+        """Infer + verify a person's email when no verified address exists.
+
+        Runs only for person prospects (a name is required to build patterns).
+        A pattern-inferred address is stored but its verification status is
+        recorded in provenance; it is never silently treated as verified.
+        """
+        provenance = dict(prospect.provenance or {})
+        if provenance.get("email_status") == "verified":
+            return
+        domain = prospect.website_host or traced.website_host
+        if not domain:
+            return
+
+        # Verify an existing guessed email, else infer the top candidate.
+        target_email = prospect.email if prospect.email_hash else None
+        chosen_pattern: str | None = provenance.get("email_pattern")
+        if target_email is None:
+            candidates = candidate_emails(
+                prospect.first_name,
+                prospect.last_name,
+                domain,
+                full_name=prospect.full_name,
+            )
+            if not candidates:
+                return
+            target_email = candidates[0].email
+            chosen_pattern = candidates[0].pattern
+
+        verification = await verify_email(target_email)
+        if not prospect.email_hash:
+            prospect.email = target_email
+            prospect.email_hash = hash_value(target_email)
+        is_verified = verification.status == EmailVerificationStatus.VERIFIED
+        provenance["email_status"] = "verified" if is_verified else verification.status.value
+        provenance["email_pattern"] = chosen_pattern
+        provenance["email_verification"] = {
+            "status": verification.status.value,
+            "confidence": verification.confidence,
+            "checked_mx": verification.checked_mx,
+            "checked_smtp": verification.checked_smtp,
+        }
+        prospect.provenance = provenance
+
+        self._record_result(
+            db,
+            prospect,
+            provider=EnrichmentProvider.EMAIL_LOOKUP,
+            status=(
+                EnrichmentResultStatus.SUCCESS if is_verified else EnrichmentResultStatus.PARTIAL
+            ),
+            extracted={
+                "email": True,
+                "pattern": chosen_pattern,
+                "verification_status": verification.status.value,
+                "confidence": verification.confidence,
+            },
+            response={"domain": domain, "source": "email_pattern"},
+        )
+
+    async def _run_signals(
+        self,
+        db: AsyncSession,
+        prospect: LeadProspect,
+        ad_pixels: dict[str, bool] | None,
+    ) -> None:
+        """Aggregate buying signals, reusing already-scraped ad pixels."""
+        ad_tech_provider = (
+            AdTechSignalProvider(pixels=ad_pixels)
+            if ad_pixels is not None
+            else AdTechSignalProvider()
+        )
+        aggregator = SignalAggregator(
+            providers=[
+                AdsSignalProvider(),
+                ad_tech_provider,
+                HiringSignalProvider(),
+                FundingSignalProvider(),
+            ]
+        )
+        await aggregator.run(db, prospect)
 
     def _record_result(
         self,

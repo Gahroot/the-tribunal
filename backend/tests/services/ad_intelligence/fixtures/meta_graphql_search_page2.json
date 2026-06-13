@@ -1,0 +1,39 @@
+{
+  "data": {
+    "ad_library_main": {
+      "search_results_connection": {
+        "edges": [
+          {
+            "node": {
+              "collated_results": [
+                {
+                  "ad_archive_id": "3344556677889900",
+                  "page_id": "1122334455",
+                  "page_name": "Apex Roofing Co",
+                  "snapshot": {
+                    "page_id": "1122334455",
+                    "page_name": "Apex Roofing Co",
+                    "body": { "text": "Watch how we replaced this roof in one day." },
+                    "caption": "apexroofing.com",
+                    "cta_text": "Learn More",
+                    "cta_type": "LEARN_MORE",
+                    "display_format": "VIDEO",
+                    "link_url": "https://www.apexroofing.com/gallery"
+                  },
+                  "is_active": false,
+                  "start_date": 1760000000,
+                  "end_date": 1762000000,
+                  "publisher_platform": ["INSTAGRAM"]
+                }
+              ]
+            }
+          }
+        ],
+        "page_info": {
+          "end_cursor": null,
+          "has_next_page": false
+        }
+      }
+    }
+  }
+}

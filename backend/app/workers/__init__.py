@@ -54,6 +54,9 @@ from app.workers.reputation_worker import _registry as reputation_registry
 from app.workers.review_request_worker import _registry as review_request_registry
 from app.workers.transcript_analysis_worker import _registry as transcript_analysis_registry
 from app.workers.voice_campaign_worker import _registry as voice_campaign_registry
+from app.workers.web_people_discovery_worker import (
+    _registry as web_people_discovery_registry,
+)
 
 logger = structlog.get_logger()
 WorkerEnabledPredicate = Callable[[Settings], bool]
@@ -246,6 +249,13 @@ WORKER_SPECS: tuple[WorkerSpec, ...] = (
         dependencies=("postgres",),
         enabled=lambda s: s.ad_monitor_worker_enabled,
         enabled_setting="ad_monitor_worker_enabled",
+    ),
+    WorkerSpec(
+        name="web_people_discovery_worker",
+        registry=web_people_discovery_registry,
+        dependencies=("postgres", "website_http"),
+        enabled=lambda s: s.web_people_discovery_worker_enabled,
+        enabled_setting="web_people_discovery_worker_enabled",
     ),
     # Per-workspace opt-in lives in workspace settings (outbound_autopilot.enabled,
     # default off); the worker itself is always started and cheap when idle.

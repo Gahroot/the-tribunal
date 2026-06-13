@@ -1533,6 +1533,56 @@
         "title": "AdSignalBreakdown",
         "type": "object"
       },
+      "AddToMissionRequest": {
+        "description": "Attach selected prospects to an outbound mission.",
+        "properties": {
+          "mission_id": {
+            "format": "uuid",
+            "title": "Mission Id",
+            "type": "string"
+          },
+          "prospect_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Prospect Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mission_id"
+        ],
+        "title": "AddToMissionRequest",
+        "type": "object"
+      },
+      "AddToMissionResponse": {
+        "description": "Outcome of a bulk add-to-mission operation.",
+        "properties": {
+          "added": {
+            "title": "Added",
+            "type": "integer"
+          },
+          "mission_id": {
+            "format": "uuid",
+            "title": "Mission Id",
+            "type": "string"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mission_id",
+          "added",
+          "skipped"
+        ],
+        "title": "AddToMissionResponse",
+        "type": "object"
+      },
       "AdvertiserBulkPromoteRequest": {
         "description": "Promote many advertisers at once.",
         "properties": {
@@ -9801,6 +9851,7 @@
         "enum": [
           "google_places",
           "web_scrape",
+          "web_people",
           "csv_import",
           "manual",
           "api",
@@ -20590,6 +20641,627 @@
         "title": "PendingActionResponse",
         "type": "object"
       },
+      "PeopleDiscoveryRequest": {
+        "description": "Launch a ``web_people`` discovery job.\n\nProvide either ``domain``/``domains`` (crawl those company sites directly)\nor a ``query`` (resolve companies via Google Places, then crawl each).",
+        "properties": {
+          "city": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "maxLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain"
+          },
+          "domains": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Domains",
+            "type": "array"
+          },
+          "location_label": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Label"
+          },
+          "max_results": {
+            "default": 25,
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Max Results",
+            "type": "integer"
+          },
+          "mission_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mission Id"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region"
+          }
+        },
+        "title": "PeopleDiscoveryRequest",
+        "type": "object"
+      },
+      "PeopleDiscoveryResponse": {
+        "description": "Response for a launched ``web_people`` discovery job.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "mission_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mission Id"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query"
+          },
+          "requested_count": {
+            "title": "Requested Count",
+            "type": "integer"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "mission_id",
+          "source_type",
+          "status",
+          "query",
+          "requested_count",
+          "created_at"
+        ],
+        "title": "PeopleDiscoveryResponse",
+        "type": "object"
+      },
+      "PeopleSearchRequest": {
+        "description": "Filters for a cross-mission people search, ranked by score.",
+        "properties": {
+          "country_code": {
+            "anyOf": [
+              {
+                "maxLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "has_email": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Has Email"
+          },
+          "has_phone": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Has Phone"
+          },
+          "industry": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Industry"
+          },
+          "keywords": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keywords"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "min_score": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Min Score",
+            "type": "integer"
+          },
+          "min_signal_strength": {
+            "default": 0,
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Min Signal Strength",
+            "type": "integer"
+          },
+          "mission_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mission Id"
+          },
+          "page": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "default": 25,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "seniority": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Seniority",
+            "type": "array"
+          },
+          "signal_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Signal Types",
+            "type": "array"
+          },
+          "statuses": {
+            "items": {
+              "$ref": "#/components/schemas/ProspectStatus"
+            },
+            "title": "Statuses",
+            "type": "array"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "PeopleSearchRequest",
+        "type": "object"
+      },
+      "PeopleSearchResponse": {
+        "description": "Paginated people-search result.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PersonResult"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "pages": {
+            "title": "Pages",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size",
+          "pages"
+        ],
+        "title": "PeopleSearchResponse",
+        "type": "object"
+      },
+      "PersonResult": {
+        "description": "One person row in a people-search result, with attached signals.",
+        "properties": {
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "company_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Name"
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "discovered_at": {
+            "format": "date-time",
+            "title": "Discovered At",
+            "type": "string"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Name"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "has_email": {
+            "title": "Has Email",
+            "type": "boolean"
+          },
+          "has_phone": {
+            "title": "Has Phone",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Name"
+          },
+          "lead_score": {
+            "title": "Lead Score",
+            "type": "integer"
+          },
+          "linkedin_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linkedin Url"
+          },
+          "location_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Label"
+          },
+          "mission_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mission Id"
+          },
+          "phone_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone Number"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region"
+          },
+          "signals": {
+            "items": {
+              "$ref": "#/components/schemas/ProspectSignalResponse"
+            },
+            "title": "Signals",
+            "type": "array"
+          },
+          "source_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Type"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProspectStatus"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "website_host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website Host"
+          },
+          "website_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website Url"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "mission_id",
+          "contact_id",
+          "first_name",
+          "last_name",
+          "full_name",
+          "title",
+          "email",
+          "phone_number",
+          "has_email",
+          "has_phone",
+          "company_name",
+          "website_url",
+          "website_host",
+          "linkedin_url",
+          "country_code",
+          "region",
+          "city",
+          "location_label",
+          "source_type",
+          "lead_score",
+          "status",
+          "provenance",
+          "discovered_at"
+        ],
+        "title": "PersonResult",
+        "type": "object"
+      },
       "PhoneNumberInfoResponse": {
         "description": "Phone number info from Telnyx.",
         "properties": {
@@ -21932,6 +22604,75 @@
         "title": "ProspectPersonaUpdate",
         "type": "object"
       },
+      "ProspectSignalResponse": {
+        "description": "One normalized buying signal attached to a prospect.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "prospect_id": {
+            "format": "uuid",
+            "title": "Prospect Id",
+            "type": "string"
+          },
+          "signal_type": {
+            "title": "Signal Type",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProspectSignalStatus"
+          },
+          "strength": {
+            "title": "Strength",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "prospect_id",
+          "signal_type",
+          "strength",
+          "status",
+          "source",
+          "payload",
+          "observed_at"
+        ],
+        "title": "ProspectSignalResponse",
+        "type": "object"
+      },
+      "ProspectSignalStatus": {
+        "description": "Lifecycle of a single observed signal.",
+        "enum": [
+          "active",
+          "stale",
+          "dismissed"
+        ],
+        "title": "ProspectSignalStatus",
+        "type": "string"
+      },
       "ProspectStatus": {
         "description": "Lead prospect lifecycle status.",
         "enum": [
@@ -22952,6 +23693,11 @@
             ],
             "title": "Phone Number Id"
           },
+          "phone_provisioned": {
+            "description": "True when an SMS-capable phone number was provisioned during onboarding. When false, the workspace cannot launch SMS/voice campaigns until a number is added.",
+            "title": "Phone Provisioned",
+            "type": "boolean"
+          },
           "workspace_id": {
             "format": "uuid",
             "title": "Workspace Id",
@@ -22963,6 +23709,7 @@
           "agent_id",
           "phone_number_id",
           "phone_number",
+          "phone_provisioned",
           "calcom_connected",
           "message"
         ],
@@ -23750,6 +24497,110 @@
           }
         },
         "title": "ReputationSummary",
+        "type": "object"
+      },
+      "RevealEmailResponse": {
+        "description": "Outcome of an on-demand email reveal + verification.",
+        "properties": {
+          "candidates": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "integer"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "pattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern"
+          },
+          "prospect_id": {
+            "format": "uuid",
+            "title": "Prospect Id",
+            "type": "string"
+          },
+          "verification_status": {
+            "title": "Verification Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prospect_id",
+          "email",
+          "pattern",
+          "verification_status",
+          "confidence"
+        ],
+        "title": "RevealEmailResponse",
+        "type": "object"
+      },
+      "RevealPhoneResponse": {
+        "description": "Outcome of an on-demand phone reveal.\n\nReturns a best-effort **business / main line** scraped from the company's\nown website — not a personal direct dial. ``candidates`` holds the ranked\nalternatives to try.",
+        "properties": {
+          "candidates": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "phone_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone Number"
+          },
+          "prospect_id": {
+            "format": "uuid",
+            "title": "Prospect Id",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          }
+        },
+        "required": [
+          "prospect_id",
+          "phone_number",
+          "source"
+        ],
+        "title": "RevealPhoneResponse",
         "type": "object"
       },
       "RevenueAttributionStat": {
@@ -49256,6 +50107,301 @@
         "summary": "Update Phone Number",
         "tags": [
           "Phone Numbers"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/prospects/add-to-mission": {
+      "post": {
+        "description": "Bulk-attach selected people to an outbound mission.",
+        "operationId": "add_to_mission_api_v1_workspaces__workspace_id__prospects_add_to_mission_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddToMissionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddToMissionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Add To Mission",
+        "tags": [
+          "Prospects"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/prospects/people-discovery": {
+      "post": {
+        "description": "Launch a ``web_people`` crawl. Enqueues a job the worker runs async.",
+        "operationId": "launch_people_discovery_api_v1_workspaces__workspace_id__prospects_people_discovery_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PeopleDiscoveryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeopleDiscoveryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Launch People Discovery",
+        "tags": [
+          "Prospects"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/prospects/search": {
+      "post": {
+        "description": "Search people (named prospects) with signal + firmographic filters.",
+        "operationId": "search_people_api_v1_workspaces__workspace_id__prospects_search_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PeopleSearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeopleSearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Search People",
+        "tags": [
+          "Prospects"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/prospects/{prospect_id}/reveal-email": {
+      "post": {
+        "description": "Infer + verify a person's email on demand (pattern + MX/SMTP per config).",
+        "operationId": "reveal_email_api_v1_workspaces__workspace_id__prospects__prospect_id__reveal_email_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "prospect_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Prospect Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevealEmailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Reveal Email",
+        "tags": [
+          "Prospects"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/prospects/{prospect_id}/reveal-phone": {
+      "post": {
+        "description": "Scrape the prospect's company site for a published business line.",
+        "operationId": "reveal_phone_api_v1_workspaces__workspace_id__prospects__prospect_id__reveal_phone_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "prospect_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Prospect Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevealPhoneResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Reveal Phone",
+        "tags": [
+          "Prospects"
         ]
       }
     },

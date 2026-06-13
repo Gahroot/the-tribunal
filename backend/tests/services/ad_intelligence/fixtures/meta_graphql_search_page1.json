@@ -1,0 +1,70 @@
+{
+  "data": {
+    "ad_library_main": {
+      "search_results_connection": {
+        "edges": [
+          {
+            "node": {
+              "collated_results": [
+                {
+                  "ad_archive_id": "1616561949512060",
+                  "page_id": "1122334455",
+                  "page_name": "Apex Roofing Co",
+                  "snapshot": {
+                    "page_id": "1122334455",
+                    "page_name": "Apex Roofing Co",
+                    "body": { "text": "Need a new roof? Free inspection this week." },
+                    "caption": "apexroofing.com",
+                    "cta_text": "Get Quote",
+                    "cta_type": "GET_QUOTE",
+                    "display_format": "DCO",
+                    "link_url": "https://www.apexroofing.com/free-quote",
+                    "cards": [
+                      {
+                        "title": "Roof repair & replacement",
+                        "link_url": "https://www.apexroofing.com/free-quote"
+                      }
+                    ]
+                  },
+                  "is_active": true,
+                  "start_date": 1765180800,
+                  "end_date": 1771574400,
+                  "publisher_platform": ["FACEBOOK", "INSTAGRAM", "MESSENGER"]
+                }
+              ]
+            }
+          },
+          {
+            "node": {
+              "collated_results": [
+                {
+                  "ad_archive_id": "2233445566778899",
+                  "page_id": "1122334455",
+                  "page_name": "Apex Roofing Co",
+                  "snapshot": {
+                    "page_id": "1122334455",
+                    "page_name": "Apex Roofing Co",
+                    "body": { "text": "Storm damage? We handle the insurance claim." },
+                    "caption": "apexroofing.com",
+                    "cta_text": "Learn More",
+                    "cta_type": "LEARN_MORE",
+                    "display_format": "IMAGE",
+                    "link_url": "https://www.apexroofing.com/storm-damage"
+                  },
+                  "is_active": true,
+                  "start_date": 1762588800,
+                  "end_date": 0,
+                  "publisher_platform": ["FACEBOOK"]
+                }
+              ]
+            }
+          }
+        ],
+        "page_info": {
+          "end_cursor": "AQHSLCvINjglGZ21w8YWrk17vcI7lEBCi1Ctbe",
+          "has_next_page": true
+        }
+      }
+    }
+  }
+}

@@ -26,6 +26,7 @@ import {
   Settings,
   Sparkles,
   Star,
+  UserSearch,
   Users,
   Zap,
 } from "lucide-react";
@@ -171,6 +172,13 @@ export const leadDiscoveryNavItems: AppNavItem[] = [
     title: "Ad Library",
     url: "/find-leads/ad-library",
     icon: Layers,
+    sidebar: true,
+    commandPalette: true,
+  },
+  {
+    title: "People Search",
+    url: "/find-leads/people",
+    icon: UserSearch,
     sidebar: true,
     commandPalette: true,
   },

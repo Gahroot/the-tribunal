@@ -87,6 +87,11 @@ from app.models.phone_number_stats import PhoneNumberDailyStats
 from app.models.pipeline import Pipeline, PipelineStage
 from app.models.prompt_version import PromptVersion
 from app.models.prompt_version_stats import PromptVersionStats
+from app.models.prospect_signal import (
+    ProspectSignal,
+    ProspectSignalStatus,
+    ProspectSignalType,
+)
 from app.models.refresh_token import RefreshToken
 from app.models.review import (
     Review,
@@ -155,6 +160,9 @@ __all__ = [
     "LeadEnrichmentResult",
     "ProspectStatus",
     "ProspectIdentityKind",
+    "ProspectSignal",
+    "ProspectSignalStatus",
+    "ProspectSignalType",
     "EnrichmentProvider",
     "EnrichmentResultStatus",
     "Offer",

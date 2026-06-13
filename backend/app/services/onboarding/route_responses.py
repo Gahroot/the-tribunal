@@ -52,6 +52,7 @@ def realtor_onboard_response(result: RealtorOnboardingResult) -> RealtorOnboardR
         agent_id=result.agent_id,
         phone_number_id=result.phone_number_id,
         phone_number=result.phone_number,
+        phone_provisioned=result.phone_number is not None,
         calcom_connected=result.calcom_connected,
         message=message,
     )

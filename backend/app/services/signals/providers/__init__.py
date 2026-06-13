@@ -1,0 +1,1 @@
+"""Concrete buying-signal providers."""

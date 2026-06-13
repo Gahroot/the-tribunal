@@ -32,6 +32,13 @@ class RealtorOnboardResponse(BaseModel):
     agent_id: uuid.UUID
     phone_number_id: uuid.UUID | None
     phone_number: str | None
+    phone_provisioned: bool = Field(
+        ...,
+        description=(
+            "True when an SMS-capable phone number was provisioned during onboarding. "
+            "When false, the workspace cannot launch SMS/voice campaigns until a number is added."
+        ),
+    )
     calcom_connected: bool
     message: str
 

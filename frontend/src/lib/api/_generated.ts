@@ -5375,6 +5375,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/prospects/add-to-mission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add To Mission
+         * @description Bulk-attach selected people to an outbound mission.
+         */
+        post: operations["add_to_mission_api_v1_workspaces__workspace_id__prospects_add_to_mission_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/prospects/people-discovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Launch People Discovery
+         * @description Launch a ``web_people`` crawl. Enqueues a job the worker runs async.
+         */
+        post: operations["launch_people_discovery_api_v1_workspaces__workspace_id__prospects_people_discovery_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/prospects/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search People
+         * @description Search people (named prospects) with signal + firmographic filters.
+         */
+        post: operations["search_people_api_v1_workspaces__workspace_id__prospects_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/prospects/{prospect_id}/reveal-email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reveal Email
+         * @description Infer + verify a person's email on demand (pattern + MX/SMTP per config).
+         */
+        post: operations["reveal_email_api_v1_workspaces__workspace_id__prospects__prospect_id__reveal_email_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/prospects/{prospect_id}/reveal-phone": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reveal Phone
+         * @description Scrape the prospect's company site for a published business line.
+         */
+        post: operations["reveal_phone_api_v1_workspaces__workspace_id__prospects__prospect_id__reveal_phone_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/realtor/stats": {
         parameters: {
             query?: never;
@@ -7128,6 +7228,34 @@ export interface components {
             };
             /** Total Ad Count */
             total_ad_count: number;
+        };
+        /**
+         * AddToMissionRequest
+         * @description Attach selected prospects to an outbound mission.
+         */
+        AddToMissionRequest: {
+            /**
+             * Mission Id
+             * Format: uuid
+             */
+            mission_id: string;
+            /** Prospect Ids */
+            prospect_ids?: string[];
+        };
+        /**
+         * AddToMissionResponse
+         * @description Outcome of a bulk add-to-mission operation.
+         */
+        AddToMissionResponse: {
+            /** Added */
+            added: number;
+            /**
+             * Mission Id
+             * Format: uuid
+             */
+            mission_id: string;
+            /** Skipped */
+            skipped: number;
         };
         /**
          * AdvertiserBulkPromoteRequest
@@ -10284,7 +10412,7 @@ export interface components {
          * @description Where a lead discovery job pulls candidate prospects from.
          * @enum {string}
          */
-        DiscoverySourceType: "google_places" | "web_scrape" | "csv_import" | "manual" | "api" | "linkedin" | "meta_ad_library" | "google_ads_transparency" | "other";
+        DiscoverySourceType: "google_places" | "web_scrape" | "web_people" | "csv_import" | "manual" | "api" | "linkedin" | "meta_ad_library" | "google_ads_transparency" | "other";
         /**
          * DraftActionRequest
          * @description Optional operator overrides when queuing the drafted action.
@@ -14270,6 +14398,199 @@ export interface components {
             workspace_id: string;
         };
         /**
+         * PeopleDiscoveryRequest
+         * @description Launch a ``web_people`` discovery job.
+         *
+         *     Provide either ``domain``/``domains`` (crawl those company sites directly)
+         *     or a ``query`` (resolve companies via Google Places, then crawl each).
+         */
+        PeopleDiscoveryRequest: {
+            /** City */
+            city?: string | null;
+            /** Country Code */
+            country_code?: string | null;
+            /** Domain */
+            domain?: string | null;
+            /** Domains */
+            domains?: string[];
+            /** Location Label */
+            location_label?: string | null;
+            /**
+             * Max Results
+             * @default 25
+             */
+            max_results: number;
+            /** Mission Id */
+            mission_id?: string | null;
+            /** Query */
+            query?: string | null;
+            /** Region */
+            region?: string | null;
+        };
+        /**
+         * PeopleDiscoveryResponse
+         * @description Response for a launched ``web_people`` discovery job.
+         */
+        PeopleDiscoveryResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Mission Id */
+            mission_id: string | null;
+            /** Query */
+            query: string | null;
+            /** Requested Count */
+            requested_count: number;
+            /** Source Type */
+            source_type: string;
+            /** Status */
+            status: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+        };
+        /**
+         * PeopleSearchRequest
+         * @description Filters for a cross-mission people search, ranked by score.
+         */
+        PeopleSearchRequest: {
+            /** Country Code */
+            country_code?: string | null;
+            /** Has Email */
+            has_email?: boolean | null;
+            /** Has Phone */
+            has_phone?: boolean | null;
+            /** Industry */
+            industry?: string | null;
+            /** Keywords */
+            keywords?: string | null;
+            /** Location */
+            location?: string | null;
+            /**
+             * Min Score
+             * @default 0
+             */
+            min_score: number;
+            /**
+             * Min Signal Strength
+             * @default 0
+             */
+            min_signal_strength: number;
+            /** Mission Id */
+            mission_id?: string | null;
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Page Size
+             * @default 25
+             */
+            page_size: number;
+            /** Seniority */
+            seniority?: string[];
+            /** Signal Types */
+            signal_types?: string[];
+            /** Statuses */
+            statuses?: components["schemas"]["ProspectStatus"][];
+            /** Title */
+            title?: string | null;
+        };
+        /**
+         * PeopleSearchResponse
+         * @description Paginated people-search result.
+         */
+        PeopleSearchResponse: {
+            /** Items */
+            items: components["schemas"]["PersonResult"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Pages */
+            pages: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * PersonResult
+         * @description One person row in a people-search result, with attached signals.
+         */
+        PersonResult: {
+            /** City */
+            city: string | null;
+            /** Company Name */
+            company_name: string | null;
+            /** Contact Id */
+            contact_id: number | null;
+            /** Country Code */
+            country_code: string | null;
+            /**
+             * Discovered At
+             * Format: date-time
+             */
+            discovered_at: string;
+            /** Email */
+            email: string | null;
+            /** First Name */
+            first_name: string | null;
+            /** Full Name */
+            full_name: string | null;
+            /** Has Email */
+            has_email: boolean;
+            /** Has Phone */
+            has_phone: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Name */
+            last_name: string | null;
+            /** Lead Score */
+            lead_score: number;
+            /** Linkedin Url */
+            linkedin_url: string | null;
+            /** Location Label */
+            location_label: string | null;
+            /** Mission Id */
+            mission_id: string | null;
+            /** Phone Number */
+            phone_number: string | null;
+            /** Provenance */
+            provenance: {
+                [key: string]: unknown;
+            };
+            /** Region */
+            region: string | null;
+            /** Signals */
+            signals?: components["schemas"]["ProspectSignalResponse"][];
+            /** Source Type */
+            source_type: string | null;
+            status: components["schemas"]["ProspectStatus"];
+            /** Title */
+            title: string | null;
+            /** Website Host */
+            website_host: string | null;
+            /** Website Url */
+            website_url: string | null;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+        };
+        /**
          * PhoneNumberInfoResponse
          * @description Phone number info from Telnyx.
          */
@@ -14754,6 +15075,44 @@ export interface components {
             persona_prompt?: string | null;
         };
         /**
+         * ProspectSignalResponse
+         * @description One normalized buying signal attached to a prospect.
+         */
+        ProspectSignalResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /**
+             * Prospect Id
+             * Format: uuid
+             */
+            prospect_id: string;
+            /** Signal Type */
+            signal_type: string;
+            /** Source */
+            source: string | null;
+            status: components["schemas"]["ProspectSignalStatus"];
+            /** Strength */
+            strength: number;
+        };
+        /**
+         * ProspectSignalStatus
+         * @description Lifecycle of a single observed signal.
+         * @enum {string}
+         */
+        ProspectSignalStatus: "active" | "stale" | "dismissed";
+        /**
          * ProspectStatus
          * @description Lead prospect lifecycle status.
          * @enum {string}
@@ -15169,6 +15528,11 @@ export interface components {
             /** Phone Number Id */
             phone_number_id: string | null;
             /**
+             * Phone Provisioned
+             * @description True when an SMS-capable phone number was provisioned during onboarding. When false, the workspace cannot launch SMS/voice campaigns until a number is added.
+             */
+            phone_provisioned: boolean;
+            /**
              * Workspace Id
              * Format: uuid
              */
@@ -15473,6 +15837,52 @@ export interface components {
              * @default 0
              */
             total_reviews: number;
+        };
+        /**
+         * RevealEmailResponse
+         * @description Outcome of an on-demand email reveal + verification.
+         */
+        RevealEmailResponse: {
+            /** Candidates */
+            candidates?: {
+                [key: string]: unknown;
+            }[];
+            /** Confidence */
+            confidence: number;
+            /** Email */
+            email: string | null;
+            /** Pattern */
+            pattern: string | null;
+            /**
+             * Prospect Id
+             * Format: uuid
+             */
+            prospect_id: string;
+            /** Verification Status */
+            verification_status: string;
+        };
+        /**
+         * RevealPhoneResponse
+         * @description Outcome of an on-demand phone reveal.
+         *
+         *     Returns a best-effort **business / main line** scraped from the company's
+         *     own website — not a personal direct dial. ``candidates`` holds the ranked
+         *     alternatives to try.
+         */
+        RevealPhoneResponse: {
+            /** Candidates */
+            candidates?: {
+                [key: string]: unknown;
+            }[];
+            /** Phone Number */
+            phone_number: string | null;
+            /**
+             * Prospect Id
+             * Format: uuid
+             */
+            prospect_id: string;
+            /** Source */
+            source: string | null;
         };
         /**
          * RevenueAttributionStat
@@ -28203,6 +28613,175 @@ export interface operations {
                     "application/json": {
                         [key: string]: boolean;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_to_mission_api_v1_workspaces__workspace_id__prospects_add_to_mission_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddToMissionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddToMissionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    launch_people_discovery_api_v1_workspaces__workspace_id__prospects_people_discovery_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeopleDiscoveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleDiscoveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_people_api_v1_workspaces__workspace_id__prospects_search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeopleSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleSearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reveal_email_api_v1_workspaces__workspace_id__prospects__prospect_id__reveal_email_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                prospect_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevealEmailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reveal_phone_api_v1_workspaces__workspace_id__prospects__prospect_id__reveal_phone_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                prospect_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevealPhoneResponse"];
                 };
             };
             /** @description Validation Error */

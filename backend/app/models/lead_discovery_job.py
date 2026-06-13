@@ -39,6 +39,7 @@ class DiscoverySourceType(StrEnum):
 
     GOOGLE_PLACES = "google_places"
     WEB_SCRAPE = "web_scrape"
+    WEB_PEOPLE = "web_people"
     CSV_IMPORT = "csv_import"
     MANUAL = "manual"
     API = "api"

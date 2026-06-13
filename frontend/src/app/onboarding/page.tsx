@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { Calendar, Database, Rocket, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { toast } from "sonner";
 
@@ -65,6 +65,12 @@ function OnboardingFlow() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [launchSummary, setLaunchSummary] =
     useState<OnboardingLaunchSummary | null>(null);
+  // Onboarding (agent + credentials + best-effort phone purchase) is idempotent
+  // only on the client side via this ref, so a retry after the no-phone warning
+  // doesn't create a second agent.
+  const onboardedRef = useRef(false);
+  const phoneProvisionedRef = useRef(false);
+  const [showPhoneWarning, setShowPhoneWarning] = useState(false);
 
   // Landing here (whether auto-redirected for a fresh workspace or arriving by
   // choice) counts as the one-time first-run nudge, so the app shell never
@@ -150,15 +156,43 @@ function OnboardingFlow() {
     const values = form.getValues();
     setIsSubmitting(true);
     try {
-      const { event_type_id } = await parseCalcomUrl(
-        values.calcom_booking_url,
-        values.calcom_api_key
-      );
+      if (!onboardedRef.current) {
+        const { event_type_id } = await parseCalcomUrl(
+          values.calcom_booking_url,
+          values.calcom_api_key
+        );
 
-      await onboard({
-        calcom_api_key: values.calcom_api_key,
-        calcom_event_type_id: event_type_id,
-      });
+        const onboardResult = await onboard({
+          calcom_api_key: values.calcom_api_key,
+          calcom_event_type_id: event_type_id,
+          area_code: values.area_code || undefined,
+        });
+        onboardedRef.current = true;
+        phoneProvisionedRef.current = onboardResult.phone_provisioned;
+
+        // The onboard call created the workspace's first agent, so refresh the
+        // setup probe immediately — otherwise the cold-start card/nav linger on
+        // the cached "zero agents" result (finding RF-002).
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.agents.all(currentWorkspaceId),
+        });
+      }
+
+      // A CSV launch sends SMS, so it can't start without an SMS-capable number.
+      // Telnyx auto-purchase is best-effort and silently returns none when the
+      // key is missing or the area code has no inventory, so surface that here
+      // with a fix path instead of dying at the campaign call with a cryptic
+      // "No active SMS-enabled phone number found" error (finding RF-008). On a
+      // retry (warning already shown) we attempt the launch so a number added
+      // in Settings is picked up; the catch below re-surfaces if it's still
+      // missing.
+      if (extras.csvFile && !phoneProvisionedRef.current && !showPhoneWarning) {
+        setShowPhoneWarning(true);
+        toast.error(
+          "We couldn't get you an SMS number automatically — add one to start texting."
+        );
+        return;
+      }
 
       let summary: OnboardingLaunchSummary;
       if (extras.csvFile) {
@@ -187,13 +221,6 @@ function OnboardingFlow() {
         };
       }
 
-      // The onboard call created the workspace's first agent, so refresh the
-      // setup probe immediately — otherwise the cold-start card/nav linger on
-      // the cached "zero agents" result (finding RF-002).
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.agents.all(currentWorkspaceId),
-      });
-
       // Show the real import result instead of a blind "all good" toast +
       // redirect, so silent data loss (e.g. failed rows) is visible (RF-007).
       const toastDetail = [
@@ -208,9 +235,24 @@ function OnboardingFlow() {
       } else {
         toast.success(`Campaign launched — ${toastDetail}`);
       }
+      setShowPhoneWarning(false);
       setLaunchSummary(summary);
     } catch (err) {
-      toast.error(getApiErrorMessage(err, "Launch failed. Please try again."));
+      const message = getApiErrorMessage(
+        err,
+        "Launch failed. Please try again."
+      );
+      // Backend hard-fails the CSV launch when no SMS number exists; translate
+      // that into the same actionable warning rather than a cryptic toast.
+      if (/SMS-enabled phone number/i.test(message)) {
+        phoneProvisionedRef.current = false;
+        setShowPhoneWarning(true);
+        toast.error(
+          "We couldn't get you an SMS number automatically — add one to start texting."
+        );
+      } else {
+        toast.error(message);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -221,6 +263,7 @@ function OnboardingFlow() {
     extras.fubImportCount,
     form,
     queryClient,
+    showPhoneWarning,
   ]);
 
   const goToDashboard = useCallback(() => {
@@ -267,7 +310,9 @@ function OnboardingFlow() {
             {currentStepId === "fub" && <FubStep />}
             {currentStepId === "calcom" && <CalcomStep />}
             {currentStepId === "leads" && <LeadsStep />}
-            {currentStepId === "review" && <ReviewStep />}
+            {currentStepId === "review" && (
+              <ReviewStep showPhoneWarning={showPhoneWarning} />
+            )}
           </WizardContainer>
         </div>
       </div>

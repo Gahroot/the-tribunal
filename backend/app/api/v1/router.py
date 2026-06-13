@@ -42,6 +42,7 @@ from app.api.v1 import (
     pending_actions,
     phone_numbers,
     prompt_versions,
+    prospects,
     realtime,
     reviews,
     roleplay,
@@ -234,6 +235,11 @@ api_router.include_router(
     ad_library.router,
     prefix="/workspaces/{workspace_id}/ad-library",
     tags=["Ad Library"],
+)
+api_router.include_router(
+    prospects.router,
+    prefix="/workspaces/{workspace_id}/prospects",
+    tags=["Prospects"],
 )
 # Public invitation endpoints (token-based)
 api_router.include_router(

@@ -131,6 +131,15 @@ export const queryKeys = {
     monitors: (workspaceId: string) =>
       ["ad-library-monitors", workspaceId] as const,
   },
+  people: {
+    search: (workspaceId: string, params?: QueryKeyParams | null) =>
+      ["people-search", workspaceId, params ?? null] as const,
+    prospectSignals: (workspaceId: string, prospectId: string) =>
+      ["prospect-signals", workspaceId, prospectId] as const,
+    job: (workspaceId: string, jobId: string) =>
+      ["people-discovery-job", workspaceId, jobId] as const,
+    missions: (workspaceId: string) => ["people-missions", workspaceId] as const,
+  },
   agents: {
     ...agents,
     activeOnly: (workspaceId: string) =>

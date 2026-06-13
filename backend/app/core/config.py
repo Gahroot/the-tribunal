@@ -129,6 +129,14 @@ class Settings(BaseSettings):
     meta_scrape_max_delay_seconds: float = 5.0
     meta_scrape_session_ttl_seconds: int = 1800
     meta_scrape_rate_limit_per_hour: int = 40
+    # The Ad Library website now talks to ``POST /api/graphql/`` via persisted
+    # queries (the old ``async/search_ads/`` form endpoints return 404). These
+    # are Relay ``doc_id`` values captured from live browser traffic on
+    # 2026-06-12 (AdLibrarySearchPaginationQuery / the typeahead query); Meta
+    # rotates them periodically, so they are overridable without a code change.
+    # The ``headless`` strategy is required to clear the initial JS challenge.
+    meta_scrape_search_doc_id: str = "24922295957467452"
+    meta_scrape_typeahead_doc_id: str = "9755915494515334"
     # Google Ads Transparency Center has no official API; the SerpApi adapter is
     # the lowest-risk path. Fully behind a flag and off by default.
     google_ads_transparency_enabled: bool = False
@@ -151,6 +159,29 @@ class Settings(BaseSettings):
     # Optional config-gated email-finder for prospect enrichment.
     email_finder_provider: str = ""  # hunter | apollo
     email_finder_api_key: str = ""
+
+    # --- People discovery + buying signals (Apollo-parity) ---
+    # Web people-extraction discovery worker + crawl caps.
+    web_people_discovery_worker_enabled: bool = True
+    web_people_discovery_poll_interval: int = 20
+    # Max first-party pages crawled per company domain during people extraction.
+    web_people_max_pages_per_domain: int = 8
+    # Max people emitted per company domain in one discovery run.
+    web_people_max_people_per_domain: int = 50
+    # Email reveal: pattern inference is always on; verification is opt-in.
+    # MX lookup runs when verification is enabled; SMTP/provider probing only
+    # when explicitly turned on (slow + can get egress IPs blocked).
+    email_verification_enabled: bool = False
+    email_verification_smtp_enabled: bool = False
+    email_verification_smtp_timeout_seconds: float = 8.0
+    email_verification_smtp_from: str = "verify@example.com"
+    # Phone reveal: scrape the prospect's own website for a published business
+    # line. No paid provider, no name-based inference (impossible for phones).
+    phone_reveal_enabled: bool = True
+    phone_reveal_max_pages: int = 3
+    # Config-gated signal providers — empty key = provider disabled (no data).
+    hiring_signal_api_key: str = ""
+    funding_signal_api_key: str = ""
 
     # gosom/google-maps-scraper — optional self-hosted Google Maps scraper.
     # Leave ``gosom_base_url`` empty to disable the provider entirely; the

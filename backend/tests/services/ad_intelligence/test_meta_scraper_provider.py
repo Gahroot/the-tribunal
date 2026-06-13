@@ -2,15 +2,18 @@
 
 All Facebook traffic is faked through an ``httpx.MockTransport`` (mirroring
 ``test_meta_ad_library_provider.py``) so no real network egress leaves the test
-runner. Covers: LSD-token bootstrap from the Ad Library page HTML, ``for (;;);``
-prefix stripping, page-name typeahead resolution, normalization parity with the
-shared internal-shape normalizer, cursor pagination via the echoed
-``forward_cursor``, a single 403 -> re-bootstrap self-heal, and the hard
-compliance-gate raise when ``ad_library_allow_raw_scrape`` is off.
+runner. Covers: LSD/DTSG-token bootstrap from the Ad Library page HTML, the
+``/api/graphql/`` persisted-query request shape (``doc_id`` + URL-encoded
+``variables`` + ``fb_api_req_friendly_name``), page-name typeahead resolution,
+normalization parity with the shared internal-shape normalizer, cursor
+pagination via the GraphQL ``page_info.end_cursor``, a single 403 ->
+re-bootstrap self-heal, the hard compliance-gate raise, and a regression guard
+that the provider never POSTs the retired ``async/search_ads/`` endpoint.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
 from typing import Any
@@ -19,16 +22,19 @@ from urllib.parse import parse_qs
 import httpx
 import pytest
 
+from app.core.config import settings
 from app.services.ad_intelligence import compliance
 from app.services.ad_intelligence.errors import AdLibraryProviderUnavailableError
 from app.services.ad_intelligence.providers import meta_scraper
 from app.services.ad_intelligence.providers._meta_internal_shape import normalize_ad
 from app.services.ad_intelligence.providers.meta_scraper import MetaScraperProvider
 from app.services.ad_intelligence.scraper_session import (
+    GRAPHQL_URL,
     HeadlessSession,
     TokenHttpSession,
     build_session,
-    decode_async_payload,
+    decode_graphql_payload,
+    extract_dtsg,
     extract_lsd,
 )
 from app.services.ad_intelligence.types import AdSearchRequest
@@ -38,10 +44,14 @@ from app.services.lead_discovery.errors import (
 )
 
 _FIXTURES = Path(__file__).parent / "fixtures"
-# HTML stub carrying an LSD token in the primary (most specific) shape.
-_PAGE_HTML = '<!doctype html><html><script>["LSD",[],{"token":"lsd-token-abc123"}]</script></html>'
+# HTML stub carrying both an LSD token (primary shape) and an fb_dtsg token.
+_PAGE_HTML = (
+    '<!doctype html><html><script>["LSD",[],{"token":"lsd-token-abc123"}],'
+    '["DTSGInitialData",[],{"token":"dtsg-token-abc123"}]</script></html>'
+)
 _PAGE_HTML_B = (
-    '<!doctype html><html><script>["LSD",[],{"token":"lsd-token-xyz789"}]</script></html>'
+    '<!doctype html><html><script>["LSD",[],{"token":"lsd-token-xyz789"}],'
+    '["DTSGInitialData",[],{"token":"dtsg-token-xyz789"}]</script></html>'
 )
 
 
@@ -49,9 +59,9 @@ def _load(name: str) -> dict[str, Any]:
     return json.loads((_FIXTURES / name).read_text())
 
 
-def _async_body(payload: dict[str, Any]) -> str:
-    """Serialize a payload the way the async endpoint does: ``for (;;);`` + JSON."""
-    return "for (;;);" + json.dumps(payload)
+def _variables(body: dict[str, list[str]]) -> dict[str, Any]:
+    """Decode the URL-encoded ``variables`` JSON blob out of a posted form."""
+    return json.loads(body["variables"][0])
 
 
 class _FakeRedis:
@@ -74,6 +84,8 @@ def _enable_scrape(monkeypatch) -> None:
     Individual tests override the compliance flag to exercise the gate.
     """
     monkeypatch.setattr(compliance.settings, "ad_library_allow_raw_scrape", True, raising=False)
+    monkeypatch.setattr(settings, "meta_scrape_search_doc_id", "DOCID_SEARCH", raising=False)
+    monkeypatch.setattr(settings, "meta_scrape_typeahead_doc_id", "DOCID_TYPEAHEAD", raising=False)
 
     async def _allow() -> tuple[bool, int]:
         return True, 1
@@ -96,65 +108,74 @@ def _provider(handler) -> MetaScraperProvider:  # noqa: ANN001
 
 
 @pytest.mark.asyncio
-async def test_token_bootstrap_strips_guard_and_paginates() -> None:
-    calls: dict[str, int] = {"page": 0, "search": 0}
+async def test_graphql_bootstrap_and_request_shape_and_paginate() -> None:
+    calls: dict[str, int] = {"page": 0, "graphql": 0}
     bodies: list[dict[str, list[str]]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/ads/library/":
             calls["page"] += 1
             return httpx.Response(200, text=_PAGE_HTML)
-        if request.url.path.endswith("/async/search_ads/"):
-            calls["search"] += 1
+        if str(request.url) == GRAPHQL_URL:
+            calls["graphql"] += 1
             bodies.append(parse_qs(request.content.decode(), keep_blank_values=True))
             page = _load(
-                "meta_search_ads_page1.json"
-                if calls["search"] == 1
-                else "meta_search_ads_page2.json"
+                "meta_graphql_search_page1.json"
+                if calls["graphql"] == 1
+                else "meta_graphql_search_page2.json"
             )
-            return httpx.Response(200, text=_async_body(page))
+            return httpx.Response(200, text=json.dumps(page))
         return httpx.Response(404)
 
     provider = _provider(handler)
     result = await provider.search(
-        AdSearchRequest(platform="meta", country="us", search_terms="ecommerce", max_results=50)
+        AdSearchRequest(
+            platform="meta", country="us", search_terms="roofing contractors", max_results=50
+        )
     )
     await provider.close()
 
-    # Bootstrapped once, then followed the cursor to a second page.
+    # Bootstrapped once, then followed the GraphQL cursor to a second page.
     assert calls["page"] == 1
-    assert calls["search"] == 2
-    # The LSD token rode the POST body + the guard-prefixed JSON decoded cleanly.
-    assert bodies[0]["lsd"] == ["lsd-token-abc123"]
-    # Country upper-cased; keyword search shape.
-    assert bodies[0]["countries[0]"] == ["US"]
-    assert bodies[0]["q"] == ["ecommerce"]
+    assert calls["graphql"] == 2
+    # Persisted-query request shape: friendly name + doc_id + LSD/DTSG tokens.
+    first = bodies[0]
+    assert first["fb_api_req_friendly_name"] == ["AdLibrarySearchPaginationQuery"]
+    assert first["doc_id"] == ["DOCID_SEARCH"]
+    assert first["lsd"] == ["lsd-token-abc123"]
+    assert first["fb_dtsg"] == ["dtsg-token-abc123"]
+    # The query lives in the URL-encoded ``variables`` JSON blob, not a form field.
+    variables = _variables(first)
+    assert variables["queryString"] == "roofing contractors"
+    assert variables["countries"] == ["US"]  # country upper-cased
+    assert variables["searchType"] == "keyword_unordered"
+    assert variables["activeStatus"] == "all"
     # One advertiser (same page id) carrying all three ads across both pages.
     assert result.advertiser_count == 1
     advertiser = result.advertisers[0]
-    assert advertiser.advertiser_key == "20409006880"
-    assert advertiser.advertiser_name == "Shopify"
+    assert advertiser.advertiser_key == "1122334455"
+    assert advertiser.advertiser_name == "Apex Roofing Co"
     assert advertiser.ad_count == 3
-    assert advertiser.website_host == "shopify.com"
+    assert advertiser.website_host == "apexroofing.com"
 
 
 @pytest.mark.asyncio
-async def test_pagination_echoes_forward_cursor() -> None:
+async def test_pagination_advances_graphql_cursor() -> None:
     bodies: list[dict[str, list[str]]] = []
-    search_calls = {"n": 0}
+    calls = {"n": 0}
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/ads/library/":
             return httpx.Response(200, text=_PAGE_HTML)
-        if request.url.path.endswith("/async/search_ads/"):
-            search_calls["n"] += 1
+        if str(request.url) == GRAPHQL_URL:
+            calls["n"] += 1
             bodies.append(parse_qs(request.content.decode(), keep_blank_values=True))
             page = _load(
-                "meta_search_ads_page1.json"
-                if search_calls["n"] == 1
-                else "meta_search_ads_page2.json"
+                "meta_graphql_search_page1.json"
+                if calls["n"] == 1
+                else "meta_graphql_search_page2.json"
             )
-            return httpx.Response(200, text=_async_body(page))
+            return httpx.Response(200, text=json.dumps(page))
         return httpx.Response(404)
 
     provider = _provider(handler)
@@ -163,12 +184,39 @@ async def test_pagination_echoes_forward_cursor() -> None:
     )
     await provider.close()
 
-    # First page is requested with an empty cursor; the second echoes page1's.
-    expected_cursor = _load("meta_search_ads_page1.json")["payload"]["forwardCursor"]
-    assert bodies[0]["forward_cursor"] == [""]
-    assert bodies[1]["forward_cursor"] == [expected_cursor]
+    # First page sends a null cursor; the second carries page1's end_cursor.
+    expected_cursor = _load("meta_graphql_search_page1.json")["data"]["ad_library_main"][
+        "search_results_connection"
+    ]["page_info"]["end_cursor"]
+    assert _variables(bodies[0])["cursor"] is None
+    assert _variables(bodies[1])["cursor"] == expected_cursor
     # The collation token is stable across pages.
-    assert bodies[0]["collation_token"] == bodies[1]["collation_token"]
+    assert _variables(bodies[0])["collationToken"] == _variables(bodies[1])["collationToken"]
+
+
+@pytest.mark.asyncio
+async def test_does_not_post_retired_async_endpoint() -> None:
+    """Regression: the provider must never hit the retired async/search_ads/ path."""
+    seen_paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_paths.append(request.url.path)
+        if request.url.path == "/ads/library/":
+            return httpx.Response(200, text=_PAGE_HTML)
+        if str(request.url) == GRAPHQL_URL:
+            return httpx.Response(200, text=json.dumps(_load("meta_graphql_search_page2.json")))
+        # The retired endpoints 404 against live Meta — fail loudly if hit.
+        return httpx.Response(404)
+
+    provider = _provider(handler)
+    await provider.search(
+        AdSearchRequest(platform="meta", country="US", search_terms="roofing", max_results=10)
+    )
+    await provider.close()
+
+    assert not any(p.endswith("/async/search_ads/") for p in seen_paths)
+    assert not any(p.endswith("/async/search_typeahead/") for p in seen_paths)
+    assert "/api/graphql/" in seen_paths
 
 
 @pytest.mark.asyncio
@@ -176,8 +224,8 @@ async def test_normalization_parity_with_shared_normalizer() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/ads/library/":
             return httpx.Response(200, text=_PAGE_HTML)
-        if request.url.path.endswith("/async/search_ads/"):
-            return httpx.Response(200, text=_async_body(_load("meta_search_ads_page2.json")))
+        if str(request.url) == GRAPHQL_URL:
+            return httpx.Response(200, text=json.dumps(_load("meta_graphql_search_page2.json")))
         return httpx.Response(404)
 
     provider = _provider(handler)
@@ -187,14 +235,16 @@ async def test_normalization_parity_with_shared_normalizer() -> None:
     await provider.close()
 
     # The provider must emit exactly what the shared internal-shape normalizer
-    # produces for the same raw ad dict (no scraper-local drift).
-    raw_ad = _load("meta_search_ads_page2.json")["payload"]["results"][0][0]
+    # produces for the same raw ad node (no scraper-local drift).
+    raw_ad = _load("meta_graphql_search_page2.json")["data"]["ad_library_main"][
+        "search_results_connection"
+    ]["edges"][0]["node"]["collated_results"][0]
     expected = normalize_ad(raw_ad)
     got = result.advertisers[0].ads[0]
     assert got == expected
     assert got.media_type == "video"
     assert got.is_active is False
-    assert got.link_host == "shopify.com"
+    assert got.link_host == "apexroofing.com"
 
 
 @pytest.mark.asyncio
@@ -204,51 +254,62 @@ async def test_typeahead_resolves_page_name() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/ads/library/":
             return httpx.Response(200, text=_PAGE_HTML)
-        if request.url.path.endswith("/async/search_typeahead/"):
-            seen["typeahead_value"] = parse_qs(request.content.decode(), keep_blank_values=True)[
-                "value"
-            ]
-            return httpx.Response(
-                200,
-                text=_async_body(
-                    {"payload": {"pageResults": [{"page_id": "20409006880", "name": "Shopify"}]}}
-                ),
-            )
-        if request.url.path.endswith("/async/search_ads/"):
-            seen["search_body"] = parse_qs(request.content.decode(), keep_blank_values=True)
-            return httpx.Response(200, text=_async_body(_load("meta_search_ads_page2.json")))
+        if str(request.url) == GRAPHQL_URL:
+            body = parse_qs(request.content.decode(), keep_blank_values=True)
+            friendly = body["fb_api_req_friendly_name"][0]
+            if friendly == "useAdLibraryTypeaheadSuggestionDataSourceQuery":
+                seen["typeahead_query"] = _variables(body)["queryString"]
+                seen["typeahead_doc_id"] = body["doc_id"]
+                return httpx.Response(
+                    200,
+                    text=json.dumps(
+                        {
+                            "data": {
+                                "ad_library_page_typeahead": {
+                                    "page_results": [
+                                        {"page_id": "1122334455", "name": "Apex Roofing Co"}
+                                    ]
+                                }
+                            }
+                        }
+                    ),
+                )
+            seen["search_variables"] = _variables(body)
+            return httpx.Response(200, text=json.dumps(_load("meta_graphql_search_page2.json")))
         return httpx.Response(404)
 
     provider = _provider(handler)
     result = await provider.search(
-        AdSearchRequest(platform="meta", country="US", page_name="Shopify")
+        AdSearchRequest(platform="meta", country="US", page_name="Apex Roofing Co")
     )
     await provider.close()
 
-    assert seen["typeahead_value"] == ["Shopify"]
+    assert seen["typeahead_query"] == "Apex Roofing Co"
+    assert seen["typeahead_doc_id"] == ["DOCID_TYPEAHEAD"]
     # The resolved numeric id scopes the subsequent search to that page.
-    assert seen["search_body"]["view_all_page_id"] == ["20409006880"]
-    assert seen["search_body"]["search_type"] == ["page"]
-    assert result.advertisers[0].advertiser_key == "20409006880"
+    assert seen["search_variables"]["pageIDs"] == ["1122334455"]
+    assert seen["search_variables"]["viewAllPageID"] == "1122334455"
+    assert seen["search_variables"]["searchType"] == "page"
+    assert result.advertisers[0].advertiser_key == "1122334455"
 
 
 @pytest.mark.asyncio
 async def test_403_rebootstraps_once_then_succeeds() -> None:
-    calls = {"page": 0, "search": 0}
+    calls = {"page": 0, "graphql": 0}
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/ads/library/":
             calls["page"] += 1
             # Serve a different token after re-bootstrap to prove a refresh.
             return httpx.Response(200, text=_PAGE_HTML if calls["page"] == 1 else _PAGE_HTML_B)
-        if request.url.path.endswith("/async/search_ads/"):
-            calls["search"] += 1
-            if calls["search"] == 1:
+        if str(request.url) == GRAPHQL_URL:
+            calls["graphql"] += 1
+            if calls["graphql"] == 1:
                 return httpx.Response(403, text="login required")
             body = parse_qs(request.content.decode(), keep_blank_values=True)
             # The retry must carry the freshly bootstrapped token.
             assert body["lsd"] == ["lsd-token-xyz789"]
-            return httpx.Response(200, text=_async_body(_load("meta_search_ads_page2.json")))
+            return httpx.Response(200, text=json.dumps(_load("meta_graphql_search_page2.json")))
         return httpx.Response(404)
 
     provider = _provider(handler)
@@ -258,7 +319,7 @@ async def test_403_rebootstraps_once_then_succeeds() -> None:
     await provider.close()
 
     assert calls["page"] == 2  # bootstrapped, then re-bootstrapped on the 403
-    assert calls["search"] == 2  # original (403) + retry (200)
+    assert calls["graphql"] == 2  # original (403) + retry (200)
     assert result.advertiser_count == 1
 
 
@@ -299,20 +360,37 @@ def test_extract_lsd_returns_none_when_absent() -> None:
     assert extract_lsd("<html>no token here</html>") is None
 
 
-def test_decode_async_payload_strips_guard() -> None:
-    decoded = decode_async_payload('for (;;);{"payload": {"results": []}}')
-    assert decoded == {"payload": {"results": []}}
+@pytest.mark.parametrize(
+    "html",
+    [
+        '["DTSGInitialData",[],{"token":"dt_a"}]',
+        '"DTSGInitData",[],{"token":"dt_a"',
+        '<input type="hidden" name="fb_dtsg" value="dt_a" />',
+    ],
+)
+def test_extract_dtsg_handles_token_shapes(html: str) -> None:
+    assert extract_dtsg(html) == "dt_a"
 
 
-def test_decode_async_payload_rejects_non_json() -> None:
+def test_decode_graphql_payload_parses_plain_json() -> None:
+    decoded = decode_graphql_payload('{"data": {"ad_library_main": {}}}')
+    assert decoded == {"data": {"ad_library_main": {}}}
+
+
+def test_decode_graphql_payload_strips_guard() -> None:
+    decoded = decode_graphql_payload('for (;;);{"data": {"x": 1}}')
+    assert decoded == {"data": {"x": 1}}
+
+
+def test_decode_graphql_payload_rejects_non_json() -> None:
     # A login/challenge HTML page (no JSON) must surface as a provider error.
     with pytest.raises(LeadDiscoveryProviderError):
-        decode_async_payload("<!doctype html><html>login</html>")
+        decode_graphql_payload("<!doctype html><html>login</html>")
 
 
-def test_decode_async_payload_rejects_non_object() -> None:
+def test_decode_graphql_payload_rejects_errors_envelope() -> None:
     with pytest.raises(LeadDiscoveryProviderError):
-        decode_async_payload("for (;;);[1, 2, 3]")
+        decode_graphql_payload('{"data": null, "errors": [{"message": "boom"}]}')
 
 
 def test_build_session_selects_strategy() -> None:
@@ -322,13 +400,17 @@ def test_build_session_selects_strategy() -> None:
     assert isinstance(build_session(strategy="bogus"), TokenHttpSession)
 
 
+@pytest.mark.skipif(
+    importlib.util.find_spec("playwright") is not None,
+    reason="playwright is installed; the missing-dependency path cannot be exercised",
+)
 @pytest.mark.asyncio
 async def test_headless_session_missing_playwright_raises() -> None:
     # Playwright is an optional heavy dep; absent it, the headless path must
     # fail with a clear, actionable provider error (not an ImportError).
     session = HeadlessSession()
     with pytest.raises(LeadDiscoveryProviderError, match="playwright"):
-        await session.post("search_ads", {"q": "x"})
+        await session.graphql("AdLibrarySearchPaginationQuery", "DOCID", {"queryString": "x"})
     await session.close()
 
 

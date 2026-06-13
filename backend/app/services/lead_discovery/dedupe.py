@@ -37,6 +37,9 @@ _PHONE_FACET = "phone"
 _EMAIL_FACET = "email"
 _WEBSITE_FACET = "website"
 _OWNER_FACET = "owner"
+# Person facet binds an individual's name to the company host so two different
+# people at the same domain don't collide on the host-only website key.
+_PERSON_FACET = "person"
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +162,41 @@ def dedupe_key_for_owner_name(name: str | None) -> str | None:
     if normalized is None:
         return None
     return _hash_with_facet(_OWNER_FACET, normalized)
+
+
+def dedupe_key_for_person(
+    *,
+    email: str | None = None,
+    full_name: str | None = None,
+    first_name: str | None = None,
+    last_name: str | None = None,
+    website: str | None = None,
+    website_host: str | None = None,
+) -> str | None:
+    """Return a person-level dedupe key (email, else name+host).
+
+    People extraction emits *named individuals* at a company, so two distinct
+    people at the same domain must not collapse onto the company's host-only
+    website key. Priority:
+
+    1. email (strongest — globally unique) → reuses the email facet so a person
+       row and a contact row with the same address still merge.
+    2. ``person:<normalized name>@<host>`` — binds the individual to the
+       company so same-name people at different companies stay distinct and
+       same-company different people stay distinct.
+
+    Returns ``None`` when neither a usable email nor a name+host pair exists.
+    """
+    email_key = dedupe_key_for_email(email)
+    if email_key is not None:
+        return email_key
+
+    name = full_name or _combine_first_last(first_name, last_name)
+    normalized_name = normalize_owner_name_for_dedupe(name)
+    host = extract_host(website_host or website)
+    if normalized_name is None or host is None:
+        return None
+    return _hash_with_facet(_PERSON_FACET, f"{normalized_name}@{host}")
 
 
 # ---------------------------------------------------------------------------
