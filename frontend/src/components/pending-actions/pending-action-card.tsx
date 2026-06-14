@@ -43,6 +43,17 @@ const ACTION_TYPE_INACTION_VERB: Record<string, string> = {
   apply_tag: "won't apply unless you approve",
 };
 
+interface PayloadDetailItem {
+  label: string;
+  value: string;
+}
+
+interface PendingActionPayloadSummary {
+  items: PayloadDetailItem[];
+  messageLabel?: string;
+  message?: string;
+}
+
 function getStatusBadge(status: string) {
   switch (status) {
     case "pending":
@@ -86,6 +97,7 @@ export function PendingActionCard({
   isRejecting,
 }: PendingActionCardProps) {
   const isPending = action.status === "pending";
+  const payloadSummary = getPendingActionPayloadSummary(action);
 
   if (isOutboundWorkflowAction(action)) {
     return (
@@ -126,6 +138,8 @@ export function PendingActionCard({
               {getStatusBadge(action.status)}
             </div>
           </div>
+
+          {payloadSummary ? <PayloadSummary summary={payloadSummary} /> : null}
 
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <span>
@@ -182,4 +196,182 @@ export function PendingActionCard({
       </CardContent>
     </Card>
   );
+}
+
+function PayloadSummary({ summary }: { summary: PendingActionPayloadSummary }) {
+  return (
+    <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+      {summary.items.length > 0 ? (
+        <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {summary.items.map((item) => (
+            <div key={`${item.label}-${item.value}`} className="min-w-0">
+              <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                {item.label}
+              </dt>
+              <dd className="mt-0.5 break-words text-sm font-medium text-foreground">
+                {item.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+
+      {summary.message ? (
+        <div className="rounded-md border bg-background/70 p-3">
+          <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            {summary.messageLabel ?? "Message"}
+          </p>
+          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+            {summary.message}
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function getPendingActionPayloadSummary(action: PendingAction): PendingActionPayloadSummary | null {
+  const payload = action.action_payload;
+
+  switch (action.action_type) {
+    case "send_sms":
+      return compactSummary({
+        items: [
+          detailItem("Contact", getContactName(payload)),
+          detailItem("Recipient", getRecipient(payload)),
+          detailItem("From", getFirstString(payload, ["from_number", "from_phone_number"])),
+        ],
+        messageLabel: "Message to send",
+        message: getFirstString(payload, ["text", "body", "message", "message_body", "content"]),
+      });
+    case "book_appointment":
+      return compactSummary({
+        items: [
+          detailItem("Contact", getContactName(payload)),
+          detailItem("Recipient", getRecipient(payload)),
+          detailItem("Appointment", getAppointmentTime(payload)),
+          detailItem("Email", getFirstString(payload, ["email", "contact_email", "recipient_email"])),
+          detailItem("Duration", getDuration(payload)),
+        ],
+        messageLabel: "Appointment note",
+        message: getFirstString(payload, ["notes", "note", "message", "message_body", "body"]),
+      });
+    case "apply_tag":
+      return compactSummary({
+        items: [
+          detailItem("Contact", getContactName(payload)),
+          detailItem("Recipient", getRecipient(payload)),
+          detailItem("Tag", getFirstString(payload, ["tag", "tag_name", "label", "name"])),
+        ],
+      });
+    default:
+      return null;
+  }
+}
+
+function compactSummary(summary: PendingActionPayloadSummary): PendingActionPayloadSummary | null {
+  const items = summary.items.filter((item) => item.value.trim().length > 0);
+  const message = summary.message?.trim();
+
+  if (items.length === 0 && !message) return null;
+
+  return {
+    ...summary,
+    items,
+    message,
+  };
+}
+
+function detailItem(label: string, value?: string): PayloadDetailItem {
+  return { label, value: value ?? "" };
+}
+
+function getContactName(payload: Record<string, unknown>): string | undefined {
+  return (
+    getFirstString(payload, [
+      "contact_name",
+      "recipient_name",
+      "customer_name",
+      "lead_name",
+      "full_name",
+      "display_name",
+      "name",
+    ]) ??
+    getNestedString(payload, ["contact", "recipient", "lead", "customer"], ["name", "full_name", "display_name"])
+  );
+}
+
+function getRecipient(payload: Record<string, unknown>): string | undefined {
+  return (
+    getFirstString(payload, [
+      "to_number",
+      "phone_number",
+      "recipient_phone_number",
+      "recipient_phone",
+      "contact_phone_number",
+      "contact_phone",
+      "to_phone_number",
+      "phone",
+      "to",
+    ]) ??
+    getNestedString(payload, ["recipient", "contact", "lead", "customer"], ["phone_number", "phone", "mobile"])
+  );
+}
+
+function getAppointmentTime(payload: Record<string, unknown>): string | undefined {
+  const date = getFirstString(payload, ["date", "appointment_date", "start_date"]);
+  const time = getFirstString(payload, ["time", "appointment_time", "start_time"]);
+  const timezone = getFirstString(payload, ["timezone", "time_zone"]);
+  const startsAt = getFirstString(payload, ["starts_at", "start_time_iso", "scheduled_at"]);
+
+  if (date || time) return [date, time, timezone].filter(Boolean).join(" ");
+  return startsAt;
+}
+
+function getDuration(payload: Record<string, unknown>): string | undefined {
+  const duration = getFirstString(payload, ["duration", "duration_label"]);
+  if (duration) return duration;
+
+  const minutes = getFirstNumber(payload, ["duration_minutes", "duration_in_minutes"]);
+  return typeof minutes === "number" ? `${minutes} min` : undefined;
+}
+
+function getFirstString(payload: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === "string" && value.trim().length > 0) return value;
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  }
+  return undefined;
+}
+
+function getFirstNumber(payload: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim().length > 0) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return undefined;
+}
+
+function getNestedString(
+  payload: Record<string, unknown>,
+  recordKeys: string[],
+  valueKeys: string[],
+): string | undefined {
+  for (const recordKey of recordKeys) {
+    const value = payload[recordKey];
+    if (!isRecord(value)) continue;
+
+    const nested = getFirstString(value, valueKeys);
+    if (nested) return nested;
+  }
+  return undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
