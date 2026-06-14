@@ -1,7 +1,7 @@
 """Lead magnet management endpoints."""
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
@@ -27,6 +27,29 @@ from app.services.ai.lead_magnet_generator import (
 )
 
 router = APIRouter()
+
+RICH_CONTENT_MAGNET_TYPES = {"quiz", "calculator", "rich_text"}
+
+
+def validate_lead_magnet_content(
+    magnet_type: str,
+    content_url: str | None,
+    content_data: dict[str, Any] | None,
+) -> None:
+    """Ensure rich magnets carry builder data and URL-backed magnets carry a URL."""
+    if magnet_type in RICH_CONTENT_MAGNET_TYPES:
+        if not content_data:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="content_data is required for quiz, calculator, and rich_text lead magnets",
+            )
+        return
+
+    if not content_url:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="content_url is required for URL-backed lead magnets",
+        )
 
 
 @router.post("/generate-quiz", response_model=GeneratedQuizContent)
@@ -114,9 +137,16 @@ async def create_lead_magnet(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> LeadMagnet:
     """Create a new lead magnet."""
+    lead_magnet_data = lead_magnet_in.model_dump()
+    validate_lead_magnet_content(
+        magnet_type=str(lead_magnet_data["magnet_type"]),
+        content_url=lead_magnet_data.get("content_url"),
+        content_data=lead_magnet_data.get("content_data"),
+    )
+
     lead_magnet = LeadMagnet(
         workspace_id=workspace_id,
-        **lead_magnet_in.model_dump(),
+        **lead_magnet_data,
     )
     db.add(lead_magnet)
     await db.commit()
@@ -151,6 +181,12 @@ async def update_lead_magnet(
 
     # Update fields
     update_data = lead_magnet_in.model_dump(exclude_unset=True)
+    validate_lead_magnet_content(
+        magnet_type=str(update_data.get("magnet_type", lead_magnet.magnet_type)),
+        content_url=update_data.get("content_url", lead_magnet.content_url),
+        content_data=update_data.get("content_data", lead_magnet.content_data),
+    )
+
     for field, value in update_data.items():
         setattr(lead_magnet, field, value)
 

@@ -28,6 +28,7 @@ import {
   Link as LinkIcon,
 } from "lucide-react";
 import { motion } from "motion/react";
+import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -114,11 +115,16 @@ const deliveryMethodIcons: Record<DeliveryMethod, React.ReactNode> = {
   sms: <MessageSquare className="size-3" />,
 };
 
+const richContentMagnetTypes = new Set<LeadMagnetType>([
+  "quiz",
+  "calculator",
+  "rich_text",
+]);
+
 export default function LeadMagnetsPage() {
   const queryClient = useQueryClient();
   const workspaceId = useWorkspaceId();
 
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingMagnet, setEditingMagnet] = useState<LeadMagnet | null>(null);
   const [deleteMagnetId, setDeleteMagnetId] = useState<string | null>(null);
   const [previewMagnet, setPreviewMagnet] = useState<LeadMagnet | null>(null);
@@ -137,16 +143,6 @@ export default function LeadMagnetsPage() {
     queryKey: queryKeys.leadMagnets.all(workspaceId ?? ""),
     queryFn: () => leadMagnetsApi.list(workspaceId!),
     enabled: !!workspaceId,
-  });
-
-  const createMutation = useMutation({
-    mutationFn: (data: CreateLeadMagnetRequest) =>
-      leadMagnetsApi.create(workspaceId!, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.leadMagnets.all(workspaceId ?? "") });
-      setShowCreateDialog(false);
-      resetForm();
-    },
   });
 
   const updateMutation = useMutation({
@@ -193,11 +189,9 @@ export default function LeadMagnetsPage() {
   };
 
   const handleSubmit = () => {
-    if (editingMagnet) {
-      updateMutation.mutate({ id: editingMagnet.id, data: formData });
-    } else {
-      createMutation.mutate(formData);
-    }
+    if (!editingMagnet) return;
+
+    updateMutation.mutate({ id: editingMagnet.id, data: formData });
   };
 
   const leadMagnets = data?.items || [];
@@ -215,9 +209,11 @@ export default function LeadMagnetsPage() {
               Create freebies to attach as bonuses to your offers
             </p>
           </div>
-          <Button onClick={() => setShowCreateDialog(true)}>
-            <Plus className="size-4 mr-2" />
-            Create Lead Magnet
+          <Button asChild>
+            <Link href="/lead-magnets/new">
+              <Plus className="size-4 mr-2" />
+              Create Lead Magnet
+            </Link>
           </Button>
         </div>
 
@@ -281,9 +277,11 @@ export default function LeadMagnetsPage() {
                 description="Create your first lead magnet to attach as a bonus to offers"
                 icon={<FileText className="size-12" />}
                 action={
-                  <Button onClick={() => setShowCreateDialog(true)}>
-                    <Plus className="size-4 mr-2" />
-                    Create Your First Lead Magnet
+                  <Button asChild>
+                    <Link href="/lead-magnets/new">
+                      <Plus className="size-4 mr-2" />
+                      Create Your First Lead Magnet
+                    </Link>
                   </Button>
                 }
               />
@@ -386,12 +384,11 @@ export default function LeadMagnetsPage() {
         )}
       </div>
 
-      {/* Create/Edit Dialog */}
+      {/* Edit Dialog */}
       <Dialog
-        open={showCreateDialog || !!editingMagnet}
+        open={!!editingMagnet}
         onOpenChange={(open) => {
           if (!open) {
-            setShowCreateDialog(false);
             setEditingMagnet(null);
             resetForm();
           }
@@ -399,9 +396,7 @@ export default function LeadMagnetsPage() {
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>
-              {editingMagnet ? "Edit Lead Magnet" : "Create Lead Magnet"}
-            </DialogTitle>
+            <DialogTitle>Edit Lead Magnet</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -424,6 +419,7 @@ export default function LeadMagnetsPage() {
                   onValueChange={(v) =>
                     setFormData({ ...formData, magnet_type: v as LeadMagnetType })
                   }
+                  disabled={!!editingMagnet}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -508,17 +504,12 @@ export default function LeadMagnetsPage() {
               onClick={handleSubmit}
               disabled={
                 !formData.name ||
-                !formData.content_url ||
-                createMutation.isPending ||
+                (!richContentMagnetTypes.has(formData.magnet_type) && !formData.content_url) ||
                 updateMutation.isPending
               }
               className="w-full"
             >
-              {createMutation.isPending || updateMutation.isPending
-                ? "Saving..."
-                : editingMagnet
-                ? "Update Lead Magnet"
-                : "Create Lead Magnet"}
+              {updateMutation.isPending ? "Saving..." : "Update Lead Magnet"}
             </Button>
           </div>
         </DialogContent>
