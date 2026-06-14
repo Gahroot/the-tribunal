@@ -1,15 +1,20 @@
 "use client";
 
-import { User, Plus } from "lucide-react";
+import { Plus, Upload, User } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
 export interface ContactsEmptyStateProps {
   hasFilters: boolean;
   onAddContact: () => void;
+  onImportContacts: () => void;
 }
 
-export function ContactsEmptyState({ hasFilters, onAddContact }: ContactsEmptyStateProps) {
+export function ContactsEmptyState({
+  hasFilters,
+  onAddContact,
+  onImportContacts,
+}: ContactsEmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
       <User className="h-16 w-16 text-muted-foreground/50 mb-4" />
@@ -19,13 +24,19 @@ export function ContactsEmptyState({ hasFilters, onAddContact }: ContactsEmptySt
       <p className="text-sm text-muted-foreground mb-4">
         {hasFilters
           ? "Try adjusting your search or filters"
-          : "Get started by adding your first contact"}
+          : "Get started by importing your list or adding a contact"}
       </p>
       {!hasFilters && (
-        <Button className="gap-2" onClick={onAddContact}>
-          <Plus className="h-4 w-4" />
-          Add Contact
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button className="gap-2" onClick={onAddContact}>
+            <Plus className="h-4 w-4" />
+            Add Contact
+          </Button>
+          <Button variant="outline" className="gap-2" onClick={onImportContacts}>
+            <Upload className="h-4 w-4" />
+            Import CSV
+          </Button>
+        </div>
       )}
     </div>
   );

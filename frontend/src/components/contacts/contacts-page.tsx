@@ -344,6 +344,7 @@ export function ContactsPage() {
             <ContactsEmptyState
               hasFilters={hasActiveFilters}
               onAddContact={() => setIsCreateDialogOpen(true)}
+              onImportContacts={() => setIsImportDialogOpen(true)}
             />
           ) : (
             <AnimatePresence mode="popLayout">
