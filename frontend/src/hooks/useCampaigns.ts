@@ -20,10 +20,14 @@ const {
 
 export { campaignQueryKeys, useCampaigns, useCampaign, useCreateCampaign, useUpdateCampaign };
 
-export function useCampaignAnalytics(workspaceId: string, campaignId: string) {
+export function useCampaignAnalytics(
+  workspaceId: string,
+  campaignId: string,
+  options: { enabled?: boolean } = {},
+) {
   return useQuery({
     queryKey: queryKeys.campaigns.analytics(workspaceId, campaignId),
     queryFn: () => campaignsApi.getAnalytics(workspaceId, campaignId),
-    enabled: !!workspaceId && !!campaignId,
+    enabled: (options.enabled ?? true) && !!workspaceId && !!campaignId,
   });
 }

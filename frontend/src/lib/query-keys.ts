@@ -113,6 +113,7 @@ const pendingActions = createResourceQueryKeys("pending-actions");
 const phoneNumbers = createResourceQueryKeys("phone-numbers");
 const reviews = createResourceQueryKeys("reviews");
 const segments = createResourceQueryKeys("segments");
+const voiceCampaigns = createResourceQueryKeys("voice-campaigns");
 
 export const queryKeys = {
   adLibrary: {
@@ -365,7 +366,11 @@ export const queryKeys = {
   },
   smsCampaigns: createResourceQueryKeys("sms-campaigns"),
   tags: createResourceQueryKeys("tags"),
-  voiceCampaigns: createResourceQueryKeys("voice-campaigns"),
+  voiceCampaigns: {
+    ...voiceCampaigns,
+    analytics: (workspaceId: string, campaignId: string) =>
+      [...voiceCampaigns.detail(workspaceId, campaignId), "analytics"] as const,
+  },
   workspaces: {
     all: () => ["workspaces"] as const,
     detail: (workspaceId: string) => ["workspaces", workspaceId] as const,

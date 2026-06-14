@@ -27,11 +27,13 @@ import {
 import { PageEmptyState, PageLoadingState } from "@/components/ui/page-state";
 import { useCampaignAnalytics } from "@/hooks/useCampaigns";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
-import { campaignsApi } from "@/lib/api/campaigns";
+import { campaignsApi, type CampaignAnalytics } from "@/lib/api/campaigns";
+import { voiceCampaignsApi } from "@/lib/api/voice-campaigns";
 import { queryKeys } from "@/lib/query-keys";
 import { campaignStatusColors } from "@/lib/status-colors";
 import { formatDate } from "@/lib/utils/date";
 import { getApiErrorMessage } from "@/lib/utils/errors";
+import type { Campaign, VoiceCampaignAnalytics } from "@/types";
 
 interface CampaignDetailProps {
   campaignId: string;
@@ -51,7 +53,20 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
     enabled: !!workspaceId,
   });
 
-  const { data: analytics } = useCampaignAnalytics(workspaceId ?? "", campaignId);
+  const isVoiceCampaign = campaign?.campaign_type === "voice_sms_fallback";
+
+  const { data: analytics } = useCampaignAnalytics(workspaceId ?? "", campaignId, {
+    enabled: !!campaign && !isVoiceCampaign,
+  });
+
+  const { data: voiceAnalytics } = useQuery<VoiceCampaignAnalytics>({
+    queryKey: queryKeys.voiceCampaigns.analytics(workspaceId ?? "", campaignId),
+    queryFn: async () => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return voiceCampaignsApi.getAnalytics(workspaceId, campaignId);
+    },
+    enabled: !!workspaceId && !!campaign && isVoiceCampaign,
+  });
 
   // Start campaign mutation
   const startMutation = useMutation({
@@ -252,76 +267,11 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
           </CardContent>
         </Card>
 
-        {/* Statistics */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Statistics</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-2xl font-bold">
-                  {campaign.total_contacts}
-                </p>
-                <p className="text-xs text-muted-foreground">Total Contacts</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{campaign.messages_sent}</p>
-                <p className="text-xs text-muted-foreground">Sent</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold">
-                  {campaign.messages_delivered}
-                </p>
-                <p className="text-xs text-muted-foreground">Delivered</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold">
-                  {campaign.replies_received}
-                </p>
-                <p className="text-xs text-muted-foreground">Replies</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold">
-                  {campaign.contacts_qualified}
-                </p>
-                <p className="text-xs text-muted-foreground">Qualified</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold">
-                  {campaign.contacts_opted_out}
-                </p>
-                <p className="text-xs text-muted-foreground">Opted Out</p>
-              </div>
-              {campaign.messages_failed > 0 && (
-                <div>
-                  <p className="text-2xl font-bold text-destructive">
-                    {campaign.messages_failed}
-                  </p>
-                  <p className="text-xs text-muted-foreground">Failed</p>
-                </div>
-              )}
-              {campaign.appointments_booked > 0 && (
-                <div>
-                  <p className="text-2xl font-bold flex items-center gap-1.5">
-                    <CalendarCheck className="size-5 text-success" />
-                    {campaign.appointments_booked}
-                  </p>
-                  <p className="text-xs text-muted-foreground">Booked</p>
-                </div>
-              )}
-              <div>
-                <p className="text-2xl font-bold">
-                  {campaign.links_clicked ?? 0}
-                </p>
-                <p className="text-xs text-muted-foreground">Links Clicked</p>
-              </div>
-              <RateStat label="Delivery Rate" rate={analytics?.delivery_rate} />
-              <RateStat label="Reply Rate" rate={analytics?.reply_rate} />
-              <RateStat label="Qualification Rate" rate={analytics?.qualification_rate} />
-            </div>
-          </CardContent>
-        </Card>
+        {isVoiceCampaign ? (
+          <VoiceCallStatistics analytics={voiceAnalytics} />
+        ) : (
+          <SmsStatistics campaign={campaign} analytics={analytics} />
+        )}
 
         {campaign.guarantee_target && campaign.guarantee_target > 0 && (
           <GuaranteeProgress campaignId={campaignId} campaignType={campaign.campaign_type} />
@@ -391,14 +341,113 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
   );
 }
 
+function SmsStatistics({
+  campaign,
+  analytics,
+}: {
+  campaign: Campaign;
+  analytics: CampaignAnalytics | undefined;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Statistics</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <StatItem label="Total Contacts" value={campaign.total_contacts} />
+          <StatItem label="Sent" value={campaign.messages_sent} />
+          <StatItem label="Delivered" value={campaign.messages_delivered} />
+          <StatItem label="Replies" value={campaign.replies_received} />
+          <StatItem label="Qualified" value={campaign.contacts_qualified} />
+          <StatItem label="Opted Out" value={campaign.contacts_opted_out} />
+          {campaign.messages_failed > 0 && (
+            <StatItem
+              className="text-destructive"
+              label="Failed"
+              value={campaign.messages_failed}
+            />
+          )}
+          {campaign.appointments_booked > 0 && (
+            <StatItem
+              icon={<CalendarCheck className="size-5 text-success" />}
+              label="Booked"
+              value={campaign.appointments_booked}
+            />
+          )}
+          <StatItem label="Links Clicked" value={campaign.links_clicked ?? 0} />
+          <RateStat label="Delivery Rate" rate={analytics?.delivery_rate} />
+          <RateStat label="Reply Rate" rate={analytics?.reply_rate} />
+          <RateStat label="Qualification Rate" rate={analytics?.qualification_rate} />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function VoiceCallStatistics({
+  analytics,
+}: {
+  analytics: VoiceCampaignAnalytics | undefined;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Call Statistics</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <StatItem label="Total Contacts" value={analytics?.total_contacts} />
+          <StatItem label="Dialed" value={analytics?.calls_attempted} />
+          <StatItem label="Answered" value={analytics?.calls_answered} />
+          <PercentageRateStat label="Answer Rate" rate={analytics?.answer_rate} />
+          <StatItem label="No Answer" value={analytics?.calls_no_answer} />
+          <StatItem label="Voicemail" value={analytics?.calls_voicemail} />
+          <StatItem label="SMS Fallbacks" value={analytics?.sms_fallbacks_sent} />
+          <StatItem
+            icon={<CalendarCheck className="size-5 text-success" />}
+            label="Booked"
+            value={analytics?.appointments_booked}
+          />
+          <StatItem label="Qualified" value={analytics?.contacts_qualified} />
+          <StatItem label="Opted Out" value={analytics?.contacts_opted_out} />
+          <PercentageRateStat
+            label="Qualification Rate"
+            rate={analytics?.qualification_rate}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function StatItem({
+  className = "",
+  icon,
+  label,
+  value,
+}: {
+  className?: string;
+  icon?: React.ReactNode;
+  label: string;
+  value: number | undefined;
+}) {
+  return (
+    <div>
+      <p className={`text-2xl font-bold ${className}`.trim()}>
+        <span className="flex items-center gap-1.5">
+          {icon}
+          {value ?? "—"}
+        </span>
+      </p>
+      <p className="text-xs text-muted-foreground">{label}</p>
+    </div>
+  );
+}
+
 function RateStat({ label, rate }: { label: string; rate: number | undefined }) {
   const value = rate ?? 0;
-  const colorClass =
-    value >= 0.2
-      ? "text-success"
-      : value >= 0.05
-        ? "text-amber-500"
-        : "text-muted-foreground";
+  const colorClass = rateColorClass(value);
   return (
     <div>
       <p className={`text-2xl font-bold ${colorClass}`}>
@@ -407,4 +456,23 @@ function RateStat({ label, rate }: { label: string; rate: number | undefined }) 
       <p className="text-xs text-muted-foreground">{label}</p>
     </div>
   );
+}
+
+function PercentageRateStat({ label, rate }: { label: string; rate: number | undefined }) {
+  const value = rate ?? 0;
+  const colorClass = rateColorClass(value / 100);
+  return (
+    <div>
+      <p className={`text-2xl font-bold ${colorClass}`}>{value.toFixed(1)}%</p>
+      <p className="text-xs text-muted-foreground">{label}</p>
+    </div>
+  );
+}
+
+function rateColorClass(rate: number) {
+  return rate >= 0.2
+    ? "text-success"
+    : rate >= 0.05
+      ? "text-amber-500"
+      : "text-muted-foreground";
 }
