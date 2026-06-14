@@ -20641,6 +20641,45 @@
         "title": "PendingActionResponse",
         "type": "object"
       },
+      "PendingActionStatsResponse": {
+        "description": "Counts of pending actions grouped by lifecycle status.",
+        "properties": {
+          "approved": {
+            "title": "Approved",
+            "type": "integer"
+          },
+          "executed": {
+            "title": "Executed",
+            "type": "integer"
+          },
+          "expired": {
+            "title": "Expired",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "rejected": {
+            "title": "Rejected",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pending",
+          "approved",
+          "rejected",
+          "expired",
+          "executed",
+          "failed"
+        ],
+        "title": "PendingActionStatsResponse",
+        "type": "object"
+      },
       "PeopleDiscoveryRequest": {
         "description": "Launch a ``web_people`` discovery job.\n\nProvide either ``domain``/``domains`` (crawl those company sites directly)\nor a ``query`` (resolve companies via Google Places, then crawl each).",
         "properties": {
@@ -49513,11 +49552,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "type": "integer"
-                  },
-                  "title": "Response Get Stats Api V1 Workspaces  Workspace Id  Pending Actions Stats Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/PendingActionStatsResponse"
                 }
               }
             },

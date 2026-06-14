@@ -1,4 +1,10 @@
-export type PendingActionStatus = "pending" | "approved" | "rejected" | "expired" | "executed" | "failed";
+export type PendingActionStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "expired"
+  | "executed"
+  | "failed";
 
 export interface PendingAction {
   id: string;
@@ -37,4 +43,5 @@ export interface PendingActionStats {
   rejected: number;
   expired: number;
   executed: number;
+  failed: number;
 }

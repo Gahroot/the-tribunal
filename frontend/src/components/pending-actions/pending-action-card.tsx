@@ -98,6 +98,8 @@ export function PendingActionCard({
 }: PendingActionCardProps) {
   const isPending = action.status === "pending";
   const payloadSummary = getPendingActionPayloadSummary(action);
+  const failureReason =
+    action.status === "failed" ? getFailureReason(action.execution_result) : undefined;
 
   if (isOutboundWorkflowAction(action)) {
     return (
@@ -127,12 +129,14 @@ export function PendingActionCard({
               <Badge
                 className={cn(
                   "text-xs",
-                  ACTION_TYPE_STYLES[action.action_type] || "bg-gray-100 text-gray-800"
+                  ACTION_TYPE_STYLES[action.action_type] || "bg-gray-100 text-gray-800",
                 )}
               >
                 {ACTION_TYPE_LABELS[action.action_type] || action.action_type}
               </Badge>
-              <Badge className={cn("text-xs", URGENCY_STYLES[action.urgency] || URGENCY_STYLES.low)}>
+              <Badge
+                className={cn("text-xs", URGENCY_STYLES[action.urgency] || URGENCY_STYLES.low)}
+              >
                 {action.urgency}
               </Badge>
               {getStatusBadge(action.status)}
@@ -141,17 +145,19 @@ export function PendingActionCard({
 
           {payloadSummary ? <PayloadSummary summary={payloadSummary} /> : null}
 
+          {failureReason ? (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              <span className="font-medium">Failed:</span> {failureReason}
+            </div>
+          ) : null}
+
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <span>
-              Created{" "}
-              {formatRelative(action.created_at)}
-            </span>
+            <span>Created {formatRelative(action.created_at)}</span>
             {action.expires_at &&
               (isPending ? (
                 <span className="text-amber-600 dark:text-amber-400">
                   Auto-rejected {formatRelative(action.expires_at)} —{" "}
-                  {ACTION_TYPE_INACTION_VERB[action.action_type] ??
-                    "won't run unless you approve"}
+                  {ACTION_TYPE_INACTION_VERB[action.action_type] ?? "won't run unless you approve"}
                 </span>
               ) : (
                 <span>Expires {formatRelative(action.expires_at)}</span>
@@ -250,7 +256,10 @@ function getPendingActionPayloadSummary(action: PendingAction): PendingActionPay
           detailItem("Contact", getContactName(payload)),
           detailItem("Recipient", getRecipient(payload)),
           detailItem("Appointment", getAppointmentTime(payload)),
-          detailItem("Email", getFirstString(payload, ["email", "contact_email", "recipient_email"])),
+          detailItem(
+            "Email",
+            getFirstString(payload, ["email", "contact_email", "recipient_email"]),
+          ),
           detailItem("Duration", getDuration(payload)),
         ],
         messageLabel: "Appointment note",
@@ -267,6 +276,15 @@ function getPendingActionPayloadSummary(action: PendingAction): PendingActionPay
     default:
       return null;
   }
+}
+
+function getFailureReason(executionResult: Record<string, unknown> | null): string | undefined {
+  if (!executionResult) return "No execution reason was recorded.";
+
+  return (
+    getFirstString(executionResult, ["error", "reason", "message", "detail", "failure_reason"]) ??
+    "No execution reason was recorded."
+  );
 }
 
 function compactSummary(summary: PendingActionPayloadSummary): PendingActionPayloadSummary | null {
@@ -297,7 +315,11 @@ function getContactName(payload: Record<string, unknown>): string | undefined {
       "display_name",
       "name",
     ]) ??
-    getNestedString(payload, ["contact", "recipient", "lead", "customer"], ["name", "full_name", "display_name"])
+    getNestedString(
+      payload,
+      ["contact", "recipient", "lead", "customer"],
+      ["name", "full_name", "display_name"],
+    )
   );
 }
 
@@ -314,7 +336,11 @@ function getRecipient(payload: Record<string, unknown>): string | undefined {
       "phone",
       "to",
     ]) ??
-    getNestedString(payload, ["recipient", "contact", "lead", "customer"], ["phone_number", "phone", "mobile"])
+    getNestedString(
+      payload,
+      ["recipient", "contact", "lead", "customer"],
+      ["phone_number", "phone", "mobile"],
+    )
   );
 }
 

@@ -14418,6 +14418,24 @@ export interface components {
             workspace_id: string;
         };
         /**
+         * PendingActionStatsResponse
+         * @description Counts of pending actions grouped by lifecycle status.
+         */
+        PendingActionStatsResponse: {
+            /** Approved */
+            approved: number;
+            /** Executed */
+            executed: number;
+            /** Expired */
+            expired: number;
+            /** Failed */
+            failed: number;
+            /** Pending */
+            pending: number;
+            /** Rejected */
+            rejected: number;
+        };
+        /**
          * PeopleDiscoveryRequest
          * @description Launch a ``web_people`` discovery job.
          *
@@ -28337,9 +28355,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: number;
-                    };
+                    "application/json": components["schemas"]["PendingActionStatsResponse"];
                 };
             };
             /** @description Validation Error */

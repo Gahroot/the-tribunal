@@ -15,6 +15,7 @@ from app.schemas.pending_action import (
     ApproveActionRequest,
     PendingActionListResponse,
     PendingActionResponse,
+    PendingActionStatsResponse,
     RejectActionRequest,
 )
 from app.services.approval.approval_gate_service import approval_gate_service
@@ -50,13 +51,13 @@ def _action_to_response(action: PendingAction) -> PendingActionResponse:
     )
 
 
-@router.get("/stats")
+@router.get("/stats", response_model=PendingActionStatsResponse)
 async def get_stats(
     workspace_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
     workspace: Annotated[Workspace, Depends(get_workspace)],
-) -> dict[str, int]:
+) -> PendingActionStatsResponse:
     """Get pending action counts grouped by status."""
     result = await db.execute(
         apply_workspace_scope(
@@ -67,13 +68,14 @@ async def get_stats(
     )
     counts: dict[str, int] = {row[0]: row[1] for row in result.all()}
 
-    return {
-        "pending": counts.get("pending", 0),
-        "approved": counts.get("approved", 0),
-        "rejected": counts.get("rejected", 0),
-        "expired": counts.get("expired", 0),
-        "executed": counts.get("executed", 0),
-    }
+    return PendingActionStatsResponse(
+        pending=counts.get("pending", 0),
+        approved=counts.get("approved", 0),
+        rejected=counts.get("rejected", 0),
+        expired=counts.get("expired", 0),
+        executed=counts.get("executed", 0),
+        failed=counts.get("failed", 0),
+    )
 
 
 @router.get("", response_model=PendingActionListResponse)

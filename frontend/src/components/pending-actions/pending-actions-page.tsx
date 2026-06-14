@@ -1,14 +1,7 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  ClipboardCheck,
-  Clock,
-  Check,
-  X,
-  AlertTriangle,
-  Zap,
-} from "lucide-react";
+import { ClipboardCheck, Clock, Check, X, AlertTriangle, Zap } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -28,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { pendingActionsApi } from "@/lib/api/pending-actions";
 import { queryKeys } from "@/lib/query-keys";
+import { POLL_60S } from "@/lib/query-options";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 import type { PendingActionStatus } from "@/types/pending-action";
 
@@ -41,6 +35,7 @@ const STATUS_TABS: { value: TabStatus; label: string }[] = [
   { value: "approved", label: "Approved" },
   { value: "rejected", label: "Rejected" },
   { value: "expired", label: "Expired" },
+  { value: "failed", label: "Failed" },
 ];
 
 const PAGE_SIZE = 20;
@@ -60,6 +55,7 @@ export function PendingActionsPage() {
       return pendingActionsApi.getStats(workspaceId);
     },
     enabled: !!workspaceId,
+    ...POLL_60S,
   });
 
   const {
@@ -78,6 +74,7 @@ export function PendingActionsPage() {
       });
     },
     enabled: !!workspaceId,
+    ...POLL_60S,
   });
 
   const invalidateActions = () => {
@@ -93,8 +90,7 @@ export function PendingActionsPage() {
       toast.success("Action approved");
       invalidateActions();
     },
-    onError: (err: unknown) =>
-      toast.error(getApiErrorMessage(err, "Failed to approve action")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to approve action")),
   });
 
   const rejectMutation = useMutation({
@@ -108,8 +104,7 @@ export function PendingActionsPage() {
       setRejectActionId(null);
       setRejectReason("");
     },
-    onError: (err: unknown) =>
-      toast.error(getApiErrorMessage(err, "Failed to reject action")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to reject action")),
   });
 
   const totalPages = actionList ? Math.ceil(actionList.total / PAGE_SIZE) : 0;
@@ -122,8 +117,8 @@ export function PendingActionsPage() {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Pending Actions</h1>
             <p className="text-sm text-muted-foreground">
-              Review and approve AI agent actions before they execute. Unattended
-              actions are auto-rejected (never sent) when they expire.
+              Review and approve AI agent actions before they execute. Unattended actions are
+              auto-rejected (never sent) when they expire.
             </p>
           </div>
           {stats && stats.pending > 0 && (
@@ -137,16 +132,14 @@ export function PendingActionsPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid gap-4 md:grid-cols-5">
+        <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">Pending</CardTitle>
               <Clock className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {statsLoading ? "-" : (stats?.pending ?? 0)}
-              </div>
+              <div className="text-2xl font-bold">{statsLoading ? "-" : (stats?.pending ?? 0)}</div>
               <p className="text-xs text-muted-foreground">Awaiting review</p>
             </CardContent>
           </Card>
@@ -180,9 +173,7 @@ export function PendingActionsPage() {
               <AlertTriangle className="h-4 w-4 text-yellow-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {statsLoading ? "-" : (stats?.expired ?? 0)}
-              </div>
+              <div className="text-2xl font-bold">{statsLoading ? "-" : (stats?.expired ?? 0)}</div>
               <p className="text-xs text-muted-foreground">Timed out — auto-rejected</p>
             </CardContent>
           </Card>
@@ -196,6 +187,16 @@ export function PendingActionsPage() {
                 {statsLoading ? "-" : (stats?.executed ?? 0)}
               </div>
               <p className="text-xs text-muted-foreground">Completed</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Failed</CardTitle>
+              <AlertTriangle className="h-4 w-4 text-red-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{statsLoading ? "-" : (stats?.failed ?? 0)}</div>
+              <p className="text-xs text-muted-foreground">Needs attention</p>
             </CardContent>
           </Card>
         </div>

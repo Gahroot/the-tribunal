@@ -43,6 +43,17 @@ class PendingActionListResponse(BaseModel):
     pages: int
 
 
+class PendingActionStatsResponse(BaseModel):
+    """Counts of pending actions grouped by lifecycle status."""
+
+    pending: int
+    approved: int
+    rejected: int
+    expired: int
+    executed: int
+    failed: int
+
+
 class ApproveActionRequest(BaseModel):
     """Schema for approving a pending action."""
 
