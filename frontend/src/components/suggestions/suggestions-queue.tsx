@@ -12,17 +12,13 @@ import {
   ChevronUp,
 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -56,6 +52,146 @@ interface SuggestionsQueueProps {
   compact?: boolean;
 }
 
+type PromptDiffLine = {
+  type: "added" | "removed" | "unchanged";
+  oldLineNumber?: number;
+  newLineNumber?: number;
+  text: string;
+};
+
+export function buildPromptLineDiff(before: string, after: string): PromptDiffLine[] {
+  const beforeLines = before.split("\n");
+  const afterLines = after.split("\n");
+  const lcs = Array.from(
+    { length: beforeLines.length + 1 },
+    () => Array(afterLines.length + 1).fill(0) as number[],
+  );
+
+  for (let beforeIndex = beforeLines.length - 1; beforeIndex >= 0; beforeIndex -= 1) {
+    for (let afterIndex = afterLines.length - 1; afterIndex >= 0; afterIndex -= 1) {
+      if (beforeLines[beforeIndex] === afterLines[afterIndex]) {
+        lcs[beforeIndex][afterIndex] = lcs[beforeIndex + 1][afterIndex + 1] + 1;
+      } else {
+        lcs[beforeIndex][afterIndex] = Math.max(
+          lcs[beforeIndex + 1][afterIndex],
+          lcs[beforeIndex][afterIndex + 1],
+        );
+      }
+    }
+  }
+
+  const lines: PromptDiffLine[] = [];
+  let beforeIndex = 0;
+  let afterIndex = 0;
+
+  while (beforeIndex < beforeLines.length && afterIndex < afterLines.length) {
+    if (beforeLines[beforeIndex] === afterLines[afterIndex]) {
+      lines.push({
+        type: "unchanged",
+        oldLineNumber: beforeIndex + 1,
+        newLineNumber: afterIndex + 1,
+        text: beforeLines[beforeIndex],
+      });
+      beforeIndex += 1;
+      afterIndex += 1;
+    } else if (lcs[beforeIndex + 1][afterIndex] >= lcs[beforeIndex][afterIndex + 1]) {
+      lines.push({
+        type: "removed",
+        oldLineNumber: beforeIndex + 1,
+        text: beforeLines[beforeIndex],
+      });
+      beforeIndex += 1;
+    } else {
+      lines.push({
+        type: "added",
+        newLineNumber: afterIndex + 1,
+        text: afterLines[afterIndex],
+      });
+      afterIndex += 1;
+    }
+  }
+
+  while (beforeIndex < beforeLines.length) {
+    lines.push({
+      type: "removed",
+      oldLineNumber: beforeIndex + 1,
+      text: beforeLines[beforeIndex],
+    });
+    beforeIndex += 1;
+  }
+
+  while (afterIndex < afterLines.length) {
+    lines.push({
+      type: "added",
+      newLineNumber: afterIndex + 1,
+      text: afterLines[afterIndex],
+    });
+    afterIndex += 1;
+  }
+
+  return lines;
+}
+
+export function PromptDiff({
+  sourceText,
+  suggestedText,
+  sourceLabel = "Current/source prompt",
+  suggestedLabel = "Suggested prompt",
+}: {
+  sourceText: string;
+  suggestedText: string;
+  sourceLabel?: string;
+  suggestedLabel?: string;
+}) {
+  const diffLines = useMemo(
+    () => buildPromptLineDiff(sourceText, suggestedText),
+    [sourceText, suggestedText],
+  );
+  const hasChanges = diffLines.some((line) => line.type !== "unchanged");
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700">
+          − {sourceLabel}
+        </Badge>
+        <Badge variant="outline" className="border-green-200 bg-green-50 text-green-700">
+          + {suggestedLabel}
+        </Badge>
+        {!hasChanges && <span>No text changes detected.</span>}
+      </div>
+      <ScrollArea className="h-96 rounded-md border bg-muted/30">
+        <div className="min-w-full py-2 font-mono text-sm">
+          {diffLines.map((line, index) => (
+            <div
+              key={`${line.type}-${line.oldLineNumber ?? ""}-${line.newLineNumber ?? ""}-${index}`}
+              className={cn(
+                "grid grid-cols-[2rem_3rem_3rem_minmax(0,1fr)] gap-2 px-3 py-0.5",
+                line.type === "removed" && "bg-red-500/10 text-red-950 dark:text-red-100",
+                line.type === "added" && "bg-green-500/10 text-green-950 dark:text-green-100",
+                line.type === "unchanged" && "text-muted-foreground",
+              )}
+            >
+              <span className="select-none text-center">
+                {line.type === "added" ? "+" : line.type === "removed" ? "−" : " "}
+              </span>
+              <span className="select-none text-right text-muted-foreground">
+                {line.oldLineNumber ?? ""}
+              </span>
+              <span className="select-none text-right text-muted-foreground">
+                {line.newLineNumber ?? ""}
+              </span>
+              <code className="whitespace-pre-wrap break-words">
+                {line.text.length > 0 ? line.text : " "}
+              </code>
+            </div>
+          ))}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
+
 export function SuggestionsQueue({
   agentId,
   statusFilter = "pending",
@@ -66,10 +202,16 @@ export function SuggestionsQueue({
   const [selectedSuggestion, setSelectedSuggestion] =
     useState<ImprovementSuggestionResponse | null>(null);
   const [rejectReason, setRejectReason] = useState("");
-  const [showRejectDialog, setShowRejectDialog] =
-    useState<ImprovementSuggestionResponse | null>(null);
+  const [showRejectDialog, setShowRejectDialog] = useState<ImprovementSuggestionResponse | null>(
+    null,
+  );
 
-  const { data: suggestions, isPending, isError, refetch } = useQuery({
+  const {
+    data: suggestions,
+    isPending,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: queryKeys.improvementSuggestions.list(workspaceId ?? "", {
       agent_id: agentId ?? null,
       status: statusFilter,
@@ -224,7 +366,7 @@ export function SuggestionsQueue({
 
       {/* View Dialog */}
       <Dialog open={!!selectedSuggestion} onOpenChange={() => setSelectedSuggestion(null)}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-5xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Wand2 className="h-5 w-5" />
@@ -237,20 +379,22 @@ export function SuggestionsQueue({
           {selectedSuggestion && (
             <div className="space-y-4">
               <div>
-                <h4 className="mb-2 text-sm font-medium">Suggested Prompt</h4>
-                <ScrollArea className="h-64 rounded-md border bg-muted/50 p-4">
-                  <pre className="whitespace-pre-wrap font-mono text-sm">
-                    {selectedSuggestion.suggested_prompt}
-                  </pre>
-                </ScrollArea>
+                <h4 className="mb-2 text-sm font-medium">Prompt Diff</h4>
+                <PromptDiff
+                  sourceText={selectedSuggestion.source_prompt}
+                  suggestedText={selectedSuggestion.suggested_prompt}
+                />
               </div>
 
               {selectedSuggestion.suggested_greeting && (
                 <div>
-                  <h4 className="mb-2 text-sm font-medium">Suggested Greeting</h4>
-                  <div className="rounded-md border bg-muted/50 p-4">
-                    <p className="text-sm">{selectedSuggestion.suggested_greeting}</p>
-                  </div>
+                  <h4 className="mb-2 text-sm font-medium">Greeting Diff</h4>
+                  <PromptDiff
+                    sourceText={selectedSuggestion.source_greeting ?? ""}
+                    suggestedText={selectedSuggestion.suggested_greeting}
+                    sourceLabel="Current/source greeting"
+                    suggestedLabel="Suggested greeting"
+                  />
                 </div>
               )}
 
@@ -377,12 +521,7 @@ function SuggestionCard({
           <div className="flex items-center gap-2">
             {suggestion.status === "pending" && (
               <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={onReject}
-                  className="text-destructive"
-                >
+                <Button size="sm" variant="outline" onClick={onReject} className="text-destructive">
                   <X className="h-4 w-4" />
                 </Button>
                 <Button size="sm" onClick={onApprove} disabled={isApproving}>
@@ -392,7 +531,12 @@ function SuggestionCard({
             )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Suggestion actions">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  aria-label="Suggestion actions"
+                >
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -432,14 +576,9 @@ function SuggestionCard({
           </Collapsible>
 
           <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-            <span>
-              Created{" "}
-              {formatRelative(suggestion.created_at)}
-            </span>
+            <span>Created {formatRelative(suggestion.created_at)}</span>
             {suggestion.expected_improvement && (
-              <span className="max-w-xs truncate">
-                Expected: {suggestion.expected_improvement}
-              </span>
+              <span className="max-w-xs truncate">Expected: {suggestion.expected_improvement}</span>
             )}
           </div>
         </CardContent>

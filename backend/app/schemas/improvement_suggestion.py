@@ -11,6 +11,8 @@ class ImprovementSuggestionResponse(BaseModel):
     id: uuid.UUID
     agent_id: uuid.UUID
     source_version_id: uuid.UUID
+    source_prompt: str
+    source_greeting: str | None
     suggested_prompt: str
     suggested_greeting: str | None
     mutation_type: str

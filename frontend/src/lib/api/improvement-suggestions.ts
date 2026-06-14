@@ -6,6 +6,8 @@ export interface ImprovementSuggestionResponse {
   id: string;
   agent_id: string;
   source_version_id: string;
+  source_prompt: string;
+  source_greeting: string | null;
   suggested_prompt: string;
   suggested_greeting: string | null;
   mutation_type: string;
@@ -63,49 +65,49 @@ export const improvementSuggestionsApi = {
 
   getPendingCount: async (workspaceId: string): Promise<{ pending_count: number }> => {
     return apiGet<{ pending_count: number }>(
-      `/api/v1/workspaces/${workspaceId}/suggestions/pending-count`
+      `/api/v1/workspaces/${workspaceId}/suggestions/pending-count`,
     );
   },
 
   approve: async (
     workspaceId: string,
     suggestionId: string,
-    activate: boolean = true
+    activate: boolean = true,
   ): Promise<ApproveResponse> => {
     return apiPost<ApproveResponse>(
       `/api/v1/workspaces/${workspaceId}/suggestions/${suggestionId}/approve`,
       null,
-      { params: { activate } }
+      { params: { activate } },
     );
   },
 
   reject: async (
     workspaceId: string,
     suggestionId: string,
-    reason?: string
+    reason?: string,
   ): Promise<ImprovementSuggestionResponse> => {
     return apiPost<ImprovementSuggestionResponse>(
       `/api/v1/workspaces/${workspaceId}/suggestions/${suggestionId}/reject`,
-      { reason }
+      { reason },
     );
   },
 
   getStats: async (
-    workspaceId: string
+    workspaceId: string,
   ): Promise<{ approved_count: number; rejected_count: number; auto_generated_count: number }> => {
     return apiGet<{ approved_count: number; rejected_count: number; auto_generated_count: number }>(
-      `/api/v1/workspaces/${workspaceId}/suggestions/stats`
+      `/api/v1/workspaces/${workspaceId}/suggestions/stats`,
     );
   },
 
   generateForAgent: async (
     workspaceId: string,
     agentId: string,
-    numSuggestions: number = 3
+    numSuggestions: number = 3,
   ): Promise<ImprovementSuggestionResponse[]> => {
     return apiPost<ImprovementSuggestionResponse[]>(
       `/api/v1/workspaces/${workspaceId}/suggestions/agents/${agentId}/generate`,
-      { num_suggestions: numSuggestions }
+      { num_suggestions: numSuggestions },
     );
   },
 };

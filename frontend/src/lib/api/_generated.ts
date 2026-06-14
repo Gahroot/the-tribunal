@@ -11530,6 +11530,10 @@ export interface components {
             reviewed_at: string | null;
             /** Reviewed By Id */
             reviewed_by_id: number | null;
+            /** Source Greeting */
+            source_greeting: string | null;
+            /** Source Prompt */
+            source_prompt: string;
             /**
              * Source Version Id
              * Format: uuid

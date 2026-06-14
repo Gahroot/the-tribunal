@@ -2,10 +2,11 @@
 
 import uuid
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import extract, func, select
+from sqlalchemy.orm import selectinload
 
 from app.api.crud import get_or_404
 from app.api.deps import DB, CurrentUser, get_workspace
@@ -26,6 +27,47 @@ from app.services.ai.prompt_improvement_service import PromptImprovementService
 
 router = APIRouter()
 
+_SOURCE_PROMPT_NOT_PROVIDED = object()
+_SOURCE_GREETING_NOT_PROVIDED = object()
+
+
+def _suggestion_response(
+    suggestion: ImprovementSuggestion,
+    *,
+    source_prompt: str | object = _SOURCE_PROMPT_NOT_PROVIDED,
+    source_greeting: str | None | object = _SOURCE_GREETING_NOT_PROVIDED,
+) -> ImprovementSuggestionResponse:
+    """Build an improvement suggestion response with its source prompt included."""
+    resolved_source_prompt = (
+        suggestion.source_version.system_prompt
+        if source_prompt is _SOURCE_PROMPT_NOT_PROVIDED
+        else cast(str, source_prompt)
+    )
+    resolved_source_greeting = (
+        suggestion.source_version.initial_greeting
+        if source_greeting is _SOURCE_GREETING_NOT_PROVIDED
+        else cast(str | None, source_greeting)
+    )
+
+    return ImprovementSuggestionResponse(
+        id=suggestion.id,
+        agent_id=suggestion.agent_id,
+        source_version_id=suggestion.source_version_id,
+        source_prompt=resolved_source_prompt,
+        source_greeting=resolved_source_greeting,
+        suggested_prompt=suggestion.suggested_prompt,
+        suggested_greeting=suggestion.suggested_greeting,
+        mutation_type=suggestion.mutation_type,
+        analysis_summary=suggestion.analysis_summary,
+        expected_improvement=suggestion.expected_improvement,
+        status=suggestion.status,
+        reviewed_at=suggestion.reviewed_at.isoformat() if suggestion.reviewed_at else None,
+        reviewed_by_id=suggestion.reviewed_by_id,
+        rejection_reason=suggestion.rejection_reason,
+        created_version_id=suggestion.created_version_id,
+        created_at=suggestion.created_at.isoformat(),
+    )
+
 
 @router.get("", response_model=ImprovementSuggestionListResponse)
 async def list_suggestions(
@@ -44,7 +86,9 @@ async def list_suggestions(
     """
     # Build query with workspace filter via agent
     query = apply_workspace_scope(
-        select(ImprovementSuggestion).join(Agent, ImprovementSuggestion.agent_id == Agent.id),
+        select(ImprovementSuggestion)
+        .options(selectinload(ImprovementSuggestion.source_version))
+        .join(Agent, ImprovementSuggestion.agent_id == Agent.id),
         Agent,
         workspace_id,
     ).order_by(ImprovementSuggestion.created_at.desc())
@@ -58,25 +102,7 @@ async def list_suggestions(
     result = await paginate(db, query, page=page, page_size=page_size)
 
     return ImprovementSuggestionListResponse(
-        items=[
-            ImprovementSuggestionResponse(
-                id=s.id,
-                agent_id=s.agent_id,
-                source_version_id=s.source_version_id,
-                suggested_prompt=s.suggested_prompt,
-                suggested_greeting=s.suggested_greeting,
-                mutation_type=s.mutation_type,
-                analysis_summary=s.analysis_summary,
-                expected_improvement=s.expected_improvement,
-                status=s.status,
-                reviewed_at=s.reviewed_at.isoformat() if s.reviewed_at else None,
-                reviewed_by_id=s.reviewed_by_id,
-                rejection_reason=s.rejection_reason,
-                created_version_id=s.created_version_id,
-                created_at=s.created_at.isoformat(),
-            )
-            for s in result.items
-        ],
+        items=[_suggestion_response(s) for s in result.items],
         total=result.total,
         page=result.page,
         page_size=result.page_size,
@@ -175,7 +201,9 @@ async def get_suggestion(
     """Get a specific improvement suggestion."""
     result = await db.execute(
         apply_workspace_scope(
-            select(ImprovementSuggestion).join(Agent, ImprovementSuggestion.agent_id == Agent.id),
+            select(ImprovementSuggestion)
+            .options(selectinload(ImprovementSuggestion.source_version))
+            .join(Agent, ImprovementSuggestion.agent_id == Agent.id),
             Agent,
             workspace_id,
         ).where(ImprovementSuggestion.id == suggestion_id)
@@ -188,22 +216,7 @@ async def get_suggestion(
             detail="Suggestion not found",
         )
 
-    return ImprovementSuggestionResponse(
-        id=suggestion.id,
-        agent_id=suggestion.agent_id,
-        source_version_id=suggestion.source_version_id,
-        suggested_prompt=suggestion.suggested_prompt,
-        suggested_greeting=suggestion.suggested_greeting,
-        mutation_type=suggestion.mutation_type,
-        analysis_summary=suggestion.analysis_summary,
-        expected_improvement=suggestion.expected_improvement,
-        status=suggestion.status,
-        reviewed_at=suggestion.reviewed_at.isoformat() if suggestion.reviewed_at else None,
-        reviewed_by_id=suggestion.reviewed_by_id,
-        rejection_reason=suggestion.rejection_reason,
-        created_version_id=suggestion.created_version_id,
-        created_at=suggestion.created_at.isoformat(),
-    )
+    return _suggestion_response(suggestion)
 
 
 @router.post("/{suggestion_id}/approve", response_model=ApproveResponse)
@@ -222,7 +235,9 @@ async def approve_suggestion(
     # Verify suggestion belongs to workspace
     result = await db.execute(
         apply_workspace_scope(
-            select(ImprovementSuggestion).join(Agent, ImprovementSuggestion.agent_id == Agent.id),
+            select(ImprovementSuggestion)
+            .options(selectinload(ImprovementSuggestion.source_version))
+            .join(Agent, ImprovementSuggestion.agent_id == Agent.id),
             Agent,
             workspace_id,
         ).where(ImprovementSuggestion.id == suggestion_id)
@@ -235,6 +250,9 @@ async def approve_suggestion(
             detail="Suggestion not found",
         )
 
+    source_prompt = suggestion.source_version.system_prompt
+    source_greeting = suggestion.source_version.initial_greeting
+
     try:
         service = PromptImprovementService()
         updated_suggestion, new_version = await service.approve_suggestion(
@@ -245,23 +263,10 @@ async def approve_suggestion(
         )
 
         return ApproveResponse(
-            suggestion=ImprovementSuggestionResponse(
-                id=updated_suggestion.id,
-                agent_id=updated_suggestion.agent_id,
-                source_version_id=updated_suggestion.source_version_id,
-                suggested_prompt=updated_suggestion.suggested_prompt,
-                suggested_greeting=updated_suggestion.suggested_greeting,
-                mutation_type=updated_suggestion.mutation_type,
-                analysis_summary=updated_suggestion.analysis_summary,
-                expected_improvement=updated_suggestion.expected_improvement,
-                status=updated_suggestion.status,
-                reviewed_at=updated_suggestion.reviewed_at.isoformat()
-                if updated_suggestion.reviewed_at
-                else None,
-                reviewed_by_id=updated_suggestion.reviewed_by_id,
-                rejection_reason=updated_suggestion.rejection_reason,
-                created_version_id=updated_suggestion.created_version_id,
-                created_at=updated_suggestion.created_at.isoformat(),
+            suggestion=_suggestion_response(
+                updated_suggestion,
+                source_prompt=source_prompt,
+                source_greeting=source_greeting,
             ),
             created_version_id=new_version.id,
         )
@@ -285,7 +290,9 @@ async def reject_suggestion(
     # Verify suggestion belongs to workspace
     result = await db.execute(
         apply_workspace_scope(
-            select(ImprovementSuggestion).join(Agent, ImprovementSuggestion.agent_id == Agent.id),
+            select(ImprovementSuggestion)
+            .options(selectinload(ImprovementSuggestion.source_version))
+            .join(Agent, ImprovementSuggestion.agent_id == Agent.id),
             Agent,
             workspace_id,
         ).where(ImprovementSuggestion.id == suggestion_id)
@@ -298,6 +305,9 @@ async def reject_suggestion(
             detail="Suggestion not found",
         )
 
+    source_prompt = suggestion.source_version.system_prompt
+    source_greeting = suggestion.source_version.initial_greeting
+
     try:
         service = PromptImprovementService()
         updated = await service.reject_suggestion(
@@ -307,21 +317,10 @@ async def reject_suggestion(
             reason=body.reason,
         )
 
-        return ImprovementSuggestionResponse(
-            id=updated.id,
-            agent_id=updated.agent_id,
-            source_version_id=updated.source_version_id,
-            suggested_prompt=updated.suggested_prompt,
-            suggested_greeting=updated.suggested_greeting,
-            mutation_type=updated.mutation_type,
-            analysis_summary=updated.analysis_summary,
-            expected_improvement=updated.expected_improvement,
-            status=updated.status,
-            reviewed_at=updated.reviewed_at.isoformat() if updated.reviewed_at else None,
-            reviewed_by_id=updated.reviewed_by_id,
-            rejection_reason=updated.rejection_reason,
-            created_version_id=updated.created_version_id,
-            created_at=updated.created_at.isoformat(),
+        return _suggestion_response(
+            updated,
+            source_prompt=source_prompt,
+            source_greeting=source_greeting,
         )
     except ValueError as e:
         raise HTTPException(
@@ -395,21 +394,10 @@ async def generate_suggestions_for_agent(
             analysis_summary=analysis.summary,
         )
         suggestions.append(
-            ImprovementSuggestionResponse(
-                id=suggestion.id,
-                agent_id=suggestion.agent_id,
-                source_version_id=suggestion.source_version_id,
-                suggested_prompt=suggestion.suggested_prompt,
-                suggested_greeting=suggestion.suggested_greeting,
-                mutation_type=suggestion.mutation_type,
-                analysis_summary=suggestion.analysis_summary,
-                expected_improvement=suggestion.expected_improvement,
-                status=suggestion.status,
-                reviewed_at=None,
-                reviewed_by_id=None,
-                rejection_reason=None,
-                created_version_id=None,
-                created_at=suggestion.created_at.isoformat(),
+            _suggestion_response(
+                suggestion,
+                source_prompt=active_version.system_prompt,
+                source_greeting=active_version.initial_greeting,
             )
         )
 

@@ -12560,6 +12560,21 @@
             ],
             "title": "Reviewed By Id"
           },
+          "source_greeting": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Greeting"
+          },
+          "source_prompt": {
+            "title": "Source Prompt",
+            "type": "string"
+          },
           "source_version_id": {
             "format": "uuid",
             "title": "Source Version Id",
@@ -12589,6 +12604,8 @@
           "id",
           "agent_id",
           "source_version_id",
+          "source_prompt",
+          "source_greeting",
           "suggested_prompt",
           "suggested_greeting",
           "mutation_type",
