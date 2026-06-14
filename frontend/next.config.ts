@@ -33,6 +33,11 @@ const nextConfig: NextConfig = {
         source: "/api/:path*",
         destination: `${BACKEND_URL}/api/:path*`,
       },
+      {
+        // Proxy public backend assets, including seeded lead-magnet PDFs.
+        source: "/static/:path*",
+        destination: `${BACKEND_URL}/static/:path*`,
+      },
     ];
   },
 };
