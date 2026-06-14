@@ -272,6 +272,9 @@ class ContactService:
         workspace_id: uuid.UUID,
         message_body: str,
         from_number: str | None = None,
+        *,
+        agent_id: uuid.UUID | None = None,
+        idempotency_key: uuid.UUID | None = None,
     ) -> Any:
         """Send a configured text-channel message to a contact.
 
@@ -280,6 +283,8 @@ class ContactService:
             workspace_id: The workspace UUID
             message_body: Message text
             from_number: Optional specific phone number to send from
+            agent_id: Optional AI agent attribution for the outbound message
+            idempotency_key: Optional stable key for retry-safe sends
 
         Returns:
             Created message object
@@ -306,7 +311,9 @@ class ContactService:
                 body=message_body,
                 db=self.db,
                 workspace_id=workspace_id,
+                agent_id=agent_id,
                 phone_number_id=workspace_phone.id,
+                idempotency_key=idempotency_key,
             )
             return message
         finally:

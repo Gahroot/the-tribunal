@@ -135,6 +135,7 @@ export function DealCoachCard({ workspaceId, opportunityId }: DealCoachCardProps
 
   const health = HEALTH_STYLES[card.deal_health];
   const nba = card.next_best_action;
+  const isSmsDraft = card.drafted_action.channel === "sms";
 
   return (
     <Card data-slot="deal-coach-card">
@@ -186,7 +187,9 @@ export function DealCoachCard({ workspaceId, opportunityId }: DealCoachCardProps
           {/* Drafted action preview */}
           <div className="rounded-md bg-muted/60 p-2.5 text-sm">
             <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Drafted {card.drafted_action.channel}
+              {isSmsDraft
+                ? "Drafted SMS — sends when approved"
+                : `Drafted ${card.drafted_action.channel} next step`}
             </p>
             <p className="whitespace-pre-wrap">{card.drafted_action.body}</p>
           </div>
@@ -199,7 +202,9 @@ export function DealCoachCard({ workspaceId, opportunityId }: DealCoachCardProps
           >
             {draftMutation.isPending
               ? "Queuing…"
-              : "Send to approval queue"}
+              : isSmsDraft
+                ? "Queue SMS for approval"
+                : "Queue next step for approval"}
           </Button>
         </div>
 

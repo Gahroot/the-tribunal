@@ -23,6 +23,12 @@ from app.models.pending_action import PendingAction
 logger = logging.getLogger(__name__)
 
 
+def _status_value(status: Any) -> str | None:
+    """Return a model/enum/string status as a plain string."""
+    value = getattr(status, "value", status)
+    return str(value) if value is not None else None
+
+
 class ApprovalActionExecutionError(RuntimeError):
     """Raised when an approved action handler fails and should be retried."""
 
@@ -62,25 +68,90 @@ class OutboundFollowUpCampaignSuggestionHandler:
 
 @dataclass(slots=True, frozen=True)
 class DealCoachFollowUpActionHandler:
-    """Acknowledge an approved Deal Coach drafted follow-up action.
+    """Send an approved Deal Coach drafted SMS via the normal contact send path.
 
-    The Deal Coach drafts a next-best action (e.g. a re-engagement SMS or a
-    book-a-call nudge) and queues it for human approval. Approval records the
-    operator's intent; actual outbound delivery is handled by the operator's
-    normal send path, so execution here just acknowledges the decision.
+    The Deal Coach queues a ready-to-send follow-up for human approval. Once an
+    operator approves it, execution must perform the outbound send so the
+    PendingAction ``executed`` state means the drafted message was handed to the
+    configured text provider.
     """
 
     action_type: str = "deal_coach.follow_up"
 
     async def execute(self, db: AsyncSession, action: PendingAction) -> dict[str, Any]:
+        from app.services.contacts import ContactService
+        from app.services.contacts.exceptions import (
+            ContactNotFoundError,
+            ContactPhoneNotConfiguredError,
+            ContactValidationError,
+        )
+        from app.services.idempotency import derive_outbound_key
+
         payload = action.action_payload
-        return {
-            "status": "acknowledged",
-            "channel": payload.get("channel"),
+        channel = str(payload.get("channel") or "").strip().lower()
+        if channel != "sms":
+            return {
+                "error": "unsupported_deal_coach_channel",
+                "channel": payload.get("channel"),
+                "detail": "Only Deal Coach SMS drafts can be sent on approval.",
+            }
+
+        body = payload.get("body")
+        if not isinstance(body, str) or not body.strip():
+            return {"error": "missing_message_body", "channel": channel}
+
+        raw_contact_id = payload.get("contact_id") or action.context.get("contact_id")
+        if raw_contact_id is None:
+            return {"error": "missing_contact_id", "contact_id": None}
+        try:
+            contact_id = int(raw_contact_id)
+        except (TypeError, ValueError):
+            return {"error": "missing_contact_id", "contact_id": raw_contact_id}
+
+        from_number = payload.get("from_number")
+        idempotency_key = derive_outbound_key("approval_deal_coach_follow_up", action.id)
+
+        try:
+            message = await ContactService(db).send_message(
+                contact_id=contact_id,
+                workspace_id=action.workspace_id,
+                message_body=body,
+                from_number=str(from_number) if from_number else None,
+                agent_id=action.agent_id,
+                idempotency_key=idempotency_key,
+            )
+        except (
+            ContactNotFoundError,
+            ContactPhoneNotConfiguredError,
+            ContactValidationError,
+        ) as exc:
+            return {
+                "error": "deal_coach_send_not_ready",
+                "channel": channel,
+                "contact_id": contact_id,
+                "detail": str(exc),
+            }
+
+        message_status = _status_value(getattr(message, "status", None))
+        result = {
+            "status": "sent",
+            "channel": channel,
             "opportunity_id": action.context.get("opportunity_id"),
-            "contact_id": action.context.get("contact_id"),
+            "contact_id": contact_id,
+            "message_id": str(getattr(message, "id", "")),
+            "message_status": message_status,
             "source": action.context.get("source"),
         }
+        if message_status == "failed":
+            result = {
+                "error": "message_send_failed",
+                "channel": channel,
+                "contact_id": contact_id,
+                "message_id": str(getattr(message, "id", "")),
+                "message_status": message_status,
+                "detail": getattr(message, "error_message", None),
+            }
+        return result
 
 
 @dataclass(slots=True, frozen=True)
@@ -179,7 +250,7 @@ class SendSmsActionHandler:
         # if the prior attempt reached the provider but failed to commit.
         idempotency_key = derive_outbound_key("approval_send_sms", action.id)
         try:
-            await sms_service.send_message(
+            message = await sms_service.send_message(
                 to_number=payload["to_number"],
                 from_number=payload["from_number"],
                 body=payload["text"],
@@ -188,7 +259,21 @@ class SendSmsActionHandler:
                 agent_id=action.agent_id,
                 idempotency_key=idempotency_key,
             )
-            return {"status": "sent", "to": payload["to_number"]}
+            message_status = _status_value(getattr(message, "status", None))
+            if message_status == "failed":
+                return {
+                    "error": "message_send_failed",
+                    "to": payload["to_number"],
+                    "message_id": str(getattr(message, "id", "")),
+                    "message_status": message_status,
+                    "detail": getattr(message, "error_message", None),
+                }
+            return {
+                "status": "sent",
+                "to": payload["to_number"],
+                "message_id": str(getattr(message, "id", "")),
+                "message_status": message_status,
+            }
         finally:
             await sms_service.close()
 
@@ -434,9 +519,7 @@ class ApprovalGateService:
             )
             raise ApprovalActionExecutionError(action.id, action.action_type) from exc
 
-        action.status = (
-            "failed" if execution_result.get("error") == "unsupported_action_type" else "executed"
-        )
+        action.status = "failed" if execution_result.get("error") else "executed"
         action.executed_at = datetime.now(UTC)
         action.execution_result = execution_result
         await db.commit()

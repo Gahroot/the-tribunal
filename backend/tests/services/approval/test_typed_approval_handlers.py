@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -19,8 +19,10 @@ from app.services.approval.approval_delivery_service import (
 from app.services.approval.approval_gate_service import (
     ApprovalActionExecutionError,
     ApprovalGateService,
+    DealCoachFollowUpActionHandler,
 )
 from app.services.approval.command_processor_service import CommandProcessorService
+from app.services.idempotency import derive_outbound_key
 from app.workers.approval_worker import ApprovalWorker
 
 
@@ -62,6 +64,13 @@ class _FailingActionHandler:
 
     async def execute(self, db: Any, action: PendingAction) -> dict[str, Any]:
         raise RuntimeError("provider unavailable")
+
+
+class _ErrorResultActionHandler:
+    action_type = "custom.error_result"
+
+    async def execute(self, db: Any, action: PendingAction) -> dict[str, Any]:
+        return {"error": "not_sent", "detail": "provider rejected it"}
 
 
 class _RecordingDeliveryHandler:
@@ -145,6 +154,83 @@ async def test_typed_action_handler_failure_is_retryable() -> None:
     assert action.executed_at is None
     assert action.execution_result is None
     db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_handler_error_result_marks_action_failed_not_executed() -> None:
+    service = ApprovalGateService(action_handlers=(_ErrorResultActionHandler(),))
+    action = _make_action(action_type="custom.error_result")
+    db = _mock_db()
+
+    result = await service.execute_approved_action(db, action)
+
+    assert result == {"error": "not_sent", "detail": "provider rejected it"}
+    assert action.status == "failed"
+    assert action.executed_at is not None
+    assert action.execution_result == result
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_deal_coach_follow_up_sends_sms_via_contact_send_path() -> None:
+    action_id = uuid.uuid4()
+    workspace_id = uuid.uuid4()
+    message_id = uuid.uuid4()
+    action = PendingAction(
+        id=action_id,
+        workspace_id=workspace_id,
+        agent_id=None,
+        action_type="deal_coach.follow_up",
+        action_payload={"channel": "sms", "body": "Still interested?", "contact_id": 123},
+        description="Drafted re-engagement SMS",
+        context={"source": "deal_coach", "opportunity_id": str(uuid.uuid4())},
+        status="approved",
+    )
+    db = _mock_db()
+
+    with patch("app.services.contacts.ContactService.send_message") as send_message:
+        send_message.return_value = SimpleNamespace(id=message_id, status="sent")
+
+        result = await DealCoachFollowUpActionHandler().execute(db, action)
+
+    assert result["status"] == "sent"
+    assert result["message_id"] == str(message_id)
+    send_message.assert_awaited_once()
+    call_kwargs = send_message.await_args.kwargs
+    assert call_kwargs["contact_id"] == 123
+    assert call_kwargs["workspace_id"] == workspace_id
+    assert call_kwargs["message_body"] == "Still interested?"
+    assert call_kwargs["idempotency_key"] == derive_outbound_key(
+        "approval_deal_coach_follow_up", action_id
+    )
+
+
+@pytest.mark.asyncio
+async def test_deal_coach_failed_send_result_keeps_action_out_of_executed() -> None:
+    service = ApprovalGateService(action_handlers=(DealCoachFollowUpActionHandler(),))
+    action = PendingAction(
+        id=uuid.uuid4(),
+        workspace_id=uuid.uuid4(),
+        agent_id=None,
+        action_type="deal_coach.follow_up",
+        action_payload={"channel": "sms", "body": "Still interested?", "contact_id": 123},
+        description="Drafted re-engagement SMS",
+        context={"source": "deal_coach"},
+        status="approved",
+    )
+    db = _mock_db()
+
+    with patch("app.services.contacts.ContactService.send_message") as send_message:
+        send_message.return_value = SimpleNamespace(
+            id=uuid.uuid4(), status="failed", error_message="carrier rejected"
+        )
+
+        result = await service.execute_approved_action(db, action)
+
+    assert result["error"] == "message_send_failed"
+    assert action.status == "failed"
+    assert action.execution_result == result
+    db.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
