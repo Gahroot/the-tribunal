@@ -18,7 +18,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { useEffect, useRef, useCallback, useMemo } from "react";
+import { useEffect, useRef, useCallback, useMemo, useState } from "react";
 
 import { CallOutcomeControls } from "@/components/calls/call-outcome-controls";
 import { TranscriptViewer } from "@/components/calls/transcript-viewer";
@@ -65,6 +65,7 @@ import { queryKeys } from "@/lib/query-keys";
 import { callStatusColors } from "@/lib/status-colors";
 import { formatDate, formatRelative } from "@/lib/utils/date";
 import { getInitialsFromName } from "@/lib/utils/initials";
+import type { CallRecord } from "@/types";
 
 const statusConfig: Record<string, { label: string; color: string; icon: LucideIcon }> = {
   completed: { label: "Completed", color: callStatusColors.completed, icon: Phone },
@@ -82,6 +83,64 @@ function formatDuration(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
+function csvCell(value: string | number | boolean | null | undefined): string {
+  if (value === null || value === undefined) return "";
+  const text = String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function buildCallsCsv(calls: CallRecord[]): string {
+  const headers = [
+    "Call ID",
+    "Created At",
+    "Contact",
+    "Direction",
+    "Status",
+    "Duration Seconds",
+    "Agent",
+    "From Number",
+    "To Number",
+    "Booking Outcome",
+    "Messages Taken",
+    "Transcript",
+    "Recording URL",
+  ];
+
+  const rows = calls.map((call) => [
+    call.id,
+    call.created_at,
+    call.contact_name ?? "",
+    call.direction,
+    call.status,
+    call.duration_seconds ?? "",
+    call.agent_name ?? (call.is_ai || call.agent_id ? "AI Agent" : "Manual"),
+    call.from_number ?? "",
+    call.to_number ?? "",
+    call.booking_outcome ?? "",
+    (call.captured_messages ?? [])
+      .map((message) => message.message_body || message.reason || message.caller_name || "")
+      .filter(Boolean)
+      .join(" | "),
+    call.transcript ?? "",
+    call.recording_url ?? "",
+  ]);
+
+  return [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
+}
+
+function downloadCsv(filename: string, csv: string): void {
+  const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 export function CallsList() {
   const search = useDebouncedSearch({ delay: 300 });
   const debouncedSearch = search.debouncedValue;
@@ -94,6 +153,8 @@ export function CallsList() {
 
   const workspaceId = useWorkspaceId();
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const { data, isPending, error, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: queryKeys.calls.listFiltered(workspaceId ?? "", directionFilter, statusFilter, debouncedSearch),
@@ -124,6 +185,48 @@ export function CallsList() {
   const completedCalls = firstPage?.completed_count ?? 0;
   const totalDuration = firstPage?.total_duration_seconds ?? 0;
   const avgDuration = completedCalls > 0 ? Math.round(totalDuration / completedCalls) : 0;
+  const canExport = !!workspaceId && totalCalls > 0 && !isExporting;
+
+  const handleExportCalls = useCallback(async () => {
+    if (!workspaceId || totalCalls === 0) return;
+
+    setIsExporting(true);
+    setExportError(null);
+
+    try {
+      const exportPageSize = 100;
+      const firstExportPage = await callsApi.list(workspaceId, {
+        page: 1,
+        page_size: exportPageSize,
+        direction: directionFilter !== "all" ? directionFilter as "inbound" | "outbound" : undefined,
+        status: statusFilter !== "all" ? statusFilter : undefined,
+        search: debouncedSearch || undefined,
+      });
+
+      const calls = [...firstExportPage.items];
+      for (let page = 2; page <= firstExportPage.pages; page += 1) {
+        const nextPage = await callsApi.list(workspaceId, {
+          page,
+          page_size: exportPageSize,
+          direction: directionFilter !== "all" ? directionFilter as "inbound" | "outbound" : undefined,
+          status: statusFilter !== "all" ? statusFilter : undefined,
+          search: debouncedSearch || undefined,
+        });
+        calls.push(...nextPage.items);
+      }
+
+      const filterLabel = [directionFilter, statusFilter, debouncedSearch ? "search" : null]
+        .filter((part): part is string => Boolean(part) && part !== "all")
+        .join("-") || "all";
+      const dateLabel = new Date().toISOString().slice(0, 10);
+
+      downloadCsv(`calls-${filterLabel}-${dateLabel}.csv`, buildCallsCsv(calls));
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "Failed to export calls");
+    } finally {
+      setIsExporting(false);
+    }
+  }, [debouncedSearch, directionFilter, statusFilter, totalCalls, workspaceId]);
 
   // Infinite scroll: observe sentinel element
   const handleObserver = useCallback(
@@ -167,10 +270,26 @@ export function CallsList() {
             View and manage all voice calls
           </p>
         </div>
-        <Button variant="outline">
-          <Download className="mr-2 size-4" />
-          Export
-        </Button>
+        <div className="flex flex-col items-end gap-1">
+          <Button
+            variant="outline"
+            onClick={() => { void handleExportCalls(); }}
+            disabled={!canExport}
+            title={totalCalls === 0 ? "No calls match the current filters" : "Download current filtered calls as CSV"}
+          >
+            {isExporting ? (
+              <Loader2 className="mr-2 size-4 animate-spin" />
+            ) : (
+              <Download className="mr-2 size-4" />
+            )}
+            {isExporting ? "Exporting..." : "Export"}
+          </Button>
+          {exportError && (
+            <p className="max-w-64 text-right text-xs text-destructive" role="alert">
+              {exportError}
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Stats Cards */}
