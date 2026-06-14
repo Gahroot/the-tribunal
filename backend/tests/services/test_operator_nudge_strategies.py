@@ -94,6 +94,8 @@ class TestOutboundBatchReady:
             nudge = nudges[0]
             assert nudge.contact_id is None
             assert nudge.nudge_type == "outbound_batch_ready"
+            assert nudge.cta_label == "Review the batch"
+            assert nudge.href == "/find-leads/ad-library"
             assert str(MIN_BATCH_SIZE) in nudge.title
             assert nudge.dedup_key == (
                 f"{ws.id}:outbound_batch_ready:{context.today.isoformat()}"
@@ -151,6 +153,8 @@ class TestApprovalsWaiting:
             assert len(nudges) == 1
             assert nudges[0].contact_id is None
             assert nudges[0].nudge_type == "approvals_waiting"
+            assert nudges[0].cta_label == "Review approvals"
+            assert nudges[0].href == "/pending-actions"
 
             assert await strategy.generate(db, context) == 0
 
@@ -186,6 +190,8 @@ class TestMonitorIdle:
             assert len(nudges) == 1
             assert nudges[0].contact_id is None
             assert nudges[0].nudge_type == "monitor_idle"
+            assert nudges[0].cta_label == "Set up a monitor"
+            assert nudges[0].href == "/find-leads/ad-library"
 
             assert await strategy.generate(db, context) == 0
 

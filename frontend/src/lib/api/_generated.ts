@@ -12847,6 +12847,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Cta Label */
+            cta_label: string | null;
             /** Delivered At */
             delivered_at: string | null;
             /** Delivered Via */
@@ -12856,6 +12858,8 @@ export interface components {
              * Format: date-time
              */
             due_date: string;
+            /** Href */
+            href: string | null;
             /**
              * Id
              * Format: uuid

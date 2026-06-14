@@ -54,6 +54,8 @@ class HumanNudge(Base):
     suggested_action: Mapped[str | None] = mapped_column(
         String(50), nullable=True
     )  # send_card, call, text, email
+    cta_label: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    href: Mapped[str | None] = mapped_column(String(500), nullable=True)
     priority: Mapped[str] = mapped_column(
         String(20), nullable=False, default="medium"
     )  # low, medium, high

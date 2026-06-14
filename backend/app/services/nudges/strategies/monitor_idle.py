@@ -51,6 +51,8 @@ class MonitorIdleNudgeStrategy(NudgeStrategy):
                     "the machine back on."
                 ),
                 suggested_action=None,
+                cta_label="Set up a monitor",
+                href="/find-leads/ad-library",
                 priority="medium",
                 due_date=context.now,
                 source_date_field=None,

@@ -58,6 +58,8 @@ class OutboundBatchReadyNudgeStrategy(NudgeStrategy):
                     "campaign. Review the batch and launch outreach."
                 ),
                 suggested_action=None,
+                cta_label="Review the batch",
+                href="/find-leads/ad-library",
                 priority="high",
                 due_date=context.now,
                 source_date_field=None,

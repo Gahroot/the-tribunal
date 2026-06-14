@@ -40,6 +40,8 @@ def _nudge_to_response(nudge: HumanNudge) -> NudgeResponse:
         title=nudge.title,
         message=nudge.message,
         suggested_action=nudge.suggested_action,
+        cta_label=nudge.cta_label,
+        href=nudge.href,
         priority=nudge.priority,
         due_date=nudge.due_date,
         source_date_field=nudge.source_date_field,

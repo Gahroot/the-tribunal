@@ -7,6 +7,8 @@ export interface HumanNudge {
   title: string;
   message: string;
   suggested_action: SuggestedAction | null;
+  cta_label: string | null;
+  href: string | null;
   priority: NudgePriority;
   due_date: string;
   source_date_field: string | null;

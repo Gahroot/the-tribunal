@@ -58,6 +58,8 @@ class ApprovalsWaitingNudgeStrategy(NudgeStrategy):
                     f"{STALE_AFTER_HOURS} hours. Approve or reject them before they expire."
                 ),
                 suggested_action=None,
+                cta_label="Review approvals",
+                href="/pending-actions",
                 priority="high",
                 due_date=context.now,
                 source_date_field=None,

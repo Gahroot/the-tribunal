@@ -11,6 +11,7 @@ import {
   Inbox,
   CalendarIcon,
   Mail,
+  ArrowRight,
 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -304,7 +305,7 @@ export function NudgesPage() {
   );
 }
 
-function NudgeCard({
+export function NudgeCard({
   nudge,
   onAct,
   onDismiss,
@@ -387,7 +388,14 @@ function NudgeCard({
         {/* Actions */}
         {isPending && (
           <div className="flex shrink-0 items-center gap-1">
-            {nudge.suggested_action === "send_card" ? (
+            {nudge.href ? (
+              <Button asChild size="sm" title={nudge.cta_label ?? "Open"}>
+                <Link href={nudge.href}>
+                  <ArrowRight className="mr-1 h-3.5 w-3.5" />
+                  {nudge.cta_label ?? "Open"}
+                </Link>
+              </Button>
+            ) : nudge.suggested_action === "send_card" ? (
               <>
                 <Button
                   size="sm"

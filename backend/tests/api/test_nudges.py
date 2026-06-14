@@ -56,6 +56,8 @@ def _make_mock_nudge(
     nudge.title = "🎂 Test birthday"
     nudge.message = "Birthday in 2 days"
     nudge.suggested_action = "send_card"
+    nudge.cta_label = None
+    nudge.href = None
     nudge.priority = "medium"
     nudge.due_date = datetime.now(UTC) + timedelta(days=2)
     nudge.source_date_field = "birthday"

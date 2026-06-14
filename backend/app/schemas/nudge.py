@@ -17,6 +17,8 @@ class NudgeResponse(BaseModel):
     title: str
     message: str
     suggested_action: str | None
+    cta_label: str | None
+    href: str | None
     priority: str
     due_date: datetime
     source_date_field: str | None
