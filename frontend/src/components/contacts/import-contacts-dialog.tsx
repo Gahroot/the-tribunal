@@ -2,6 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FileText, AlertCircle, CheckCircle2, X, Download, Loader2 } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -174,6 +175,8 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
       .join(", ");
   };
 
+  const hasImportedContacts = (result?.successful ?? 0) > 0;
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className={cn(
@@ -186,7 +189,7 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
             {step === "mapping" && "Map Fields"}
             {step === "options" && "Import Options"}
             {step === "importing" && "Importing..."}
-            {step === "results" && "Import Complete"}
+            {step === "results" && (hasImportedContacts ? "Import Complete" : "Import Needs Attention")}
           </DialogTitle>
           <DialogDescription>
             {step === "upload" && "Upload a CSV file to import contacts in bulk."}
@@ -424,9 +427,27 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
         {step === "results" && result && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 bg-success/10 rounded-lg text-center">
-                <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-success" />
-                <p className="text-2xl font-bold text-success">{result.successful}</p>
+              <div
+                className={cn(
+                  "p-4 rounded-lg text-center",
+                  hasImportedContacts
+                    ? "bg-success/10"
+                    : "bg-warning/10 border border-warning/20"
+                )}
+              >
+                {hasImportedContacts ? (
+                  <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-success" />
+                ) : (
+                  <AlertCircle className="h-8 w-8 mx-auto mb-2 text-warning" />
+                )}
+                <p
+                  className={cn(
+                    "text-2xl font-bold",
+                    hasImportedContacts ? "text-success" : "text-warning"
+                  )}
+                >
+                  {result.successful}
+                </p>
                 <p className="text-xs text-muted-foreground">Imported</p>
               </div>
               <div className="p-4 bg-muted/50 rounded-lg text-center">
@@ -434,6 +455,16 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
                 <p className="text-xs text-muted-foreground">Total Rows</p>
               </div>
             </div>
+
+            {!hasImportedContacts && (
+              <div className="flex items-start gap-2 rounded-lg border border-warning/20 bg-warning/10 p-3 text-sm text-warning">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium">No contacts imported</p>
+                  <p>Check your phone column mapping, then try importing the CSV again.</p>
+                </div>
+              </div>
+            )}
 
             {(result.skipped_duplicates > 0 || result.failed > 0) && (
               <div className="flex gap-4 text-sm">
@@ -511,9 +542,16 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
             </>
           )}
           {step === "results" && (
-            <Button onClick={handleClose}>
-              Done
-            </Button>
+            <>
+              <Button variant="outline" onClick={handleClose}>
+                Done
+              </Button>
+              <Button asChild>
+                <Link href="/contacts" onClick={handleClose}>
+                  View Contacts
+                </Link>
+              </Button>
+            </>
           )}
         </DialogFooter>
       </DialogContent>
