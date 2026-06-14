@@ -20,10 +20,12 @@
  * should prefer these presets; existing components will be migrated over time.
  */
 
-export const REALTIME = {
+export const POLL_5S = {
   staleTime: 0,
   refetchInterval: 5_000,
 } as const;
+
+export const REALTIME = POLL_5S;
 
 export const POLL_30S = {
   staleTime: 25_000,

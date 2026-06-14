@@ -18,18 +18,15 @@ import { toast } from "sonner";
 import { GuaranteeProgress } from "@/components/campaigns/guarantee-progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageEmptyState, PageLoadingState } from "@/components/ui/page-state";
+import { Progress } from "@/components/ui/progress";
 import { useCampaignAnalytics } from "@/hooks/useCampaigns";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { campaignsApi, type CampaignAnalytics } from "@/lib/api/campaigns";
 import { voiceCampaignsApi } from "@/lib/api/voice-campaigns";
 import { queryKeys } from "@/lib/query-keys";
+import { POLL_5S } from "@/lib/query-options";
 import { campaignStatusColors } from "@/lib/status-colors";
 import { formatDate } from "@/lib/utils/date";
 import { getApiErrorMessage } from "@/lib/utils/errors";
@@ -44,19 +41,28 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
   const workspaceId = useWorkspaceId();
 
   // Load campaign data
-  const { data: campaign, isPending, error } = useQuery({
+  const {
+    data: campaign,
+    isPending,
+    error,
+  } = useQuery({
     queryKey: queryKeys.campaigns.detail(workspaceId ?? "", campaignId),
     queryFn: async () => {
       if (!workspaceId) throw new Error("Workspace not loaded");
       return campaignsApi.get(workspaceId, campaignId);
     },
     enabled: !!workspaceId,
+    refetchInterval: (query) =>
+      query.state.data?.status === "running" ? POLL_5S.refetchInterval : false,
   });
 
   const isVoiceCampaign = campaign?.campaign_type === "voice_sms_fallback";
+  const runningCampaignRefetchInterval =
+    campaign?.status === "running" ? POLL_5S.refetchInterval : false;
 
   const { data: analytics } = useCampaignAnalytics(workspaceId ?? "", campaignId, {
     enabled: !!campaign && !isVoiceCampaign,
+    refetchInterval: runningCampaignRefetchInterval,
   });
 
   const { data: voiceAnalytics } = useQuery<VoiceCampaignAnalytics>({
@@ -66,6 +72,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
       return voiceCampaignsApi.getAnalytics(workspaceId, campaignId);
     },
     enabled: !!workspaceId && !!campaign && isVoiceCampaign,
+    refetchInterval: runningCampaignRefetchInterval,
   });
 
   // Start campaign mutation
@@ -172,9 +179,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-2">
               <h1 className="text-2xl font-bold">{campaign.name}</h1>
-              <Badge className={campaignStatusColors[campaign.status]}>
-                {campaign.status}
-              </Badge>
+              <Badge className={campaignStatusColors[campaign.status]}>{campaign.status}</Badge>
             </div>
             <p className="text-sm text-muted-foreground">
               Created {formatDate(campaign.created_at)}
@@ -259,16 +264,14 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
             {campaign.initial_message && (
               <div>
                 <p className="text-sm text-muted-foreground">Initial Message</p>
-                <p className="text-sm mt-1 line-clamp-3">
-                  {campaign.initial_message}
-                </p>
+                <p className="text-sm mt-1 line-clamp-3">{campaign.initial_message}</p>
               </div>
             )}
           </CardContent>
         </Card>
 
         {isVoiceCampaign ? (
-          <VoiceCallStatistics analytics={voiceAnalytics} />
+          <VoiceCallStatistics campaign={campaign} analytics={voiceAnalytics} />
         ) : (
           <SmsStatistics campaign={campaign} analytics={analytics} />
         )}
@@ -279,9 +282,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
       </div>
 
       {/* Scheduling info */}
-      {(campaign.sending_hours_start ||
-        campaign.sending_hours_end ||
-        campaign.scheduled_start) && (
+      {(campaign.sending_hours_start || campaign.sending_hours_end || campaign.scheduled_start) && (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Schedule</CardTitle>
@@ -290,9 +291,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
             {campaign.scheduled_start && (
               <div>
                 <p className="text-sm text-muted-foreground">Start Date</p>
-                <p className="font-medium mt-1">
-                  {formatDate(campaign.scheduled_start)}
-                </p>
+                <p className="font-medium mt-1">{formatDate(campaign.scheduled_start)}</p>
               </div>
             )}
             {(campaign.sending_hours_start || campaign.sending_hours_end) && (
@@ -326,12 +325,8 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
             </div>
             {campaign.qualification_criteria && (
               <div>
-                <p className="text-sm text-muted-foreground">
-                  Qualification Criteria
-                </p>
-                <p className="text-sm mt-1 line-clamp-3">
-                  {campaign.qualification_criteria}
-                </p>
+                <p className="text-sm text-muted-foreground">Qualification Criteria</p>
+                <p className="text-sm mt-1 line-clamp-3">{campaign.qualification_criteria}</p>
               </div>
             )}
           </CardContent>
@@ -354,6 +349,12 @@ function SmsStatistics({
         <CardTitle className="text-lg">Statistics</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        <CampaignProgressBar
+          ariaLabel="Sending progress"
+          completed={campaign.messages_sent}
+          completedLabel="sent"
+          total={campaign.total_contacts}
+        />
         <div className="grid grid-cols-2 gap-4">
           <StatItem label="Total Contacts" value={campaign.total_contacts} />
           <StatItem label="Sent" value={campaign.messages_sent} />
@@ -386,8 +387,10 @@ function SmsStatistics({
 }
 
 function VoiceCallStatistics({
+  campaign,
   analytics,
 }: {
+  campaign: Campaign;
   analytics: VoiceCampaignAnalytics | undefined;
 }) {
   return (
@@ -396,8 +399,17 @@ function VoiceCallStatistics({
         <CardTitle className="text-lg">Call Statistics</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        <CampaignProgressBar
+          ariaLabel="Dialing progress"
+          completed={analytics?.calls_attempted ?? 0}
+          completedLabel="dialed"
+          total={analytics?.total_contacts ?? campaign.total_contacts}
+        />
         <div className="grid grid-cols-2 gap-4">
-          <StatItem label="Total Contacts" value={analytics?.total_contacts} />
+          <StatItem
+            label="Total Contacts"
+            value={analytics?.total_contacts ?? campaign.total_contacts}
+          />
           <StatItem label="Dialed" value={analytics?.calls_attempted} />
           <StatItem label="Answered" value={analytics?.calls_answered} />
           <PercentageRateStat label="Answer Rate" rate={analytics?.answer_rate} />
@@ -411,13 +423,40 @@ function VoiceCallStatistics({
           />
           <StatItem label="Qualified" value={analytics?.contacts_qualified} />
           <StatItem label="Opted Out" value={analytics?.contacts_opted_out} />
-          <PercentageRateStat
-            label="Qualification Rate"
-            rate={analytics?.qualification_rate}
-          />
+          <PercentageRateStat label="Qualification Rate" rate={analytics?.qualification_rate} />
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function CampaignProgressBar({
+  ariaLabel,
+  completed,
+  completedLabel,
+  total,
+}: {
+  ariaLabel: string;
+  completed: number;
+  completedLabel: string;
+  total: number;
+}) {
+  const safeCompleted = Math.max(0, completed);
+  const safeTotal = Math.max(0, total);
+  const progressValue = safeTotal > 0 ? Math.min(100, (safeCompleted / safeTotal) * 100) : 0;
+  const roundedProgress = Math.round(progressValue);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3 text-sm">
+        <p className="font-medium">{ariaLabel}</p>
+        <p className="text-muted-foreground">
+          {safeCompleted.toLocaleString()} / {safeTotal.toLocaleString()} contacts {completedLabel}{" "}
+          ({roundedProgress}%)
+        </p>
+      </div>
+      <Progress aria-label={ariaLabel} value={progressValue} />
+    </div>
   );
 }
 
@@ -450,9 +489,7 @@ function RateStat({ label, rate }: { label: string; rate: number | undefined }) 
   const colorClass = rateColorClass(value);
   return (
     <div>
-      <p className={`text-2xl font-bold ${colorClass}`}>
-        {(value * 100).toFixed(1)}%
-      </p>
+      <p className={`text-2xl font-bold ${colorClass}`}>{(value * 100).toFixed(1)}%</p>
       <p className="text-xs text-muted-foreground">{label}</p>
     </div>
   );
@@ -470,9 +507,5 @@ function PercentageRateStat({ label, rate }: { label: string; rate: number | und
 }
 
 function rateColorClass(rate: number) {
-  return rate >= 0.2
-    ? "text-success"
-    : rate >= 0.05
-      ? "text-amber-500"
-      : "text-muted-foreground";
+  return rate >= 0.2 ? "text-success" : rate >= 0.05 ? "text-amber-500" : "text-muted-foreground";
 }
