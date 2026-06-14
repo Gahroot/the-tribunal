@@ -27,6 +27,11 @@ from app.models.tag import ContactTag, Tag
 from app.models.workspace import Workspace
 from app.schemas.today_queue import TodayQueueItem, TodayQueueResponse
 from app.services.ad_intelligence.monitors import AD_MONITOR_KEY, is_active_monitor
+from app.services.telephony.availability import (
+    TELEPHONY_SETUP_ACTION_HREF,
+    TELEPHONY_UNAVAILABLE_MESSAGE,
+    is_telephony_enabled_for_workspace,
+)
 from app.workers.outbound_auto_draft_worker import AUTOPILOT_SETTINGS_KEY
 
 logger = structlog.get_logger()
@@ -427,16 +432,28 @@ class TodayQueueService:
             .limit(1)
         )
         if sms_number.scalar_one_or_none() is None:
-            items.append(
-                _setup_gap(
-                    workspace_id,
-                    gap="phone",
-                    title="No SMS-enabled phone number",
-                    body="You need an active SMS-enabled number before any campaign can send.",
-                    cta_label="Add a number",
-                    href="/phone-numbers",
+            if await is_telephony_enabled_for_workspace(self.db, workspace_id):
+                items.append(
+                    _setup_gap(
+                        workspace_id,
+                        gap="phone",
+                        title="No SMS-enabled phone number",
+                        body="You need an active SMS-enabled number before any campaign can send.",
+                        cta_label="Add a number",
+                        href="/phone-numbers",
+                    )
                 )
-            )
+            else:
+                items.append(
+                    _setup_gap(
+                        workspace_id,
+                        gap="telephony",
+                        title="Telephony is not connected",
+                        body=TELEPHONY_UNAVAILABLE_MESSAGE,
+                        cta_label="Connect Telnyx",
+                        href=TELEPHONY_SETUP_ACTION_HREF,
+                    )
+                )
 
         return items
 

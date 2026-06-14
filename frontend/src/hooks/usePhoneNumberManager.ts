@@ -8,14 +8,20 @@ import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import {
   phoneNumbersApi,
   type PhoneNumberSearchResult,
+  type PhoneNumberTelephonyStatus,
 } from "@/lib/api/phone-numbers";
 import { queryKeys } from "@/lib/query-keys";
+import { getApiErrorCode, getApiErrorMessage } from "@/lib/utils/errors";
 import type { PhoneNumber } from "@/types";
 
 export interface UsePhoneNumberManagerResult {
   phoneNumbers: PhoneNumber[];
   isLoadingNumbers: boolean;
   numbersError: unknown;
+  telephonyStatus: PhoneNumberTelephonyStatus | null;
+  isLoadingTelephonyStatus: boolean;
+  telephonyStatusError: unknown;
+  isTelephonyUnavailable: boolean;
   country: string;
   setCountry: (country: string) => void;
   areaCode: string;
@@ -31,6 +37,32 @@ export interface UsePhoneNumberManagerResult {
   sync: () => void;
 }
 
+type ApiErrorWithDetails = {
+  response?: {
+    data?: {
+      details?: {
+        action_label?: unknown;
+        action_href?: unknown;
+      };
+    };
+  };
+};
+
+function telephonyStatusFromUnavailableError(error: unknown): PhoneNumberTelephonyStatus | null {
+  if (getApiErrorCode(error) !== "telephony_unavailable") {
+    return null;
+  }
+
+  const details = (error as ApiErrorWithDetails).response?.data?.details;
+  return {
+    enabled: false,
+    provider: "telnyx",
+    message: getApiErrorMessage(error, "Telephony is not enabled for this workspace."),
+    action_label: typeof details?.action_label === "string" ? details.action_label : null,
+    action_href: typeof details?.action_href === "string" ? details.action_href : null,
+  };
+}
+
 /**
  * Container hook for {@link PhoneNumbersTable}: owns the owned-numbers query and
  * the search / purchase / release / sync mutations plus the search form state,
@@ -43,10 +75,10 @@ export function usePhoneNumberManager(): UsePhoneNumberManagerResult {
 
   const [country, setCountry] = useState("US");
   const [areaCode, setAreaCode] = useState("");
-  const [searchResults, setSearchResults] = useState<PhoneNumberSearchResult[]>(
-    [],
-  );
+  const [searchResults, setSearchResults] = useState<PhoneNumberSearchResult[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
+  const [telephonyUnavailableOverride, setTelephonyUnavailableOverride] =
+    useState<PhoneNumberTelephonyStatus | null>(null);
 
   const invalidatePhoneNumbers = () =>
     queryClient.invalidateQueries({
@@ -66,9 +98,36 @@ export function usePhoneNumberManager(): UsePhoneNumberManagerResult {
     enabled: !!workspaceId,
   });
 
+  const {
+    data: queriedTelephonyStatus,
+    isPending: isLoadingTelephonyStatus,
+    error: telephonyStatusError,
+  } = useQuery({
+    queryKey: queryKeys.phoneNumbers.telephonyStatus(workspaceId ?? ""),
+    queryFn: () => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return phoneNumbersApi.getTelephonyStatus(workspaceId);
+    },
+    enabled: !!workspaceId,
+  });
+
+  const telephonyStatus = telephonyUnavailableOverride ?? queriedTelephonyStatus ?? null;
+  const isTelephonyUnavailable = telephonyStatus?.enabled === false;
+
+  const handleTelephonyMutationError = (error: unknown, fallback: string) => {
+    const unavailableStatus = telephonyStatusFromUnavailableError(error);
+    if (unavailableStatus) {
+      setTelephonyUnavailableOverride(unavailableStatus);
+    }
+    toast.error(getApiErrorMessage(error, fallback));
+  };
+
   const searchMutation = useMutation({
     mutationFn: () => {
       if (!workspaceId) throw new Error("Workspace not loaded");
+      if (isTelephonyUnavailable) {
+        throw new Error(telephonyStatus?.message ?? "Telephony is not enabled for this workspace.");
+      }
       return phoneNumbersApi.search(workspaceId, {
         country,
         area_code: areaCode || undefined,
@@ -82,8 +141,8 @@ export function usePhoneNumberManager(): UsePhoneNumberManagerResult {
         toast.info("No numbers found matching your criteria");
       }
     },
-    onError: (error: Error) => {
-      toast.error(error.message || "Failed to search for numbers");
+    onError: (error: unknown) => {
+      handleTelephonyMutationError(error, "Failed to search for numbers");
       setSearchResults([]);
       setHasSearched(true);
     },
@@ -92,6 +151,9 @@ export function usePhoneNumberManager(): UsePhoneNumberManagerResult {
   const purchaseMutation = useMutation({
     mutationFn: (phoneNumber: string) => {
       if (!workspaceId) throw new Error("Workspace not loaded");
+      if (isTelephonyUnavailable) {
+        throw new Error(telephonyStatus?.message ?? "Telephony is not enabled for this workspace.");
+      }
       return phoneNumbersApi.purchase(workspaceId, {
         phone_number: phoneNumber,
       });
@@ -99,12 +161,10 @@ export function usePhoneNumberManager(): UsePhoneNumberManagerResult {
     onSuccess: (data) => {
       toast.success(`Successfully purchased ${data.phone_number}`);
       void invalidatePhoneNumbers();
-      setSearchResults((prev) =>
-        prev.filter((r) => r.phone_number !== data.phone_number),
-      );
+      setSearchResults((prev) => prev.filter((r) => r.phone_number !== data.phone_number));
     },
-    onError: (error: Error) => {
-      toast.error(error.message || "Failed to purchase number");
+    onError: (error: unknown) => {
+      handleTelephonyMutationError(error, "Failed to purchase number");
     },
   });
 
@@ -117,14 +177,17 @@ export function usePhoneNumberManager(): UsePhoneNumberManagerResult {
       toast.success("Phone number released successfully");
       void invalidatePhoneNumbers();
     },
-    onError: (error: Error) => {
-      toast.error(error.message || "Failed to release number");
+    onError: (error: unknown) => {
+      handleTelephonyMutationError(error, "Failed to release number");
     },
   });
 
   const syncMutation = useMutation({
     mutationFn: () => {
       if (!workspaceId) throw new Error("Workspace not loaded");
+      if (isTelephonyUnavailable) {
+        throw new Error(telephonyStatus?.message ?? "Telephony is not enabled for this workspace.");
+      }
       return phoneNumbersApi.sync(workspaceId);
     },
     onSuccess: (data) => {
@@ -135,17 +198,18 @@ export function usePhoneNumberManager(): UsePhoneNumberManagerResult {
       }
       void invalidatePhoneNumbers();
     },
-    onError: (error: Error) => {
-      toast.error(error.message || "Failed to sync phone numbers");
+    onError: (error: unknown) => {
+      handleTelephonyMutationError(error, "Failed to sync phone numbers");
     },
   });
 
-  const phoneNumbers = Array.isArray(phoneNumbersData?.items)
-    ? phoneNumbersData.items
-    : [];
+  const phoneNumbers = Array.isArray(phoneNumbersData?.items) ? phoneNumbersData.items : [];
 
   const handleSearch = (event: React.FormEvent) => {
     event.preventDefault();
+    if (isTelephonyUnavailable) {
+      return;
+    }
     searchMutation.mutate();
   };
 
@@ -153,6 +217,10 @@ export function usePhoneNumberManager(): UsePhoneNumberManagerResult {
     phoneNumbers,
     isLoadingNumbers,
     numbersError,
+    telephonyStatus,
+    isLoadingTelephonyStatus,
+    telephonyStatusError,
+    isTelephonyUnavailable,
     country,
     setCountry,
     areaCode,
@@ -163,8 +231,12 @@ export function usePhoneNumberManager(): UsePhoneNumberManagerResult {
     isPurchasing: purchaseMutation.isPending,
     isSyncing: syncMutation.isPending,
     handleSearch,
-    purchase: (phoneNumber) => purchaseMutation.mutate(phoneNumber),
+    purchase: (phoneNumber) => {
+      if (!isTelephonyUnavailable) purchaseMutation.mutate(phoneNumber);
+    },
     release: (phoneNumberId) => releaseMutation.mutate(phoneNumberId),
-    sync: () => syncMutation.mutate(),
+    sync: () => {
+      if (!isTelephonyUnavailable) syncMutation.mutate();
+    },
   };
 }

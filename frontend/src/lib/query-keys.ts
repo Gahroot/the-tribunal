@@ -49,10 +49,7 @@ function normalizeQueryKeyValue(value: unknown): unknown {
   const entries = Object.entries(value)
     .filter(([, entryValue]) => entryValue !== undefined)
     .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
-    .map(
-      ([entryKey, entryValue]) =>
-        [entryKey, normalizeQueryKeyValue(entryValue)] as const,
-    );
+    .map(([entryKey, entryValue]) => [entryKey, normalizeQueryKeyValue(entryValue)] as const);
 
   return Object.fromEntries(entries);
 }
@@ -68,9 +65,7 @@ function normalizeQueryKeyParams(
   return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
 
-export function createResourceQueryKeys<Name extends string>(
-  name: Name,
-): ResourceQueryKeys<Name> {
+export function createResourceQueryKeys<Name extends string>(name: Name): ResourceQueryKeys<Name> {
   return {
     root: () => [name] as const,
     all: (workspaceId: string) => [name, workspaceId] as const,
@@ -126,10 +121,8 @@ export const queryKeys = {
       adAdvertisers.list(workspaceId, params),
     advertiser: (workspaceId: string, advertiserId: string) =>
       adAdvertisers.detail(workspaceId, advertiserId),
-    job: (workspaceId: string, jobId: string) =>
-      ["ad-library-job", workspaceId, jobId] as const,
-    monitors: (workspaceId: string) =>
-      ["ad-library-monitors", workspaceId] as const,
+    job: (workspaceId: string, jobId: string) => ["ad-library-job", workspaceId, jobId] as const,
+    monitors: (workspaceId: string) => ["ad-library-monitors", workspaceId] as const,
   },
   people: {
     search: (workspaceId: string, params?: QueryKeyParams | null) =>
@@ -142,8 +135,7 @@ export const queryKeys = {
   },
   agents: {
     ...agents,
-    activeOnly: (workspaceId: string) =>
-      agents.list(workspaceId, { active_only: true }),
+    activeOnly: (workspaceId: string) => agents.list(workspaceId, { active_only: true }),
     versions: (workspaceId: string, agentId: string) =>
       [...agents.detail(workspaceId, agentId), "versions"] as const,
     promptVersions: (workspaceId: string, agentId: string) =>
@@ -161,16 +153,14 @@ export const queryKeys = {
   },
   assistant: {
     all: (workspaceId: string) => ["assistant", workspaceId] as const,
-    conversations: (workspaceId: string) =>
-      ["assistant", workspaceId, "conversations"] as const,
+    conversations: (workspaceId: string) => ["assistant", workspaceId, "conversations"] as const,
     conversation: (workspaceId: string, conversationId: string) =>
       ["assistant", workspaceId, "conversation", conversationId] as const,
     history: (workspaceId: string) => ["assistant", workspaceId, "history"] as const,
   },
   appointments: {
     ...appointments,
-    stats: (workspaceId: string) =>
-      [...appointments.all(workspaceId), "stats"] as const,
+    stats: (workspaceId: string) => [...appointments.all(workspaceId), "stats"] as const,
     byContact: (workspaceId: string, contactId: number | string | undefined) =>
       appointments.list(workspaceId, { contact_id: contactId }),
   },
@@ -181,8 +171,7 @@ export const queryKeys = {
   },
   automations: {
     ...automations,
-    stats: (workspaceId: string) =>
-      [...automations.all(workspaceId), "stats"] as const,
+    stats: (workspaceId: string) => [...automations.all(workspaceId), "stats"] as const,
   },
   billing: {
     all: (workspaceId: string) => ["billing", workspaceId] as const,
@@ -193,23 +182,17 @@ export const queryKeys = {
   },
   calls: {
     ...calls,
-    listFiltered: (
-      workspaceId: string,
-      direction: string,
-      status: string,
-      search: string,
-    ) => calls.list(workspaceId, { direction, search, status }),
+    listFiltered: (workspaceId: string, direction: string, status: string, search: string) =>
+      calls.list(workspaceId, { direction, search, status }),
     transcript: (workspaceId: string, callId: string) =>
       [...calls.detail(workspaceId, callId), "transcript"] as const,
-    live: (workspaceId: string) =>
-      [...calls.all(workspaceId), "live"] as const,
+    live: (workspaceId: string) => [...calls.all(workspaceId), "live"] as const,
   },
   campaignReports: {
     ...campaignReports,
     full: (workspaceId: string, reportIds: readonly string[]) =>
       [...campaignReports.all(workspaceId), "full", reportIds] as const,
-    count: (workspaceId: string) =>
-      [...campaignReports.all(workspaceId), "count"] as const,
+    count: (workspaceId: string) => [...campaignReports.all(workspaceId), "count"] as const,
   },
   campaigns: {
     ...campaigns,
@@ -235,13 +218,7 @@ export const queryKeys = {
     ) =>
       limit === undefined
         ? (["contacts", workspaceId, contactId ?? null, "timeline"] as const)
-        : ([
-            "contacts",
-            workspaceId,
-            contactId ?? null,
-            "timeline",
-            { limit },
-          ] as const),
+        : (["contacts", workspaceId, contactId ?? null, "timeline", { limit }] as const),
     conversations: (workspaceId: string, contactId: string) =>
       [...contacts.detail(workspaceId, contactId), "conversations"] as const,
     tags: (workspaceId: string, contactId: string) =>
@@ -267,10 +244,8 @@ export const queryKeys = {
     stats: (workspaceId: string) => ["dashboard", workspaceId, "stats"] as const,
     activity: (workspaceId: string) => ["dashboard", workspaceId, "activity"] as const,
     revenue: (workspaceId: string) => ["dashboard", workspaceId, "revenue"] as const,
-    outboundGrowth: (workspaceId: string) =>
-      ["dashboard", workspaceId, "outbound-growth"] as const,
-    todayQueue: (workspaceId: string) =>
-      ["dashboard", workspaceId, "today-queue"] as const,
+    outboundGrowth: (workspaceId: string) => ["dashboard", workspaceId, "outbound-growth"] as const,
+    todayQueue: (workspaceId: string) => ["dashboard", workspaceId, "today-queue"] as const,
   },
   findLeadsAi: createResourceQueryKeys("find-leads-ai"),
   humanProfiles: createResourceQueryKeys("human-profiles"),
@@ -278,8 +253,7 @@ export const queryKeys = {
     ...improvementSuggestions,
     pendingCount: (workspaceId: string) =>
       [...improvementSuggestions.all(workspaceId), "pending-count"] as const,
-    stats: (workspaceId: string) =>
-      [...improvementSuggestions.all(workspaceId), "stats"] as const,
+    stats: (workspaceId: string) => [...improvementSuggestions.all(workspaceId), "stats"] as const,
   },
   integrations: {
     ...integrations,
@@ -307,8 +281,7 @@ export const queryKeys = {
   offers,
   opportunities: {
     ...opportunities,
-    pipelines: (workspaceId: string) =>
-      [...opportunities.all(workspaceId), "pipelines"] as const,
+    pipelines: (workspaceId: string) => [...opportunities.all(workspaceId), "pipelines"] as const,
     coach: (workspaceId: string, opportunityId: string) =>
       [...opportunities.detail(workspaceId, opportunityId), "coach"] as const,
     atRisk: (workspaceId: string, params?: QueryKeyParams | null) =>
@@ -316,27 +289,24 @@ export const queryKeys = {
   },
   pendingActions: {
     ...pendingActions,
-    count: (workspaceId: string) =>
-      [...pendingActions.all(workspaceId), "count"] as const,
-    stats: (workspaceId: string) =>
-      [...pendingActions.all(workspaceId), "stats"] as const,
+    count: (workspaceId: string) => [...pendingActions.all(workspaceId), "count"] as const,
+    stats: (workspaceId: string) => [...pendingActions.all(workspaceId), "stats"] as const,
   },
   phoneNumbers: {
     ...phoneNumbers,
-    smsEnabled: (workspaceId: string) =>
-      phoneNumbers.list(workspaceId, { sms_enabled: true }),
+    smsEnabled: (workspaceId: string) => phoneNumbers.list(workspaceId, { sms_enabled: true }),
     activeTextCapable: (workspaceId: string) =>
       phoneNumbers.list(workspaceId, { active_only: true, text_capable: true }),
     activeOnlyFalse: (workspaceId: string) =>
       phoneNumbers.list(workspaceId, { active_only: false }),
+    telephonyStatus: (workspaceId: string) =>
+      [...phoneNumbers.all(workspaceId), "telephony-status"] as const,
   },
   promptVersions: createResourceQueryKeys("prompt-versions"),
   reviews: {
     ...reviews,
-    summary: (workspaceId: string) =>
-      [...reviews.all(workspaceId), "summary"] as const,
-    settings: (workspaceId: string) =>
-      [...reviews.all(workspaceId), "settings"] as const,
+    summary: (workspaceId: string) => [...reviews.all(workspaceId), "summary"] as const,
+    settings: (workspaceId: string) => [...reviews.all(workspaceId), "settings"] as const,
     requests: (workspaceId: string, params?: QueryKeyParams | null) =>
       [...reviews.all(workspaceId), "requests", normalizeQueryKeyParams(params)] as const,
   },
@@ -357,17 +327,14 @@ export const queryKeys = {
     all: (workspaceId: string) => ["realtor", workspaceId] as const,
     onboarding: (workspaceId: string) => ["realtor", workspaceId, "onboarding"] as const,
     stats: (workspaceId: string) => ["realtor-stats", workspaceId] as const,
-    appointments: (workspaceId: string) =>
-      ["realtor-appointments", workspaceId] as const,
+    appointments: (workspaceId: string) => ["realtor-appointments", workspaceId] as const,
   },
   roleplay: {
     all: (workspaceId: string) => ["roleplay", workspaceId] as const,
-    personas: (workspaceId: string) =>
-      ["roleplay", workspaceId, "personas"] as const,
+    personas: (workspaceId: string) => ["roleplay", workspaceId, "personas"] as const,
     runs: (workspaceId: string, params?: QueryKeyParams | null) =>
       ["roleplay", workspaceId, "runs", normalizeQueryKeyParams(params)] as const,
-    run: (workspaceId: string, runId: string) =>
-      ["roleplay", workspaceId, "run", runId] as const,
+    run: (workspaceId: string, runId: string) => ["roleplay", workspaceId, "run", runId] as const,
   },
   scorecard: {
     all: (workspaceId: string) => ["scorecard", workspaceId] as const,
@@ -389,10 +356,8 @@ export const queryKeys = {
     profile: () => ["settings", "profile"] as const,
     notifications: () => ["settings", "notifications"] as const,
     team: (workspaceId: string) => ["settings", "team", workspaceId] as const,
-    integrations: (workspaceId: string) =>
-      ["settings", "integrations", workspaceId] as const,
-    speedToLead: (workspaceId: string) =>
-      ["settings", "speed-to-lead", workspaceId] as const,
+    integrations: (workspaceId: string) => ["settings", "integrations", workspaceId] as const,
+    speedToLead: (workspaceId: string) => ["settings", "speed-to-lead", workspaceId] as const,
     speedToLeadMetrics: (workspaceId: string) =>
       ["settings", "speed-to-lead-metrics", workspaceId] as const,
     missedCallTextback: (workspaceId: string) =>

@@ -1,4 +1,4 @@
-import { apiPost, apiDelete } from "@/lib/api";
+import { apiDelete, apiGet, apiPost } from "@/lib/api";
 import { createApiClient } from "@/lib/api/create-api-client";
 import type { PhoneNumber } from "@/types";
 
@@ -42,6 +42,14 @@ export interface PurchasePhoneNumberRequest {
   phone_number: string;
 }
 
+export interface PhoneNumberTelephonyStatus {
+  enabled: boolean;
+  provider: "telnyx";
+  message: string;
+  action_label?: string | null;
+  action_href?: string | null;
+}
+
 // Create base API client with standard methods (list, get only - no create/update)
 // Note: release uses a different endpoint and return type than standard delete
 const basePhoneNumbersApi = createApiClient<PhoneNumber, never, never>({
@@ -61,39 +69,33 @@ const basePhoneNumbersApiWithGet = basePhoneNumbersApi as {
 export const phoneNumbersApi = {
   ...basePhoneNumbersApiWithGet,
 
+  getTelephonyStatus: async (workspaceId: string): Promise<PhoneNumberTelephonyStatus> => {
+    return apiGet<PhoneNumberTelephonyStatus>(
+      `/api/v1/workspaces/${workspaceId}/phone-numbers/telephony-status`,
+    );
+  },
+
   search: async (
     workspaceId: string,
-    params: SearchPhoneNumbersRequest
+    params: SearchPhoneNumbersRequest,
   ): Promise<PhoneNumberSearchResult[]> => {
     return apiPost<PhoneNumberSearchResult[]>(
       `/api/v1/workspaces/${workspaceId}/phone-numbers/search`,
-      params
+      params,
     );
   },
 
-  purchase: async (
-    workspaceId: string,
-    data: PurchasePhoneNumberRequest
-  ): Promise<PhoneNumber> => {
-    return apiPost<PhoneNumber>(
-      `/api/v1/workspaces/${workspaceId}/phone-numbers/purchase`,
-      data
-    );
+  purchase: async (workspaceId: string, data: PurchasePhoneNumberRequest): Promise<PhoneNumber> => {
+    return apiPost<PhoneNumber>(`/api/v1/workspaces/${workspaceId}/phone-numbers/purchase`, data);
   },
 
-  release: async (
-    workspaceId: string,
-    phoneNumberId: string
-  ): Promise<{ success: boolean }> => {
+  release: async (workspaceId: string, phoneNumberId: string): Promise<{ success: boolean }> => {
     return apiDelete<{ success: boolean }>(
-      `/api/v1/workspaces/${workspaceId}/phone-numbers/${phoneNumberId}`
+      `/api/v1/workspaces/${workspaceId}/phone-numbers/${phoneNumberId}`,
     );
   },
 
   sync: async (workspaceId: string): Promise<{ synced: number }> => {
-    return apiPost<{ synced: number }>(
-      `/api/v1/workspaces/${workspaceId}/phone-numbers/sync`,
-      {}
-    );
+    return apiPost<{ synced: number }>(`/api/v1/workspaces/${workspaceId}/phone-numbers/sync`, {});
   },
 };

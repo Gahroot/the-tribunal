@@ -7,15 +7,10 @@ import {
   SearchNumbersForm,
   SearchResultsContent,
   SyncFromTelnyxButton,
+  TelephonyUnavailableNotice,
   type PhoneNumbersTableVariant,
 } from "@/components/settings/phone-numbers-views";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { usePhoneNumberManager } from "@/hooks/usePhoneNumberManager";
 
@@ -30,6 +25,9 @@ export function PhoneNumbersTable({ variant }: PhoneNumbersTableProps) {
     phoneNumbers,
     isLoadingNumbers,
     numbersError,
+    telephonyStatus,
+    isLoadingTelephonyStatus,
+    isTelephonyUnavailable,
     country,
     setCountry,
     areaCode,
@@ -45,8 +43,19 @@ export function PhoneNumbersTable({ variant }: PhoneNumbersTableProps) {
     sync,
   } = usePhoneNumberManager();
 
+  const telephonyActionsDisabled = isLoadingTelephonyStatus || isTelephonyUnavailable;
+  const telephonyNotice =
+    isTelephonyUnavailable && phoneNumbers.length > 0 ? (
+      <TelephonyUnavailableNotice variant={variant} status={telephonyStatus} />
+    ) : null;
+
   const syncButton = (
-    <SyncFromTelnyxButton variant={variant} isSyncing={isSyncing} onSync={sync} />
+    <SyncFromTelnyxButton
+      variant={variant}
+      isSyncing={isSyncing}
+      disabled={telephonyActionsDisabled}
+      onSync={sync}
+    />
   );
 
   const ownedNumbersContent = (
@@ -55,6 +64,8 @@ export function PhoneNumbersTable({ variant }: PhoneNumbersTableProps) {
       phoneNumbers={phoneNumbers}
       isLoading={isLoadingNumbers}
       hasError={!!numbersError}
+      telephonyStatus={telephonyStatus}
+      isTelephonyUnavailable={isTelephonyUnavailable}
       onRelease={release}
     />
   );
@@ -67,11 +78,12 @@ export function PhoneNumbersTable({ variant }: PhoneNumbersTableProps) {
       areaCode={areaCode}
       onAreaCodeChange={setAreaCode}
       isSearching={isSearching}
+      disabled={telephonyActionsDisabled}
       onSubmit={handleSearch}
     />
   );
 
-  const searchResultsContent = (
+  const searchResultsContent = isTelephonyUnavailable ? null : (
     <SearchResultsContent
       variant={variant}
       hasSearched={hasSearched}
@@ -101,6 +113,7 @@ export function PhoneNumbersTable({ variant }: PhoneNumbersTableProps) {
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
+          {telephonyNotice}
           <div className="space-y-3">
             <h4 className="text-sm font-medium">Your Phone Numbers</h4>
             {ownedNumbersContent}
@@ -136,9 +149,7 @@ export function PhoneNumbersTable({ variant }: PhoneNumbersTableProps) {
             <Phone className="size-5" />
             Your Phone Numbers
           </CardTitle>
-          <CardDescription>
-            Phone numbers currently provisioned in your workspace
-          </CardDescription>
+          <CardDescription>Phone numbers currently provisioned in your workspace</CardDescription>
         </CardHeader>
         <CardContent>{ownedNumbersContent}</CardContent>
       </Card>
@@ -149,11 +160,10 @@ export function PhoneNumbersTable({ variant }: PhoneNumbersTableProps) {
             <Search className="size-5" />
             Search for New Numbers
           </CardTitle>
-          <CardDescription>
-            Find and purchase new phone numbers from Telnyx
-          </CardDescription>
+          <CardDescription>Find and purchase new phone numbers from Telnyx</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {telephonyNotice}
           {searchForm}
           {searchResultsContent}
         </CardContent>

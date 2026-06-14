@@ -5347,6 +5347,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/phone-numbers/telephony-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Phone Number Telephony Status
+         * @description Return whether this workspace can perform Telnyx phone-number actions.
+         */
+        get: operations["get_phone_number_telephony_status_api_v1_workspaces__workspace_id__phone_numbers_telephony_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/phone-numbers/{phone_number_id}": {
         parameters: {
             query?: never;
@@ -14645,6 +14665,26 @@ export interface components {
             workspace_id: string;
         };
         /**
+         * PhoneNumberTelephonyStatusResponse
+         * @description Whether workspace telephony actions are available.
+         */
+        PhoneNumberTelephonyStatusResponse: {
+            /** Action Href */
+            action_href?: string | null;
+            /** Action Label */
+            action_label?: string | null;
+            /** Enabled */
+            enabled: boolean;
+            /** Message */
+            message: string;
+            /**
+             * Provider
+             * @default telnyx
+             * @constant
+             */
+            provider: "telnyx";
+        };
+        /**
          * PhoneNumberUpdate
          * @description Schema for updating a phone number.
          */
@@ -16580,6 +16620,33 @@ export interface components {
             id: number;
             /** Role */
             role: string;
+        };
+        /**
+         * TelephonyUnavailableDetail
+         * @description Actionable error body returned when telephony is unavailable.
+         */
+        TelephonyUnavailableDetail: {
+            /**
+             * Code
+             * @default telephony_unavailable
+             * @constant
+             */
+            code: "telephony_unavailable";
+            details: components["schemas"]["TelephonyUnavailableDetails"];
+            /** Message */
+            message: string;
+            /** Request Id */
+            request_id?: string | null;
+        };
+        /**
+         * TelephonyUnavailableDetails
+         * @description Client action metadata for a telephony-unavailable error.
+         */
+        TelephonyUnavailableDetails: {
+            /** Action Href */
+            action_href: string;
+            /** Action Label */
+            action_label: string;
         };
         /**
          * TestContactAdd
@@ -28454,6 +28521,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Telephony provider credentials are not configured for this workspace. */
+            424: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelephonyUnavailableDetail"];
+                };
+            };
         };
     };
     search_phone_numbers_api_v1_workspaces__workspace_id__phone_numbers_search_post: {
@@ -28489,6 +28565,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Telephony provider credentials are not configured for this workspace. */
+            424: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelephonyUnavailableDetail"];
+                };
+            };
         };
     };
     sync_phone_numbers_api_v1_workspaces__workspace_id__phone_numbers_sync_post: {
@@ -28511,6 +28596,46 @@ export interface operations {
                     "application/json": {
                         [key: string]: number;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Telephony provider credentials are not configured for this workspace. */
+            424: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelephonyUnavailableDetail"];
+                };
+            };
+        };
+    };
+    get_phone_number_telephony_status_api_v1_workspaces__workspace_id__phone_numbers_telephony_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhoneNumberTelephonyStatusResponse"];
                 };
             };
             /** @description Validation Error */
@@ -28622,6 +28747,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Telephony provider credentials are not configured for this workspace. */
+            424: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelephonyUnavailableDetail"];
                 };
             };
         };

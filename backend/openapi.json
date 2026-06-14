@@ -21406,6 +21406,53 @@
         "title": "PhoneNumberResponse",
         "type": "object"
       },
+      "PhoneNumberTelephonyStatusResponse": {
+        "description": "Whether workspace telephony actions are available.",
+        "properties": {
+          "action_href": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Href"
+          },
+          "action_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Label"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "provider": {
+            "const": "telnyx",
+            "default": "telnyx",
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "message"
+        ],
+        "title": "PhoneNumberTelephonyStatusResponse",
+        "type": "object"
+      },
       "PhoneNumberUpdate": {
         "description": "Schema for updating a phone number.",
         "properties": {
@@ -26387,6 +26434,60 @@
           "created_at"
         ],
         "title": "TeamMemberResponse",
+        "type": "object"
+      },
+      "TelephonyUnavailableDetail": {
+        "description": "Actionable error body returned when telephony is unavailable.",
+        "properties": {
+          "code": {
+            "const": "telephony_unavailable",
+            "default": "telephony_unavailable",
+            "title": "Code",
+            "type": "string"
+          },
+          "details": {
+            "$ref": "#/components/schemas/TelephonyUnavailableDetails"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          }
+        },
+        "required": [
+          "message",
+          "details"
+        ],
+        "title": "TelephonyUnavailableDetail",
+        "type": "object"
+      },
+      "TelephonyUnavailableDetails": {
+        "description": "Client action metadata for a telephony-unavailable error.",
+        "properties": {
+          "action_href": {
+            "title": "Action Href",
+            "type": "string"
+          },
+          "action_label": {
+            "title": "Action Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action_label",
+          "action_href"
+        ],
+        "title": "TelephonyUnavailableDetails",
         "type": "object"
       },
       "TestContactAdd": {
@@ -49794,6 +49895,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "424": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelephonyUnavailableDetail"
+                }
+              }
+            },
+            "description": "Telephony provider credentials are not configured for this workspace."
           }
         },
         "security": [
@@ -49857,6 +49968,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "424": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelephonyUnavailableDetail"
+                }
+              }
+            },
+            "description": "Telephony provider credentials are not configured for this workspace."
           }
         },
         "security": [
@@ -49910,6 +50031,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "424": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelephonyUnavailableDetail"
+                }
+              }
+            },
+            "description": "Telephony provider credentials are not configured for this workspace."
           }
         },
         "security": [
@@ -49918,6 +50049,55 @@
           }
         ],
         "summary": "Sync Phone Numbers",
+        "tags": [
+          "Phone Numbers"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/phone-numbers/telephony-status": {
+      "get": {
+        "description": "Return whether this workspace can perform Telnyx phone-number actions.",
+        "operationId": "get_phone_number_telephony_status_api_v1_workspaces__workspace_id__phone_numbers_telephony_status_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhoneNumberTelephonyStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Phone Number Telephony Status",
         "tags": [
           "Phone Numbers"
         ]
@@ -49973,6 +50153,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "424": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelephonyUnavailableDetail"
+                }
+              }
+            },
+            "description": "Telephony provider credentials are not configured for this workspace."
           }
         },
         "security": [

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AlertCircle,
   Check,
   Loader2,
   MessageSquare,
@@ -11,7 +12,9 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
+import Link from "next/link";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,11 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  PageEmptyState,
-  PageErrorState,
-  PageLoadingState,
-} from "@/components/ui/page-state";
+import { PageEmptyState, PageErrorState, PageLoadingState } from "@/components/ui/page-state";
 import {
   Select,
   SelectContent,
@@ -47,7 +46,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { PhoneNumberSearchResult } from "@/lib/api/phone-numbers";
+import type { PhoneNumberSearchResult, PhoneNumberTelephonyStatus } from "@/lib/api/phone-numbers";
 import { formatPhoneNumber } from "@/lib/utils/phone";
 import type { PhoneNumber } from "@/types";
 
@@ -60,13 +59,50 @@ const COUNTRIES = [
   { code: "AU", name: "Australia" },
 ];
 
+const DEFAULT_TELEPHONY_ACTION_LABEL = "Open integrations settings";
+const DEFAULT_TELEPHONY_ACTION_HREF = "/settings?tab=integrations";
+
+function getTelephonyAction(status: PhoneNumberTelephonyStatus | null) {
+  return {
+    label: status?.action_label || DEFAULT_TELEPHONY_ACTION_LABEL,
+    href: status?.action_href || DEFAULT_TELEPHONY_ACTION_HREF,
+  };
+}
+
+export function TelephonyUnavailableNotice({
+  variant,
+  status,
+}: {
+  variant: PhoneNumbersTableVariant;
+  status: PhoneNumberTelephonyStatus | null;
+}) {
+  const action = getTelephonyAction(status);
+
+  return (
+    <Alert className={variant === "section" ? "text-left" : undefined}>
+      <AlertCircle className="size-4" />
+      <AlertTitle>Telephony is not enabled</AlertTitle>
+      <AlertDescription className="space-y-3">
+        <p>
+          {status?.message || "Ask an admin to connect Telnyx before adding SMS or voice numbers."}
+        </p>
+        <Button asChild variant="outline" size="sm">
+          <Link href={action.href}>{action.label}</Link>
+        </Button>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
 export function SyncFromTelnyxButton({
   variant,
   isSyncing,
+  disabled = false,
   onSync,
 }: {
   variant: PhoneNumbersTableVariant;
   isSyncing: boolean;
+  disabled?: boolean;
   onSync: () => void;
 }) {
   return (
@@ -74,7 +110,7 @@ export function SyncFromTelnyxButton({
       variant={variant === "section" ? "outline" : "default"}
       size={variant === "section" ? "sm" : "default"}
       onClick={onSync}
-      disabled={isSyncing}
+      disabled={disabled || isSyncing}
     >
       {isSyncing ? (
         <Loader2 className="mr-2 size-4 animate-spin" />
@@ -102,9 +138,8 @@ export function ReleaseNumberDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Release Phone Number</AlertDialogTitle>
           <AlertDialogDescription>
-            Are you sure you want to release{" "}
-            {formatPhoneNumber(number.phone_number)}? This action cannot be
-            undone and you may not be able to get this number back.
+            Are you sure you want to release {formatPhoneNumber(number.phone_number)}? This action
+            cannot be undone and you may not be able to get this number back.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -128,6 +163,7 @@ export function SearchNumbersForm({
   areaCode,
   onAreaCodeChange,
   isSearching,
+  disabled = false,
   onSubmit,
 }: {
   variant: PhoneNumbersTableVariant;
@@ -136,6 +172,7 @@ export function SearchNumbersForm({
   areaCode: string;
   onAreaCodeChange: (areaCode: string) => void;
   isSearching: boolean;
+  disabled?: boolean;
   onSubmit: (event: React.FormEvent) => void;
 }) {
   return (
@@ -144,7 +181,7 @@ export function SearchNumbersForm({
         <Label htmlFor="country" className="sr-only">
           Country
         </Label>
-        <Select value={country} onValueChange={onCountryChange}>
+        <Select value={country} onValueChange={onCountryChange} disabled={disabled}>
           <SelectTrigger id="country">
             <SelectValue placeholder="Country" />
           </SelectTrigger>
@@ -167,9 +204,10 @@ export function SearchNumbersForm({
           value={areaCode}
           onChange={(e) => onAreaCodeChange(e.target.value)}
           maxLength={3}
+          disabled={disabled || isSearching}
         />
       </div>
-      <Button type="submit" disabled={isSearching}>
+      <Button type="submit" disabled={disabled || isSearching}>
         {isSearching ? (
           <Loader2 className="mr-2 size-4 animate-spin" />
         ) : (
@@ -186,20 +224,20 @@ export function OwnedNumbersContent({
   phoneNumbers,
   isLoading,
   hasError,
+  telephonyStatus,
+  isTelephonyUnavailable,
   onRelease,
 }: {
   variant: PhoneNumbersTableVariant;
   phoneNumbers: PhoneNumber[];
   isLoading: boolean;
   hasError: boolean;
+  telephonyStatus: PhoneNumberTelephonyStatus | null;
+  isTelephonyUnavailable: boolean;
   onRelease: (phoneNumberId: string) => void;
 }) {
   if (isLoading) {
-    return (
-      <PageLoadingState
-        className={variant === "section" ? "min-h-0 py-8" : undefined}
-      />
-    );
+    return <PageLoadingState className={variant === "section" ? "min-h-0 py-8" : undefined} />;
   }
 
   if (hasError) {
@@ -212,6 +250,30 @@ export function OwnedNumbersContent({
   }
 
   if (phoneNumbers.length === 0) {
+    if (isTelephonyUnavailable) {
+      const action = getTelephonyAction(telephonyStatus);
+      return (
+        <PageEmptyState
+          icon={<Phone className={variant === "section" ? "size-8" : "size-12"} />}
+          title="Telephony is not enabled"
+          description={
+            telephonyStatus?.message ||
+            "Ask an admin to connect Telnyx before adding SMS or voice numbers."
+          }
+          action={
+            <Button asChild variant="outline" size="sm">
+              <Link href={action.href}>{action.label}</Link>
+            </Button>
+          }
+          className={
+            variant === "section"
+              ? "min-h-0 border rounded-lg border-dashed py-8"
+              : "border rounded-lg border-dashed"
+          }
+        />
+      );
+    }
+
     if (variant === "section") {
       return (
         <div className="text-center py-8 border rounded-lg border-dashed">
@@ -236,23 +298,16 @@ export function OwnedNumbersContent({
     return (
       <div className="space-y-2">
         {phoneNumbers.map((number) => (
-          <div
-            key={number.id}
-            className="flex items-center justify-between p-3 rounded-lg border"
-          >
+          <div key={number.id} className="flex items-center justify-between p-3 rounded-lg border">
             <div className="flex items-center gap-3">
               <div className="flex size-8 items-center justify-center rounded-full bg-green-500/10">
                 <Phone className="size-4 text-green-500" />
               </div>
               <div>
-                <p className="font-medium">
-                  {formatPhoneNumber(number.phone_number)}
-                </p>
+                <p className="font-medium">{formatPhoneNumber(number.phone_number)}</p>
                 <div className="flex items-center gap-2 mt-0.5">
                   {number.friendly_name && (
-                    <span className="text-xs text-muted-foreground">
-                      {number.friendly_name}
-                    </span>
+                    <span className="text-xs text-muted-foreground">{number.friendly_name}</span>
                   )}
                 </div>
               </div>
@@ -278,9 +333,7 @@ export function OwnedNumbersContent({
                   </Badge>
                 )}
               </div>
-              {number.assigned_agent_id && (
-                <Badge variant="secondary">Assigned to Agent</Badge>
-              )}
+              {number.assigned_agent_id && <Badge variant="secondary">Assigned to Agent</Badge>}
               <ReleaseNumberDialog
                 number={number}
                 onRelease={onRelease}
@@ -315,13 +368,9 @@ export function OwnedNumbersContent({
       <TableBody>
         {phoneNumbers.map((number) => (
           <TableRow key={number.id}>
-            <TableCell className="font-medium">
-              {formatPhoneNumber(number.phone_number)}
-            </TableCell>
+            <TableCell className="font-medium">{formatPhoneNumber(number.phone_number)}</TableCell>
             <TableCell>
-              {number.friendly_name || (
-                <span className="text-muted-foreground">-</span>
-              )}
+              {number.friendly_name || <span className="text-muted-foreground">-</span>}
             </TableCell>
             <TableCell>
               <div className="flex items-center gap-1.5">
@@ -347,9 +396,7 @@ export function OwnedNumbersContent({
             </TableCell>
             <TableCell>
               {number.is_active ? (
-                <Badge className="bg-green-500/10 text-green-600 border-green-500/20">
-                  Active
-                </Badge>
+                <Badge className="bg-green-500/10 text-green-600 border-green-500/20">Active</Badge>
               ) : (
                 <Badge variant="secondary">Inactive</Badge>
               )}
@@ -399,9 +446,7 @@ export function SearchResultsContent({
         >
           <p
             className={
-              variant === "section"
-                ? "text-sm text-muted-foreground"
-                : "text-muted-foreground"
+              variant === "section" ? "text-sm text-muted-foreground" : "text-muted-foreground"
             }
           >
             No available numbers found. Try a different area code.
@@ -433,9 +478,7 @@ export function SearchResultsContent({
                     />
                   </div>
                   <div>
-                    <p className="font-medium">
-                      {formatPhoneNumber(result.phone_number)}
-                    </p>
+                    <p className="font-medium">{formatPhoneNumber(result.phone_number)}</p>
                     <div
                       className={`flex items-center ${variant === "section" ? "gap-1.5" : "gap-2"} mt-0.5`}
                     >

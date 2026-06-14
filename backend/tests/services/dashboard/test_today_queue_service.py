@@ -27,6 +27,7 @@ from app.models.tag import ContactTag, Tag
 from app.models.workspace import Workspace
 from app.services.ad_intelligence.monitors import build_monitor_config
 from app.services.dashboard.today_queue_service import TodayQueueService
+from app.services.telephony import availability
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -63,7 +64,11 @@ def _contact(workspace_id: uuid.UUID, *, phone: str, **kw) -> Contact:
     return Contact(**base)
 
 
-async def test_empty_workspace_surfaces_only_setup_gaps() -> None:
+async def test_empty_workspace_surfaces_only_setup_gaps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(availability.settings, "telnyx_api_key", "server-key")
+
     async with AsyncSessionLocal() as db:
         ws = await _workspace(db)
         queue = await TodayQueueService(db).get_today_queue(ws.id)
@@ -72,6 +77,26 @@ async def test_empty_workspace_surfaces_only_setup_gaps() -> None:
         assert kinds == ["setup_gap", "setup_gap", "setup_gap", "setup_gap"]
         gaps = {item.payload["gap"] for item in queue.items}
         assert gaps == {"monitor", "offer", "autopilot", "phone"}
+
+
+async def test_empty_workspace_surfaces_telephony_gap_when_telnyx_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(availability.settings, "telnyx_api_key", "")
+
+    async with AsyncSessionLocal() as db:
+        ws = await _workspace(db)
+        queue = await TodayQueueService(db).get_today_queue(ws.id)
+
+        telephony_gap = next(
+            item
+            for item in queue.items
+            if item.kind == "setup_gap" and item.payload["gap"] == "telephony"
+        )
+        assert telephony_gap.title == "Telephony is not connected"
+        assert telephony_gap.body == availability.TELEPHONY_UNAVAILABLE_MESSAGE
+        assert telephony_gap.cta_label == "Connect Telnyx"
+        assert telephony_gap.href == availability.TELEPHONY_SETUP_ACTION_HREF
 
 
 async def test_queue_is_ordered_and_complete() -> None:

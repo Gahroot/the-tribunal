@@ -1,6 +1,7 @@
 """Phone number schemas for phone number management endpoints."""
 
 import uuid
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -65,3 +66,29 @@ class PhoneNumberInfoResponse(BaseModel):
     phone_number: str
     friendly_name: str | None
     capabilities: dict[str, bool] | None
+
+
+class PhoneNumberTelephonyStatusResponse(BaseModel):
+    """Whether workspace telephony actions are available."""
+
+    enabled: bool
+    provider: Literal["telnyx"] = "telnyx"
+    message: str
+    action_label: str | None = None
+    action_href: str | None = None
+
+
+class TelephonyUnavailableDetails(BaseModel):
+    """Client action metadata for a telephony-unavailable error."""
+
+    action_label: str
+    action_href: str
+
+
+class TelephonyUnavailableDetail(BaseModel):
+    """Actionable error body returned when telephony is unavailable."""
+
+    code: Literal["telephony_unavailable"] = "telephony_unavailable"
+    message: str
+    details: TelephonyUnavailableDetails
+    request_id: str | None = None

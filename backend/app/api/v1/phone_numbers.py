@@ -7,7 +7,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser, get_workspace
-from app.core.config import settings
 from app.db.pagination import paginate
 from app.models.phone_number import PhoneNumber
 from app.models.workspace import Workspace
@@ -15,13 +14,41 @@ from app.schemas.phone_number import (
     PaginatedPhoneNumbers,
     PhoneNumberInfoResponse,
     PhoneNumberResponse,
+    PhoneNumberTelephonyStatusResponse,
     PhoneNumberUpdate,
     PurchasePhoneNumberRequest,
     SearchPhoneNumbersRequest,
+    TelephonyUnavailableDetail,
+)
+from app.services.telephony.availability import (
+    TELEPHONY_ENABLED_MESSAGE,
+    TELEPHONY_PROVIDER,
+    TELEPHONY_SETUP_ACTION_HREF,
+    TELEPHONY_SETUP_ACTION_LABEL,
+    TELEPHONY_UNAVAILABLE_MESSAGE,
+    get_telnyx_api_key_for_workspace,
+    telephony_unavailable_detail,
 )
 from app.services.telephony.telnyx import TelnyxSMSService
 
 router = APIRouter()
+
+
+_TELEPHONY_UNAVAILABLE_RESPONSE = {
+    "model": TelephonyUnavailableDetail,
+    "description": "Telephony provider credentials are not configured for this workspace.",
+}
+
+
+async def _get_telnyx_api_key_or_raise(db: DB, workspace_id: uuid.UUID) -> str:
+    api_key = await get_telnyx_api_key_for_workspace(db, workspace_id)
+    if api_key:
+        return api_key
+
+    raise HTTPException(
+        status_code=status.HTTP_424_FAILED_DEPENDENCY,
+        detail=telephony_unavailable_detail(),
+    )
 
 
 @router.get("", response_model=PaginatedPhoneNumbers)
@@ -49,6 +76,24 @@ async def list_phone_numbers(
     result = await paginate(db, query, page=page, page_size=page_size)
 
     return PaginatedPhoneNumbers(**result.to_response(PhoneNumberResponse))
+
+
+@router.get("/telephony-status", response_model=PhoneNumberTelephonyStatusResponse)
+async def get_phone_number_telephony_status(
+    workspace_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> PhoneNumberTelephonyStatusResponse:
+    """Return whether this workspace can perform Telnyx phone-number actions."""
+    enabled = bool(await get_telnyx_api_key_for_workspace(db, workspace_id))
+    return PhoneNumberTelephonyStatusResponse(
+        enabled=enabled,
+        provider=TELEPHONY_PROVIDER,
+        message=TELEPHONY_ENABLED_MESSAGE if enabled else TELEPHONY_UNAVAILABLE_MESSAGE,
+        action_label=None if enabled else TELEPHONY_SETUP_ACTION_LABEL,
+        action_href=None if enabled else TELEPHONY_SETUP_ACTION_HREF,
+    )
 
 
 @router.get("/{phone_number_id}", response_model=PhoneNumberResponse)
@@ -111,21 +156,22 @@ async def update_phone_number(
     return phone_number
 
 
-@router.post("/search", response_model=list[PhoneNumberInfoResponse])
+@router.post(
+    "/search",
+    response_model=list[PhoneNumberInfoResponse],
+    responses={status.HTTP_424_FAILED_DEPENDENCY: _TELEPHONY_UNAVAILABLE_RESPONSE},
+)
 async def search_phone_numbers(
     workspace_id: uuid.UUID,
     request_data: SearchPhoneNumbersRequest,
     current_user: CurrentUser,
+    db: DB,
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> list[PhoneNumberInfoResponse]:
     """Search for available phone numbers to purchase."""
-    if not settings.telnyx_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Telnyx not configured",
-        )
+    telnyx_api_key = await _get_telnyx_api_key_or_raise(db, workspace_id)
 
-    service = TelnyxSMSService(settings.telnyx_api_key)
+    service = TelnyxSMSService(telnyx_api_key)
     try:
         numbers = await service.search_phone_numbers(
             country=request_data.country,
@@ -146,7 +192,11 @@ async def search_phone_numbers(
         await service.close()
 
 
-@router.post("/purchase", response_model=PhoneNumberResponse)
+@router.post(
+    "/purchase",
+    response_model=PhoneNumberResponse,
+    responses={status.HTTP_424_FAILED_DEPENDENCY: _TELEPHONY_UNAVAILABLE_RESPONSE},
+)
 async def purchase_phone_number(
     workspace_id: uuid.UUID,
     request_data: PurchasePhoneNumberRequest,
@@ -155,13 +205,9 @@ async def purchase_phone_number(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> PhoneNumber:
     """Purchase a phone number from Telnyx."""
-    if not settings.telnyx_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Telnyx not configured",
-        )
+    telnyx_api_key = await _get_telnyx_api_key_or_raise(db, workspace_id)
 
-    service = TelnyxSMSService(settings.telnyx_api_key)
+    service = TelnyxSMSService(telnyx_api_key)
     try:
         # Purchase from Telnyx
         purchased = await service.purchase_phone_number(request_data.phone_number)
@@ -184,7 +230,10 @@ async def purchase_phone_number(
         await service.close()
 
 
-@router.delete("/{phone_number_id}")
+@router.delete(
+    "/{phone_number_id}",
+    responses={status.HTTP_424_FAILED_DEPENDENCY: _TELEPHONY_UNAVAILABLE_RESPONSE},
+)
 async def release_phone_number(
     workspace_id: uuid.UUID,
     phone_number_id: uuid.UUID,
@@ -207,15 +256,11 @@ async def release_phone_number(
             detail="Phone number not found",
         )
 
-    if not settings.telnyx_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Telnyx not configured",
-        )
+    telnyx_api_key = await _get_telnyx_api_key_or_raise(db, workspace_id)
 
     # Release from Telnyx if we have the provider ID
     if phone_number.telnyx_phone_number_id:
-        service = TelnyxSMSService(settings.telnyx_api_key)
+        service = TelnyxSMSService(telnyx_api_key)
         try:
             await service.release_phone_number(phone_number.telnyx_phone_number_id)
         finally:
@@ -228,7 +273,10 @@ async def release_phone_number(
     return {"success": True}
 
 
-@router.post("/sync")
+@router.post(
+    "/sync",
+    responses={status.HTTP_424_FAILED_DEPENDENCY: _TELEPHONY_UNAVAILABLE_RESPONSE},
+)
 async def sync_phone_numbers(
     workspace_id: uuid.UUID,
     current_user: CurrentUser,
@@ -236,13 +284,9 @@ async def sync_phone_numbers(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> dict[str, int]:
     """Sync phone numbers from Telnyx account."""
-    if not settings.telnyx_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Telnyx not configured",
-        )
+    telnyx_api_key = await _get_telnyx_api_key_or_raise(db, workspace_id)
 
-    service = TelnyxSMSService(settings.telnyx_api_key)
+    service = TelnyxSMSService(telnyx_api_key)
     try:
         telnyx_numbers = await service.list_phone_numbers()
     finally:
