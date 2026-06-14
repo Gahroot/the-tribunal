@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Info, Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -105,74 +105,72 @@ export function ReviewSettingsTab() {
         </CardContent>
       </Card>
 
-      {enabled && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Rating Gate</CardTitle>
-            <CardDescription>
-              Choose the minimum star rating that routes a customer to your
-              public review page. Lower ratings go to private feedback.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-2">
-              <Label>Positive threshold</Label>
-              <Select
-                value={String(settings?.positive_threshold ?? 4)}
-                onValueChange={(value) =>
-                  update({ positive_threshold: Number(value) })
-                }
-              >
-                <SelectTrigger className="w-48">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="3">3 stars and up</SelectItem>
-                  <SelectItem value="4">4 stars and up</SelectItem>
-                  <SelectItem value="5">5 stars only</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+      <Card id="public-review-destination">
+        <CardHeader>
+          <CardTitle>Rating Gate</CardTitle>
+          <CardDescription>
+            Choose the minimum star rating that routes a customer to your public
+            review page. Lower ratings go to private feedback.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-2">
+            <Label>Positive threshold</Label>
+            <Select
+              value={String(settings?.positive_threshold ?? 4)}
+              onValueChange={(value) =>
+                update({ positive_threshold: Number(value) })
+              }
+            >
+              <SelectTrigger className="w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="3">3 stars and up</SelectItem>
+                <SelectItem value="4">4 stars and up</SelectItem>
+                <SelectItem value="5">5 stars only</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="google-url">Google review URL</Label>
-              <Input
-                id="google-url"
-                placeholder="https://g.page/r/…/review"
-                defaultValue={settings?.google_review_url ?? ""}
-                onBlur={(e) =>
-                  update({ google_review_url: e.target.value || null })
-                }
-                disabled={mutation.isPending}
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="google-url">Google review URL</Label>
+            <Input
+              id="google-url"
+              placeholder="https://g.page/r/…/review"
+              defaultValue={settings?.google_review_url ?? ""}
+              onBlur={(e) =>
+                update({ google_review_url: e.target.value || null })
+              }
+              disabled={mutation.isPending}
+            />
+          </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="facebook-url">Facebook review URL</Label>
-              <Input
-                id="facebook-url"
-                placeholder="https://facebook.com/…/reviews"
-                defaultValue={settings?.facebook_review_url ?? ""}
-                onBlur={(e) =>
-                  update({ facebook_review_url: e.target.value || null })
-                }
-                disabled={mutation.isPending}
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="facebook-url">Facebook review URL</Label>
+            <Input
+              id="facebook-url"
+              placeholder="https://facebook.com/…/reviews"
+              defaultValue={settings?.facebook_review_url ?? ""}
+              onBlur={(e) =>
+                update({ facebook_review_url: e.target.value || null })
+              }
+              disabled={mutation.isPending}
+            />
+          </div>
 
-            {!settings?.google_review_url &&
-              !settings?.facebook_review_url && (
-                <Alert>
-                  <Info className="size-4" />
-                  <AlertDescription>
-                    Add at least one public review URL so positive ratings have
-                    somewhere to go.
-                  </AlertDescription>
-                </Alert>
-              )}
-          </CardContent>
-        </Card>
-      )}
+          {!settings?.google_review_url && !settings?.facebook_review_url && (
+            <Alert className="border-warning/40 bg-warning/10">
+              <AlertTriangle className="size-4 text-warning" />
+              <AlertDescription>
+                Add at least one public review URL before sending review
+                requests. Positive ratings cannot be routed to Google or
+                Facebook without a destination.
+              </AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
 
       {enabled && (
         <Card>

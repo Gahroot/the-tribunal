@@ -169,6 +169,9 @@ class ReviewService:
         review_settings = self.get_settings(workspace)
         if not review_settings.enabled or not review_settings.auto_request_on_completion:
             return None
+        if _public_review_url(review_settings) is None:
+            log.info("review_request_skipped_missing_public_destination")
+            return None
 
         existing = await self.db.execute(
             select(ReviewRequest).where(
@@ -284,17 +287,24 @@ class ReviewService:
         """
         log = self.log.bind(review_request_id=str(review_request.id), contact_id=contact.id)
         review_settings = self.get_settings(workspace)
-
         telnyx_key = settings.telnyx_api_key
-        if not telnyx_key:
-            return await self._fail_request(
-                review_request, "Telnyx not configured", log, "telnyx_not_configured"
+        failure: tuple[str, str] | None = None
+        if _public_review_url(review_settings) is None:
+            failure = (
+                "Add a Google or Facebook review URL before sending review requests.",
+                "missing_public_review_destination",
             )
+        elif not telnyx_key:
+            failure = ("Telnyx not configured", "telnyx_not_configured")
+        elif not contact.phone_number:
+            failure = ("Contact has no phone number", "no_phone")
 
-        if not contact.phone_number:
-            return await self._fail_request(
-                review_request, "Contact has no phone number", log, "no_phone"
-            )
+        if failure is not None:
+            detail, reason = failure
+            return await self._fail_request(review_request, detail, log, reason)
+
+        assert telnyx_key is not None
+        assert contact.phone_number is not None
 
         opt_out_manager = OptOutManager()
         is_opted_out = await opt_out_manager.check_opt_out(
@@ -484,17 +494,19 @@ class ReviewService:
             is_positive = rating >= review_settings.positive_threshold
 
         redirect_url = _public_review_url(review_settings) if is_positive else None
+        public_review_destination_missing = is_positive and redirect_url is None
         if is_positive:
             message = (
                 "Thanks! Redirecting you to leave a public review."
                 if redirect_url
-                else "Thank you for the great rating!"
+                else "Thanks for the great rating — your feedback has been recorded."
             )
             return PublicRatingResult(
                 success=True,
                 rating=rating,
                 is_positive=True,
                 redirect_url=redirect_url,
+                public_review_destination_missing=public_review_destination_missing,
                 show_feedback_form=False,
                 message=message,
             )
@@ -504,6 +516,7 @@ class ReviewService:
             rating=rating,
             is_positive=False,
             redirect_url=None,
+            public_review_destination_missing=False,
             show_feedback_form=True,
             message="Thanks for your honesty. Please tell us how we can do better.",
         )

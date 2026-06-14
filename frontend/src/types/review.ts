@@ -136,6 +136,7 @@ export interface PublicRatingResult {
   rating: number;
   is_positive: boolean;
   redirect_url: string | null;
+  public_review_destination_missing: boolean;
   show_feedback_form: boolean;
   message: string;
 }

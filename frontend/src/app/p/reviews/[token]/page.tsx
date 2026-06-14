@@ -68,6 +68,7 @@ export default function PublicReviewPage({ params }: PublicReviewPageProps) {
           rating: data.rating ?? 0,
           is_positive: (data.rating ?? 0) >= data.positive_threshold,
           redirect_url: null,
+          public_review_destination_missing: false,
           show_feedback_form: false,
           message: "Thanks — you've already responded.",
         }

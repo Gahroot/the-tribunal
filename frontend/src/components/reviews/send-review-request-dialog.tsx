@@ -1,10 +1,12 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Loader2, Search, Send } from "lucide-react";
+import { AlertTriangle, Check, Loader2, Search, Send } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -48,7 +50,15 @@ export function SendReviewRequestDialog() {
     enabled: !!workspaceId && open,
   });
 
+  const { data: settings, isPending: settingsLoading } = useQuery({
+    queryKey: queryKeys.reviews.settings(workspaceId ?? ""),
+    queryFn: () => reviewsApi.getSettings(workspaceId!),
+    enabled: !!workspaceId && open,
+  });
+
   const contacts = data?.items ?? [];
+  const missingPublicReviewDestination =
+    settings && !settings.google_review_url && !settings.facebook_review_url;
 
   const mutation = useMutation({
     mutationFn: (contactId: number) =>
@@ -107,6 +117,24 @@ export function SendReviewRequestDialog() {
         </DialogHeader>
 
         <div className="space-y-3">
+          {missingPublicReviewDestination && (
+            <Alert className="border-warning/40 bg-warning/10">
+              <AlertTriangle className="size-4 text-warning" />
+              <AlertTitle>Set a public review destination first</AlertTitle>
+              <AlertDescription className="space-y-3">
+                <p>
+                  Review requests are paused because happy customers would not be
+                  routed to Google or Facebook yet.
+                </p>
+                <Button asChild size="sm" variant="outline">
+                  <Link href="/settings?tab=reviews#public-review-destination">
+                    Open review settings
+                  </Link>
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="relative">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -173,7 +201,12 @@ export function SendReviewRequestDialog() {
           <Button
             className="gap-2"
             onClick={() => selected && mutation.mutate(selected.id)}
-            disabled={!selected || mutation.isPending}
+            disabled={
+              !selected ||
+              mutation.isPending ||
+              settingsLoading ||
+              !!missingPublicReviewDestination
+            }
           >
             {mutation.isPending && <Loader2 className="size-4 animate-spin" />}
             Send request

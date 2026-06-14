@@ -15247,6 +15247,11 @@ export interface components {
             is_positive: boolean;
             /** Message */
             message: string;
+            /**
+             * Public Review Destination Missing
+             * @default false
+             */
+            public_review_destination_missing: boolean;
             /** Rating */
             rating: number;
             /** Redirect Url */

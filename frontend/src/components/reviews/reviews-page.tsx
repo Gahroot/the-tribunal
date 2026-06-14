@@ -1,12 +1,15 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Star, MessageSquareWarning, ShieldCheck, Send } from "lucide-react";
+import { AlertTriangle, MessageSquareWarning, Send, ShieldCheck, Star } from "lucide-react";
+import Link from "next/link";
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { ReputationOverview } from "@/components/reviews/reputation-overview";
 import { ReviewRequestsTab } from "@/components/reviews/review-requests-tab";
 import { ReviewsList } from "@/components/reviews/reviews-list";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageErrorState, PageLoadingState } from "@/components/ui/page-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -30,6 +33,16 @@ export function ReviewsPage() {
     ...POLL_60S,
   });
 
+  const { data: settings } = useQuery({
+    queryKey: queryKeys.reviews.settings(workspaceId ?? ""),
+    queryFn: () => reviewsApi.getSettings(workspaceId!),
+    enabled: !!workspaceId,
+    ...POLL_60S,
+  });
+
+  const missingPublicReviewDestination =
+    settings && !settings.google_review_url && !settings.facebook_review_url;
+
   return (
     <AppSidebar>
       <div className="p-6 space-y-6">
@@ -44,6 +57,24 @@ export function ReviewsPage() {
             </p>
           </div>
         </div>
+
+        {missingPublicReviewDestination && (
+          <Alert className="border-warning/40 bg-warning/10">
+            <AlertTriangle className="size-4 text-warning" />
+            <AlertTitle>No public review destination set</AlertTitle>
+            <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <span>
+                Happy customers won&apos;t be routed to Google or Facebook until you
+                add a public review URL.
+              </span>
+              <Button asChild size="sm" variant="outline" className="shrink-0">
+                <Link href="/settings?tab=reviews#public-review-destination">
+                  Set review destination
+                </Link>
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {isPending ? (
           <PageLoadingState message="Loading reputation…" />

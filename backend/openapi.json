@@ -23011,6 +23011,11 @@
             "title": "Message",
             "type": "string"
           },
+          "public_review_destination_missing": {
+            "default": false,
+            "title": "Public Review Destination Missing",
+            "type": "boolean"
+          },
           "rating": {
             "title": "Rating",
             "type": "integer"

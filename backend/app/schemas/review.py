@@ -285,9 +285,11 @@ class PublicRatingResult(BaseModel):
     success: bool
     rating: int
     is_positive: bool
-    # When positive, the public review site to redirect to (may be null if the
-    # workspace has not configured one — client then shows a thank-you).
+    # When positive, the public review site to redirect to.
     redirect_url: str | None = None
+    # True when a positive rating could not be routed because the workspace has
+    # not configured a Google/Facebook review destination.
+    public_review_destination_missing: bool = False
     # When negative, the client renders the private feedback form.
     show_feedback_form: bool = False
     message: str
