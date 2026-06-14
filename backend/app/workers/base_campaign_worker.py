@@ -117,7 +117,14 @@ class BaseCampaignWorker(RetryableWorker, BaseWorker):
             return
 
         if self.requires_telnyx_api_key and not settings.telnyx_api_key:
-            log.warning("No Telnyx API key configured")
+            error_message = (
+                "Telnyx voice is not configured. Add TELNYX_API_KEY before running voice campaigns."
+            )
+            log.warning("No Telnyx API key configured", error=error_message)
+            if campaign.last_error != error_message:
+                campaign.last_error = error_message
+                campaign.last_error_at = datetime.now(UTC)
+                await db.commit()
             return
 
         await self._process_campaign_contacts(campaign, db, log)

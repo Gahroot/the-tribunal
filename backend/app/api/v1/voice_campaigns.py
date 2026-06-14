@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DB, CurrentUser, get_workspace
+from app.core.config import settings
 from app.db.pagination import paginate
 from app.db.scope import apply_workspace_scope
 from app.models.agent import Agent
@@ -21,6 +22,7 @@ from app.models.campaign import (
     CampaignType,
 )
 from app.models.contact import Contact
+from app.models.phone_number import PhoneNumber, PhoneNumberProvider
 from app.models.workspace import Workspace
 from app.schemas.campaign import (
     CampaignContactAdd,
@@ -59,6 +61,40 @@ async def _get_voice_campaign(
         )
 
     return campaign
+
+
+async def _validate_voice_campaign_sender(
+    db: AsyncSession,
+    workspace_id: uuid.UUID,
+    from_phone_number: str,
+) -> None:
+    """Ensure a voice campaign sender can place Telnyx voice calls."""
+    sender_result = await db.execute(
+        apply_workspace_scope(select(PhoneNumber), PhoneNumber, workspace_id).where(
+            PhoneNumber.phone_number == from_phone_number,
+            PhoneNumber.provider == PhoneNumberProvider.TELNYX,
+            PhoneNumber.is_active.is_(True),
+            PhoneNumber.voice_enabled.is_(True),
+        )
+    )
+    sender = sender_result.scalar_one_or_none()
+    if sender is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Voice campaign sender phone number is not active or voice-enabled. "
+                "Assign an active voice-enabled Telnyx number to this workspace before starting."
+            ),
+        )
+
+    if not settings.telnyx_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Telnyx voice is not configured. "
+                "Add TELNYX_API_KEY before starting voice campaigns."
+            ),
+        )
 
 
 @router.get("", response_model=PaginatedVoiceCampaigns)
@@ -315,6 +351,8 @@ async def start_voice_campaign(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Voice agent no longer exists",
             )
+
+    await _validate_voice_campaign_sender(db, workspace_id, campaign.from_phone_number)
 
     campaign.status = CampaignStatus.RUNNING
     campaign.started_at = datetime.now(UTC)

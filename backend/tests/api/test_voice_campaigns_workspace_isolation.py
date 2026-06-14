@@ -18,6 +18,7 @@ from app.api.v1 import voice_campaigns as voice_campaigns_module
 from app.models.agent import Agent
 from app.models.campaign import Campaign, CampaignStatus, CampaignType
 from app.models.contact import Contact
+from app.models.phone_number import PhoneNumber
 
 WS_ID = uuid.uuid4()
 CAMPAIGN_ID = uuid.uuid4()
@@ -32,6 +33,12 @@ async def _test_lifespan(app: FastAPI) -> AsyncIterator[None]:
 def _scalar_result(value: object | None) -> MagicMock:
     result = MagicMock()
     result.scalar_one_or_none.return_value = value
+    return result
+
+
+def _count_result(value: int) -> MagicMock:
+    result = MagicMock()
+    result.scalar.return_value = value
     return result
 
 
@@ -132,6 +139,17 @@ def _make_contact(contact_id: int) -> Contact:
         phone_number=f"+1555000{contact_id:04d}",
         phone_hash=f"phone-{contact_id}",
         status="new",
+    )
+
+
+def _make_phone_number(*, voice_enabled: bool = True) -> PhoneNumber:
+    return PhoneNumber(
+        id=uuid.uuid4(),
+        workspace_id=WS_ID,
+        phone_number="+15551234567",
+        is_active=True,
+        voice_enabled=voice_enabled,
+        sms_enabled=True,
     )
 
 
@@ -252,3 +270,55 @@ async def test_add_contacts_to_voice_campaign_enrolls_only_workspace_contacts(
     created_link = mock_db.add.call_args.args[0]
     assert created_link.contact_id == 1
     assert campaign.total_contacts == 1
+
+
+async def test_start_voice_campaign_rejects_missing_voice_sender(
+    client: AsyncClient,
+    mock_db: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    campaign = _make_campaign()
+    agent = _make_agent(agent_id=campaign.voice_agent_id)
+    monkeypatch.setattr(voice_campaigns_module.settings, "telnyx_api_key", "")
+    mock_db.execute = AsyncMock(
+        side_effect=[
+            _scalar_result(campaign),
+            _count_result(3),
+            _scalar_result(agent),
+            _scalar_result(None),
+        ]
+    )
+
+    response = await client.post(f"/api/v1/workspaces/{WS_ID}/voice-campaigns/{CAMPAIGN_ID}/start")
+
+    assert response.status_code == 400
+    assert "voice-enabled Telnyx number" in response.json()["detail"]
+    assert campaign.status == CampaignStatus.DRAFT
+    mock_db.commit.assert_not_awaited()
+    _assert_scoped_query(mock_db.execute.await_args_list[3].args[0], "phone_numbers")
+
+
+async def test_start_voice_campaign_rejects_unconfigured_telnyx(
+    client: AsyncClient,
+    mock_db: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    campaign = _make_campaign()
+    agent = _make_agent(agent_id=campaign.voice_agent_id)
+    monkeypatch.setattr(voice_campaigns_module.settings, "telnyx_api_key", "")
+    mock_db.execute = AsyncMock(
+        side_effect=[
+            _scalar_result(campaign),
+            _count_result(3),
+            _scalar_result(agent),
+            _scalar_result(_make_phone_number()),
+        ]
+    )
+
+    response = await client.post(f"/api/v1/workspaces/{WS_ID}/voice-campaigns/{CAMPAIGN_ID}/start")
+
+    assert response.status_code == 503
+    assert "TELNYX_API_KEY" in response.json()["detail"]
+    assert campaign.status == CampaignStatus.DRAFT
+    mock_db.commit.assert_not_awaited()
+    _assert_scoped_query(mock_db.execute.await_args_list[3].args[0], "phone_numbers")
