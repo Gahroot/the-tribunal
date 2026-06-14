@@ -1,6 +1,7 @@
 """Segment repository - data access layer for segment operations."""
 
 import uuid
+from datetime import datetime
 from typing import Any
 
 import structlog
@@ -47,6 +48,8 @@ async def create_segment(
     db: AsyncSession,
     description: str | None = None,
     is_dynamic: bool = True,
+    contact_count: int = 0,
+    last_computed_at: datetime | None = None,
 ) -> Segment:
     """Create a new segment."""
     segment = Segment(
@@ -55,6 +58,8 @@ async def create_segment(
         description=description,
         definition=definition,
         is_dynamic=is_dynamic,
+        contact_count=contact_count,
+        last_computed_at=last_computed_at,
     )
     db.add(segment)
     await db.commit()

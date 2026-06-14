@@ -9,6 +9,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.pagination import list_response
+from app.models.segment import Segment
 from app.schemas.segment import SegmentResponse
 from app.services.segments.segment_repository import (
     create_segment,
@@ -62,6 +63,15 @@ class SegmentService:
         is_dynamic: bool = True,
     ) -> SegmentResponse:
         """Create a new segment."""
+        segment_seed = Segment(
+            workspace_id=workspace_id,
+            name=name,
+            description=description,
+            definition=definition,
+            is_dynamic=is_dynamic,
+        )
+        _ids, total = await resolve_segment_contacts(segment_seed, self.db)
+        computed_at = datetime.now(UTC)
         segment = await create_segment(
             workspace_id=workspace_id,
             name=name,
@@ -69,6 +79,8 @@ class SegmentService:
             db=self.db,
             description=description,
             is_dynamic=is_dynamic,
+            contact_count=total,
+            last_computed_at=computed_at,
         )
         return SegmentResponse.model_validate(segment)
 
