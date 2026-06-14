@@ -12,28 +12,21 @@ import {
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
+import Link from "next/link";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  PageErrorState,
-  PageLoadingState,
-} from "@/components/ui/page-state";
+import { PageErrorState, PageLoadingState } from "@/components/ui/page-state";
 import { opportunitiesApi } from "@/lib/api/opportunities";
 import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 import { getApiErrorMessage } from "@/lib/utils/errors";
-import type {
-  CoachActionChannel,
-  DealHealthStatus,
-} from "@/types";
+import type { CoachActionChannel, DealHealthStatus } from "@/types";
 
-const HEALTH_STYLES: Record<
-  DealHealthStatus,
-  { label: string; badge: string; bar: string }
-> = {
+const HEALTH_STYLES: Record<DealHealthStatus, { label: string; badge: string; bar: string }> = {
   healthy: {
     label: "Healthy",
     badge: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
@@ -71,6 +64,7 @@ interface DealCoachCardProps {
 
 export function DealCoachCard({ workspaceId, opportunityId }: DealCoachCardProps) {
   const queryClient = useQueryClient();
+  const [queuedActionId, setQueuedActionId] = useState<string | null>(null);
 
   const {
     data: card,
@@ -97,10 +91,13 @@ export function DealCoachCard({ workspaceId, opportunityId }: DealCoachCardProps
         toast.error("This action is blocked by your approval policy.");
         return;
       }
+      if (res.decision === "pending" && res.pending_action_id) {
+        setQueuedActionId(res.pending_action_id);
+      }
       toast.success(
         res.decision === "pending"
           ? "Drafted action queued for approval"
-          : "Action approved automatically"
+          : "Action approved automatically",
       );
       void queryClient.invalidateQueries({
         queryKey: queryKeys.pendingActions.root(),
@@ -124,10 +121,7 @@ export function DealCoachCard({ workspaceId, opportunityId }: DealCoachCardProps
     return (
       <Card>
         <CardContent className="py-4">
-          <PageErrorState
-            message="Couldn't load the deal coach."
-            onRetry={() => void refetch()}
-          />
+          <PageErrorState message="Couldn't load the deal coach." onRetry={() => void refetch()} />
         </CardContent>
       </Card>
     );
@@ -136,6 +130,7 @@ export function DealCoachCard({ workspaceId, opportunityId }: DealCoachCardProps
   const health = HEALTH_STYLES[card.deal_health];
   const nba = card.next_best_action;
   const isSmsDraft = card.drafted_action.channel === "sms";
+  const isQueued = queuedActionId !== null;
 
   return (
     <Card data-slot="deal-coach-card">
@@ -194,18 +189,27 @@ export function DealCoachCard({ workspaceId, opportunityId }: DealCoachCardProps
             <p className="whitespace-pre-wrap">{card.drafted_action.body}</p>
           </div>
 
-          <Button
-            size="sm"
-            className="w-full"
-            onClick={() => draftMutation.mutate()}
-            disabled={draftMutation.isPending}
-          >
-            {draftMutation.isPending
-              ? "Queuing…"
-              : isSmsDraft
-                ? "Queue SMS for approval"
-                : "Queue next step for approval"}
-          </Button>
+          <div className="space-y-2">
+            <Button
+              size="sm"
+              className="w-full"
+              onClick={() => draftMutation.mutate()}
+              disabled={draftMutation.isPending || isQueued}
+            >
+              {draftMutation.isPending
+                ? "Queuing…"
+                : isQueued
+                  ? "Queued for approval"
+                  : isSmsDraft
+                    ? "Queue SMS for approval"
+                    : "Queue next step for approval"}
+            </Button>
+            {isQueued ? (
+              <Button variant="outline" size="sm" className="w-full" asChild>
+                <Link href="/pending-actions">View in approval queue</Link>
+              </Button>
+            ) : null}
+          </div>
         </div>
 
         {/* Signals footer */}
@@ -231,9 +235,7 @@ function SignalRow({
         ) : null}
         Sentiment: {trend}
       </span>
-      <span>
-        {card.generated_by === "llm" ? "AI synthesized" : "Rule-based"}
-      </span>
+      <span>{card.generated_by === "llm" ? "AI synthesized" : "Rule-based"}</span>
     </div>
   );
 }

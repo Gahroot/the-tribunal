@@ -16,6 +16,7 @@ Design notes:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from dataclasses import dataclass, field
@@ -31,6 +32,7 @@ from app.models.call_outcome import CallOutcome
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message, MessageChannel, MessageDirection
 from app.models.opportunity import Opportunity, opportunity_contact_table
+from app.models.pending_action import PendingAction
 from app.schemas.deal_coach import (
     AtRiskDeal,
     AtRiskDealsResponse,
@@ -49,6 +51,7 @@ logger = structlog.get_logger()
 _LLM_MODEL = "gpt-4o-mini"
 _MAX_AT_RISK = 100
 _DRAFT_ACTION_TYPE = "deal_coach.follow_up"
+_DEDUPED_PENDING_STATUSES = ("pending", "approved", "executed")
 
 
 @dataclass(slots=True)
@@ -88,6 +91,18 @@ def _days_since(value: datetime | None, *, now: datetime) -> int | None:
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
     return max(0, (now - value).days)
+
+
+def _draft_dedupe_key(*, opportunity_id: uuid.UUID, channel: str, body: str) -> str:
+    """Build a stable key for one opportunity's exact drafted outreach."""
+    source = {
+        "opportunity_id": str(opportunity_id),
+        "channel": channel.strip().lower(),
+        "body": body.strip(),
+    }
+    encoded = json.dumps(source, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()[:24]
+    return f"{_DRAFT_ACTION_TYPE}:{digest}"
 
 
 def _contact_recency_contribution(
@@ -326,6 +341,20 @@ class DealCoachService:
         final_body = body if body is not None else draft.body
         final_description = description or draft.description
 
+        dedupe_key = _draft_dedupe_key(
+            opportunity_id=opportunity_id,
+            channel=final_channel,
+            body=final_body,
+        )
+        existing_action = await self._find_existing_drafted_action(workspace_id, dedupe_key)
+        if existing_action is not None:
+            return (
+                "pending",
+                existing_action.id,
+                _DRAFT_ACTION_TYPE,
+                existing_action.description,
+            )
+
         action_payload: dict[str, Any] = {
             "opportunity_id": str(opportunity_id),
             "contact_id": card.primary_contact_id,
@@ -339,6 +368,7 @@ class DealCoachService:
             "contact_id": card.primary_contact_id,
             "deal_health": card.deal_health,
             "top_risk": card.top_risk,
+            "dedupe_key": dedupe_key,
         }
         urgency = "high" if card.deal_health in ("at_risk", "critical") else "normal"
 
@@ -365,6 +395,25 @@ class DealCoachService:
             )
 
         return decision, action_id, _DRAFT_ACTION_TYPE, final_description
+
+    async def _find_existing_drafted_action(
+        self,
+        workspace_id: uuid.UUID,
+        dedupe_key: str,
+    ) -> PendingAction | None:
+        """Return an already-queued Deal Coach action for this exact draft."""
+        result = await self.db.execute(
+            select(PendingAction)
+            .where(
+                PendingAction.workspace_id == workspace_id,
+                PendingAction.action_type == _DRAFT_ACTION_TYPE,
+                PendingAction.status.in_(_DEDUPED_PENDING_STATUSES),
+                PendingAction.context["dedupe_key"].astext == dedupe_key,
+            )
+            .order_by(PendingAction.created_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
 
     async def _notify_at_risk_deal(
         self,
