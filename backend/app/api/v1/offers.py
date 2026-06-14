@@ -32,6 +32,7 @@ from app.schemas.offer import (
     ValueStackItem,
 )
 from app.services.ai.offer_generator import generate_offer_content
+from app.services.lead_magnet_delivery import deliver_lead_magnet_to_lead
 
 router = APIRouter()
 public_router = APIRouter()
@@ -468,8 +469,9 @@ async def submit_offer_optin(
         )
         contact = contact_result.scalar_one_or_none()
 
-    if not contact:
-        # Create new contact
+    if not contact and optin.phone_number:
+        # Create a CRM contact only when we have the required phone fields.
+        # Email-only opt-ins are still captured on LeadMagnetLead below.
         name_parts = (optin.name or "").split(" ", 1)
         first_name = name_parts[0] if name_parts else "Unknown"
         last_name = name_parts[1] if len(name_parts) > 1 else None
@@ -489,7 +491,10 @@ async def submit_offer_optin(
     # Create lead magnet lead record for each attached lead magnet
     lead_magnet_lead_id: uuid.UUID | None = None
     olm_result = await db.execute(
-        select(OfferLeadMagnet).where(OfferLeadMagnet.offer_id == offer.id)
+        select(OfferLeadMagnet)
+        .options(selectinload(OfferLeadMagnet.lead_magnet))
+        .where(OfferLeadMagnet.offer_id == offer.id)
+        .order_by(OfferLeadMagnet.sort_order)
     )
     offer_lead_magnets = olm_result.scalars().all()
 
@@ -505,9 +510,15 @@ async def submit_offer_optin(
             delivered=False,
         )
         db.add(lead)
+        await db.flush()
         if lead_magnet_lead_id is None:
-            await db.flush()
             lead_magnet_lead_id = lead.id
+
+        await deliver_lead_magnet_to_lead(
+            lead=lead,
+            lead_magnet=olm.lead_magnet,
+            offer_name=offer.name,
+        )
 
     # Increment opt-ins counter
     offer.opt_ins += 1
