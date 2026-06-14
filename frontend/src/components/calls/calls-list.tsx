@@ -20,6 +20,7 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { useEffect, useRef, useCallback, useMemo } from "react";
 
+import { CallOutcomeControls } from "@/components/calls/call-outcome-controls";
 import { TranscriptViewer } from "@/components/calls/transcript-viewer";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -334,6 +335,10 @@ export function CallsList() {
                               </Badge>
                             )}
                           </div>
+                          <CallOutcomeControls
+                            workspaceId={workspaceId!}
+                            messageId={call.id}
+                          />
                         </TableCell>
                         <TableCell>
                           {call.duration_seconds
@@ -447,6 +452,11 @@ export function CallsList() {
                                       <span className="font-mono">{call.to_number || "N/A"}</span>
                                     </div>
                                   </div>
+                                  <CallOutcomeControls
+                                    workspaceId={workspaceId!}
+                                    messageId={call.id}
+                                    variant="detail"
+                                  />
                                   {(call.captured_messages?.length ?? 0) > 0 && (
                                     <div className="space-y-2">
                                       <h4 className="flex items-center gap-1.5 font-medium">

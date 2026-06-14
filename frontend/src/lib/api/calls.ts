@@ -1,4 +1,5 @@
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet, apiPost, apiPut } from "@/lib/api";
+import type { Schemas } from "@/lib/api/_client";
 import type { CallRecord } from "@/types";
 
 export interface CallsListParams {
@@ -64,6 +65,12 @@ export interface CallStatsResponse {
   average_duration_seconds: number;
 }
 
+export type CallOutcome = Schemas["CallOutcomeWithContextResponse"];
+export type CallOutcomeUpdate = Schemas["CallOutcomeUpdate"];
+export type CallFeedbackCreate = Schemas["CallFeedbackCreate"];
+export type CallFeedbackListResponse = Schemas["CallFeedbackListResponse"];
+export type CallFeedbackResponse = Schemas["CallFeedbackResponse"];
+
 export const callsApi = {
   list: async (workspaceId: string, params: CallsListParams = {}): Promise<CallsListResponse> => {
     return apiGet<CallsListResponse>(
@@ -97,6 +104,40 @@ export const callsApi = {
   listLive: async (workspaceId: string): Promise<LiveCallsResponse> => {
     return apiGet<LiveCallsResponse>(
       `/api/v1/workspaces/${workspaceId}/calls/live`
+    );
+  },
+
+  getOutcome: async (workspaceId: string, messageId: string): Promise<CallOutcome | null> => {
+    return apiGet<CallOutcome | null>(
+      `/api/v1/workspaces/${workspaceId}/calls/${messageId}/outcome`
+    );
+  },
+
+  updateOutcome: async (
+    workspaceId: string,
+    messageId: string,
+    data: CallOutcomeUpdate
+  ): Promise<Schemas["CallOutcomeResponse"]> => {
+    return apiPut<Schemas["CallOutcomeResponse"]>(
+      `/api/v1/workspaces/${workspaceId}/calls/${messageId}/outcome`,
+      data
+    );
+  },
+
+  listFeedback: async (workspaceId: string, messageId: string): Promise<CallFeedbackListResponse> => {
+    return apiGet<CallFeedbackListResponse>(
+      `/api/v1/workspaces/${workspaceId}/calls/${messageId}/feedback`
+    );
+  },
+
+  submitFeedback: async (
+    workspaceId: string,
+    messageId: string,
+    data: CallFeedbackCreate
+  ): Promise<CallFeedbackResponse> => {
+    return apiPost<CallFeedbackResponse>(
+      `/api/v1/workspaces/${workspaceId}/calls/${messageId}/feedback`,
+      data
     );
   },
 };

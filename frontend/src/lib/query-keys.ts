@@ -187,6 +187,10 @@ export const queryKeys = {
       calls.list(workspaceId, { direction, search, status }),
     transcript: (workspaceId: string, callId: string) =>
       [...calls.detail(workspaceId, callId), "transcript"] as const,
+    outcome: (workspaceId: string, callId: string) =>
+      [...calls.detail(workspaceId, callId), "outcome"] as const,
+    feedback: (workspaceId: string, callId: string) =>
+      [...calls.detail(workspaceId, callId), "feedback"] as const,
     live: (workspaceId: string) => [...calls.all(workspaceId), "live"] as const,
   },
   campaignReports: {
