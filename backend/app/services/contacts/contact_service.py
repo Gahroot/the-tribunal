@@ -35,6 +35,9 @@ from app.services.telephony.text_provider import get_text_message_provider
 
 logger = structlog.get_logger()
 
+# Backward-compatible private alias imported by older regression tests.
+_sender_address_for_phone = sender_address_for_phone
+
 
 class ContactService:
     """High-level contact service for orchestrating business logic."""
