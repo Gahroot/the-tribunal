@@ -307,7 +307,7 @@ function OnboardingFlow() {
             submittingLabel="Launching..."
             submitIcon={Rocket}
           >
-            {currentStepId === "fub" && <FubStep />}
+            {currentStepId === "fub" && <FubStep onSkip={goNext} />}
             {currentStepId === "calcom" && <CalcomStep />}
             {currentStepId === "leads" && <LeadsStep />}
             {currentStepId === "review" && (

@@ -26,7 +26,11 @@ import type { OnboardingFormValues } from "../_state";
 import { InstructionStep } from "./instruction-step";
 import { useOnboardingExtras } from "./onboarding-context";
 
-export function FubStep() {
+interface FubStepProps {
+  onSkip?: () => void;
+}
+
+export function FubStep({ onSkip }: FubStepProps) {
   const form = useFormContext<OnboardingFormValues>();
   const { fubConnected, fubName, markFubConnected } = useOnboardingExtras();
   const apiKeyId = useId();
@@ -68,7 +72,8 @@ export function FubStep() {
       <div>
         <h2 className="text-2xl font-bold">Connect Your CRM</h2>
         <p className="text-muted-foreground mt-1">
-          We&apos;ll pull your leads directly from Follow Up Boss
+          Optional — connect Follow Up Boss to import CRM leads, or skip this and
+          upload a CSV instead.
         </p>
       </div>
 
@@ -93,7 +98,7 @@ export function FubStep() {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor={apiKeyId}>Follow Up Boss API Key</Label>
+        <Label htmlFor={apiKeyId}>Follow Up Boss API Key (optional)</Label>
         <div className="relative">
           <Key className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
@@ -105,9 +110,13 @@ export function FubStep() {
           />
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
+        <p className="text-xs text-muted-foreground">
+          Don&apos;t use Follow Up Boss? Leave this blank and continue to upload a
+          CSV.
+        </p>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Button
           type="button"
           variant="outline"
@@ -121,6 +130,12 @@ export function FubStep() {
           )}
           Test Connection
         </Button>
+
+        {onSkip && (
+          <Button type="button" variant="ghost" onClick={onSkip}>
+            Skip — I don&apos;t use Follow Up Boss
+          </Button>
+        )}
 
         {fubConnected && (
           <Badge

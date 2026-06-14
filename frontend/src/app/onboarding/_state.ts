@@ -8,10 +8,9 @@ import * as z from "zod";
  * count) lives in OnboardingExtrasContext — it isn't user-edited input.
  */
 export const onboardingSchema = z.object({
-  fub_api_key: z
-    .string()
-    .trim()
-    .min(1, { error: "Follow Up Boss API key is required." }),
+  // Follow Up Boss is an optional import path; CSV-only users must be able to
+  // reach the leads step without creating a CRM account first.
+  fub_api_key: z.string().trim(),
   calcom_api_key: z
     .string()
     .trim()
