@@ -8,7 +8,9 @@ import {
   RotateCcw,
   XCircle,
   AlertCircle,
+  BarChart3,
   CalendarCheck,
+  Loader2,
   MessageSquare,
   Phone,
 } from "lucide-react";
@@ -16,6 +18,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 
 import { GuaranteeProgress } from "@/components/campaigns/guarantee-progress";
+import { CampaignReportCard } from "@/components/suggestions/campaign-report-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +26,7 @@ import { PageEmptyState, PageLoadingState } from "@/components/ui/page-state";
 import { Progress } from "@/components/ui/progress";
 import { useCampaignAnalytics } from "@/hooks/useCampaigns";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
+import { campaignReportsApi, type CampaignReportResponse } from "@/lib/api/campaign-reports";
 import { campaignsApi, type CampaignAnalytics } from "@/lib/api/campaigns";
 import { voiceCampaignsApi } from "@/lib/api/voice-campaigns";
 import { queryKeys } from "@/lib/query-keys";
@@ -73,6 +77,44 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
     },
     enabled: !!workspaceId && !!campaign && isVoiceCampaign,
     refetchInterval: runningCampaignRefetchInterval,
+  });
+
+  const canGenerateReport = campaign?.status === "completed" || campaign?.status === "running";
+  const campaignReportQuery = useQuery({
+    queryKey: queryKeys.campaignReports.byCampaign(workspaceId ?? "", campaignId),
+    queryFn: async () => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return campaignReportsApi.getByCampaign(workspaceId, campaignId);
+    },
+    enabled: !!workspaceId && !!campaign && canGenerateReport,
+    retry: (failureCount, err) => {
+      if (isNotFoundError(err)) return false;
+      return failureCount < 3;
+    },
+  });
+  const campaignReport = campaignReportQuery.data;
+  const reportNotFound = isNotFoundError(campaignReportQuery.error);
+
+  const generateReportMutation = useMutation({
+    mutationFn: async () => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return campaignReportsApi.generate(workspaceId, campaignId);
+    },
+    onSuccess: (report) => {
+      toast.success(
+        report.status === "completed" ? "Campaign report generated" : "Campaign report started",
+      );
+      queryClient.setQueryData(
+        queryKeys.campaignReports.byCampaign(workspaceId ?? "", campaignId),
+        report,
+      );
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.campaignReports.all(workspaceId ?? ""),
+      });
+    },
+    onError: (err: unknown) => {
+      toast.error(getApiErrorMessage(err, "Failed to generate campaign report"));
+    },
   });
 
   // Start campaign mutation
@@ -189,6 +231,14 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
 
         {/* Action buttons */}
         <div className="flex gap-2">
+          {canGenerateReport && (
+            <CampaignReportAction
+              hasReport={!!campaignReport}
+              isChecking={campaignReportQuery.isPending}
+              isGenerating={generateReportMutation.isPending}
+              onGenerate={() => generateReportMutation.mutate()}
+            />
+          )}
           {campaign.status === "draft" && (
             <Button
               onClick={() => startMutation.mutate()}
@@ -281,6 +331,16 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
         )}
       </div>
 
+      {canGenerateReport && (
+        <CampaignReportPanel
+          hasLoadError={campaignReportQuery.isError && !reportNotFound}
+          isChecking={campaignReportQuery.isPending}
+          isGenerating={generateReportMutation.isPending}
+          onGenerate={() => generateReportMutation.mutate()}
+          report={campaignReport}
+        />
+      )}
+
       {/* Scheduling info */}
       {(campaign.sending_hours_start || campaign.sending_hours_end || campaign.scheduled_start) && (
         <Card>
@@ -333,6 +393,94 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
         </Card>
       )}
     </div>
+  );
+}
+
+function CampaignReportAction({
+  hasReport,
+  isChecking,
+  isGenerating,
+  onGenerate,
+}: {
+  hasReport: boolean;
+  isChecking: boolean;
+  isGenerating: boolean;
+  onGenerate: () => void;
+}) {
+  if (hasReport) {
+    return (
+      <Button variant="outline" size="sm" asChild>
+        <a href="#campaign-report">
+          <BarChart3 className="size-4 mr-2" />
+          View report
+        </a>
+      </Button>
+    );
+  }
+
+  return (
+    <Button variant="outline" onClick={onGenerate} disabled={isChecking || isGenerating} size="sm">
+      {isGenerating ? (
+        <Loader2 className="size-4 mr-2 animate-spin" />
+      ) : (
+        <BarChart3 className="size-4 mr-2" />
+      )}
+      {isChecking ? "Checking report…" : "Generate report"}
+    </Button>
+  );
+}
+
+function CampaignReportPanel({
+  hasLoadError,
+  isChecking,
+  isGenerating,
+  onGenerate,
+  report,
+}: {
+  hasLoadError: boolean;
+  isChecking: boolean;
+  isGenerating: boolean;
+  onGenerate: () => void;
+  report: CampaignReportResponse | undefined;
+}) {
+  if (report) {
+    return (
+      <section id="campaign-report" className="scroll-mt-6">
+        <CampaignReportCard report={report} />
+      </section>
+    );
+  }
+
+  return (
+    <Card id="campaign-report" className="scroll-mt-6">
+      <CardHeader>
+        <CardTitle className="text-lg">Campaign Report</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-muted-foreground">
+          {hasLoadError
+            ? "We couldn't check for an existing report. You can try generating one now."
+            : "Generate a post-campaign intelligence report with results, ROI signals, and next-step recommendations."}
+        </p>
+        <Button onClick={onGenerate} disabled={isChecking || isGenerating} size="sm">
+          {isGenerating ? (
+            <Loader2 className="size-4 mr-2 animate-spin" />
+          ) : (
+            <BarChart3 className="size-4 mr-2" />
+          )}
+          {isChecking ? "Checking report…" : "Generate report"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function isNotFoundError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "response" in err &&
+    (err as { response?: { status?: number } }).response?.status === 404
   );
 }
 

@@ -193,6 +193,8 @@ export const queryKeys = {
     ...campaignReports,
     full: (workspaceId: string, reportIds: readonly string[]) =>
       [...campaignReports.all(workspaceId), "full", reportIds] as const,
+    byCampaign: (workspaceId: string, campaignId: string) =>
+      [...campaignReports.all(workspaceId), "campaign", campaignId] as const,
     count: (workspaceId: string) => [...campaignReports.all(workspaceId), "count"] as const,
   },
   campaigns: {

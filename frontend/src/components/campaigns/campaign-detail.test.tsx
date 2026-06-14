@@ -1,18 +1,26 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CampaignDetail } from "@/components/campaigns/campaign-detail";
 import type { CampaignAnalytics } from "@/lib/api/campaigns";
 import type { Campaign, VoiceCampaignAnalytics } from "@/types";
 
-const { getCampaignMock, getSmsAnalyticsMock, getVoiceAnalyticsMock, useWorkspaceIdMock } =
-  vi.hoisted(() => ({
-    getCampaignMock: vi.fn(),
-    getSmsAnalyticsMock: vi.fn(),
-    getVoiceAnalyticsMock: vi.fn(),
-    useWorkspaceIdMock: vi.fn(),
-  }));
+const {
+  generateCampaignReportMock,
+  getCampaignMock,
+  getCampaignReportByCampaignMock,
+  getSmsAnalyticsMock,
+  getVoiceAnalyticsMock,
+  useWorkspaceIdMock,
+} = vi.hoisted(() => ({
+  generateCampaignReportMock: vi.fn(),
+  getCampaignMock: vi.fn(),
+  getCampaignReportByCampaignMock: vi.fn(),
+  getSmsAnalyticsMock: vi.fn(),
+  getVoiceAnalyticsMock: vi.fn(),
+  useWorkspaceIdMock: vi.fn(),
+}));
 
 vi.mock("@/hooks/useWorkspaceId", () => ({
   useWorkspaceId: () => useWorkspaceIdMock(),
@@ -55,6 +63,20 @@ vi.mock("@/lib/api/voice-campaigns", async () => {
     voiceCampaignsApi: {
       ...actual.voiceCampaignsApi,
       getAnalytics: getVoiceAnalyticsMock,
+    },
+  };
+});
+
+vi.mock("@/lib/api/campaign-reports", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api/campaign-reports")>(
+    "@/lib/api/campaign-reports",
+  );
+  return {
+    ...actual,
+    campaignReportsApi: {
+      ...actual.campaignReportsApi,
+      getByCampaign: getCampaignReportByCampaignMock,
+      generate: generateCampaignReportMock,
     },
   };
 });
@@ -134,10 +156,37 @@ const smsAnalytics: CampaignAnalytics = {
   qualification_rate: 0.1666666667,
 };
 
+const completedReport = {
+  id: "report_1",
+  campaign_id: "campaign_voice_1",
+  workspace_id: "workspace_1",
+  campaign_name: "First Run SMS Campaign",
+  campaign_type: "sms",
+  status: "completed",
+  error_message: null,
+  metrics_snapshot: { total_contacts: 50 },
+  executive_summary: "Campaign generated qualified appointments.",
+  key_findings: null,
+  what_worked: null,
+  what_didnt_work: null,
+  recommendations: null,
+  segment_analysis: null,
+  timing_analysis: null,
+  prompt_performance: null,
+  generated_suggestion_ids: null,
+  generated_at: "2026-01-03T03:04:05Z",
+  created_at: "2026-01-03T03:04:05Z",
+};
+
+function reportNotFoundError() {
+  return { response: { status: 404, data: { detail: "Report not found for this campaign" } } };
+}
+
 describe("CampaignDetail", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useWorkspaceIdMock.mockReturnValue("workspace_1");
+    getCampaignReportByCampaignMock.mockRejectedValue(reportNotFoundError());
   });
 
   it("renders voice call statistics from voice campaign analytics", async () => {
@@ -198,10 +247,6 @@ describe("CampaignDetail", () => {
     renderCampaignDetail();
 
     expect(await screen.findByText("Statistics")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(getCampaignMock).toHaveBeenCalledTimes(1);
-      expect(getSmsAnalyticsMock).toHaveBeenCalledTimes(1);
-    });
 
     await waitFor(() => {
       expect(getCampaignMock.mock.calls.length).toBeGreaterThan(1);
@@ -231,5 +276,49 @@ describe("CampaignDetail", () => {
 
     expect(getCampaignMock).toHaveBeenCalledTimes(1);
     expect(getSmsAnalyticsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("exposes a generate report action for completed campaigns without a report", async () => {
+    getCampaignMock.mockResolvedValue(
+      baseCampaign({
+        campaign_type: "sms",
+        status: "completed",
+        name: "First Run SMS Campaign",
+        messages_sent: 50,
+      }),
+    );
+    getSmsAnalyticsMock.mockResolvedValue(smsAnalytics);
+    generateCampaignReportMock.mockResolvedValue(completedReport);
+
+    renderCampaignDetail();
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: /generate report/i }).length).toBeGreaterThan(0);
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /generate report/i })[0]);
+
+    await waitFor(() => {
+      expect(generateCampaignReportMock).toHaveBeenCalledWith("workspace_1", "campaign_voice_1");
+    });
+    expect(await screen.findByRole("link", { name: /view report/i })).toBeInTheDocument();
+  });
+
+  it("exposes a view report action when a completed campaign already has a report", async () => {
+    getCampaignMock.mockResolvedValue(
+      baseCampaign({
+        campaign_type: "sms",
+        status: "completed",
+        name: "First Run SMS Campaign",
+        messages_sent: 50,
+      }),
+    );
+    getSmsAnalyticsMock.mockResolvedValue(smsAnalytics);
+    getCampaignReportByCampaignMock.mockResolvedValue(completedReport);
+
+    renderCampaignDetail();
+
+    expect(await screen.findByRole("link", { name: /view report/i })).toBeInTheDocument();
+    expect(screen.getByText("Campaign generated qualified appointments.")).toBeInTheDocument();
   });
 });

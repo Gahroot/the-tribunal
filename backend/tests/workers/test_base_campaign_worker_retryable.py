@@ -6,14 +6,17 @@ subclass to exercise the mixin behavior.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
 from sqlalchemy.orm import QueryableAttribute
 
-from app.models.campaign import CampaignType
+import app.workers.base_campaign_worker as base_campaign_worker_module
+from app.models.campaign import CampaignStatus, CampaignType
 from app.workers.base import BaseWorker
 from app.workers.base_campaign_worker import BaseCampaignWorker
 from app.workers.retryable import RetryableWorker
@@ -65,3 +68,34 @@ async def test_failed_campaign_processing_routes_to_dlq() -> None:
     assert len(recorder.calls) == 1
     assert recorder.calls[0]["worker_name"] == "stub_campaign_worker"
     assert recorder.calls[0]["item_key"] == item_key
+
+
+@pytest.mark.asyncio
+async def test_scheduled_end_completion_generates_report(monkeypatch: pytest.MonkeyPatch) -> None:
+    worker = _StubCampaignWorker()
+    worker._is_within_sending_hours = MagicMock(return_value=False)  # type: ignore[method-assign]
+    campaign_id = uuid4()
+    campaign = SimpleNamespace(
+        id=campaign_id,
+        name="Ended campaign",
+        scheduled_end=datetime.now(UTC) - timedelta(minutes=1),
+        sending_hours_start=None,
+        sending_hours_end=None,
+        sending_days=None,
+        timezone="UTC",
+        status=CampaignStatus.RUNNING,
+        completed_at=None,
+    )
+    db = AsyncMock()
+    service = MagicMock()
+    service.generate_report = AsyncMock()
+    service_class = MagicMock(return_value=service)
+    monkeypatch.setattr(base_campaign_worker_module, "CampaignReportService", service_class)
+
+    await worker._process_campaign(campaign, db)
+
+    assert campaign.status == CampaignStatus.COMPLETED
+    assert campaign.completed_at is not None
+    service.generate_report.assert_awaited_once_with(db, campaign_id)
+    worker._is_within_sending_hours.assert_not_called()
+    db.commit.assert_awaited_once()

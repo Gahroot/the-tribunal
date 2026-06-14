@@ -105,15 +105,16 @@ class BaseCampaignWorker(RetryableWorker, BaseWorker):
             campaign_name=campaign.name,
         )
 
-        if not self._is_within_sending_hours(campaign):
-            log.debug("Outside sending hours")
-            return
-
         if campaign.scheduled_end and datetime.now(UTC) > campaign.scheduled_end:
             log.info("Campaign scheduled end reached, completing")
             campaign.status = CampaignStatus.COMPLETED
             campaign.completed_at = datetime.now(UTC)
+            await self._generate_completion_report(campaign, db, log)
             await db.commit()
+            return
+
+        if not self._is_within_sending_hours(campaign):
+            log.debug("Outside sending hours")
             return
 
         if self.requires_telnyx_api_key and not settings.telnyx_api_key:
@@ -183,9 +184,18 @@ class BaseCampaignWorker(RetryableWorker, BaseWorker):
             campaign.status = CampaignStatus.COMPLETED
             campaign.completed_at = datetime.now(UTC)
 
-            try:
-                service = CampaignReportService()
-                await service.generate_report(db, campaign.id)
-                log.info("Campaign post-mortem report generated")
-            except Exception:
-                log.warning("Failed to generate post-mortem report", exc_info=True)
+            await self._generate_completion_report(campaign, db, log)
+
+    async def _generate_completion_report(
+        self,
+        campaign: Campaign,
+        db: AsyncSession,
+        log: Any,
+    ) -> None:
+        """Generate a post-campaign report without blocking campaign completion."""
+        try:
+            service = CampaignReportService()
+            await service.generate_report(db, campaign.id)
+            log.info("Campaign post-mortem report generated")
+        except Exception:
+            log.warning("Failed to generate post-mortem report", exc_info=True)
