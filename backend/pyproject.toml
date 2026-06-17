@@ -69,7 +69,7 @@ dependencies = [
     "bcrypt>=4.0.0",
     # CVE fix: python-multipart 0.0.28 is the latest 0.x patch carrying the CVE-2024-24762 ReDoS fix
     # (originally landed in 0.0.7). Newer 1.x is gated by upstream FastAPI; do not lower.
-    "python-multipart>=0.0.28",
+    "python-multipart>=0.0.31",
     # HTTP Client
     # feature floor: httpx 0.28 made the `proxies=` → `proxy=` rename and is the floor openai 2.x assumes.
     "httpx>=0.28.0",
