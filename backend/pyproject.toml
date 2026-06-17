@@ -105,7 +105,7 @@ dependencies = [
     # patches CVE-2026-34073 (X.509 name-constraint bypass); >=46.0.0 patches CVE-2026-26007 (ECC
     # subgroup attack via SECT curves). 48.0.0 is the current stable that bundles all three plus
     # OpenSSL 3.5.x. Do not lower below 46.0.7 under any circumstance.
-    "cryptography>=48.0.0",
+    "cryptography>=48.0.1",
     # runtime requirement: stdlib `audioop` was removed in Python 3.13; this is the PyPI backport.
     "audioop-lts>=0.2.1 ; python_full_version >= '3.13'",
     # feature floor: stripe 15.1 carries the 2025-09 API version pinned in app/services/billing/.
