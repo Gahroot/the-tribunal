@@ -43,7 +43,7 @@ jobs:
           cache-dependency-glob: "backend/uv.lock"
 
       - name: Set up Node.js for API client codegen
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: npm
