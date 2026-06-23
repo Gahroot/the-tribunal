@@ -2,8 +2,8 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Trash2 } from "lucide-react";
-import { useState } from "react";
 import { toast } from "sonner";
+import * as z from "zod";
 
 import {
   AlertDialog,
@@ -18,13 +18,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { FormDialog } from "@/components/ui/form-dialog";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -35,7 +35,15 @@ import {
 } from "@/components/ui/select";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { workspacesApi } from "@/lib/api/workspaces";
+import { useFormDialog } from "@/lib/forms/use-form-dialog";
 import { queryKeys } from "@/lib/query-keys";
+
+const editMemberSchema = z.object({
+  role: z.enum(["admin", "member"]),
+});
+
+type EditMemberValues = z.infer<typeof editMemberSchema>;
+
 interface EditMemberDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -56,11 +64,8 @@ export function EditMemberDialog({
 }: EditMemberDialogProps) {
   const workspaceId = useWorkspaceId();
   const queryClient = useQueryClient();
-  const [selectedRole, setSelectedRole] = useState<"admin" | "member">(
-    member.role === "admin" ? "admin" : "member"
-  );
 
-  // Can only edit if current user is owner/admin and target is not owner
+  // Can only edit if current user is owner/admin and target is not owner.
   const canEditRole = member.role !== "owner" && currentUserRole !== "member";
   const canRemove =
     member.role !== "owner" &&
@@ -68,15 +73,11 @@ export function EditMemberDialog({
       (currentUserRole === "admin" && member.role !== "admin"));
 
   const updateRoleMutation = useMutation({
-    mutationFn: () =>
-      workspacesApi.updateMemberRole(workspaceId!, member.id, selectedRole),
+    mutationFn: (role: "admin" | "member") =>
+      workspacesApi.updateMemberRole(workspaceId!, member.id, role),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.settings.team(workspaceId ?? "") });
       toast.success("Member role updated");
-      onOpenChange(false);
-    },
-    onError: (error: Error) => {
-      toast.error(error.message || "Failed to update member role");
     },
   });
 
@@ -92,45 +93,108 @@ export function EditMemberDialog({
     },
   });
 
-  const handleSave = () => {
-    if (selectedRole !== member.role) {
-      updateRoleMutation.mutate();
-    } else {
+  const dialog = useFormDialog<EditMemberValues>({
+    open,
+    onOpenChange,
+    schema: editMemberSchema,
+    // Re-syncs when the dialog adopts a different member (edit-dialog reset).
+    defaultValues: { role: member.role === "admin" ? "admin" : "member" },
+    errorFallback: "Failed to update member role",
+    onTopLevelError: (message) => toast.error(message),
+    onSubmit: async (values) => {
+      if (values.role === member.role) {
+        onOpenChange(false);
+        return;
+      }
+      await updateRoleMutation.mutateAsync(values.role);
       onOpenChange(false);
-    }
-  };
+    },
+  });
+
+  const { form } = dialog;
+
+  const removeButton = canRemove ? (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button
+          type="button"
+          variant="destructive"
+          className="sm:mr-auto"
+          disabled={removeMemberMutation.isPending}
+        >
+          <Trash2 className="mr-2 h-4 w-4" />
+          Remove
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Remove Team Member</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to remove {member.full_name || member.email} from this
+            workspace? They will lose access to all workspace resources.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => removeMemberMutation.mutate()}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            {removeMemberMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Removing...
+              </>
+            ) : (
+              "Remove Member"
+            )}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  ) : null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle>Edit Team Member</DialogTitle>
-          <DialogDescription>
-            Manage {member.full_name || member.email}&apos;s role and access.
-          </DialogDescription>
-        </DialogHeader>
+    <FormDialog
+      dialog={dialog}
+      open={open}
+      title="Edit Team Member"
+      description={`Manage ${member.full_name || member.email}'s role and access.`}
+      submitLabel="Save Changes"
+      submitBusyLabel="Saving..."
+      submitDisabled={!canEditRole}
+      footerExtra={removeButton}
+      className="sm:max-w-[425px]"
+    >
+      <div className="space-y-2">
+        <Label>Email</Label>
+        <p className="text-sm text-muted-foreground">{member.email}</p>
+      </div>
 
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <Label>Email</Label>
-            <p className="text-sm text-muted-foreground">{member.email}</p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="role">Role</Label>
-            {member.role === "owner" ? (
-              <p className="text-sm text-muted-foreground capitalize">
-                {member.role} (cannot be changed)
-              </p>
-            ) : (
+      {member.role === "owner" ? (
+        <div className="space-y-2">
+          <Label>Role</Label>
+          <p className="text-sm text-muted-foreground capitalize">
+            {member.role} (cannot be changed)
+          </p>
+        </div>
+      ) : (
+        <FormField
+          control={form.control}
+          name="role"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Role</FormLabel>
               <Select
-                value={selectedRole}
-                onValueChange={(value: "admin" | "member") => setSelectedRole(value)}
+                value={field.value}
+                onValueChange={field.onChange}
                 disabled={!canEditRole}
               >
-                <SelectTrigger id="role">
-                  <SelectValue />
-                </SelectTrigger>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                </FormControl>
                 <SelectContent>
                   <SelectItem value="member">
                     <div>
@@ -150,68 +214,11 @@ export function EditMemberDialog({
                   </SelectItem>
                 </SelectContent>
               </Select>
-            )}
-          </div>
-        </div>
-
-        <DialogFooter className="flex justify-between sm:justify-between">
-          {canRemove ? (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button
-                  variant="destructive"
-                  disabled={removeMemberMutation.isPending}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Remove
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Remove Team Member</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Are you sure you want to remove {member.full_name || member.email}{" "}
-                    from this workspace? They will lose access to all workspace
-                    resources.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={() => removeMemberMutation.mutate()}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  >
-                    {removeMemberMutation.isPending ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Removing...
-                      </>
-                    ) : (
-                      "Remove Member"
-                    )}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          ) : (
-            <div />
+              <FormMessage />
+            </FormItem>
           )}
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSave}
-              disabled={updateRoleMutation.isPending || !canEditRole}
-            >
-              {updateRoleMutation.isPending && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              Save Changes
-            </Button>
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        />
+      )}
+    </FormDialog>
   );
 }

@@ -1,25 +1,29 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Save } from "lucide-react";
-import { useState } from "react";
 import { toast } from "sonner";
+import * as z from "zod";
 
-import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { FormDialog } from "@/components/ui/form-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { messageTemplatesApi } from "@/lib/api/message-templates";
+import { useFormDialog } from "@/lib/forms/use-form-dialog";
 import { queryKeys } from "@/lib/query-keys";
-import { getApiErrorMessage } from "@/lib/utils/errors";
+
+const saveTemplateSchema = z.object({
+  name: z.string().trim().min(1, { error: "Please enter a template name" }),
+});
+
+type SaveTemplateValues = z.infer<typeof saveTemplateSchema>;
 
 interface SaveTemplateDialogProps {
   open: boolean;
@@ -36,10 +40,9 @@ export function SaveTemplateDialog({
 }: SaveTemplateDialogProps) {
   const workspaceId = useWorkspaceId();
   const queryClient = useQueryClient();
-  const [name, setName] = useState(defaultName);
 
   const saveMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: (name: string) => {
       if (!workspaceId) throw new Error("Workspace not loaded");
       return messageTemplatesApi.create(workspaceId, {
         name,
@@ -51,74 +54,63 @@ export function SaveTemplateDialog({
         queryKey: queryKeys.messageTemplates.all(workspaceId ?? ""),
       });
       toast.success("Template saved successfully");
-      setName("");
-      onOpenChange(false);
-    },
-    onError: (err: unknown) => {
-      toast.error(getApiErrorMessage(err, "Failed to save template"));
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) {
-      toast.error("Please enter a template name");
-      return;
-    }
-    saveMutation.mutate();
-  };
+  const dialog = useFormDialog<SaveTemplateValues>({
+    open,
+    onOpenChange,
+    schema: saveTemplateSchema,
+    // Seed (and re-sync) from `defaultName` so reopening on a new variation
+    // shows the suggested name rather than a stale one.
+    defaultValues: { name: defaultName },
+    errorFallback: "Failed to save template",
+    onTopLevelError: (message) => toast.error(message),
+    onSubmit: async (values) => {
+      await saveMutation.mutateAsync(values.name.trim());
+      onOpenChange(false);
+    },
+  });
+
+  const { form } = dialog;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[450px]">
-        <DialogHeader>
-          <DialogTitle>Save as Template</DialogTitle>
-          <DialogDescription>
-            Save this message variation for reuse in future experiments.
-          </DialogDescription>
-        </DialogHeader>
+    <FormDialog
+      dialog={dialog}
+      open={open}
+      title="Save as Template"
+      description="Save this message variation for reuse in future experiments."
+      submitLabel="Save Template"
+      submitBusyLabel="Saving..."
+      className="sm:max-w-[450px]"
+    >
+      <FormField
+        control={form.control}
+        name="name"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>Template Name</FormLabel>
+            <FormControl>
+              <Input
+                placeholder="e.g., Friendly Introduction"
+                // The dialog opens specifically so the user can type a name;
+                // focusing the field on open matches the dialog focus-trap pattern.
+                // eslint-disable-next-line jsx-a11y/no-autofocus
+                autoFocus
+                {...field}
+              />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="template-name">Template Name</Label>
-            <Input
-              id="template-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., Friendly Introduction"
-              // The dialog opens specifically so the user can type a name;
-              // focusing the field on open matches the dialog focus-trap pattern.
-              // eslint-disable-next-line jsx-a11y/no-autofocus
-              autoFocus
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Message Preview</Label>
-            <div className="p-3 bg-muted rounded-md text-sm whitespace-pre-wrap max-h-32 overflow-y-auto">
-              {messageTemplate || "No message content"}
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={saveMutation.isPending || !name.trim()}>
-              {saveMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="mr-2 h-4 w-4" />
-              )}
-              {saveMutation.isPending ? "Saving..." : "Save Template"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+      <div className="space-y-2">
+        <Label>Message Preview</Label>
+        <div className="p-3 bg-muted rounded-md text-sm whitespace-pre-wrap max-h-32 overflow-y-auto">
+          {messageTemplate || "No message content"}
+        </div>
+      </div>
+    </FormDialog>
   );
 }

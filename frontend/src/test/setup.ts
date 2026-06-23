@@ -82,6 +82,22 @@ Object.defineProperty(globalThis, "IntersectionObserver", {
   value: MockIntersectionObserver,
 });
 
+// jsdom doesn't implement the Pointer Capture API or scrollIntoView, both of
+// which Radix Select/Dropdown menus call during open/keyboard interaction.
+// Without these stubs, interacting with a <Select> throws in tests.
+if (!HTMLElement.prototype.hasPointerCapture) {
+  HTMLElement.prototype.hasPointerCapture = vi.fn(() => false);
+}
+if (!HTMLElement.prototype.setPointerCapture) {
+  HTMLElement.prototype.setPointerCapture = vi.fn();
+}
+if (!HTMLElement.prototype.releasePointerCapture) {
+  HTMLElement.prototype.releasePointerCapture = vi.fn();
+}
+if (!HTMLElement.prototype.scrollIntoView) {
+  HTMLElement.prototype.scrollIntoView = vi.fn();
+}
+
 // ResizeObserver — Radix and other UI libs need it in jsdom.
 class MockResizeObserver {
   observe = vi.fn();
