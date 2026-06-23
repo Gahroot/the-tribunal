@@ -19,6 +19,7 @@ import { SegmentPicker } from "@/components/segments/segment-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PageEmptyState, PageLoadingState } from "@/components/ui/page-state";
 import {
   Select,
   SelectContent,
@@ -360,26 +361,20 @@ export function VirtualContactSelector({
         className="h-[400px] border rounded-lg overflow-auto"
       >
         {isPending ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="flex flex-col items-center gap-2 text-muted-foreground">
-              <Loader2 className="size-8 animate-spin" />
-              <span>Loading contacts...</span>
-            </div>
-          </div>
+          <PageLoadingState className="h-full" message="Loading contacts…" />
         ) : contacts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-            <Users className="size-12 mb-2 opacity-50" />
-            <p>No contacts found</p>
-            {search && (
-              <Button
-                variant="link"
-                onClick={() => setSearch("")}
-                className="mt-1"
-              >
-                Clear search
-              </Button>
-            )}
-          </div>
+          <PageEmptyState
+            className="h-full"
+            icon={<Users className="size-8" />}
+            title="No contacts found"
+            action={
+              search ? (
+                <Button variant="link" onClick={() => setSearch("")}>
+                  Clear search
+                </Button>
+              ) : undefined
+            }
+          />
         ) : (
           <div
             style={{

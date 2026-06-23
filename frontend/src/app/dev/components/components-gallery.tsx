@@ -149,6 +149,20 @@ export function ComponentsGallery() {
               action={<Button size="sm">Add contact</Button>}
             />
           </Example>
+          <Example label="Constrained height (className=&quot;h-full&quot; inside a fixed container)">
+            <div className="h-[200px] overflow-auto rounded-lg border">
+              <PageEmptyState
+                className="h-full"
+                icon={<Sparkles className="size-8" />}
+                title="No contacts found"
+                action={
+                  <Button variant="link" size="sm">
+                    Clear search
+                  </Button>
+                }
+              />
+            </div>
+          </Example>
           <Example label="ResourceListLoading (wraps PageLoadingState)">
             <ResourceListLoading />
           </Example>

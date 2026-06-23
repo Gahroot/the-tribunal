@@ -5,7 +5,6 @@ import {
   Trophy,
   TrendingUp,
   AlertCircle,
-  Loader2,
   Play,
   Pause,
   X,
@@ -27,6 +26,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { PageEmptyState, PageLoadingState } from "@/components/ui/page-state";
 import { Progress } from "@/components/ui/progress";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import {
@@ -115,25 +115,16 @@ export function ABTestDashboard({ agentId }: ABTestDashboardProps) {
   });
 
   if (isPending) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <PageLoadingState className="min-h-0 py-8" />;
   }
 
   if (!comparison?.versions.length) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-          <FlaskConical className="mb-4 h-12 w-12 text-muted-foreground" />
-          <h3 className="mb-2 text-lg font-semibold">No A/B Test Running</h3>
-          <p className="mb-4 max-w-sm text-sm text-muted-foreground">
-            Activate multiple prompt versions to start an A/B test. The system will
-            automatically split traffic using Thompson Sampling.
-          </p>
-        </CardContent>
-      </Card>
+      <PageEmptyState
+        icon={<FlaskConical className="size-8" />}
+        title="No A/B test running"
+        description="Activate multiple prompt versions to start an A/B test. The system will automatically split traffic using Thompson Sampling."
+      />
     );
   }
 

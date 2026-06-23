@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { PageEmptyState, PageLoadingState } from "@/components/ui/page-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { messageTemplatesApi } from "@/lib/api/message-templates";
@@ -88,17 +89,14 @@ export function LoadTemplateDialog({
         </DialogHeader>
 
         {isPending ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="size-8 animate-spin text-muted-foreground" />
-          </div>
+          <PageLoadingState className="min-h-0 py-8" />
         ) : templates.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-8 text-center">
-            <FileText className="size-12 text-muted-foreground mb-3" />
-            <p className="text-muted-foreground">No saved templates yet</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Save a variant as a template to reuse it later
-            </p>
-          </div>
+          <PageEmptyState
+            className="min-h-0 py-8"
+            icon={<FileText className="size-8" />}
+            title="No saved templates yet"
+            description="Save a variant as a template to reuse it later."
+          />
         ) : (
           <ScrollArea className="max-h-[400px] pr-4">
             <div className="space-y-2">

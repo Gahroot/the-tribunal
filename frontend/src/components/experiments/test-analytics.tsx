@@ -12,7 +12,6 @@ import {
   Star,
   ArrowRight,
   Loader2,
-  AlertCircle,
 } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -45,6 +44,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { PageErrorState, PageLoadingState } from "@/components/ui/page-state";
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
@@ -145,20 +145,11 @@ export function TestAnalytics({ testId }: TestAnalyticsProps) {
   };
 
   if (isPending) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="size-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <PageLoadingState className="h-64" />;
   }
 
   if (error || !analytics) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 gap-2">
-        <AlertCircle className="size-8 text-destructive" />
-        <p className="text-muted-foreground">Failed to load analytics</p>
-      </div>
-    );
+    return <PageErrorState message="Failed to load analytics" />;
   }
 
   const getBestVariant = (): VariantAnalytics | null => {

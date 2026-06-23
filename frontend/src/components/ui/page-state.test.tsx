@@ -75,4 +75,17 @@ describe("PageEmptyState", () => {
     expect(screen.getByText("No results")).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
+
+  it("forwards className so it can fill fixed-height containers", () => {
+    const { container } = render(
+      <PageEmptyState title="No contacts found" className="h-full" />,
+    );
+    const wrapper = container.querySelector('[data-slot="page-state"]');
+    expect(wrapper).toHaveClass("h-full");
+  });
+
+  it("omits the action region when a conditional action resolves to undefined", () => {
+    render(<PageEmptyState title="No contacts found" action={undefined} />);
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
 });

@@ -1,9 +1,10 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, TrendingUp } from "lucide-react";
+import { TrendingUp } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { PageEmptyState, PageLoadingState } from "@/components/ui/page-state";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import {
   promptVersionsApi,
@@ -29,21 +30,15 @@ export function PromptPerformanceChart({ agentId }: PromptPerformanceChartProps)
   });
 
   if (isPending) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <PageLoadingState className="min-h-0 py-8" />;
   }
 
   if (!versions?.items.length) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-          <TrendingUp className="mb-4 h-12 w-12 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">No performance data available yet</p>
-        </CardContent>
-      </Card>
+      <PageEmptyState
+        icon={<TrendingUp className="size-8" />}
+        title="No performance data available yet"
+      />
     );
   }
 
@@ -54,14 +49,10 @@ export function PromptPerformanceChart({ agentId }: PromptPerformanceChartProps)
 
   if (sortedVersions.length === 0) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-          <TrendingUp className="mb-4 h-12 w-12 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">
-            No calls have been made with tracked prompt versions yet
-          </p>
-        </CardContent>
-      </Card>
+      <PageEmptyState
+        icon={<TrendingUp className="size-8" />}
+        title="No calls have been made with tracked prompt versions yet"
+      />
     );
   }
 

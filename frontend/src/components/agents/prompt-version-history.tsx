@@ -11,7 +11,6 @@ import {
   X,
   AlertTriangle,
   FlaskConical,
-  Loader2,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -32,6 +31,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { PageEmptyState, PageLoadingState } from "@/components/ui/page-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Table,
@@ -192,22 +192,16 @@ export function PromptVersionHistory({ agentId }: PromptVersionHistoryProps) {
   };
 
   if (isPending) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <PageLoadingState className="min-h-0 py-8" />;
   }
 
   if (!versions?.items.length) {
     return (
-      <div className="flex flex-col items-center justify-center py-8 text-center">
-        <FlaskConical className="mb-2 h-10 w-10 text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">No prompt versions found</p>
-        <p className="text-xs text-muted-foreground">
-          Versions are created automatically when you modify the agent prompt
-        </p>
-      </div>
+      <PageEmptyState
+        icon={<FlaskConical className="size-8" />}
+        title="No prompt versions found"
+        description="Versions are created automatically when you modify the agent prompt."
+      />
     );
   }
 
