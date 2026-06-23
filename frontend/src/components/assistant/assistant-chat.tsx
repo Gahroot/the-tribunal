@@ -3,12 +3,10 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
 
-import {
-  ChatHeader,
-  ConversationSidebar,
-  MessageComposer,
-  MessageList,
-} from "@/components/assistant/assistant-chat-views";
+import { ChatHeader } from "@/components/assistant/chat-header";
+import { ConversationSidebar } from "@/components/assistant/conversation-sidebar";
+import { MessageComposer } from "@/components/assistant/message-composer";
+import { MessageList } from "@/components/assistant/message-list";
 import { useAssistantChat } from "@/hooks/useAssistantChat";
 import { cn } from "@/lib/utils";
 
