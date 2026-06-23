@@ -111,6 +111,13 @@ describe("getResourceInvalidationKeys", () => {
       ["tags", "ws_9"],
     ]);
   });
+
+  it("scopes every related key to the same workspace", () => {
+    const keys = getResourceInvalidationKeys("tags", "ws_42", ["contacts", "segments"]);
+    for (const key of keys) {
+      expect(key[1]).toBe("ws_42");
+    }
+  });
 });
 
 describe("queryKeys factory composition", () => {
@@ -184,5 +191,51 @@ describe("queryKeys factory composition", () => {
       "infinite",
       undefined,
     ]);
+  });
+
+  it("keeps a detail key and an unfiltered list key distinguishable", () => {
+    // detail appends the id; an unfiltered list stays at the workspace `all` key.
+    expect(queryKeys.agents.detail("ws_1", "a1")).toEqual(["agents", "ws_1", "a1"]);
+    expect(queryKeys.agents.list("ws_1")).toEqual(["agents", "ws_1"]);
+    expect(queryKeys.agents.detail("ws_1", "a1")).not.toEqual(queryKeys.agents.list("ws_1"));
+  });
+
+  it("serializes a segment preview definition into a stable string segment", () => {
+    const def = { all: [{ field: "status", op: "eq", value: "lead" }] };
+    const key = queryKeys.segments.preview("ws_1", def);
+    expect(key).toEqual(["segments", "ws_1", "preview", JSON.stringify(def)]);
+    // A nullish definition still produces a deterministic key.
+    expect(queryKeys.segments.preview("ws_1", null)).toEqual([
+      "segments",
+      "ws_1",
+      "preview",
+      "null",
+    ]);
+  });
+
+  it("normalizes scorecard range params order-independently", () => {
+    expect(queryKeys.scorecard.range("ws_1", { to: "b", from: "a" })).toEqual(
+      queryKeys.scorecard.range("ws_1", { from: "a", to: "b" }),
+    );
+    expect(queryKeys.scorecard.range("ws_1")).toEqual(["scorecard", "ws_1", undefined]);
+  });
+
+  it("nests at-risk opportunities under the workspace `all` key", () => {
+    const all = queryKeys.opportunities.all("ws_1");
+    const atRisk = queryKeys.opportunities.atRisk("ws_1");
+    expect(atRisk).toEqual([...all, "at-risk", null]);
+    expect(atRisk.slice(0, all.length)).toEqual([...all]);
+  });
+
+  it("builds workspace-independent auth keys", () => {
+    expect(queryKeys.auth.currentUser()).toEqual(["auth", "currentUser"]);
+    expect(queryKeys.auth.session()).toEqual(["auth", "session"]);
+  });
+
+  it("derives appointment byContact from the workspace `all` key", () => {
+    const all = queryKeys.appointments.all("ws_1");
+    const byContact = queryKeys.appointments.byContact("ws_1", undefined);
+    // An undefined contact id is normalized away, collapsing to the `all` key.
+    expect(byContact.slice(0, all.length)).toEqual([...all]);
   });
 });

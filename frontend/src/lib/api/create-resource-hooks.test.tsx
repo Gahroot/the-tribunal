@@ -72,6 +72,29 @@ describe("createResourceHooks — query key wiring", () => {
 });
 
 describe("createResourceHooks — useList", () => {
+  it("forwards list params to the backend as query string", async () => {
+    let receivedUrl = "";
+    server.use(
+      http.get(`${ORIGIN}/api/v1/workspaces/:workspaceId/widgets`, ({ request }) => {
+        receivedUrl = request.url;
+        return HttpResponse.json(makeList([{ id: 1, name: "Alpha" }]));
+      }),
+    );
+
+    const hooks = createResourceHooks({ resourceKey: "widgets", apiClient: widgetApi() });
+    const { wrapper } = makeWrapper();
+
+    const { result } = renderHook(
+      () => hooks.useList("ws_1", { status: "active", page: 2 }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const params = new URL(receivedUrl).searchParams;
+    expect(params.get("status")).toBe("active");
+    expect(params.get("page")).toBe("2");
+  });
+
   it("fetches the list for a workspace", async () => {
     server.use(
       http.get(`${ORIGIN}/api/v1/workspaces/:workspaceId/widgets`, () =>
@@ -135,6 +158,28 @@ describe("createResourceHooks — useGet", () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error?.message).toMatch(/does not have a 'get' method/);
+  });
+
+  it("is disabled when the id is null or undefined", async () => {
+    const getSpy = vi.fn();
+    server.use(
+      http.get(`${ORIGIN}/api/v1/workspaces/:workspaceId/widgets/:id`, () => {
+        getSpy();
+        return HttpResponse.json({ id: 1, name: "Solo" });
+      }),
+    );
+
+    const hooks = createResourceHooks({ resourceKey: "widgets", apiClient: widgetApi() });
+    const { wrapper } = makeWrapper();
+
+    const { result } = renderHook(
+      () => hooks.useGet("ws_1", null as unknown as number),
+      { wrapper },
+    );
+
+    expect(result.current.fetchStatus).toBe("idle");
+    await Promise.resolve();
+    expect(getSpy).not.toHaveBeenCalled();
   });
 });
 
@@ -209,6 +254,64 @@ describe("createResourceHooks — mutations invalidate caches", () => {
     await waitFor(() =>
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: widgetsAll }),
     );
+  });
+
+  it("useCreate invalidates every related resource root, not just the first", async () => {
+    const tagsAll = createResourceQueryKeys("tags").all("ws_1");
+    server.use(
+      http.post(`${ORIGIN}/api/v1/workspaces/:workspaceId/widgets`, () =>
+        HttpResponse.json({ id: 1, name: "New" }),
+      ),
+    );
+
+    const hooks = createResourceHooks({
+      resourceKey: "widgets",
+      apiClient: widgetApi(),
+      invalidateKeys: ["contacts", "tags"],
+    });
+    const { wrapper, queryClient } = makeWrapper();
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+    const { result } = renderHook(() => hooks.useCreate("ws_1"), { wrapper });
+    await result.current.mutateAsync({ name: "New" });
+
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: widgetsAll });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: contactsAll });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: tagsAll });
+    });
+  });
+
+  it("useCreate rejects with a helpful error when the create method is missing", async () => {
+    const apiClient = { list: vi.fn() } as unknown as ApiClient<Widget, { name: string }, { name?: string }>;
+    const hooks = createResourceHooks({ resourceKey: "widgets", apiClient });
+    const { wrapper } = makeWrapper();
+
+    const { result } = renderHook(() => hooks.useCreate("ws_1"), { wrapper });
+
+    await expect(result.current.mutateAsync({ name: "x" })).rejects.toThrow(/'create' method/);
+  });
+
+  it("useDelete rejects with a helpful error when the delete method is missing", async () => {
+    const apiClient = { list: vi.fn() } as unknown as ApiClient<Widget, { name: string }, { name?: string }>;
+    const hooks = createResourceHooks({ resourceKey: "widgets", apiClient });
+    const { wrapper } = makeWrapper();
+
+    const { result } = renderHook(() => hooks.useDelete("ws_1"), { wrapper });
+
+    await expect(result.current.mutateAsync(1)).rejects.toThrow(/'delete' method/);
+  });
+
+  it("useUpdate rejects with a helpful error when the update method is missing", async () => {
+    const apiClient = { list: vi.fn() } as unknown as ApiClient<Widget, { name: string }, { name?: string }>;
+    const hooks = createResourceHooks({ resourceKey: "widgets", apiClient });
+    const { wrapper } = makeWrapper();
+
+    const { result } = renderHook(() => hooks.useUpdate("ws_1"), { wrapper });
+
+    await expect(
+      result.current.mutateAsync({ id: 1, data: { name: "x" } }),
+    ).rejects.toThrow(/'update' method/);
   });
 
   it("does not invalidate when a mutation fails", async () => {

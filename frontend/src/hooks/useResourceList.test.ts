@@ -55,6 +55,50 @@ describe("useResourceList", () => {
     expect(result.current.pagination.page).toBe(1);
   });
 
+  it("does not reset the page until the search debounce actually fires", () => {
+    const { result } = renderHook(() =>
+      useResourceList<Filters, number>({
+        search: { delay: 300 },
+        pagination: { initialPageSize: 10, total: 100 },
+        initialFilters: { status: "all" },
+        rowIds: [1, 2, 3],
+      }),
+    );
+
+    act(() => result.current.pagination.setPage(5));
+    act(() => result.current.search.setValue("ac"));
+
+    // Before the debounce window elapses the page is untouched.
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(result.current.pagination.page).toBe(5);
+
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(result.current.pagination.page).toBe(1);
+  });
+
+  it("wires row selection against the supplied visible row ids", () => {
+    const { result } = renderHook(() =>
+      useResourceList<Filters, number>({
+        pagination: { initialPageSize: 10, total: 100 },
+        initialFilters: { status: "all" },
+        rowIds: [10, 20, 30],
+      }),
+    );
+
+    act(() => result.current.selection.toggleAllVisible());
+    expect(result.current.selection.selectedCount).toBe(3);
+    expect(result.current.selection.allVisibleSelected).toBe(true);
+    expect(result.current.selection.isSelected(20)).toBe(true);
+
+    act(() => result.current.selection.toggle(20));
+    expect(result.current.selection.selectedCount).toBe(2);
+    expect(result.current.selection.isSelected(20)).toBe(false);
+  });
+
   it("resets pagination to page 1 when a filter changes", () => {
     const { result } = renderHook(() =>
       useResourceList<Filters, number>({

@@ -61,8 +61,32 @@ describe("parseEmbedMessage", () => {
 
   it("rejects a non-finite or missing audio level", () => {
     expect(parseEmbedMessage({ type: "ai-agent:audio-level", level: Infinity })).toBeNull();
+    expect(parseEmbedMessage({ type: "ai-agent:audio-level", level: -Infinity })).toBeNull();
+    expect(parseEmbedMessage({ type: "ai-agent:audio-level", level: NaN })).toBeNull();
     expect(parseEmbedMessage({ type: "ai-agent:audio-level", level: "loud" })).toBeNull();
     expect(parseEmbedMessage({ type: "ai-agent:audio-level" })).toBeNull();
+  });
+
+  it("accepts the [0, 1] audio-level boundaries and passes through out-of-range finite numbers", () => {
+    // The parser validates shape/finiteness only; clamping is a rendering concern.
+    expect(parseEmbedMessage({ type: "ai-agent:audio-level", level: 0 })).toEqual({
+      type: "ai-agent:audio-level",
+      level: 0,
+    });
+    expect(parseEmbedMessage({ type: "ai-agent:audio-level", level: 1 })).toEqual({
+      type: "ai-agent:audio-level",
+      level: 1,
+    });
+    expect(parseEmbedMessage({ type: "ai-agent:audio-level", level: 1.5 })).toEqual({
+      type: "ai-agent:audio-level",
+      level: 1.5,
+    });
+  });
+
+  it("ignores unknown extra properties on an otherwise valid message", () => {
+    expect(
+      parseEmbedMessage({ type: "ai-agent:state", state: "speaking", spoof: true }),
+    ).toEqual({ type: "ai-agent:state", state: "speaking" });
   });
 
   it("ignores foreign and malformed payloads", () => {
@@ -135,6 +159,33 @@ describe("postToFrame", () => {
 
     expect(sent).toBe(true);
     expect(post).toHaveBeenCalledWith({ type: "ai-agent:start" }, "*");
+  });
+
+  it("forwards an explicit target origin to the frame", () => {
+    const post = vi.fn();
+    const frame = {
+      contentWindow: { postMessage: post },
+    } as unknown as HTMLIFrameElement;
+
+    postToFrame(frame, { type: "ai-agent:start" }, "https://embed.example");
+
+    expect(post).toHaveBeenCalledWith({ type: "ai-agent:start" }, "https://embed.example");
+  });
+});
+
+describe("end-to-end channel round-trip", () => {
+  it("delivers a host-posted message into a subscriber on the same window", () => {
+    const handler = vi.fn();
+    const unsubscribe = subscribeToEmbedMessages(handler);
+
+    // Simulate the iframe broadcasting a state update that the host observes.
+    const message: EmbedMessage = { type: "ai-agent:state", state: "listening" };
+    window.dispatchEvent(new MessageEvent("message", { data: message }));
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler.mock.calls[0]![0]).toEqual(message);
+
+    unsubscribe();
   });
 });
 

@@ -185,6 +185,44 @@ describe("reduceStreamEvent", () => {
     expect(appended).toHaveLength(0);
     expect(runtime.messages).toHaveLength(0);
   });
+
+  it("completes a tool_end even when no matching tool_start was seen", () => {
+    const result = reduceStreamEvent(
+      emptyAccumulator(),
+      { type: "tool_end", name: "orphan_tool", success: false },
+      FIXED_NOW,
+    );
+    expect(result.accumulator.activeTools).toEqual([]);
+    expect(result.accumulator.completedTools).toEqual([
+      { name: "orphan_tool", status: "complete", success: false },
+    ]);
+  });
+
+  it("indexes tool_calls in completion order on the done message", () => {
+    const { appended } = runEvents([
+      { type: "tool_start", name: "search_contacts" },
+      { type: "tool_end", name: "search_contacts", success: true },
+      { type: "tool_start", name: "draft_sms" },
+      { type: "tool_end", name: "draft_sms", success: true },
+      { type: "delta", text: "All set." },
+      { type: "done", conversation_id: "conv_x", message_id: null, actions_taken: [] },
+    ]);
+
+    expect(appended[0]!.tool_calls).toEqual([
+      { id: "tool-0", function: { name: "search_contacts", arguments: "{}" } },
+      { id: "tool-1", function: { name: "draft_sms", arguments: "{}" } },
+    ]);
+  });
+
+  it("clears the retry notice once a successful done arrives", () => {
+    const { runtime } = runEvents([
+      { type: "retry", reason: "rate_limited", attempt: 1 },
+      { type: "delta", text: "ok" },
+      { type: "done", conversation_id: "conv_r", message_id: null, actions_taken: [] },
+    ]);
+    expect(runtime.retryNotice).toBeNull();
+    expect(runtime.error).toBeNull();
+  });
 });
 
 describe("toolNamesFromMessage", () => {
@@ -254,6 +292,23 @@ describe("resolveActiveRuntime", () => {
         hydratedMessages: [],
       }),
     ).toBe(storedRuntime);
+  });
+
+  it("prefers a stored runtime with messages over persisted hydration", () => {
+    const storedMessage: AssistantMessageResponse = {
+      id: "stored",
+      role: "assistant",
+      content: "in-memory",
+      created_at: "2026-05-20T14:01:00Z",
+    };
+    const storedRuntime = { ...emptyRuntime(), messages: [storedMessage] };
+    const runtime = resolveActiveRuntime({
+      storedRuntime,
+      isDraftActive: false,
+      hydratedMessages: [userMessage],
+    });
+    expect(runtime).toBe(storedRuntime);
+    expect(runtime.messages).toEqual([storedMessage]);
   });
 
   it("returns an empty runtime for an active draft with no stored runtime", () => {
@@ -405,6 +460,16 @@ describe("parseWorkflowPayload", () => {
     expect(parseWorkflowPayload(JSON.stringify({ message_previews: [] }))).not.toBeNull();
     expect(parseWorkflowPayload(JSON.stringify({ launch_status: "running" }))).not.toBeNull();
     expect(parseWorkflowPayload(JSON.stringify({ warm_lead_handoff: {} }))).not.toBeNull();
+    expect(parseWorkflowPayload(JSON.stringify({ segment_preview: { count: 3 } }))).not.toBeNull();
+    expect(parseWorkflowPayload(JSON.stringify({ outbound_workflow: true }))).not.toBeNull();
+  });
+
+  it("tolerates leading whitespace before the opening brace", () => {
+    expect(parseWorkflowPayload('   {"type":"outbound_workflow"}')).not.toBeNull();
+  });
+
+  it("ignores a falsy outbound_workflow flag with no other markers", () => {
+    expect(parseWorkflowPayload(JSON.stringify({ outbound_workflow: false }))).toBeNull();
   });
 
   it("returns null for plain text, arrays, and untagged objects", () => {

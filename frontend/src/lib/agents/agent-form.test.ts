@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { TEXT_RESPONSE_DEFAULT_DELAY_MS } from "@/lib/text-response-timing";
+import {
+  TEXT_RESPONSE_DEFAULT_DELAY_MS,
+  TEXT_RESPONSE_MAX_DELAY_MS,
+  TEXT_RESPONSE_MIN_DELAY_MS,
+} from "@/lib/text-response-timing";
 import type { Agent } from "@/types/agent";
 
 import {
@@ -154,6 +158,25 @@ describe("buildCreateAgentRequest", () => {
     });
     expect(req.ivr_navigation_goal).toBeUndefined();
   });
+
+  it("passes IVR timing values straight through", () => {
+    const req = buildCreateAgentRequest({
+      ...CREATE_AGENT_FORM_DEFAULTS,
+      ivrLoopThreshold: 5,
+      ivrSilenceDurationMs: 4500,
+      ivrPostDtmfCooldownMs: 2500,
+      ivrMenuBufferSilenceMs: 1500,
+    });
+    expect(req.ivr_loop_threshold).toBe(5);
+    expect(req.ivr_silence_duration_ms).toBe(4500);
+    expect(req.ivr_post_dtmf_cooldown_ms).toBe(2500);
+    expect(req.ivr_menu_buffer_silence_ms).toBe(1500);
+  });
+
+  it("always sends the default text response delay regardless of tier", () => {
+    const budget = buildCreateAgentRequest({ ...CREATE_AGENT_FORM_DEFAULTS, pricingTier: "budget" });
+    expect(budget.text_response_delay_ms).toBe(TEXT_RESPONSE_DEFAULT_DELAY_MS);
+  });
 });
 
 describe("editAgentFormSchema + defaults", () => {
@@ -234,6 +257,40 @@ describe("agentToEditFormValues round-trips through buildUpdateAgentRequest", ()
     const agent = makeAgent({ assignment_strategy: "" as unknown as string });
     const values = agentToEditFormValues(agent);
     expect(values.assignmentStrategy).toBe("single");
+    const garbage = agentToEditFormValues(
+      makeAgent({ assignment_strategy: "telepathy" as unknown as string }),
+    );
+    expect(garbage.assignmentStrategy).toBe("single");
+  });
+
+  it("clamps an out-of-range text response delay loaded from the API", () => {
+    const tooHigh = agentToEditFormValues(makeAgent({ text_response_delay_ms: 999_999 }));
+    expect(tooHigh.textResponseDelayMs).toBe(TEXT_RESPONSE_MAX_DELAY_MS);
+    const tooLow = agentToEditFormValues(makeAgent({ text_response_delay_ms: 1 }));
+    expect(tooLow.textResponseDelayMs).toBe(TEXT_RESPONSE_MIN_DELAY_MS);
+    const missing = agentToEditFormValues(
+      makeAgent({ text_response_delay_ms: null as unknown as number }),
+    );
+    expect(missing.textResponseDelayMs).toBe(TEXT_RESPONSE_DEFAULT_DELAY_MS);
+  });
+
+  it("clamps an out-of-range text response delay when building the update request", () => {
+    const values = agentToEditFormValues(makeAgent());
+    const req = buildUpdateAgentRequest({ ...values, textResponseDelayMs: 5_000_000 });
+    expect(req.text_response_delay_ms).toBe(TEXT_RESPONSE_MAX_DELAY_MS);
+  });
+
+  it("maps a nullable calcom event type id to undefined in the update request", () => {
+    const req = buildUpdateAgentRequest(
+      agentToEditFormValues(makeAgent({ calcom_event_type_id: null })),
+    );
+    expect(req.calcom_event_type_id).toBeUndefined();
+  });
+
+  it("every advanced edit field is assigned to exactly one TAB_FIELDS tab", () => {
+    const assigned = Object.values(TAB_FIELDS).flat();
+    // No field is listed under two tabs.
+    expect(new Set(assigned).size).toBe(assigned.length);
   });
 
   it("normalizes a blank transfer destination to null", () => {

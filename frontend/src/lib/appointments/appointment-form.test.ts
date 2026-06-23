@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  APPOINTMENT_FORM_DEFAULTS,
   appointmentFormSchema,
   buildCreateAppointmentRequest,
   buildScheduledAtISO,
@@ -54,6 +55,19 @@ describe("generateTimeSlots", () => {
   it("rejects start after end", () => {
     expect(() => generateTimeSlots(18, 8)).toThrow();
   });
+
+  it("supports a single-hour range that collapses to one slot at start===end", () => {
+    expect(generateTimeSlots(12, 12, 30)).toEqual(["12:00"]);
+  });
+
+  it("supports 20-minute steps that evenly divide the hour", () => {
+    expect(generateTimeSlots(9, 10, 20)).toEqual([
+      "09:00",
+      "09:20",
+      "09:40",
+      "10:00",
+    ]);
+  });
 });
 
 describe("buildScheduledAtISO", () => {
@@ -82,6 +96,18 @@ describe("buildScheduledAtISO", () => {
     expect(() => buildScheduledAtISO(date, "25:00")).toThrow();
     expect(() => buildScheduledAtISO(date, "12:99")).toThrow();
     expect(() => buildScheduledAtISO(date, "ab:cd")).toThrow();
+    expect(() => buildScheduledAtISO(date, "")).toThrow();
+    expect(() => buildScheduledAtISO(date, "12:30:00")).toThrow();
+  });
+
+  it("accepts the boundary times midnight and 23:59", () => {
+    const date = new Date(2025, 0, 15);
+    const midnight = new Date(buildScheduledAtISO(date, "00:00"));
+    expect(midnight.getHours()).toBe(0);
+    expect(midnight.getMinutes()).toBe(0);
+    const lastMinute = new Date(buildScheduledAtISO(date, "23:59"));
+    expect(lastMinute.getHours()).toBe(23);
+    expect(lastMinute.getMinutes()).toBe(59);
   });
 });
 
@@ -158,5 +184,23 @@ describe("DURATION_OPTIONS", () => {
       expect(opt.value).toBeGreaterThanOrEqual(15);
       expect(opt.value).toBeLessThanOrEqual(480);
     }
+  });
+});
+
+describe("APPOINTMENT_FORM_DEFAULTS", () => {
+  it("defaults to a 30-minute duration with empty optional fields", () => {
+    expect(APPOINTMENT_FORM_DEFAULTS.duration_minutes).toBe(30);
+    expect(APPOINTMENT_FORM_DEFAULTS.service_type).toBe("");
+    expect(APPOINTMENT_FORM_DEFAULTS.notes).toBe("");
+    expect(APPOINTMENT_FORM_DEFAULTS.agent_id).toBeUndefined();
+  });
+
+  it("matches an in-bounds duration accepted by the schema", () => {
+    const result = appointmentFormSchema.safeParse({
+      date: new Date(),
+      time: "09:00",
+      ...APPOINTMENT_FORM_DEFAULTS,
+    });
+    expect(result.success).toBe(true);
   });
 });

@@ -206,4 +206,57 @@ describe("useFormDialog — server error routing", () => {
 
     expect(result.current.form.getFieldState("name").error?.message).toBe("too long");
   });
+
+  it("drops a field error outside the serverErrorFields allowlist and routes it top-level", async () => {
+    const onTopLevelError = vi.fn();
+    const onSubmit = vi.fn().mockRejectedValue(axiosError({ details: { name: "taken" } }));
+    const { result } = setup({
+      onSubmit,
+      onTopLevelError,
+      defaultValues: { name: "Acme", slug: "" },
+      serverErrorFields: ["slug"],
+    });
+
+    await act(async () => {
+      await result.current.handleSubmit();
+    });
+
+    // `name` is not in the allowlist, so no field error is set on it...
+    expect(result.current.form.getFieldState("name").error).toBeUndefined();
+    // ...and the (fallback) message is surfaced top-level instead.
+    expect(onTopLevelError).toHaveBeenCalledWith("Something went wrong");
+  });
+
+  it("uses the errorFallback when the thrown error carries no readable message", async () => {
+    const onTopLevelError = vi.fn();
+    const onSubmit = vi.fn().mockRejectedValue(axiosError({}));
+    const { result } = setup({
+      onSubmit,
+      onTopLevelError,
+      defaultValues: { name: "Acme", slug: "" },
+    });
+
+    await act(async () => {
+      await result.current.handleSubmit();
+    });
+
+    expect(onTopLevelError).toHaveBeenCalledWith("Something went wrong");
+  });
+
+  it("keeps the dialog open (never calls onOpenChange) when a submit throws", async () => {
+    const onOpenChange = vi.fn();
+    const onSubmit = vi.fn().mockRejectedValue(axiosError({ details: { name: "taken" } }));
+    const { result } = setup({
+      onSubmit,
+      onOpenChange,
+      defaultValues: { name: "Acme", slug: "" },
+    });
+
+    await act(async () => {
+      await result.current.handleSubmit();
+    });
+
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(result.current.isSubmitting).toBe(false);
+  });
 });
