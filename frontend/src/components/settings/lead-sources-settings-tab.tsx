@@ -11,8 +11,9 @@ import {
   Globe,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
+import { ResourceListSearch } from "@/components/resource-list";
 import { OutboundAutopilotCard } from "@/components/settings/outbound-autopilot-card";
 import {
   AlertDialog,
@@ -44,6 +45,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  PageEmptyState,
+  PageErrorState,
+  PageLoadingState,
+} from "@/components/ui/page-state";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -51,6 +57,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { useDebouncedSearch } from "@/hooks/useDebouncedSearch";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { agentsApi } from "@/lib/api/agents";
 import { campaignsApi } from "@/lib/api/campaigns";
@@ -441,11 +448,32 @@ export function LeadSourcesSettingsTab() {
   const [editingSource, setEditingSource] = useState<LeadSource | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<LeadSource | null>(null);
 
-  const { data: sources, isPending } = useQuery({
+  const {
+    data: sources,
+    isPending,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: queryKeys.leadSources.all(workspaceId ?? ""),
     queryFn: () => leadSourcesApi.list(workspaceId!),
     enabled: !!workspaceId,
   });
+
+  const search = useDebouncedSearch({ delay: 300 });
+  const query = search.debouncedValue.trim().toLowerCase();
+
+  const filteredSources = useMemo(() => {
+    if (!sources) return [];
+    if (!query) return sources;
+    return sources.filter((source) => {
+      const haystack = [source.name, ...source.allowed_domains]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [sources, query]);
+
+  const hasSources = !!sources && sources.length > 0;
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => leadSourcesApi.delete(workspaceId!, id),
@@ -494,23 +522,37 @@ export function LeadSourcesSettingsTab() {
             </Button>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {hasSources ? (
+            <ResourceListSearch
+              wrapInCard={false}
+              searchQuery={search.value}
+              onSearchChange={search.setValue}
+              placeholder="Search lead sources by name or domain…"
+            />
+          ) : null}
           {isPending ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="size-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : !sources?.length ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Globe className="mx-auto size-10 mb-3 opacity-50" />
-              <p className="font-medium">No lead sources yet</p>
-              <p className="text-sm mt-1">
-                Create a lead source to start capturing leads from your
-                websites.
-              </p>
-            </div>
+            <PageLoadingState message="Loading lead sources…" />
+          ) : isError ? (
+            <PageErrorState
+              message="Couldn't load lead sources."
+              onRetry={() => void refetch()}
+            />
+          ) : !hasSources ? (
+            <PageEmptyState
+              icon={<Globe className="size-10" />}
+              title="No lead sources yet"
+              description="Create a lead source to start capturing leads from your websites."
+            />
+          ) : filteredSources.length === 0 ? (
+            <PageEmptyState
+              icon={<Globe className="size-10" />}
+              title="No matching lead sources"
+              description={`No lead sources match "${search.debouncedValue}".`}
+            />
           ) : (
             <div className="space-y-3">
-              {sources.map((source) => (
+              {filteredSources.map((source) => (
                 <div
                   key={source.id}
                   className="flex items-start justify-between gap-4 rounded-lg border p-4"

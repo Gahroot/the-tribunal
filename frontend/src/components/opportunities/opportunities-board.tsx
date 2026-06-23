@@ -12,7 +12,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { KanbanSquare, MoreVertical, Plus } from "lucide-react";
+import { KanbanSquare, MoreVertical, Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -26,11 +26,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import {
   PageEmptyState,
   PageErrorState,
   PageLoadingState,
 } from "@/components/ui/page-state";
+import { useDebouncedSearch } from "@/hooks/useDebouncedSearch";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { opportunitiesApi } from "@/lib/api/opportunities";
 import { queryKeys } from "@/lib/query-keys";
@@ -182,7 +184,16 @@ function PipelineBoard({
     },
   });
 
-  const opportunities = useMemo(() => data?.items ?? [], [data]);
+  const search = useDebouncedSearch({ delay: 300 });
+  const query = search.debouncedValue.trim().toLowerCase();
+
+  const allOpportunities = useMemo(() => data?.items ?? [], [data]);
+  const opportunities = useMemo(() => {
+    if (!query) return allOpportunities;
+    return allOpportunities.filter((opp) =>
+      opp.name.toLowerCase().includes(query),
+    );
+  }, [allOpportunities, query]);
   const byStage = useMemo(() => {
     const map = new Map<string, Opportunity[]>();
     for (const stage of stages) map.set(stage.id, []);
@@ -240,9 +251,21 @@ function PipelineBoard({
     <>
       <div className="flex h-full flex-col gap-4">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-sm font-medium text-muted-foreground">
-            {pipeline.name}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-muted-foreground">
+              {pipeline.name}
+            </span>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search.value}
+                onChange={(e) => search.setValue(e.target.value)}
+                placeholder="Search opportunities…"
+                aria-label="Search opportunities"
+                className="h-8 w-56 pl-8"
+              />
+            </div>
+          </div>
           <Button size="sm" onClick={() => openCreate()} data-testid="add-opportunity">
             <Plus className="mr-1.5 h-4 w-4" />
             Add Opportunity
