@@ -1,0 +1,457 @@
+[
+  {
+    "id": "agent-brain",
+    "name": "Agent Brain (AI, Prompts & A/B Bandit)",
+    "tier": "C",
+    "status": "manifest",
+    "summary": "The AI cognition layer — agent definitions/templates, prompt building, the real-time voice/text agent sessions (OpenAI Realtime / ElevenLabs / Grok), the CRM-assistant tool stack, IVR navigation, qualification, and the prompt-versioning + multi-armed-bandit A/B experimentation engine that learns which prompts and messages convert.",
+    "depends_on": [
+      "core",
+      "appointments",
+      "automations",
+      "hitl",
+      "knowledge",
+      "messaging",
+      "offers",
+      "payments",
+      "voice"
+    ],
+    "external_integrations": [
+      "openai",
+      "elevenlabs"
+    ],
+    "owns_paths": [
+      "backend/app/services/agents/",
+      "backend/app/services/ai/",
+      "backend/app/services/message_tests/",
+      "backend/app/api/v1/agents.py",
+      "backend/app/api/v1/prompt_versions.py",
+      "backend/app/api/v1/message_tests.py",
+      "backend/app/models/agent.py",
+      "backend/app/models/prompt_version.py",
+      "backend/app/models/prompt_version_stats.py",
+      "backend/app/models/bandit_decision.py",
+      "backend/app/models/message_test.py",
+      "backend/app/workers/prompt_improvement_worker.py",
+      "backend/app/workers/prompt_stats_worker.py",
+      "backend/app/workers/message_test_worker.py",
+      "backend/app/workers/experiment_evaluation_worker.py",
+      "frontend/src/components/agents/",
+      "frontend/src/components/experiments/"
+    ],
+    "extraction_effort": "high"
+  },
+  {
+    "id": "appointments",
+    "name": "Appointments & Calendar",
+    "tier": "B",
+    "status": "manifest",
+    "summary": "Books, reschedules, and tracks appointments per workspace via Cal.com; assigns bookable staff, resolves availability, sends SMS reminders, and runs no-show / never-booked re-engagement.",
+    "depends_on": [
+      "core",
+      "contacts",
+      "messaging",
+      "voice",
+      "compliance",
+      "reviews"
+    ],
+    "external_integrations": [
+      "cal.com",
+      "telnyx"
+    ],
+    "owns_paths": [
+      "backend/app/services/appointments/",
+      "backend/app/services/calendar/",
+      "backend/app/api/v1/appointments.py",
+      "backend/app/api/v1/bookable_staff.py",
+      "backend/app/workers/reminder_worker.py",
+      "backend/app/workers/never_booked_worker.py",
+      "backend/app/workers/noshow_reengagement_worker.py",
+      "backend/app/models/appointment.py",
+      "backend/app/models/bookable_staff.py",
+      "frontend/src/components/calendar/",
+      "frontend/src/app/calendar/"
+    ],
+    "extraction_effort": "medium"
+  },
+  {
+    "id": "automations",
+    "name": "Automations (Event Bus & Rules Engine)",
+    "tier": "C",
+    "status": "manifest",
+    "summary": "The workspace automation engine — an internal event bus (events.py) other blocks emit to, plus a trigger/condition/action rules engine that drains those events and runs operator-defined automations (send message, place call, tag, escalate) in the background.",
+    "depends_on": [
+      "core",
+      "contacts",
+      "hitl",
+      "voice"
+    ],
+    "external_integrations": [],
+    "owns_paths": [
+      "backend/app/services/automations/",
+      "backend/app/api/v1/automations.py",
+      "backend/app/workers/automation_worker.py",
+      "backend/app/models/automation.py",
+      "backend/app/models/automation_event.py",
+      "backend/app/models/automation_execution.py"
+    ],
+    "extraction_effort": "medium"
+  },
+  {
+    "id": "compliance",
+    "name": "Compliance & Rate Limiting",
+    "tier": "C",
+    "status": "manifest",
+    "summary": "The messaging-safety substrate — opt-out enforcement (STOP/global opt-outs), outbound compliance checks, per-number rate limiting, reputation/warming, and bounce classification. A cross-cutting dependency that every voice/messaging send must pass through before dispatch.",
+    "depends_on": [
+      "core"
+    ],
+    "external_integrations": [],
+    "owns_paths": [
+      "backend/app/services/compliance/",
+      "backend/app/services/rate_limiting/",
+      "backend/app/models/opt_out.py"
+    ],
+    "extraction_effort": "low"
+  },
+  {
+    "id": "contacts",
+    "name": "Contacts, Segments & Tags",
+    "tier": "C",
+    "status": "manifest",
+    "summary": "The contact/lead system of record — CRUD, import, encrypted phone/email lookup, timelines, engagement scoring, AI qualification state, plus rule-based segments and tags. Its contact_filters engine is the shared audience-selection primitive used across campaigns and automations.",
+    "depends_on": [
+      "core",
+      "agent-brain",
+      "voice"
+    ],
+    "external_integrations": [],
+    "owns_paths": [
+      "backend/app/services/contacts/",
+      "backend/app/services/segments/",
+      "backend/app/services/tags/",
+      "backend/app/api/v1/contacts.py",
+      "backend/app/api/v1/segments.py",
+      "backend/app/api/v1/tags.py",
+      "backend/app/models/contact.py",
+      "backend/app/models/segment.py",
+      "backend/app/models/tag.py",
+      "frontend/src/components/contacts/",
+      "frontend/src/components/segments/",
+      "frontend/src/components/tags/",
+      "frontend/src/components/filters/"
+    ],
+    "extraction_effort": "medium"
+  },
+  {
+    "id": "core",
+    "name": "Core (Multi-Tenant Substrate)",
+    "tier": "core",
+    "status": "manifest",
+    "summary": "The shared multi-tenant substrate every other block stands on — settings/config, the Fernet credential vault, workspace scoping, DB session + pagination, auth/DI dependencies, idempotency, the outbound HTTP provider layer, and the background-worker runtime. Depends on nothing; everything depends on it.",
+    "depends_on": [],
+    "external_integrations": [],
+    "owns_paths": [
+      "backend/app/core/",
+      "backend/app/db/",
+      "backend/app/api/deps.py",
+      "backend/app/services/idempotency.py",
+      "backend/app/services/providers/",
+      "backend/app/workers/base.py",
+      "backend/app/workers/retryable.py",
+      "backend/app/workers/runner.py",
+      "backend/app/workers/__init__.py",
+      "backend/app/models/workspace.py",
+      "backend/app/models/user.py",
+      "backend/app/models/refresh_token.py",
+      "backend/app/models/api_key.py"
+    ],
+    "extraction_effort": "low"
+  },
+  {
+    "id": "hitl",
+    "name": "Human-in-the-Loop (Approvals, Nudges & Autonomy)",
+    "tier": "C",
+    "status": "manifest",
+    "summary": "The human-in-the-loop control plane for an AI agent — pending-action approval gating, operator command processing over SMS, the autonomy mandate/escalation policy, and proactive operator nudges generated by a library of pluggable strategies. A reusable HITL pattern, not CRM-specific.",
+    "depends_on": [
+      "core",
+      "agent-brain",
+      "appointments",
+      "contacts",
+      "messaging",
+      "voice"
+    ],
+    "external_integrations": [],
+    "owns_paths": [
+      "backend/app/services/approval/",
+      "backend/app/services/nudges/",
+      "backend/app/services/autonomy_mandate.py",
+      "backend/app/api/v1/pending_actions.py",
+      "backend/app/api/v1/nudges.py",
+      "backend/app/workers/approval_worker.py",
+      "backend/app/workers/nudge_worker.py",
+      "backend/app/workers/autonomy_health.py",
+      "backend/app/models/pending_action.py",
+      "backend/app/models/human_nudge.py",
+      "backend/app/models/human_profile.py",
+      "frontend/src/components/pending-actions/",
+      "frontend/src/components/nudges/"
+    ],
+    "extraction_effort": "high"
+  },
+  {
+    "id": "knowledge",
+    "name": "Knowledge Base (RAG Retrieval)",
+    "tier": "C",
+    "status": "manifest",
+    "summary": "Per-workspace knowledge base with document ingestion, chunking, embeddings, and hybrid (pgvector KNN + tsvector keyword) retrieval — the RAG layer the AI agent queries for grounded answers and the knowledge-search tool.",
+    "depends_on": [
+      "core",
+      "agent-brain",
+      "automations",
+      "offers"
+    ],
+    "external_integrations": [
+      "openai"
+    ],
+    "owns_paths": [
+      "backend/app/services/knowledge/",
+      "backend/app/api/v1/knowledge_documents.py",
+      "backend/app/models/knowledge_document.py",
+      "backend/app/models/knowledge_chunk.py",
+      "frontend/src/components/knowledge/"
+    ],
+    "extraction_effort": "medium"
+  },
+  {
+    "id": "lead-capture",
+    "name": "Lead Capture & Lead Magnets",
+    "tier": "A",
+    "status": "manifest",
+    "summary": "Public lead-capture forms and gated lead magnets (quizzes, calculators, downloadable PDFs) that create contacts, fire speed-to-lead auto follow-up, and deliver magnet content by email.",
+    "depends_on": [
+      "core",
+      "voice",
+      "agent-brain",
+      "offers",
+      "contacts",
+      "messaging"
+    ],
+    "external_integrations": [
+      "telnyx",
+      "resend"
+    ],
+    "owns_paths": [
+      "backend/app/api/v1/lead_form.py",
+      "backend/app/api/v1/lead_magnets.py",
+      "backend/app/services/lead_magnet_delivery.py",
+      "backend/app/models/lead_magnet.py",
+      "backend/app/models/lead_magnet_lead.py",
+      "backend/app/models/lead_source.py",
+      "scripts/demo/generate_lead_magnet_pdf.py",
+      "scripts/demo/upload_lead_magnet.py",
+      "frontend/src/components/lead-magnets/",
+      "frontend/src/app/lead-magnets/",
+      "frontend/src/app/p/"
+    ],
+    "extraction_effort": "high"
+  },
+  {
+    "id": "messaging",
+    "name": "Messaging & Outbound Campaigns",
+    "tier": "B",
+    "status": "manifest",
+    "summary": "SMS/iMessage campaigns, drip sequences, outbound missions, and the unified outbound delivery pipeline — renders templated messages, enforces compliance, dispatches via Telnyx or the mac-relay (iMessage), tracks delivery/replies, and runs AI fallback drafting.",
+    "depends_on": [
+      "core",
+      "contacts",
+      "agent-brain",
+      "compliance",
+      "voice",
+      "offers",
+      "short-links",
+      "hitl"
+    ],
+    "external_integrations": [
+      "telnyx",
+      "mac-relay"
+    ],
+    "owns_paths": [
+      "backend/app/services/messaging/",
+      "backend/app/services/campaigns/",
+      "backend/app/services/outbound/",
+      "backend/app/api/v1/campaigns.py",
+      "backend/app/api/v1/drip_campaigns.py",
+      "backend/app/api/v1/outbound_missions.py",
+      "backend/app/api/v1/message_templates.py",
+      "backend/app/workers/campaign_worker.py",
+      "backend/app/workers/drip_campaign_worker.py",
+      "backend/app/workers/outbound_auto_draft_worker.py",
+      "backend/app/workers/followup_worker.py",
+      "backend/app/models/campaign.py",
+      "backend/app/models/phone_message.py",
+      "backend/app/models/message_template.py",
+      "backend/app/models/message_trace.py",
+      "backend/app/models/outbound_mission.py",
+      "backend/app/models/outbound_sequence.py",
+      "backend/app/models/outbound_action_audit_log.py",
+      "frontend/src/components/campaigns/"
+    ],
+    "extraction_effort": "high"
+  },
+  {
+    "id": "offers",
+    "name": "Offers & Offer Builder",
+    "tier": "A",
+    "status": "manifest",
+    "summary": "A guided builder for irresistible offers (value stack, pricing, guarantee, urgency, attached lead magnets) plus public opt-in offer pages that capture contacts and deliver the bundled lead magnets.",
+    "depends_on": [
+      "core",
+      "agent-brain",
+      "lead-capture",
+      "contacts"
+    ],
+    "external_integrations": [],
+    "owns_paths": [
+      "backend/app/services/offers/",
+      "backend/app/api/v1/offers.py",
+      "backend/app/models/offer.py",
+      "backend/app/models/offer_lead_magnet.py",
+      "frontend/src/components/offers/",
+      "frontend/src/app/offers/",
+      "frontend/src/app/p/offers/"
+    ],
+    "extraction_effort": "medium"
+  },
+  {
+    "id": "payments",
+    "name": "In-Call Payments & Deposits",
+    "tier": "B",
+    "status": "manifest",
+    "summary": "Stripe-backed in-call payment / deposit collection — creates hosted Checkout Sessions for an amount requested during a call, texts the secure link to the caller, reconciles session status, and notifies operators on payment. Distinct from SaaS subscription billing.",
+    "depends_on": [
+      "core"
+    ],
+    "external_integrations": [
+      "stripe"
+    ],
+    "owns_paths": [
+      "backend/app/services/payments/",
+      "backend/app/models/call_payment.py"
+    ],
+    "extraction_effort": "low"
+  },
+  {
+    "id": "reviews",
+    "name": "Reviews & Reputation",
+    "tier": "A",
+    "status": "manifest",
+    "summary": "Requests, collects, and analyzes customer reviews per workspace; auto-sends SMS review requests after appointments, routes positive raters to public review sites, and tracks reputation/sender warming.",
+    "depends_on": [
+      "core",
+      "voice",
+      "agent-brain",
+      "appointments",
+      "automations",
+      "compliance"
+    ],
+    "external_integrations": [
+      "telnyx"
+    ],
+    "owns_paths": [
+      "backend/app/services/reviews/",
+      "backend/app/api/v1/reviews.py",
+      "backend/app/models/review.py",
+      "backend/app/models/review_request.py",
+      "backend/app/workers/review_request_worker.py",
+      "backend/app/workers/reputation_worker.py",
+      "frontend/src/components/reviews/",
+      "frontend/src/app/reviews/"
+    ],
+    "extraction_effort": "medium"
+  },
+  {
+    "id": "short-links",
+    "name": "Short Links & Click Tracking",
+    "tier": "A",
+    "status": "manifest",
+    "summary": "Generates tracked short URLs for outbound SMS and records per-click events (count, last-clicked, IP/UA/referer), attributing clicks back to contacts and campaigns.",
+    "depends_on": [
+      "core"
+    ],
+    "external_integrations": [],
+    "owns_paths": [
+      "backend/app/models/short_link.py",
+      "backend/app/models/link_click.py",
+      "backend/app/api/redirects.py"
+    ],
+    "extraction_effort": "low"
+  },
+  {
+    "id": "voice",
+    "name": "Voice & Telephony (Crown Jewel)",
+    "tier": "B",
+    "status": "manifest",
+    "summary": "The crown-jewel real-time AI voice/telephony stack — Telnyx voice + SMS, the OpenAI Realtime / ElevenLabs / Grok voice bridge, live-call supervision, inbound routing/screening, voicemail, missed-call textback, voice campaigns, roleplay, and call outcome/feedback capture.",
+    "depends_on": [
+      "core",
+      "agent-brain",
+      "compliance",
+      "contacts",
+      "messaging",
+      "automations",
+      "hitl"
+    ],
+    "external_integrations": [
+      "openai",
+      "elevenlabs",
+      "telnyx",
+      "mac-relay"
+    ],
+    "owns_paths": [
+      "backend/app/services/calls/",
+      "backend/app/services/telephony/",
+      "backend/app/services/audio/",
+      "backend/app/websockets/",
+      "backend/app/api/v1/calls.py",
+      "backend/app/api/v1/voice_campaigns.py",
+      "backend/app/api/v1/roleplay.py",
+      "backend/app/api/v1/call_feedback.py",
+      "backend/app/api/v1/call_outcomes.py",
+      "backend/app/workers/voice_campaign_worker.py",
+      "backend/app/workers/transcript_analysis_worker.py",
+      "backend/app/models/call_feedback.py",
+      "backend/app/models/call_outcome.py",
+      "backend/app/models/caller_memory.py",
+      "backend/app/models/phone_number.py",
+      "backend/app/models/phone_number_stats.py",
+      "frontend/src/components/calls/",
+      "frontend/src/app/calls/"
+    ],
+    "extraction_effort": "high"
+  },
+  {
+    "id": "widget",
+    "name": "Embeddable Chat & Voice Widget",
+    "tier": "A",
+    "status": "manifest",
+    "summary": "A drop-in, unauthenticated website widget that lets visitors chat, voice-call, or text an AI agent; pairs a vanilla-TS embed bundle with public backend embed endpoints.",
+    "depends_on": [
+      "core",
+      "voice",
+      "agent-brain",
+      "compliance"
+    ],
+    "external_integrations": [
+      "openai",
+      "telnyx"
+    ],
+    "owns_paths": [
+      "frontend/src/widget/",
+      "backend/app/services/embed/",
+      "backend/app/api/v1/embed.py"
+    ],
+    "extraction_effort": "medium"
+  }
+]

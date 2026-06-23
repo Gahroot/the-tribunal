@@ -162,6 +162,15 @@ codegen/check: codegen ## Regenerate OpenAPI/client artifacts and fail on drift.
 .PHONY: ci.codegen
 ci.codegen: codegen/check ## Alias for codegen/check.
 
+.PHONY: blocks.check
+blocks.check: ## Rebuild docs/blocks/registry.json + README.md and verify manifests are honest.
+	python3 scripts/blocks/build_registry.py
+	@if ! git diff --exit-code -- docs/blocks/registry.json docs/blocks/README.md; then \
+		echo "✗ docs/blocks/registry.json or README.md is out of date. Run 'make blocks.check' and commit them."; \
+		exit 1; \
+	fi
+	python3 scripts/blocks/check_manifests.py
+
 .PHONY: ci.migrations
 ci.migrations: ci.backend.deps ## Run migration CI parity against the configured backend database.
 	cd $(BACKEND_DIR) && uv run alembic upgrade head
@@ -170,7 +179,7 @@ ci.migrations: ci.backend.deps ## Run migration CI parity against the configured
 	cd $(BACKEND_DIR) && uv run alembic upgrade head
 
 .PHONY: ci.all
-ci.all: codegen/check ci.backend ci.frontend ci.migrations ## Run all CI parity targets.
+ci.all: codegen/check blocks.check ci.backend ci.frontend ci.migrations ## Run all CI parity targets.
 
 # ─── Tests ─────────────────────────────────────────────────────────────────────
 
