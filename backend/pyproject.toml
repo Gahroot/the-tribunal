@@ -145,7 +145,7 @@ dependencies = [
     "tiktoken>=0.8.0",
     # feature floor: pypdf 5.1 is the maintained pure-Python PDF parser used for text extraction
     # in app/services/knowledge/text_extraction.py (supersedes the unmaintained PyPDF2 line).
-    "pypdf>=5.1.0",
+    "pypdf>=6.13.3",
     # feature floor: python-docx 1.1 carries the typing + lxml fixes used for .docx text extraction
     # in app/services/knowledge/text_extraction.py.
     "python-docx>=1.1.2",
