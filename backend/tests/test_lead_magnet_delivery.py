@@ -4,11 +4,11 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+from tribunal_lead_capture import deliver_lead_magnet_to_lead
+from tribunal_lead_capture import service as lead_magnet_delivery
 
 from app.models.lead_magnet import DeliveryMethod, LeadMagnet, LeadMagnetType
 from app.models.lead_magnet_lead import LeadMagnetLead
-from app.services import lead_magnet_delivery
-from app.services.lead_magnet_delivery import deliver_lead_magnet_to_lead
 
 
 def _lead_magnet(**overrides: Any) -> LeadMagnet:

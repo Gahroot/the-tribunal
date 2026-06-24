@@ -1,8 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { LeadMagnetContent } from "@/components/lead-magnets/lead-magnet-content";
 import type { LeadMagnet } from "@/types";
+
+import { LeadMagnetContent } from "./lead-magnet-content";
 
 describe("LeadMagnetContent", () => {
   it("renders backend static lead-magnet downloads as same-origin proxy links", () => {

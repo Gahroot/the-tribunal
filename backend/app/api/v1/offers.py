@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
+from tribunal_lead_capture import deliver_lead_magnet_to_lead
 
 from app.api.crud import get_or_404
 from app.api.deps import DB, CurrentUser, get_workspace
@@ -20,10 +21,13 @@ from app.models.workspace import Workspace
 from app.schemas.lead_magnet import LeadMagnetResponse
 from app.schemas.offer import (
     GeneratedOfferContent,
+    NegotiationStep,
     OfferCreate,
     OfferGenerationRequest,
+    OfferPack,
     OfferResponse,
     OfferResponseWithLeadMagnets,
+    OfferStrategyMetadata,
     OfferUpdate,
     OptInRequest,
     OptInResponse,
@@ -32,7 +36,6 @@ from app.schemas.offer import (
     ValueStackItem,
 )
 from app.services.ai.offer_generator import generate_offer_content
-from app.services.lead_magnet_delivery import deliver_lead_magnet_to_lead
 
 router = APIRouter()
 public_router = APIRouter()
@@ -381,10 +384,24 @@ async def get_public_offer(
         if lm.estimated_value:
             total_value += lm.estimated_value
 
-    # Convert raw dicts to ValueStackItem models
+    # Convert raw dicts to response models
     value_stack: list[ValueStackItem] | None = None
     if offer.value_stack_items:
         value_stack = [ValueStackItem.model_validate(item) for item in offer.value_stack_items]
+
+    package_options: list[OfferPack] | None = None
+    if offer.package_options:
+        package_options = [OfferPack.model_validate(item) for item in offer.package_options]
+
+    negotiation_sequence: list[NegotiationStep] | None = None
+    if offer.negotiation_sequence:
+        negotiation_sequence = [
+            NegotiationStep.model_validate(item) for item in offer.negotiation_sequence
+        ]
+
+    strategy_metadata: OfferStrategyMetadata | None = None
+    if offer.strategy_metadata:
+        strategy_metadata = OfferStrategyMetadata.model_validate(offer.strategy_metadata)
 
     return PublicOfferResponse(
         name=offer.name,
@@ -401,6 +418,9 @@ async def get_public_offer(
         urgency_text=offer.urgency_text,
         scarcity_count=offer.scarcity_count,
         value_stack_items=value_stack,
+        package_options=package_options,
+        negotiation_sequence=negotiation_sequence,
+        strategy_metadata=strategy_metadata,
         cta_text=offer.cta_text,
         cta_subtext=offer.cta_subtext,
         lead_magnets=lead_magnets,

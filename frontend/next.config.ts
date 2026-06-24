@@ -7,6 +7,9 @@ const BACKEND_URL = getBackendUrl();
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["@prestyj/pixel"],
+  // Extracted in-repo block packages are consumed as TypeScript source, so Next
+  // must transpile them (they aren't pre-built to dist).
+  transpilePackages: ["@tribunal/reviews", "@tribunal/lead-capture"],
   turbopack: { root: __dirname },
   // Avatar image sources. Any host that may legitimately serve a user-supplied
   // avatar URL needs to be allow-listed for next/image. Add new hosts here

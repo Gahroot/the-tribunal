@@ -228,7 +228,7 @@
     "id": "lead-capture",
     "name": "Lead Capture & Lead Magnets",
     "tier": "A",
-    "status": "manifest",
+    "status": "extracted",
     "summary": "Public lead-capture forms and gated lead magnets (quizzes, calculators, downloadable PDFs) that create contacts, fire speed-to-lead auto follow-up, and deliver magnet content by email.",
     "depends_on": [
       "core",
@@ -243,17 +243,11 @@
       "resend"
     ],
     "owns_paths": [
-      "backend/app/api/v1/lead_form.py",
-      "backend/app/api/v1/lead_magnets.py",
-      "backend/app/services/lead_magnet_delivery.py",
-      "backend/app/models/lead_magnet.py",
-      "backend/app/models/lead_magnet_lead.py",
-      "backend/app/models/lead_source.py",
+      "backend/packages/lead-capture/",
       "scripts/demo/generate_lead_magnet_pdf.py",
       "scripts/demo/upload_lead_magnet.py",
-      "frontend/src/components/lead-magnets/",
-      "frontend/src/app/lead-magnets/",
-      "frontend/src/app/p/"
+      "frontend/packages/lead-capture/",
+      "frontend/src/app/lead-magnets/"
     ],
     "extraction_effort": "high"
   },
@@ -346,7 +340,7 @@
     "id": "reviews",
     "name": "Reviews & Reputation",
     "tier": "A",
-    "status": "manifest",
+    "status": "extracted",
     "summary": "Requests, collects, and analyzes customer reviews per workspace; auto-sends SMS review requests after appointments, routes positive raters to public review sites, and tracks reputation/sender warming.",
     "depends_on": [
       "core",
@@ -360,13 +354,8 @@
       "telnyx"
     ],
     "owns_paths": [
-      "backend/app/services/reviews/",
-      "backend/app/api/v1/reviews.py",
-      "backend/app/models/review.py",
-      "backend/app/models/review_request.py",
-      "backend/app/workers/review_request_worker.py",
-      "backend/app/workers/reputation_worker.py",
-      "frontend/src/components/reviews/",
+      "backend/packages/reviews/",
+      "frontend/packages/reviews/",
       "frontend/src/app/reviews/"
     ],
     "extraction_effort": "medium"
@@ -375,16 +364,14 @@
     "id": "short-links",
     "name": "Short Links & Click Tracking",
     "tier": "A",
-    "status": "manifest",
+    "status": "extracted",
     "summary": "Generates tracked short URLs for outbound SMS and records per-click events (count, last-clicked, IP/UA/referer), attributing clicks back to contacts and campaigns.",
     "depends_on": [
       "core"
     ],
     "external_integrations": [],
     "owns_paths": [
-      "backend/app/models/short_link.py",
-      "backend/app/models/link_click.py",
-      "backend/app/api/redirects.py"
+      "backend/packages/short-links/"
     ],
     "extraction_effort": "low"
   },
@@ -435,7 +422,7 @@
     "id": "widget",
     "name": "Embeddable Chat & Voice Widget",
     "tier": "A",
-    "status": "manifest",
+    "status": "extracted",
     "summary": "A drop-in, unauthenticated website widget that lets visitors chat, voice-call, or text an AI agent; pairs a vanilla-TS embed bundle with public backend embed endpoints.",
     "depends_on": [
       "core",
@@ -448,9 +435,8 @@
       "telnyx"
     ],
     "owns_paths": [
-      "frontend/src/widget/",
-      "backend/app/services/embed/",
-      "backend/app/api/v1/embed.py"
+      "frontend/packages/widget/",
+      "backend/packages/widget/"
     ],
     "extraction_effort": "medium"
   }

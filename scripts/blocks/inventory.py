@@ -42,26 +42,30 @@ BLOCKS: dict[str, list[str]] = {
         "app/workers/retryable.py",
     ],
     "widget": [
-        "app/services/embed/**",
+        # Extracted to backend/packages/widget/ (dist tribunal-widget, importable
+        # as tribunal_widget). Only the back-compat shim remains in the app tree;
+        # the live router/services live in the mounted block package.
         "app/api/v1/embed.py",
     ],
     "lead-capture": [
-        # Lead-magnet specific surfaces. The broader app/services/offers tree is
-        # owned by the "offers" block; lead-capture owns the lead-magnet parts.
-        "app/api/v1/lead_form.py",
-        "app/api/v1/lead_magnets.py",
-        "app/services/lead_magnet_delivery.py",
+        # Extracted to backend/packages/lead-capture/ (dist tribunal-lead-capture,
+        # importable as tribunal_lead_capture). Only the back-compat model/schema
+        # shims remain in the app tree so app.models keeps re-exporting
+        # LeadMagnet/LeadMagnetLead/LeadSource and Alembic still discovers the
+        # tables; the live routers (lead_form/lead_magnets/lead_sources), the
+        # delivery service, and the models live in the mounted block package.
         "app/models/lead_magnet.py",
         "app/models/lead_magnet_lead.py",
         "app/models/lead_source.py",
     ],
     "reviews": [
-        "app/services/reviews/**",
-        "app/api/v1/reviews.py",
+        # Extracted to backend/packages/reviews/ (dist tribunal-reviews, importable
+        # as tribunal_reviews). Only the back-compat model/schema shims remain in
+        # the app tree so app.models keeps re-exporting Review/ReviewRequest and
+        # Alembic still discovers the tables; the live router/service/workers/AI
+        # reply drafter live in the mounted block package.
         "app/models/review.py",
         "app/models/review_request.py",
-        "app/workers/review_request_worker.py",
-        "app/workers/reputation_worker.py",
     ],
     "offers": [
         "app/services/offers/**",
@@ -70,6 +74,11 @@ BLOCKS: dict[str, list[str]] = {
         "app/models/offer_lead_magnet.py",
     ],
     "short-links": [
+        # Extracted to backend/packages/short-links/ (dist tribunal-short-links,
+        # importable as tribunal_short_links). Only the back-compat model shims
+        # remain in the app tree so app.models keeps re-exporting ShortLink/
+        # LinkClick and Alembic still discovers the tables; the live router/
+        # service/models live in the mounted block package.
         "app/models/short_link.py",
         "app/models/link_click.py",
     ],

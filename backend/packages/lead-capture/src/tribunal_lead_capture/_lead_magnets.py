@@ -1,4 +1,10 @@
-"""Lead magnet management endpoints."""
+"""Lead magnet management endpoints (authenticated, workspace-scoped).
+
+Mounted by :func:`tribunal_lead_capture.get_router` under
+``/workspaces/{workspace_id}/lead-magnets``.
+"""
+
+from __future__ import annotations
 
 import uuid
 from typing import Annotated, Any
@@ -7,11 +13,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 
 from app.api.crud import get_or_404
-from app.api.deps import DB, CurrentUser, get_workspace
-from app.db.pagination import paginate
-from app.models.lead_magnet import LeadMagnet
+from app.core_api import DB, CurrentUser, get_workspace, paginate
 from app.models.workspace import Workspace
-from app.schemas.lead_magnet import (
+from app.services.ai.lead_magnet_generator import (
+    generate_calculator_content,
+    generate_quiz_content,
+)
+
+from .models import LeadMagnet
+from .schemas import (
     CalculatorGenerationRequest,
     GeneratedCalculatorContent,
     GeneratedQuizContent,
@@ -20,10 +30,6 @@ from app.schemas.lead_magnet import (
     LeadMagnetUpdate,
     PaginatedLeadMagnets,
     QuizGenerationRequest,
-)
-from app.services.ai.lead_magnet_generator import (
-    generate_calculator_content,
-    generate_quiz_content,
 )
 
 router = APIRouter()

@@ -1,0 +1,32 @@
+[project]
+name = "tribunal-lead-capture"
+version = "0.1.0"
+description = "Extracted 'lead-capture' block from The Tribunal — mountable FastAPI block package."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "LicenseRef-Proprietary"
+dependencies = [
+    # The block depends on the host's core surface via the `app.core_api` facade,
+    # plus sibling-block services (voice Telnyx, agent-brain AI generators,
+    # contacts/messaging models, sla, push, email) resolved against the host
+    # `aicrm-backend` distribution while developed in-repo as a uv workspace
+    # member. Pin the real core dependency here when published standalone.
+    "fastapi>=0.136.1",
+    "sqlalchemy[asyncio]>=2.0.49",
+    "pydantic>=2.13.4",
+    "pydantic[email]>=2.13.4",
+    "httpx>=0.27",
+    "structlog>=24.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tribunal_lead_capture"]
+
+# The block owns the ``lead_magnets`` + ``lead_magnet_leads`` + ``lead_sources``
+# tables, but their creating revisions live in the host's shared Alembic chain
+# (``backend/alembic/versions/``), so this package ships no ``migrations/`` dir.
+# See docs/blocks/lead-capture/BLOCK.md (alembic_migrations: shared chain).

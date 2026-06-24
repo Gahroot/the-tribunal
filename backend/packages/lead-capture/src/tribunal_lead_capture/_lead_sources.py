@@ -1,14 +1,20 @@
-"""Lead Sources CRUD endpoints."""
+"""Lead Sources CRUD endpoints (authenticated, workspace-scoped).
+
+Mounted by :func:`tribunal_lead_capture.get_router` under
+``/workspaces/{workspace_id}/lead-sources``.
+"""
+
+from __future__ import annotations
 
 import uuid
 
 from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import select
 
-from app.api.deps import DB, CurrentUser, get_workspace
-from app.core.config import settings
-from app.models.lead_source import LeadSource
-from app.schemas.lead_source import LeadSourceCreate, LeadSourceResponse, LeadSourceUpdate
+from app.core_api import DB, CurrentUser, get_workspace, settings
+
+from .models import LeadSource
+from .schemas import LeadSourceCreate, LeadSourceResponse, LeadSourceUpdate
 
 router = APIRouter()
 

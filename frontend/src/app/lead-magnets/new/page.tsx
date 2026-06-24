@@ -2,6 +2,12 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  CalculatorBuilder,
+  LeadCaptureAdapterProvider,
+  QuizBuilder,
+  type LeadCaptureAdapter,
+} from "@tribunal/lead-capture";
+import {
   FileText,
   Video,
   CheckSquare,
@@ -20,8 +26,6 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
-import { CalculatorBuilder } from "@/components/lead-magnets/calculator-builder";
-import { QuizBuilder } from "@/components/lead-magnets/quiz-builder";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -49,9 +53,11 @@ import type {
 } from "@/types";
 
 const RichTextEditor = dynamic(
-  () => import("@/components/lead-magnets/rich-text-editor").then((m) => m.RichTextEditor),
+  () => import("@tribunal/lead-capture").then((m) => m.RichTextEditor),
   { ssr: false, loading: () => <div className="h-64 rounded-md border bg-muted/30 animate-pulse" /> },
 );
+
+const leadCaptureAdapter: LeadCaptureAdapter = { api: leadMagnetsApi };
 
 interface TypeOption {
   type: LeadMagnetType;
@@ -543,6 +549,7 @@ export default function NewLeadMagnetPage() {
 
   return (
     <AppSidebar>
+      <LeadCaptureAdapterProvider adapter={leadCaptureAdapter}>
       <div className="mx-auto min-h-full w-full max-w-4xl p-6 md:py-8">
       <div className="mb-8">
         <Button variant="ghost" onClick={() => router.push("/lead-magnets")} className="mb-4">
@@ -608,6 +615,7 @@ export default function NewLeadMagnetPage() {
         )}
       </div>
       </div>
+      </LeadCaptureAdapterProvider>
     </AppSidebar>
   );
 }

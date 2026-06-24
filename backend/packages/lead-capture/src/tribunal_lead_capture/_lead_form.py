@@ -1,4 +1,11 @@
-"""Public lead form endpoint for external website submissions."""
+"""Public lead form endpoint for external website submissions.
+
+Mounted by :func:`tribunal_lead_capture.get_public_router` under ``/p/leads``,
+preserving the exact public URL ``/api/v1/p/leads/{public_key}`` that embedded
+forms post to. Unauthenticated — secured by origin allow-list + IP rate limit.
+"""
+
+from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -9,22 +16,24 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import DB
-from app.core.config import settings
-from app.core.encryption import hash_phone, hash_value, hash_value_or_none
 from app.core.origin_validation import validate_origin
 from app.core.rate_limit_helpers import raise_rate_limited
 from app.core.utils import get_client_ip
-from app.db.scope import apply_workspace_scope
+from app.core_api import (
+    DB,
+    apply_workspace_scope,
+    derive_outbound_key,
+    hash_phone,
+    hash_value,
+    hash_value_or_none,
+    settings,
+)
 from app.models.campaign import CampaignContact
 from app.models.contact import Contact
 from app.models.conversation import Conversation
 from app.models.demo_request import DemoRequest
-from app.models.lead_source import LeadSource
 from app.models.workspace import Workspace, WorkspaceMembership
-from app.schemas.lead_source import LeadSubmitRequest, LeadSubmitResponse
 from app.schemas.speed_to_lead import SpeedToLeadProofResponse
-from app.services.idempotency import derive_outbound_key
 from app.services.push_notifications import push_notification_service
 from app.services.sla.speed_to_lead import (
     MIN_LEADS_FOR_PUBLIC_BADGE,
@@ -33,6 +42,9 @@ from app.services.sla.speed_to_lead import (
 )
 from app.services.telephony.telnyx import TelnyxSMSService
 from app.services.telephony.telnyx_voice import TelnyxVoiceService
+
+from .models import LeadSource
+from .schemas import LeadSubmitRequest, LeadSubmitResponse
 
 logger = structlog.get_logger()
 

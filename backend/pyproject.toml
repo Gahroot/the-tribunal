@@ -16,6 +16,12 @@ license = "LicenseRef-Proprietary"
 #   * `baseline`          — chosen as the current modern release at the time of pinning; safe to bump.
 # When raising a floor, document the new tag inline; do not delete prior context.
 dependencies = [
+    # Extracted, mountable in-repo blocks (uv workspace members under packages/).
+    # The host mounts each block's router via ``tribunal_<id>.get_router()``.
+    "tribunal-widget",
+    "tribunal-short-links",
+    "tribunal-reviews",
+    "tribunal-lead-capture",
     # FastAPI + ASGI
     # CVE fix: fastapi 0.109.1+ vendors python-multipart fix for CVE-2024-24762 (Content-Type ReDoS).
     # CVE fix: fastapi >=0.136 pulls starlette >=0.47.2, which patches CVE-2025-54121 (multipart DoS).
@@ -160,6 +166,22 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["app", "scripts"]
 
+# Extracted backend blocks are uv workspace members under ``packages/<id>/``.
+# Each is a standalone ``tribunal-<id>`` distribution sharing this root uv.lock.
+# An empty ``packages/`` glob is a zero-member workspace (the state today) and is
+# harmless. Scaffold a member with ``scripts/blocks/scaffold_backend_block.py``.
+# See ``docs/blocks/BACKEND_BLOCK_PATTERN.md``.
+[tool.uv.workspace]
+members = ["packages/*"]
+
+# Resolve extracted block distributions from the in-repo workspace rather than
+# from a registry while developed here.
+[tool.uv.sources]
+tribunal-widget = { workspace = true }
+tribunal-short-links = { workspace = true }
+tribunal-reviews = { workspace = true }
+tribunal-lead-capture = { workspace = true }
+
 [tool.ruff]
 line-length = 100
 
@@ -224,6 +246,10 @@ exclude_lines = [
 [dependency-groups]
 dev = [
     "factory-boy>=3.3.3",
+    # feature floor: import-linter 2.5 stabilised the `--contract` selector and the
+    # `allow_indirect_imports` fix used by scripts/blocks/gen_importlinter.py to enforce
+    # the block boundary contracts (core independence + per-block depends_on) in CI.
+    "import-linter>=2.5",
     "mypy>=2.1.0",
     # security hardening: pip-audit 2.7 added the `--strict` exit semantics and the
     # `--vulnerability-service osv` default we rely on in the weekly audit workflow

@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { LeadMagnetContent } from "@tribunal/lead-capture";
 import {
   Check,
   Shield,
@@ -12,7 +13,6 @@ import {
 } from "lucide-react";
 import { useState, use } from "react";
 
-import { LeadMagnetContent } from "@/components/lead-magnets/lead-magnet-content";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

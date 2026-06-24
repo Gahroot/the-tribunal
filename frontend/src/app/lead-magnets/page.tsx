@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { LeadMagnetContent } from "@tribunal/lead-capture";
 import {
   Plus,
   FileText,
@@ -32,8 +33,8 @@ import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 
+
 import { AppSidebar } from "@/components/layout/app-sidebar";
-import { LeadMagnetContent } from "@/components/lead-magnets/lead-magnet-content";
 import {
   AlertDialog,
   AlertDialogAction,

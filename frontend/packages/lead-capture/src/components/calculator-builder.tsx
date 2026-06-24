@@ -32,13 +32,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { leadMagnetsApi, GenerateCalculatorRequest } from "@/lib/api/lead-magnets";
 import type {
   CalculatorContent,
   CalculatorInput,
   CalculatorOutput,
   CalculatorSelectOption,
 } from "@/types";
+
+import { useLeadCaptureAdapter, type GenerateCalculatorRequest } from "../adapter";
 
 interface CalculatorBuilderProps {
   workspaceId: string;
@@ -63,6 +64,7 @@ const createDefaultOutput = (index: number): CalculatorOutput => ({
 });
 
 export function CalculatorBuilder({ workspaceId, value, onChange }: CalculatorBuilderProps) {
+  const { api } = useLeadCaptureAdapter();
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const [aiInputs, setAiInputs] = useState<GenerateCalculatorRequest>({
     calculator_type: "",
@@ -72,7 +74,7 @@ export function CalculatorBuilder({ workspaceId, value, onChange }: CalculatorBu
   });
 
   const generateMutation = useMutation({
-    mutationFn: () => leadMagnetsApi.generateCalculator(workspaceId, aiInputs),
+    mutationFn: () => api.generateCalculator(workspaceId, aiInputs),
     onSuccess: (data) => {
       if (data.success) {
         onChange({

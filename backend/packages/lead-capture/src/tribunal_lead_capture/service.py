@@ -1,4 +1,12 @@
-"""Delivery helpers for public lead magnet opt-ins."""
+"""Delivery helpers for public lead magnet opt-ins.
+
+This is the block's public service surface: ``deliver_lead_magnet_to_lead`` is
+called by the offers block when an offer opt-in captures a ``LeadMagnetLead``.
+The actual email send goes through the shared ``app.services.email`` (Resend)
+integration — a cross-block dependency documented in the block README.
+"""
+
+from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
@@ -6,9 +14,9 @@ from typing import Any
 
 import structlog
 
-from app.models.lead_magnet import LeadMagnet
-from app.models.lead_magnet_lead import LeadMagnetLead
 from app.services.email import send_automation_email
+
+from .models import LeadMagnet, LeadMagnetLead
 
 logger = structlog.get_logger()
 

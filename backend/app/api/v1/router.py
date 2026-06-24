@@ -1,6 +1,11 @@
 """API v1 router aggregator."""
 
 from fastapi import APIRouter
+from tribunal_lead_capture import get_public_router as get_public_lead_capture_router
+from tribunal_lead_capture import get_router as get_lead_capture_router
+from tribunal_reviews import get_public_router as get_public_reviews_router
+from tribunal_reviews import get_router as get_reviews_router
+from tribunal_widget import get_router as get_embed_router
 
 from app.api.v1 import (
     ad_library,
@@ -23,16 +28,12 @@ from app.api.v1 import (
     demo,
     device_tokens,
     drip_campaigns,
-    embed,
     find_leads_ai,
     human_profiles,
     improvement_suggestions,
     integrations,
     invitations,
     knowledge_documents,
-    lead_form,
-    lead_magnets,
-    lead_sources,
     message_templates,
     message_tests,
     nudges,
@@ -44,7 +45,6 @@ from app.api.v1 import (
     prompt_versions,
     prospects,
     realtime,
-    reviews,
     roleplay,
     scorecard,
     scraping,
@@ -57,6 +57,7 @@ from app.api.v1 import (
 from app.api.v1.integrations import followupboss as fub_integration
 from app.api.v1.integrations import openai_oauth as openai_oauth_integration
 from app.api.v1.onboarding import realtor_setup
+from app.blocks import widget_wiring  # noqa: F401  (registers widget block providers on import)
 
 api_router = APIRouter()
 
@@ -145,11 +146,6 @@ api_router.include_router(
     offers.router,
     prefix="/workspaces/{workspace_id}/offers",
     tags=["Offers"],
-)
-api_router.include_router(
-    lead_magnets.router,
-    prefix="/workspaces/{workspace_id}/lead-magnets",
-    tags=["Lead Magnets"],
 )
 api_router.include_router(
     phone_numbers.router,
@@ -259,18 +255,16 @@ api_router.include_router(
     prefix="/p/demo",
     tags=["Public Demo"],
 )
-# Public embed endpoints (no auth, origin-validated)
-api_router.include_router(
-    embed.router,
-    prefix="/p/embed",
-    tags=["Public Embed"],
-)
-# Lead Sources CRUD (authenticated)
-api_router.include_router(
-    lead_sources.router,
-    prefix="/workspaces/{workspace_id}/lead-sources",
-    tags=["Lead Sources"],
-)
+# Public embed endpoints (no auth, origin-validated). Extracted into the
+# mountable ``tribunal-widget`` block; the router already carries the
+# ``/p/embed`` prefix + ``Public Embed`` tag (see tribunal_widget.get_router).
+api_router.include_router(get_embed_router())
+# Lead Capture — extracted into the mountable ``tribunal-lead-capture`` block.
+# get_lead_capture_router() carries the authenticated lead-magnet authoring
+# (/workspaces/{workspace_id}/lead-magnets) + lead-source config
+# (/workspaces/{workspace_id}/lead-sources) sub-routers with their prefixes +
+# tags baked in, so the host mounts it prefix-free.
+api_router.include_router(get_lead_capture_router())
 api_router.include_router(
     nudges.router,
     prefix="/workspaces/{workspace_id}/nudges",
@@ -281,12 +275,11 @@ api_router.include_router(
     prefix="/workspaces/{workspace_id}/nudge-settings",
     tags=["Human Nudges"],
 )
-# Public lead form endpoint (no auth, origin-validated, rate-limited)
-api_router.include_router(
-    lead_form.router,
-    prefix="/p/leads",
-    tags=["Public Lead Form"],
-)
+# Public lead form endpoint (no auth, origin-validated, rate-limited) — extracted
+# into the mountable ``tribunal-lead-capture`` block; get_public_lead_capture_router()
+# carries the ``/p/leads`` prefix + tag, preserving the exact public URL
+# ``/api/v1/p/leads/{public_key}`` embedded forms post to.
+api_router.include_router(get_public_lead_capture_router())
 api_router.include_router(
     human_profiles.router,
     prefix="/workspaces/{workspace_id}/agents/{agent_id}/human-profile",
@@ -307,22 +300,17 @@ api_router.include_router(
     prefix="/workspaces/{workspace_id}/drip-campaigns",
     tags=["Drip Campaigns"],
 )
-api_router.include_router(
-    reviews.router,
-    prefix="/workspaces/{workspace_id}/reviews",
-    tags=["Reviews"],
-)
+# Reviews & Reputation — extracted into the mountable ``tribunal-reviews`` block;
+# both routers carry their own prefix + tags (see tribunal_reviews.get_router /
+# get_public_router), so the host mounts them prefix-free.
+api_router.include_router(get_reviews_router())
 api_router.include_router(
     roleplay.router,
     prefix="/workspaces/{workspace_id}/roleplay",
     tags=["Practice Arena"],
 )
 # Public review rating-gate landing page (no auth)
-api_router.include_router(
-    reviews.public_router,
-    prefix="/p/reviews",
-    tags=["Public Reviews"],
-)
+api_router.include_router(get_public_reviews_router())
 api_router.include_router(billing.router, prefix="/billing", tags=["Billing"])
 api_router.include_router(
     realtor_setup.router,

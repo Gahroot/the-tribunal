@@ -13,11 +13,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
+from tribunal_lead_capture import _lead_form as lead_form_api
 
 from app.api.v1 import auth as auth_api
 from app.api.v1 import demo as demo_api
 from app.api.v1 import embed as embed_api
-from app.api.v1 import lead_form as lead_form_api
 from app.core.config import settings
 
 

@@ -25,8 +25,9 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-import { leadMagnetsApi, GenerateQuizRequest } from "@/lib/api/lead-magnets";
 import type { QuizContent, QuizQuestion, QuizOption, QuizResult } from "@/types";
+
+import { useLeadCaptureAdapter, type GenerateQuizRequest } from "../adapter";
 
 interface QuizBuilderProps {
   workspaceId: string;
@@ -55,6 +56,7 @@ const createDefaultResult = (id: string, minScore: number, maxScore: number): Qu
 });
 
 export function QuizBuilder({ workspaceId, value, onChange }: QuizBuilderProps) {
+  const { api } = useLeadCaptureAdapter();
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const [aiInputs, setAiInputs] = useState<GenerateQuizRequest>({
     topic: "",
@@ -64,7 +66,7 @@ export function QuizBuilder({ workspaceId, value, onChange }: QuizBuilderProps) 
   });
 
   const generateMutation = useMutation({
-    mutationFn: () => leadMagnetsApi.generateQuiz(workspaceId, aiInputs),
+    mutationFn: () => api.generateQuiz(workspaceId, aiInputs),
     onSuccess: (data) => {
       if (data.success) {
         onChange({

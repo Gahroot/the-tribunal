@@ -2,8 +2,7 @@
 
 import pytest
 from fastapi import HTTPException, status
-
-from app.api.v1.lead_magnets import validate_lead_magnet_content
+from tribunal_lead_capture._lead_magnets import validate_lead_magnet_content
 
 
 def test_rich_lead_magnet_requires_content_data() -> None:
