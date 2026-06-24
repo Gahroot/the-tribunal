@@ -1,0 +1,37 @@
+[project]
+name = "tribunal-service-__BLOCK_ID__"
+version = "0.1.0"
+description = "__BLOCK_DESC__"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "LicenseRef-Proprietary"
+# Floor policy mirrors backend/pyproject.toml: keep security-CVE floors, never
+# lower them. Add block-specific integrations (stripe, telnx-sdk, openai, ...)
+# here as the service grows.
+dependencies = [
+    # CVE fix: fastapi >=0.136 pulls starlette >=0.47.2 (CVE-2025-54121) + python-multipart fix (CVE-2024-24762).
+    "fastapi>=0.136.1",
+    "uvicorn[standard]>=0.47.0",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.0",
+    # structured logging (matches the host)
+    "structlog>=24.0",
+    # service-to-service JWT auth + HMAC event signing (security.py)
+    "PyJWT>=2.8",
+    "cryptography>=42.0",
+    # host_client HTTP calls + service outbound calls
+    "httpx>=0.27",
+]
+
+[project.scripts]
+# Standalone worker process — the Level-3 analogue of the host's `backend-workers`.
+__BLOCK_ID__-workers = "app.worker:main"
+# Dump this service's OpenAPI schema (CI drift check analogue of `export-openapi`).
+export-openapi = "app.main:export_openapi"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]

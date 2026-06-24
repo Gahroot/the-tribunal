@@ -1,0 +1,16 @@
+# Railway config for the __BLOCK_ID__ service.
+# Mirrors backend/railway.toml conventions (nixpacks, /readyz healthcheck,
+# on-failure restart). Each Level-3 service is its own Railway service.
+
+[build]
+builder = "nixpacks"
+
+[deploy]
+# No DB migrations here unless this service owns a slice DB (see
+# SERVICE_BLOCK_PATTERN.md §3.4). If it does, add a preDeployCommand that runs the
+# service's own Alembic chain against its slice.
+startCommand = "sh -c 'uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips=*'"
+healthcheckPath = "/readyz"
+healthcheckTimeout = 60
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10
