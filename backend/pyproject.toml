@@ -61,7 +61,7 @@ dependencies = [
     # breaking change floor: 2.12 changed model_fields_set behaviour for extras; our schemas assume 2.13+.
     "pydantic>=2.13.4",
     # runtime requirement: pydantic-settings 2.14 aligns with pydantic 2.13's CoreSchema changes.
-    "pydantic-settings>=2.14.1",
+    "pydantic-settings>=2.14.2",
     # security hardening: 2.2 added stricter IDN/RFC 6531 validation used by app/schemas/contact.py.
     "email-validator>=2.2.0",
     # Authentication & Encryption
