@@ -2,7 +2,7 @@
 
 import hashlib
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -12,6 +12,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.roles import WorkspaceRole
 from app.core.security import decode_access_token
 from app.db.session import get_db, transaction_boundary
 from app.models.api_key import APIKey
@@ -296,6 +297,33 @@ async def get_membership(
     return membership
 
 
+def require_workspace_roles(
+    *allowed: WorkspaceRole,
+) -> Callable[[WorkspaceMembership], Awaitable[WorkspaceMembership]]:
+    """Build a dependency that requires the caller to hold one of ``allowed``.
+
+    Resolves the current user's membership via :func:`get_membership` (which
+    already enforces workspace access and the API-key workspace binding), then
+    rejects with 403 when the membership role is not in the allow-list. An
+    explicit allow-list is used rather than a rank threshold so peer roles of
+    equal rank (e.g. ``dispatcher`` and ``sales_rep``) never leak into each
+    other's endpoints.
+    """
+    allowed_values = {role.value for role in allowed}
+
+    async def _require(
+        membership: Annotated[WorkspaceMembership, Depends(get_membership)],
+    ) -> WorkspaceMembership:
+        if membership.role not in allowed_values:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to perform this action",
+            )
+        return membership
+
+    return _require
+
+
 async def get_transactional_db(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> AsyncGenerator[AsyncSession, None]:
@@ -316,3 +344,28 @@ TransactionalDB = Annotated[
 WorkspaceAccess = Annotated[Workspace, Depends(get_workspace)]
 WorkspaceAdminAccess = Annotated[Workspace, Depends(get_workspace_admin)]
 CurrentMembership = Annotated[WorkspaceMembership, Depends(get_membership)]
+
+# Role-gated membership dependencies for field-service / sales surfaces. Each
+# resolves (and returns) the caller's membership, raising 403 when the role is
+# not permitted. Owners and admins are always included.
+WorkspaceManager = Annotated[
+    WorkspaceMembership,
+    Depends(
+        require_workspace_roles(
+            WorkspaceRole.OWNER,
+            WorkspaceRole.ADMIN,
+            WorkspaceRole.MANAGER,
+        )
+    ),
+]
+WorkspaceDispatcher = Annotated[
+    WorkspaceMembership,
+    Depends(
+        require_workspace_roles(
+            WorkspaceRole.OWNER,
+            WorkspaceRole.ADMIN,
+            WorkspaceRole.MANAGER,
+            WorkspaceRole.DISPATCHER,
+        )
+    ),
+]

@@ -1106,7 +1106,7 @@ export interface paths {
         };
         /**
          * Get Workspace
-         * @description Get a specific workspace.
+         * @description Get a specific workspace, including the caller's role.
          */
         get: operations["get_workspace_api_v1_workspaces__workspace_id__get"];
         /**
@@ -12003,7 +12003,7 @@ export interface components {
              * @default member
              * @enum {string}
              */
-            role: "admin" | "member";
+            role: "admin" | "manager" | "dispatcher" | "sales_rep" | "technician" | "member";
         };
         /**
          * InvitationPublicResponse
@@ -17600,7 +17600,7 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "admin" | "member";
+            role: "admin" | "manager" | "dispatcher" | "sales_rep" | "technician" | "member";
         };
         /**
          * UrgencyType
@@ -18181,6 +18181,8 @@ export interface components {
             is_active: boolean;
             /** Name */
             name: string;
+            /** Role */
+            role?: string | null;
             /** Settings */
             settings: {
                 [key: string]: unknown;

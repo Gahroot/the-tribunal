@@ -19,6 +19,7 @@ import {
 import { PageLoadingState } from "@/components/ui/page-state";
 import { invitationsApi } from "@/lib/api/invitations";
 import { queryKeys } from "@/lib/query-keys";
+import { roleLabel } from "@/lib/workspace-roles";
 import { useAuth } from "@/providers/auth-provider";
 
 interface PageProps {
@@ -150,10 +151,7 @@ export default function InviteAcceptPage({ params }: PageProps) {
           </div>
 
           <div className="text-center text-sm text-muted-foreground">
-            <p>
-              You&apos;ll join as{" "}
-              {invitation.role === "admin" ? "an administrator" : "a team member"}.
-            </p>
+            <p>You&apos;ll join with the {roleLabel(invitation.role)} role.</p>
           </div>
 
           {!isAuthenticated && (

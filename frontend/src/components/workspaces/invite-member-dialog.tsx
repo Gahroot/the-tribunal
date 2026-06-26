@@ -29,10 +29,15 @@ import {
 } from "@/lib/api/invitations";
 import { useFormDialog } from "@/lib/forms/use-form-dialog";
 import { queryKeys } from "@/lib/query-keys";
+import {
+  ASSIGNABLE_ROLES,
+  ROLE_DESCRIPTIONS,
+  ROLE_LABELS,
+} from "@/lib/workspace-roles";
 
 const inviteFormSchema = z.object({
   email: z.email({ error: "Please enter a valid email address" }),
-  role: z.enum(["admin", "member"]),
+  role: z.enum(ASSIGNABLE_ROLES),
   message: z.string().max(500, { error: "Message must be 500 characters or less" }).optional(),
 });
 
@@ -136,22 +141,16 @@ export function InviteMemberDialog({ open, onOpenChange }: InviteMemberDialogPro
                 </SelectTrigger>
               </FormControl>
               <SelectContent>
-                <SelectItem value="member">
-                  <div>
-                    <div className="font-medium">Member</div>
-                    <div className="text-xs text-muted-foreground">
-                      Can view and manage contacts, campaigns
+                {ASSIGNABLE_ROLES.map((role) => (
+                  <SelectItem key={role} value={role}>
+                    <div>
+                      <div className="font-medium">{ROLE_LABELS[role]}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {ROLE_DESCRIPTIONS[role]}
+                      </div>
                     </div>
-                  </div>
-                </SelectItem>
-                <SelectItem value="admin">
-                  <div>
-                    <div className="font-medium">Admin</div>
-                    <div className="text-xs text-muted-foreground">
-                      Full access including team management
-                    </div>
-                  </div>
-                </SelectItem>
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <FormMessage />

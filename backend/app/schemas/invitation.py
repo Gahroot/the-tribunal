@@ -2,16 +2,17 @@
 
 import uuid
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field
+
+from app.core.roles import AssignableRole
 
 
 class InvitationCreate(BaseModel):
     """Schema for creating an invitation."""
 
     email: EmailStr
-    role: Literal["admin", "member"] = Field(
+    role: AssignableRole = Field(
         default="member",
         description="Role to assign when invitation is accepted",
     )

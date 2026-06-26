@@ -1,4 +1,5 @@
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
+import type { AssignableRole } from "@/lib/workspace-roles";
 
 export interface WorkspaceResponse {
   id: string;
@@ -9,11 +10,13 @@ export interface WorkspaceResponse {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  /** The caller's role in this workspace; populated on per-workspace reads. */
+  role?: string | null;
 }
 
 export interface WorkspaceWithMembership {
   workspace: WorkspaceResponse;
-  role: "owner" | "admin" | "member";
+  role: string;
   is_default: boolean;
 }
 
@@ -60,7 +63,7 @@ export const workspacesApi = {
   updateMemberRole: async (
     workspaceId: string,
     userId: number,
-    role: "admin" | "member"
+    role: AssignableRole
   ): Promise<{ user_id: number; role: string; message: string }> => {
     return apiPut<{ user_id: number; role: string; message: string }>(
       `/api/v1/workspaces/${workspaceId}/members/${userId}/role`,

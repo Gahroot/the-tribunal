@@ -103,9 +103,12 @@ async def create_workspace(
 @router.get("/{workspace_id}", response_model=WorkspaceResponse)
 async def get_workspace(
     workspace: WorkspaceAccess,
+    membership: CurrentMembership,
 ) -> WorkspaceResponse:
-    """Get a specific workspace."""
-    return WorkspaceResponse.model_validate(workspace)
+    """Get a specific workspace, including the caller's role."""
+    response = WorkspaceResponse.model_validate(workspace)
+    response.role = membership.role
+    return response
 
 
 @router.put("/{workspace_id}", response_model=WorkspaceResponse)

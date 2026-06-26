@@ -32,6 +32,7 @@ from app.models.failed_job import (
     FAILED_JOB_STATUSES,
     FailedJob,
 )
+from app.models.field_service import Crew, ServiceLocation, Technician
 from app.models.human_nudge import HumanNudge
 from app.models.human_profile import HumanProfile
 from app.models.invitation import WorkspaceInvitation
@@ -221,6 +222,9 @@ __all__ = [
     "DeviceToken",
     "EmailEvent",
     "EmailEventType",
+    "ServiceLocation",
+    "Crew",
+    "Technician",
     "FAILED_JOB_STATUS_ABANDONED",
     "FAILED_JOB_STATUS_PENDING",
     "FAILED_JOB_STATUS_RETRIED",

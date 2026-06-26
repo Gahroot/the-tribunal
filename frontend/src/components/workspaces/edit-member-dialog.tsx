@@ -36,6 +36,12 @@ import {
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { workspacesApi } from "@/lib/api/workspaces";
 import { queryKeys } from "@/lib/query-keys";
+import {
+  ASSIGNABLE_ROLES,
+  ROLE_DESCRIPTIONS,
+  ROLE_LABELS,
+  type AssignableRole,
+} from "@/lib/workspace-roles";
 interface EditMemberDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -56,9 +62,15 @@ export function EditMemberDialog({
 }: EditMemberDialogProps) {
   const workspaceId = useWorkspaceId();
   const queryClient = useQueryClient();
-  const [selectedRole, setSelectedRole] = useState<"admin" | "member">(
-    member.role === "admin" ? "admin" : "member"
-  );
+  // Initialise from the member's actual role (falling back to "member" only for
+  // an unknown/owner value) so opening the dialog and saving never silently
+  // downgrades a dispatcher, sales_rep, technician, or manager.
+  const initialRole: AssignableRole = (
+    ASSIGNABLE_ROLES as readonly string[]
+  ).includes(member.role)
+    ? (member.role as AssignableRole)
+    : "member";
+  const [selectedRole, setSelectedRole] = useState<AssignableRole>(initialRole);
 
   // Can only edit if current user is owner/admin and target is not owner
   const canEditRole = member.role !== "owner" && currentUserRole !== "member";
@@ -125,29 +137,23 @@ export function EditMemberDialog({
             ) : (
               <Select
                 value={selectedRole}
-                onValueChange={(value: "admin" | "member") => setSelectedRole(value)}
+                onValueChange={(value: AssignableRole) => setSelectedRole(value)}
                 disabled={!canEditRole}
               >
                 <SelectTrigger id="role">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="member">
-                    <div>
-                      <div className="font-medium">Member</div>
-                      <div className="text-xs text-muted-foreground">
-                        Can view and manage contacts, campaigns
+                  {ASSIGNABLE_ROLES.map((role) => (
+                    <SelectItem key={role} value={role}>
+                      <div>
+                        <div className="font-medium">{ROLE_LABELS[role]}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {ROLE_DESCRIPTIONS[role]}
+                        </div>
                       </div>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="admin">
-                    <div>
-                      <div className="font-medium">Admin</div>
-                      <div className="text-xs text-muted-foreground">
-                        Full access including team management
-                      </div>
-                    </div>
-                  </SelectItem>
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             )}

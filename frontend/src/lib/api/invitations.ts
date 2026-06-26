@@ -1,4 +1,5 @@
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import type { AssignableRole } from "@/lib/workspace-roles";
 
 export interface InvitationResponse {
   id: string;
@@ -34,7 +35,7 @@ export interface InvitationAcceptResponse {
 
 export interface CreateInvitationRequest {
   email: string;
-  role: "admin" | "member";
+  role: AssignableRole;
   message?: string;
 }
 

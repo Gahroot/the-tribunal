@@ -3,9 +3,10 @@
 import typing
 import uuid
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel, Field
+
+from app.core.roles import AssignableRole
 
 
 class WorkspaceCreate(BaseModel):
@@ -36,6 +37,10 @@ class WorkspaceResponse(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+    # The caller's role in this workspace, populated on per-workspace reads so
+    # the frontend can role-gate UI without a second request. ``None`` on
+    # responses where membership context is not resolved (e.g. create).
+    role: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -64,7 +69,7 @@ class WorkspaceWithMembership(BaseModel):
 class UpdateMemberRoleRequest(BaseModel):
     """Request to update a member's role."""
 
-    role: Literal["admin", "member"]
+    role: AssignableRole
 
 
 class MemberResponse(BaseModel):
