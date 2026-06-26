@@ -10,7 +10,7 @@ from app.api.webhooks.mac_relay_handlers import _normalize_relay_address
 from app.core.encryption import hash_phone
 from app.models.conversation import Conversation
 from app.models.user import User
-from app.services.contacts.contact_service import _sender_address_for_phone
+from app.services.contacts.ai_state_service import sender_address_for_phone
 from app.services.telephony.inbound_text import (
     _resolve_existing_contact_agent_id,
     check_operator_by_phone,
@@ -44,7 +44,7 @@ def test_imessage_sender_address_prefers_relay_alias() -> None:
         mac_relay_sender_id="owner@example.com",
     )
 
-    assert _sender_address_for_phone(phone_number) == "owner@example.com"
+    assert sender_address_for_phone(phone_number) == "owner@example.com"
 
 
 def test_non_imessage_sender_address_uses_phone_number() -> None:
@@ -54,7 +54,7 @@ def test_non_imessage_sender_address_uses_phone_number() -> None:
         mac_relay_sender_id="owner@example.com",
     )
 
-    assert _sender_address_for_phone(phone_number) == "+15551234567"
+    assert sender_address_for_phone(phone_number) == "+15551234567"
 
 
 def test_mac_relay_address_normalization_preserves_apple_id_email() -> None:
