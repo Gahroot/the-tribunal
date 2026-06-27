@@ -35,6 +35,14 @@ class User(Base):
     avatar_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Set when an account is provisioned with a password someone else chose
+    # (e.g. bulk member onboarding hands the admin a temporary password). The
+    # frontend gates the app on this flag and forces a reset; clearing it is the
+    # responsibility of the password-change flow. Login is not blocked so the
+    # user can authenticate once to perform the reset.
+    must_change_password: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
 
     # Notification preferences
     notification_email: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

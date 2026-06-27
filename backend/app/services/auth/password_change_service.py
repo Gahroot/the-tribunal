@@ -54,5 +54,8 @@ class PasswordChangeService:
             )
 
         user.hashed_password = self.get_password_hash(body.new_password)
+        # The user has now chosen their own password; lift any forced-reset gate
+        # set at provisioning time (e.g. bulk member onboarding).
+        user.must_change_password = False
         await self.revoke_all_user_refresh_tokens(self.db, user.id)
         await self.db.commit()

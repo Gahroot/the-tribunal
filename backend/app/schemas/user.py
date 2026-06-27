@@ -27,6 +27,10 @@ class UserWithWorkspace(UserResponse):
     """Schema for user response with workspace info."""
 
     default_workspace_id: str | None = None
+    # True when the account must reset its password before using the app (set at
+    # provisioning for admin-issued temporary passwords). The frontend gates on
+    # this and routes to the change-password flow.
+    must_change_password: bool = False
 
 
 class Token(BaseModel):

@@ -13,6 +13,10 @@ from app.api.deps import (
     WorkspaceAdminAccess,
 )
 from app.models.workspace import Workspace, WorkspaceMembership
+from app.schemas.bulk_members import (
+    BulkMemberCreateRequest,
+    BulkMemberCreateResponse,
+)
 from app.schemas.workspace import (
     MemberResponse,
     UpdateMemberRoleRequest,
@@ -23,6 +27,7 @@ from app.schemas.workspace import (
 )
 from app.services.agents import ensure_default_agent
 from app.services.opportunities import ensure_default_pipeline
+from app.services.workspaces import bulk_create_members
 
 router = APIRouter()
 
@@ -271,3 +276,38 @@ async def remove_member(
     # Remove membership
     await db.delete(target_membership)
     await db.commit()
+
+
+@router.post(
+    "/{workspace_id}/members/bulk",
+    response_model=BulkMemberCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def bulk_create_workspace_members(
+    workspace_id: uuid.UUID,
+    payload: BulkMemberCreateRequest,
+    membership: CurrentMembership,
+    db: DB,
+) -> BulkMemberCreateResponse:
+    """Provision many members at once (owner/admin only).
+
+    Creates a login + workspace membership for each new email and attaches any
+    existing accounts as members. Returns a per-row outcome; rows that conflict
+    are skipped without failing the batch. Only the owner may grant the admin
+    role. Generated temporary passwords are returned once and never stored in
+    plaintext.
+    """
+    if membership.role not in ("owner", "admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to manage members",
+        )
+
+    response = await bulk_create_members(
+        db,
+        workspace_id=workspace_id,
+        caller_role=membership.role,
+        items=payload.members,
+    )
+    await db.commit()
+    return response

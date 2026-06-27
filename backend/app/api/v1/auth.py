@@ -327,4 +327,5 @@ async def get_me(current_user: CurrentUser, db: DB) -> dict[str, Any]:
         "is_active": current_user.is_active,
         "created_at": current_user.created_at,
         "default_workspace_id": str(membership.workspace_id) if membership else None,
+        "must_change_password": current_user.must_change_password,
     }

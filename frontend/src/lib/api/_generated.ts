@@ -4128,6 +4128,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/members/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Create Workspace Members
+         * @description Provision many members at once (owner/admin only).
+         *
+         *     Creates a login + workspace membership for each new email and attaches any
+         *     existing accounts as members. Returns a per-row outcome; rows that conflict
+         *     are skipped without failing the batch. Only the owner may grant the admin
+         *     role. Generated temporary passwords are returned once and never stored in
+         *     plaintext.
+         */
+        post: operations["bulk_create_workspace_members_api_v1_workspaces__workspace_id__members_bulk_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/members/{user_id}": {
         parameters: {
             query?: never;
@@ -8864,6 +8890,74 @@ export interface components {
             errors: string[];
             /** Failed */
             failed: number;
+        };
+        /**
+         * BulkMemberCreateRequest
+         * @description Request body for bulk member creation.
+         */
+        BulkMemberCreateRequest: {
+            /** Members */
+            members: components["schemas"]["BulkMemberItem"][];
+        };
+        /**
+         * BulkMemberCreateResponse
+         * @description Aggregate result of a bulk member creation request.
+         */
+        BulkMemberCreateResponse: {
+            /** Added Existing */
+            added_existing: number;
+            /** Already Member */
+            already_member: number;
+            /** Created */
+            created: number;
+            /** Results */
+            results: components["schemas"]["BulkMemberResultItem"][];
+            /** Skipped */
+            skipped: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * BulkMemberItem
+         * @description One member to provision in a bulk request.
+         */
+        BulkMemberItem: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Full Name */
+            full_name?: string | null;
+            /** Password */
+            password?: string | null;
+            /**
+             * Role
+             * @default member
+             * @enum {string}
+             */
+            role: "admin" | "manager" | "dispatcher" | "sales_rep" | "technician" | "member";
+        };
+        /**
+         * BulkMemberResultItem
+         * @description Per-row outcome for a bulk member creation request.
+         */
+        BulkMemberResultItem: {
+            /** Email */
+            email: string;
+            /** Error */
+            error?: string | null;
+            /** Role */
+            role?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "created" | "added_existing" | "already_member" | "skipped";
+            /** Temporary Password */
+            temporary_password?: string | null;
+            /** User Id */
+            user_id?: number | null;
         };
         /**
          * BulkStatusUpdateRequest
@@ -18167,6 +18261,11 @@ export interface components {
             id: number;
             /** Is Active */
             is_active: boolean;
+            /**
+             * Must Change Password
+             * @default false
+             */
+            must_change_password: boolean;
         };
         /** ValidationError */
         ValidationError: {
@@ -27036,6 +27135,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeadSourceCampaignResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_create_workspace_members_api_v1_workspaces__workspace_id__members_bulk_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkMemberCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkMemberCreateResponse"];
                 };
             };
             /** @description Validation Error */

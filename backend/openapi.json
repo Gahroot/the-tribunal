@@ -4863,6 +4863,189 @@
         "title": "BulkDeleteResponse",
         "type": "object"
       },
+      "BulkMemberCreateRequest": {
+        "description": "Request body for bulk member creation.",
+        "properties": {
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/BulkMemberItem"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Members",
+            "type": "array"
+          }
+        },
+        "required": [
+          "members"
+        ],
+        "title": "BulkMemberCreateRequest",
+        "type": "object"
+      },
+      "BulkMemberCreateResponse": {
+        "description": "Aggregate result of a bulk member creation request.",
+        "properties": {
+          "added_existing": {
+            "title": "Added Existing",
+            "type": "integer"
+          },
+          "already_member": {
+            "title": "Already Member",
+            "type": "integer"
+          },
+          "created": {
+            "title": "Created",
+            "type": "integer"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/BulkMemberResultItem"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "created",
+          "added_existing",
+          "already_member",
+          "skipped",
+          "results"
+        ],
+        "title": "BulkMemberCreateResponse",
+        "type": "object"
+      },
+      "BulkMemberItem": {
+        "description": "One member to provision in a bulk request.",
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 8,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          },
+          "role": {
+            "default": "member",
+            "enum": [
+              "admin",
+              "manager",
+              "dispatcher",
+              "sales_rep",
+              "technician",
+              "member"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "BulkMemberItem",
+        "type": "object"
+      },
+      "BulkMemberResultItem": {
+        "description": "Per-row outcome for a bulk member creation request.",
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "status": {
+            "enum": [
+              "created",
+              "added_existing",
+              "already_member",
+              "skipped"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "temporary_password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temporary Password"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "email",
+          "status"
+        ],
+        "title": "BulkMemberResultItem",
+        "type": "object"
+      },
       "BulkStatusUpdateRequest": {
         "description": "Request schema for bulk updating contact statuses.",
         "properties": {
@@ -30091,6 +30274,11 @@
           "is_active": {
             "title": "Is Active",
             "type": "boolean"
+          },
+          "must_change_password": {
+            "default": false,
+            "title": "Must Change Password",
+            "type": "boolean"
           }
         },
         "required": [
@@ -47164,6 +47352,65 @@
         "summary": "List Lead Source Campaigns",
         "tags": [
           "Lead Sources"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/members/bulk": {
+      "post": {
+        "description": "Provision many members at once (owner/admin only).\n\nCreates a login + workspace membership for each new email and attaches any\nexisting accounts as members. Returns a per-row outcome; rows that conflict\nare skipped without failing the batch. Only the owner may grant the admin\nrole. Generated temporary passwords are returned once and never stored in\nplaintext.",
+        "operationId": "bulk_create_workspace_members_api_v1_workspaces__workspace_id__members_bulk_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkMemberCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkMemberCreateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Bulk Create Workspace Members",
+        "tags": [
+          "Workspaces"
         ]
       }
     },
