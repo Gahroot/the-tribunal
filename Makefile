@@ -185,6 +185,23 @@ test.backend: ## Run pytest.
 test.frontend: ## Run frontend tests.
 	cd $(FRONTEND_DIR) && npm test
 
+# ─── Smoke (live deployment) ─────────────────────────────────────────────────────
+
+.PHONY: smoke
+smoke: smoke.backend smoke.frontend ## Smoke-test a live deployment (set SMOKE_BASE_URL + PLAYWRIGHT_BASE_URL).
+
+.PHONY: smoke.backend
+smoke.backend: ## Smoke-test a live backend. Usage: make smoke.backend SMOKE_BASE_URL=https://<app>.railway.app
+	cd $(BACKEND_DIR) && $(if $(SMOKE_BASE_URL),SMOKE_BASE_URL="$(SMOKE_BASE_URL)" )uv run pytest tests/smoke -m smoke -v
+
+.PHONY: smoke.frontend
+smoke.frontend: ## Smoke-test a live frontend. Usage: make smoke.frontend PLAYWRIGHT_BASE_URL=https://<app>.vercel.app
+	cd $(FRONTEND_DIR) && $(if $(PLAYWRIGHT_BASE_URL),PLAYWRIGHT_BASE_URL="$(PLAYWRIGHT_BASE_URL)" )npx playwright test smoke.spec.ts
+
+.PHONY: smoke.watch
+smoke.watch: ## Continuously verify a live deployment step-by-step (default: local dev). Override BACKEND_URL/FRONTEND_URL/INTERVAL.
+	scripts/smoke-watch.sh
+
 # ─── Quality ───────────────────────────────────────────────────────────────────
 
 .PHONY: lint

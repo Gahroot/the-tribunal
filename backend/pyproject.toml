@@ -197,6 +197,7 @@ testpaths = ["tests"]
 addopts = "-m 'not integration'"
 markers = [
     "integration: integration tests that hit real external services (skipped by default; run with -m integration)",
+    "smoke: live-deployment smoke tests; skipped unless SMOKE_BASE_URL is set (run with -m smoke)",
 ]
 
 [tool.coverage.run]
