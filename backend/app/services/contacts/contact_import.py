@@ -20,19 +20,78 @@ from app.utils.phone import normalize_phone_safe
 
 logger = structlog.get_logger()
 
-# Expected CSV columns and their mappings
+# Expected CSV columns and their mappings.
+#
+# Header matching is case-insensitive (see ``find_csv_column`` / ``preview_csv``).
+# Aliases include the verbatim headers emitted by third-party exporters we
+# support out of the box — notably Jobber's "Export Client Information" CSV,
+# which splits the mailing address into Street1/Street2/City/State/Zip — so a
+# raw export auto-maps with no manual column mapping. See ``JOBBER_CSV_PRESET``.
 CSV_FIELD_MAPPING = {
     "first_name": ["first_name", "first name", "firstname", "first", "name"],
     "last_name": ["last_name", "last name", "lastname", "last", "surname"],
     "email": ["email", "email_address", "email address", "e-mail"],
-    "phone_number": ["phone_number", "phone number", "phone", "mobile", "cell", "telephone", "tel"],
+    "phone_number": [
+        "phone_number",
+        "phone number",
+        "phone",
+        "mobile",
+        "mobile phone",
+        "cell",
+        "telephone",
+        "tel",
+    ],
     "company_name": ["company_name", "company name", "company", "organization", "org"],
     "status": ["status", "lead_status", "lead status"],
     "tags": ["tags", "tag", "labels"],
     "notes": ["notes", "note", "comments", "comment", "description"],
+    "address_line1": [
+        "address_line1",
+        "address line 1",
+        "address",
+        "street",
+        "street1",
+        "street 1",
+        "street address",
+    ],
+    "address_line2": ["address_line2", "address line 2", "street2", "street 2", "unit", "suite"],
+    "address_city": ["address_city", "city", "town"],
+    "address_state": ["address_state", "state", "province", "state/province", "region"],
+    "address_zip": [
+        "address_zip",
+        "zip",
+        "zip code",
+        "zipcode",
+        "postal code",
+        "postal_code",
+        "zip/postal code",
+    ],
 }
 
 VALID_STATUSES = {"new", "contacted", "qualified", "converted", "lost"}
+
+# Canonical Jobber "Export Client Information" CSV → contact field mapping.
+#
+# Jobber exports one row per client with the mailing address split across
+# Street1/Street2/City/State/Zip. Every header below is also registered as an
+# alias in ``CSV_FIELD_MAPPING`` so the import preview auto-detects a raw Jobber
+# export end-to-end; this dict is the explicit, documented source of truth the
+# frontend can apply directly (and that ``test_contact_import`` guards against
+# alias drift). Jobber columns we have no home for — Title, Country, Client
+# ID/J_ID, and the per-client communication flags — are intentionally dropped.
+JOBBER_CSV_PRESET: dict[str, str] = {
+    "First Name": "first_name",
+    "Last Name": "last_name",
+    "Company Name": "company_name",
+    "Email": "email",
+    "Phone Number": "phone_number",
+    "Street1": "address_line1",
+    "Street2": "address_line2",
+    "City": "address_city",
+    "State": "address_state",
+    "Zip Code": "address_zip",
+    "Tags": "tags",
+}
 
 CONTACT_FIELDS = [
     {"name": "first_name", "label": "First Name", "required": True},
@@ -43,6 +102,11 @@ CONTACT_FIELDS = [
     {"name": "status", "label": "Status", "required": False},
     {"name": "tags", "label": "Tags", "required": False},
     {"name": "notes", "label": "Notes", "required": False},
+    {"name": "address_line1", "label": "Address Line 1", "required": False},
+    {"name": "address_line2", "label": "Address Line 2", "required": False},
+    {"name": "address_city", "label": "City", "required": False},
+    {"name": "address_state", "label": "State/Province", "required": False},
+    {"name": "address_zip", "label": "Zip/Postal Code", "required": False},
 ]
 
 
@@ -263,6 +327,11 @@ def _process_csv_row(
         "status": contact_status,
         "tags": tags_list,
         "notes": _get_csv_field(row, column_mapping, "notes"),
+        "address_line1": _get_csv_field(row, column_mapping, "address_line1"),
+        "address_line2": _get_csv_field(row, column_mapping, "address_line2"),
+        "address_city": _get_csv_field(row, column_mapping, "address_city"),
+        "address_state": _get_csv_field(row, column_mapping, "address_state"),
+        "address_zip": _get_csv_field(row, column_mapping, "address_zip"),
     }, False
 
 
@@ -569,9 +638,12 @@ class ContactImportService:
             Dictionary with template columns and example CSV
         """
         example_rows = [
-            "first_name,last_name,phone_number,email,company_name,status,tags,notes",
-            'John,Doe,+15551234567,john@example.com,Acme Inc,new,"vip,priority",',
-            "Jane,Smith,5559876543,jane@example.com,Tech Corp,contacted,lead,",
+            "first_name,last_name,phone_number,email,company_name,status,tags,notes,"
+            "address_line1,address_city,address_state,address_zip",
+            'John,Doe,+15551234567,john@example.com,Acme Inc,new,"vip,priority",,'
+            "123 Main St,Austin,TX,78701",
+            "Jane,Smith,5559876543,jane@example.com,Tech Corp,contacted,lead,,"
+            "456 Oak Ave,Dallas,TX,75201",
         ]
 
         return {
@@ -584,7 +656,16 @@ class ContactImportService:
                 {"name": "status", "required": False, "description": "Lead status"},
                 {"name": "tags", "required": False, "description": "Comma-separated"},
                 {"name": "notes", "required": False, "description": "Notes"},
+                {"name": "address_line1", "required": False, "description": "Street address"},
+                {"name": "address_line2", "required": False, "description": "Unit/suite"},
+                {"name": "address_city", "required": False, "description": "City"},
+                {"name": "address_state", "required": False, "description": "State/province"},
+                {"name": "address_zip", "required": False, "description": "Zip/postal code"},
             ],
             "example_csv": "\n".join(example_rows),
             "supported_aliases": CSV_FIELD_MAPPING,
+            # Named exporter presets the import preview auto-detects. Keyed by
+            # source slug → {source_csv_header: contact_field}. The frontend can
+            # surface "Importing from Jobber?" and apply this mapping directly.
+            "presets": {"jobber": JOBBER_CSV_PRESET},
         }

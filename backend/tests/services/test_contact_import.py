@@ -8,7 +8,9 @@ and row processing — no database or external services required.
 from app.services.contacts.contact_import import (
     CONTACT_FIELDS,
     CSV_FIELD_MAPPING,
+    JOBBER_CSV_PRESET,
     VALID_STATUSES,
+    ContactImportService,
     ImportErrorDetail,
     ImportResult,
     clean_phone_number,
@@ -175,3 +177,44 @@ class TestCsvFieldMapping:
         required = {f["name"] for f in CONTACT_FIELDS if f["required"]}
         assert "first_name" in required
         assert "phone_number" in required
+
+    def test_address_fields_are_mappable(self) -> None:
+        """Jobber-style split address columns have mappings and destinations."""
+        address_fields = {
+            "address_line1",
+            "address_line2",
+            "address_city",
+            "address_state",
+            "address_zip",
+        }
+        for field in address_fields:
+            assert field in CSV_FIELD_MAPPING, f"Missing mapping for {field}"
+        destinations = {f["name"] for f in CONTACT_FIELDS}
+        assert address_fields <= destinations
+
+
+class TestJobberPreset:
+    """The Jobber export preset must stay in sync with the alias auto-detector."""
+
+    def test_every_jobber_header_auto_maps_to_its_field(self) -> None:
+        """A raw Jobber 'Export Client Information' CSV auto-detects with no manual mapping."""
+        headers = list(JOBBER_CSV_PRESET.keys())
+        for header, expected_field in JOBBER_CSV_PRESET.items():
+            assert find_csv_column(headers, expected_field) == header, (
+                f"Jobber header {header!r} no longer auto-maps to {expected_field!r}"
+            )
+
+    def test_preset_targets_are_real_contact_fields(self) -> None:
+        """Every preset destination is a known contact field (no typos / dead targets)."""
+        valid_targets = set(CSV_FIELD_MAPPING)
+        assert set(JOBBER_CSV_PRESET.values()) <= valid_targets
+
+    def test_preset_covers_jobber_required_columns(self) -> None:
+        """Preset maps the columns needed for a usable contact (name + phone)."""
+        assert JOBBER_CSV_PRESET["First Name"] == "first_name"
+        assert JOBBER_CSV_PRESET["Phone Number"] == "phone_number"
+
+    def test_template_info_exposes_jobber_preset(self) -> None:
+        """The import template advertises the Jobber preset for the frontend."""
+        info = ContactImportService.get_template_info()
+        assert info["presets"]["jobber"] == JOBBER_CSV_PRESET
