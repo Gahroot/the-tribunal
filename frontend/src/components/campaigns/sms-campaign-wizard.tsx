@@ -321,30 +321,56 @@ export function SMSCampaignWizard({
           messageStep.validate?.(data),
           validateAgent(data)
         ),
-      render: (args: WizardStepRenderArgs<SMSFormData>) => (
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Campaign details</CardTitle>
-            </CardHeader>
-            <CardContent>{basicsStep.render(args)}</CardContent>
-          </Card>
+      render: (args: WizardStepRenderArgs<SMSFormData>) => {
+        const composePhone = phoneNumbers.find(
+          (p) => p.phone_number === args.formData.from_phone_number
+        );
+        const composeOffer = offers.find(
+          (o) => o.id === args.formData.offer_id
+        );
+        return (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Campaign details</CardTitle>
+              </CardHeader>
+              <CardContent>{basicsStep.render(args)}</CardContent>
+            </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Message</CardTitle>
-            </CardHeader>
-            <CardContent>{messageStep.render(args)}</CardContent>
-          </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Message</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_260px]">
+                  <div>{messageStep.render(args)}</div>
+                  <div className="min-w-0">
+                    <PhonePreview
+                      senderLabel={senderDisplayName(
+                        composePhone,
+                        args.formData.from_phone_number
+                      )}
+                      message={args.formData.initial_message}
+                      media={media}
+                      offer={composeOffer}
+                      followUpEnabled={args.formData.follow_up_enabled}
+                      followUpDelayHours={args.formData.follow_up_delay_hours}
+                      followUpMessage={args.formData.follow_up_message}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">AI replies</CardTitle>
-            </CardHeader>
-            <CardContent>{agentStep.render(args)}</CardContent>
-          </Card>
-        </div>
-      ),
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">AI replies</CardTitle>
+              </CardHeader>
+              <CardContent>{agentStep.render(args)}</CardContent>
+            </Card>
+          </div>
+        );
+      },
     };
 
     const audienceStep: WizardStep<StepId, SMSFormData> = {
