@@ -19,6 +19,10 @@ owns_paths:
   - backend/app/models/refresh_token.py
   - backend/app/models/api_key.py
 public_api:
+  # Canonical facade — the ONLY surface other blocks may import core from.
+  # See backend/app/core_api/README.md. Internal core modules below are private
+  # to the core block and re-exported through this facade.
+  - backend/app/core_api/__init__.py::app.core_api
   - backend/app/api/deps.py::DB
   - backend/app/api/deps.py::TransactionalDB
   - backend/app/api/deps.py::CurrentUser
@@ -101,7 +105,7 @@ None. Core has no sideways imports into other blocks (`depends_on_blocks: []` in
 
 ## Public Surface
 
-This is the import surface other blocks are allowed to use. Everything else under `app/core/` and `app/db/` is internal plumbing.
+Other blocks import these primitives through the single named facade **`app.core_api`** (`backend/app/core_api/`, documented in its `README.md`) — not from the deep internal paths listed below. The internal modules under `app/core/`, `app/db/`, `app.api.deps`, `app.services.idempotency`, `app.workers.base`, and `app.services.automations.events` are private to the core block; `app.core_api` re-exports their real public names. The map below documents what those names are and where they live.
 
 - **DI / auth** (`app/api/deps.py`): `DB`, `TransactionalDB` (session aliases), `CurrentUser`, `ActiveUser`, `WorkspaceAccess` / `WorkspaceAdminAccess` / `CurrentMembership` (via `get_workspace` / `get_workspace_admin` / `get_membership`). Every authenticated route depends on these for auth + workspace membership enforcement.
 - **Tenancy** (`app/db/scope.py`): `apply_workspace_scope(query, model, workspace_id)`, `select_workspace_owned`, `get_workspace_owned`, `assert_workspace_owned` — the boundary every workspace-owned query must pass through.

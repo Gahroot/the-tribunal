@@ -126,10 +126,11 @@ ci.env: ## Verify env templates match backend config and frontend env usage.
 	python3 scripts/dev/check_env_drift.py
 
 .PHONY: ci.backend
-ci.backend: ci.backend.deps ci.env ## Run backend CI parity: env drift, lint, format, type-check, and coverage.
+ci.backend: ci.backend.deps ci.env ## Run backend CI parity: env drift, lint, format, type-check, block boundaries, and coverage.
 	cd $(BACKEND_DIR) && uv run ruff check app
 	cd $(BACKEND_DIR) && uv run ruff format --check app
 	cd $(BACKEND_DIR) && uv run mypy app
+	$(MAKE) --no-print-directory blocks.lint.backend
 	cd $(BACKEND_DIR) && \
 		SECRET_KEY="$(CI_PYTEST_SECRET_KEY)" \
 		ENCRYPTION_KEY="$(CI_PYTEST_ENCRYPTION_KEY)" \
@@ -161,6 +162,25 @@ codegen/check: codegen ## Regenerate OpenAPI/client artifacts and fail on drift.
 
 .PHONY: ci.codegen
 ci.codegen: codegen/check ## Alias for codegen/check.
+
+.PHONY: blocks.lint.backend
+blocks.lint.backend: ## Enforce backend block import boundaries (the enforced/clean Import Linter contracts).
+	@if [ ! -f "$(BACKEND_DIR)/.importlinter-enforced" ]; then \
+		echo "✗ $(BACKEND_DIR)/.importlinter-enforced is missing. Run 'python3 scripts/blocks/gen_importlinter.py' and commit it."; \
+		exit 1; \
+	fi
+	@contracts=$$(grep -vE '^[[:space:]]*(#|$$)' "$(BACKEND_DIR)/.importlinter-enforced"); \
+	if [ -z "$$contracts" ]; then \
+		echo "✗ no enforced contracts listed in $(BACKEND_DIR)/.importlinter-enforced"; \
+		exit 1; \
+	fi; \
+	args=""; for c in $$contracts; do args="$$args --contract $$c"; done; \
+	echo "▶ lint-imports$$args"; \
+	cd $(BACKEND_DIR) && uv run lint-imports $$args
+
+.PHONY: blocks.lint.gen
+blocks.lint.gen: ## Regenerate .importlinter + enforced subset + boundary-violations.md from the manifests.
+	python3 scripts/blocks/gen_importlinter.py
 
 .PHONY: blocks.check
 blocks.check: ## Rebuild docs/blocks/registry.json + README.md and verify manifests are honest.
