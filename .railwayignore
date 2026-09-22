@@ -1,0 +1,12 @@
+backend/.venv/
+backend/out/
+backend/backups/
+frontend/node_modules/
+frontend/.next/
+.ezcoder/
+**/__pycache__/
+*.pyc
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+telnyx.rtf
