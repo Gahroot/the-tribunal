@@ -260,6 +260,33 @@ class IVRDetectableProtocol(Protocol):
 VoiceAgentType = VoiceAgentProtocol
 
 
+def sends_mulaw(agent: VoiceAgentProtocol) -> bool:
+    """Check whether a session accepts Telnyx mu-law audio without conversion.
+
+    Sessions declare this with an ``INPUT_AUDIO_FORMAT`` class attribute so the
+    bridge does not need to know the concrete session classes.
+
+    Args:
+        agent: Voice agent to check
+
+    Returns:
+        True if send_audio_chunk expects g711 mu-law at 8kHz
+    """
+    return getattr(agent, "INPUT_AUDIO_FORMAT", "") == "ulaw"
+
+
+def receives_mulaw(agent: VoiceAgentProtocol) -> bool:
+    """Check whether a session emits mu-law audio ready for Telnyx.
+
+    Args:
+        agent: Voice agent to check
+
+    Returns:
+        True if receive_audio_stream yields g711 mu-law at 8kHz
+    """
+    return getattr(agent, "OUTPUT_AUDIO_FORMAT", "") == "ulaw"
+
+
 def supports_tools(agent: VoiceAgentProtocol) -> bool:
     """Check if a voice agent supports tool calling.
 

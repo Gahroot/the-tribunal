@@ -29,13 +29,14 @@ from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.models.conversation import Message
 from app.services.ai.call_context import lookup_call_context, save_call_transcript
-from app.services.ai.elevenlabs_voice_agent import ElevenLabsVoiceAgentSession
 from app.services.ai.grok import GrokVoiceAgentSession
 from app.services.ai.ivr.gate import GateOutcome, GateResult, IVRGate
 from app.services.ai.openai_credentials import is_openai_configured
-from app.services.ai.protocols import supports_tools
+from app.services.ai.protocols import receives_mulaw, sends_mulaw, supports_tools
 from app.services.ai.tool_executor import create_tool_callback
-from app.services.ai.voice_agent import VoiceAgentSession
+from app.services.ai.voice_session_factory import (
+    VoiceSessionType as FactoryVoiceSessionType,
+)
 from app.services.ai.voice_session_factory import create_workspace_voice_session
 from app.services.audio import (
     TELNYX_MIN_CHUNK_BYTES,
@@ -84,7 +85,8 @@ async def _lookup_call_context_wrapper(
     )
 
 
-VoiceSessionType = VoiceAgentSession | GrokVoiceAgentSession | ElevenLabsVoiceAgentSession
+# Re-exported from the factory so provider additions land in one place.
+VoiceSessionType = FactoryVoiceSessionType
 
 
 async def _save_call_transcript_wrapper(call_id: str, transcript_json: str, log: Any) -> None:
@@ -934,6 +936,10 @@ async def _receive_from_telnyx_and_send_to_provider(  # noqa: PLR0912, PLR0915
     # resets the inactivity clock.
     heartbeat = websocket.scope.get("voice_heartbeat")
 
+    # Providers that speak g711_ulaw take Telnyx audio as-is. Fixed per session,
+    # so resolve it once rather than per 20 ms chunk.
+    provider_takes_mulaw = sends_mulaw(voice_session)
+
     try:
         while True:
             # Receive JSON message from Telnyx
@@ -1019,10 +1025,7 @@ async def _receive_from_telnyx_and_send_to_provider(  # noqa: PLR0912, PLR0915
                         if live_call is not None:
                             live_call.publish("caller", audio_mulaw)
 
-                        # Check if OpenAI with g711_ulaw - send directly, no conversion
-                        is_openai_ulaw = isinstance(voice_session, VoiceAgentSession)
-                        if is_openai_ulaw:
-                            # OpenAI expects g711_ulaw - send directly
+                        if provider_takes_mulaw:
                             await voice_session.send_audio_chunk(audio_mulaw)
                         else:
                             # Grok expects PCM16 24kHz - convert
@@ -1040,7 +1043,7 @@ async def _receive_from_telnyx_and_send_to_provider(  # noqa: PLR0912, PLR0915
                                 elapsed_secs=round(elapsed, 1),
                                 timestamp=timestamp,
                                 chunk=chunk_num,
-                                no_conversion=is_openai_ulaw,
+                                no_conversion=provider_takes_mulaw,
                             )
 
                 elif event == "stop":
@@ -1180,17 +1183,15 @@ async def _receive_from_provider_and_send_to_telnyx(  # noqa: PLR0912, PLR0915
             voice_session_type=type(voice_session).__name__,
         )
 
-        # Check if ElevenLabs - it outputs ulaw_8000 directly (no conversion needed)
-        is_elevenlabs = isinstance(voice_session, ElevenLabsVoiceAgentSession)
+        # Providers that emit ulaw_8000 (ElevenLabs, OpenAI g711_ulaw, GPT-Live)
+        # need no conversion before Telnyx.
+        provider_sends_mulaw = receives_mulaw(voice_session)
 
         log.info(
             "starting_audio_stream_receive",
-            is_elevenlabs=is_elevenlabs,
+            provider_sends_mulaw=provider_sends_mulaw,
             voice_session_connected=_check_ws_connected(),
         )
-
-        # Check if this is OpenAI with g711_ulaw output (no conversion needed)
-        is_openai_ulaw = isinstance(voice_session, VoiceAgentSession)
 
         async for audio_chunk in voice_session.receive_audio_stream():
             if first_audio_time is None:
@@ -1200,14 +1201,13 @@ async def _receive_from_provider_and_send_to_telnyx(  # noqa: PLR0912, PLR0915
                     "========== FIRST AUDIO FROM AI PROVIDER ==========",
                     latency_secs=round(latency, 2),
                     audio_bytes=len(audio_chunk),
-                    is_elevenlabs=is_elevenlabs,
-                    is_openai_ulaw=is_openai_ulaw,
+                    provider_sends_mulaw=provider_sends_mulaw,
                     chunk_preview_hex=audio_chunk[:20].hex() if audio_chunk else "empty",
                 )
 
             try:
-                if is_elevenlabs or is_openai_ulaw:
-                    # ElevenLabs and OpenAI (g711_ulaw) output μ-law directly - no conversion!
+                if provider_sends_mulaw:
+                    # Already μ-law 8kHz - pass straight through.
                     audio_mulaw = audio_chunk
                 else:
                     # Grok outputs PCM16 24kHz - convert to μ-law 8kHz for Telnyx

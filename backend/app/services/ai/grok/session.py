@@ -55,6 +55,9 @@ class GrokVoiceAgentSession(VoiceAgentBase):
 
     SERVICE_NAME = "grok_voice_agent"
     BASE_URL = GROK_REALTIME_BASE_URL
+    # PCM16 24kHz both ways; the bridge resamples on both edges.
+    INPUT_AUDIO_FORMAT = "pcm16"
+    OUTPUT_AUDIO_FORMAT = "pcm16"
 
     def __init__(
         self,

@@ -76,6 +76,10 @@ def _make_voice_session(
     # Make isinstance() checks pass — spec already covers this, but we need
     # __class__ to match for the bridge's runtime type dispatch.
     session.__class__ = session_cls
+    # A spec'd mock returns child mocks for class attributes, so copy the real
+    # audio-format markers the bridge dispatches on.
+    session.INPUT_AUDIO_FORMAT = session_cls.INPUT_AUDIO_FORMAT
+    session.OUTPUT_AUDIO_FORMAT = session_cls.OUTPUT_AUDIO_FORMAT
     session.connect = AsyncMock(return_value=connect_result)
     session.disconnect = AsyncMock()
     session.configure_session = AsyncMock()
@@ -87,9 +91,7 @@ def _make_voice_session(
     session.enable_ivr_detection = MagicMock()
     session.is_connected = MagicMock(return_value=True)
     session.get_transcript_json = MagicMock(return_value=transcript_json)
-    session.receive_audio_stream = MagicMock(
-        return_value=_FakeAudioIterator(audio_chunks or [])
-    )
+    session.receive_audio_stream = MagicMock(return_value=_FakeAudioIterator(audio_chunks or []))
     return session
 
 
@@ -239,9 +241,7 @@ class TestDatabaseWrappers:
 
     async def test_save_call_transcript_wrapper_delegates(self) -> None:
         log = MagicMock()
-        with patch.object(
-            vb, "save_call_transcript", new=AsyncMock()
-        ) as mock_save:
+        with patch.object(vb, "save_call_transcript", new=AsyncMock()) as mock_save:
             await vb._save_call_transcript_wrapper("call-1", '{"a": 1}', log)
             mock_save.assert_awaited_once_with("call-1", '{"a": 1}', log)
 
@@ -253,9 +253,7 @@ class TestDatabaseWrappers:
         fake_context.timezone = "UTC"
         fake_context.prompt_version_id = "pv-1"
 
-        with patch.object(
-            vb, "lookup_call_context", new=AsyncMock(return_value=fake_context)
-        ):
+        with patch.object(vb, "lookup_call_context", new=AsyncMock(return_value=fake_context)):
             result = await vb._lookup_call_context_wrapper("call-1", MagicMock())
 
         assert result == ("AGENT", {"name": "n"}, {"name": "o"}, "UTC", "pv-1")
@@ -272,9 +270,7 @@ class TestSetupVoiceSession:
         agent = _make_agent(voice_provider="openai")
         log = MagicMock()
 
-        with patch.object(
-            vb, "create_tool_callback", return_value="CALLBACK"
-        ) as factory:
+        with patch.object(vb, "create_tool_callback", return_value="CALLBACK") as factory:
             await vb._setup_voice_session(
                 session, agent, None, None, "UTC", log, call_control_id="cc-1"
             )
@@ -289,9 +285,7 @@ class TestSetupVoiceSession:
         contact = {"name": "Alice"}
         log = MagicMock()
 
-        with patch.object(
-            vb, "create_tool_callback", return_value="CALLBACK"
-        ) as factory:
+        with patch.object(vb, "create_tool_callback", return_value="CALLBACK") as factory:
             await vb._setup_voice_session(
                 session,
                 agent,
@@ -311,9 +305,7 @@ class TestSetupVoiceSession:
         agent = _make_agent(voice_provider="elevenlabs")
         log = MagicMock()
 
-        with patch.object(
-            vb, "create_tool_callback", return_value="CALLBACK"
-        ):
+        with patch.object(vb, "create_tool_callback", return_value="CALLBACK"):
             await vb._setup_voice_session(
                 session,
                 agent,
@@ -336,9 +328,7 @@ class TestSetupVoiceSession:
         log = MagicMock()
 
         with patch.object(vb, "create_tool_callback", return_value="cb"):
-            await vb._setup_voice_session(
-                session, agent, None, None, "UTC", log, is_outbound=True
-            )
+            await vb._setup_voice_session(session, agent, None, None, "UTC", log, is_outbound=True)
 
         session.enable_ivr_detection.assert_called_once()
         kwargs = session.enable_ivr_detection.call_args.kwargs
@@ -390,9 +380,7 @@ class TestSetupVoiceSession:
         agent = _make_agent()
         log = MagicMock()
 
-        await vb._setup_voice_session(
-            session, agent, None, None, "UTC", log
-        )
+        await vb._setup_voice_session(session, agent, None, None, "UTC", log)
 
         session.inject_context.assert_not_called()
 
@@ -505,9 +493,7 @@ class TestReceiveFromTelnyx:
                     "start": {"call_control_id": "c"},
                 }
             ),
-            json.dumps(
-                {"event": "media", "media": {"payload": payload, "chunk": 1}}
-            ),
+            json.dumps({"event": "media", "media": {"payload": payload, "chunk": 1}}),
             json.dumps({"event": "stop"}),
         ]
 
@@ -561,9 +547,7 @@ class TestReceiveFromTelnyx:
             json.dumps({"event": "stop"}),
         ]
 
-        await vb._receive_from_telnyx_and_send_to_provider(
-            ws, session, log, greeting, holder
-        )
+        await vb._receive_from_telnyx_and_send_to_provider(ws, session, log, greeting, holder)
 
         # Logged but didn't crash.
         log.warning.assert_called()
@@ -577,9 +561,7 @@ class TestReceiveFromTelnyx:
 
         ws.receive_text.side_effect = WebSocketDisconnect(code=1000)
 
-        await vb._receive_from_telnyx_and_send_to_provider(
-            ws, session, log, greeting, holder
-        )
+        await vb._receive_from_telnyx_and_send_to_provider(ws, session, log, greeting, holder)
 
         # The handler swallows clean disconnects, but logs them.
         log.info.assert_any_call(
@@ -622,14 +604,10 @@ class TestReceiveFromTelnyx:
         holder: dict[str, str] = {}
 
         ws.receive_text.side_effect = [
-            json.dumps(
-                {"event": "error", "error": {"message": "stream broke"}}
-            ),
+            json.dumps({"event": "error", "error": {"message": "stream broke"}}),
         ]
 
-        await vb._receive_from_telnyx_and_send_to_provider(
-            ws, session, log, greeting, holder
-        )
+        await vb._receive_from_telnyx_and_send_to_provider(ws, session, log, greeting, holder)
 
         log.error.assert_called()
 
@@ -643,18 +621,14 @@ class TestReceiveFromProvider:
     async def test_buffers_and_sends_minimum_chunks(self) -> None:
         # ElevenLabs path — bytes are already µ-law, no conversion.
         chunks = [b"\xaa" * 80, b"\xbb" * 80, b"\xcc" * 40]
-        session = _make_voice_session(
-            ElevenLabsVoiceAgentSession, audio_chunks=chunks
-        )
+        session = _make_voice_session(ElevenLabsVoiceAgentSession, audio_chunks=chunks)
         ws = _make_websocket()
         log = MagicMock()
         greeting = asyncio.Event()
         greeting.set()
         holder = {"stream_id": "s1"}
 
-        await vb._receive_from_provider_and_send_to_telnyx(
-            ws, session, log, greeting, holder
-        )
+        await vb._receive_from_provider_and_send_to_telnyx(ws, session, log, greeting, holder)
 
         # We buffer until we hit 160 bytes per chunk, plus a flush for the
         # remaining 40 bytes at the end → 2 sends total.
@@ -669,9 +643,7 @@ class TestReceiveFromProvider:
     async def test_grok_path_converts_pcm_to_mulaw(self) -> None:
         # 960 bytes of PCM @ 24kHz → 160 bytes µ-law after convert.
         pcm_chunk = b"\x00\x00" * 480
-        session = _make_voice_session(
-            GrokVoiceAgentSession, audio_chunks=[pcm_chunk]
-        )
+        session = _make_voice_session(GrokVoiceAgentSession, audio_chunks=[pcm_chunk])
         ws = _make_websocket()
         log = MagicMock()
         greeting = asyncio.Event()
@@ -688,9 +660,7 @@ class TestReceiveFromProvider:
     async def test_interruption_clears_buffer(self) -> None:
         # Feed two big chunks; flip interruption after the first.
         chunks = [b"\xaa" * 160, b"\xbb" * 160]
-        session = _make_voice_session(
-            ElevenLabsVoiceAgentSession, audio_chunks=chunks
-        )
+        session = _make_voice_session(ElevenLabsVoiceAgentSession, audio_chunks=chunks)
         ws = _make_websocket()
         log = MagicMock()
         greeting = asyncio.Event()
@@ -726,9 +696,7 @@ class TestReceiveFromProvider:
             return await original_wait_for(coro, 0.05)
 
         with patch("asyncio.wait_for", new=fast_wait_for):
-            await vb._receive_from_provider_and_send_to_telnyx(
-                ws, session, log, greeting, {}
-            )
+            await vb._receive_from_provider_and_send_to_telnyx(ws, session, log, greeting, {})
 
         log.error.assert_called_with("greeting_trigger_timeout", timeout_secs=10)
         ws.send_text.assert_not_called()
@@ -739,9 +707,7 @@ class TestReceiveFromProvider:
         # provider_audio_conversion_error rather than the outer disconnect
         # handler, so the function returns cleanly without bubbling.
         chunks = [b"\xaa" * 160]
-        session = _make_voice_session(
-            ElevenLabsVoiceAgentSession, audio_chunks=chunks
-        )
+        session = _make_voice_session(ElevenLabsVoiceAgentSession, audio_chunks=chunks)
         ws = _make_websocket()
         ws.send_text.side_effect = WebSocketDisconnect(code=1001)
         log = MagicMock()
@@ -771,15 +737,11 @@ class TestRelayAudio:
 
         # Telnyx side completes immediately after a stop event.
         ws.receive_text.side_effect = [
-            json.dumps(
-                {"event": "start", "stream_id": "s", "start": {"call_control_id": "c"}}
-            ),
+            json.dumps({"event": "start", "stream_id": "s", "start": {"call_control_id": "c"}}),
             json.dumps({"event": "stop"}),
         ]
 
-        await vb._relay_audio(
-            ws, session, log, is_outbound=False
-        )
+        await vb._relay_audio(ws, session, log, is_outbound=False)
 
         # When the Telnyx side wins the wait(), the provider task is cancelled.
         log.info.assert_any_call("telnyx_receive_task_completed")
@@ -790,9 +752,7 @@ class TestRelayAudio:
         log = MagicMock()
 
         ws.receive_text.side_effect = [
-            json.dumps(
-                {"event": "start", "stream_id": "s", "start": {"call_control_id": "c"}}
-            ),
+            json.dumps({"event": "start", "stream_id": "s", "start": {"call_control_id": "c"}}),
             json.dumps({"event": "stop"}),
         ]
 
@@ -857,9 +817,7 @@ class TestVoiceStreamBridgeBody:
 
         with (
             _patch_bridge_db(),
-            patch.object(
-                vb, "create_voice_session", return_value=(session, None)
-            ),
+            patch.object(vb, "create_voice_session", return_value=(session, None)),
         ):
             await vb._voice_stream_bridge_body(
                 websocket=ws,
@@ -883,15 +841,11 @@ class TestVoiceStreamBridgeBody:
     async def test_elevenlabs_connect_failure_returns_internal_error(self) -> None:
         ws = _make_websocket()
         log = MagicMock()
-        session = _make_voice_session(
-            ElevenLabsVoiceAgentSession, connect_result=False
-        )
+        session = _make_voice_session(ElevenLabsVoiceAgentSession, connect_result=False)
 
         with (
             _patch_bridge_db(),
-            patch.object(
-                vb, "create_voice_session", return_value=(session, None)
-            ),
+            patch.object(vb, "create_voice_session", return_value=(session, None)),
         ):
             await vb._voice_stream_bridge_body(
                 websocket=ws,
@@ -938,9 +892,7 @@ class TestVoiceStreamBridgeBody:
             patch.object(vb, "_stamp_prompt_version_on_message", new=AsyncMock()),
             patch.object(vb, "_save_call_duration", new=save_duration),
             patch.object(vb, "_save_call_transcript_wrapper", new=save_transcript),
-            patch.object(
-                vb, "create_voice_session", return_value=(session, None)
-            ),
+            patch.object(vb, "create_voice_session", return_value=(session, None)),
         ):
             await vb._voice_stream_bridge_body(
                 websocket=ws,
@@ -974,9 +926,7 @@ class TestVoiceStreamBridgeBody:
             patch.object(vb, "_stamp_prompt_version_on_message", new=AsyncMock()),
             patch.object(vb, "_save_call_duration", new=save_duration),
             patch.object(vb, "_save_call_transcript_wrapper", new=AsyncMock()),
-            patch.object(
-                vb, "create_voice_session", return_value=(session, None)
-            ),
+            patch.object(vb, "create_voice_session", return_value=(session, None)),
         ):
             await vb._voice_stream_bridge_body(
                 websocket=ws,
@@ -1005,9 +955,7 @@ class TestVoiceStreamBridgeBody:
             patch.object(vb, "_stamp_prompt_version_on_message", new=stamp),
             patch.object(vb, "_save_call_duration", new=AsyncMock()),
             patch.object(vb, "_save_call_transcript_wrapper", new=AsyncMock()),
-            patch.object(
-                vb, "create_voice_session", return_value=(session, None)
-            ),
+            patch.object(vb, "create_voice_session", return_value=(session, None)),
         ):
             await vb._voice_stream_bridge_body(
                 websocket=ws,

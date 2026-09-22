@@ -49,6 +49,9 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
 
     SERVICE_NAME = "elevenlabs_voice_agent"
     GROK_BASE_URL = "wss://api.x.ai/v1/realtime"
+    # Input goes through Grok STT as PCM16; output is already ulaw_8000.
+    INPUT_AUDIO_FORMAT = "pcm16"
+    OUTPUT_AUDIO_FORMAT = "ulaw"
 
     def __init__(
         self,

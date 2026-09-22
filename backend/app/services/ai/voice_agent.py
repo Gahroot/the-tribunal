@@ -24,6 +24,8 @@ from app.services.ai.openai_realtime_config import (
     build_response_create_event,
     build_session_update_event,
     extract_realtime_client_secret_value,
+    normalize_realtime_model,
+    normalize_reasoning_effort,
 )
 from app.services.ai.voice_agent_base import VoiceAgentBase
 from app.services.ai.voice_tools import get_tools_from_agent_config
@@ -52,6 +54,9 @@ class VoiceAgentSession(VoiceAgentBase):
 
     SERVICE_NAME = "openai_voice_agent"
     BASE_URL = "wss://api.openai.com/v1/realtime"
+    # g711_ulaw both ways: matches Telnyx exactly, so the bridge skips conversion.
+    INPUT_AUDIO_FORMAT = "ulaw"
+    OUTPUT_AUDIO_FORMAT = "ulaw"
 
     def __init__(
         self,
@@ -81,7 +86,16 @@ class VoiceAgentSession(VoiceAgentBase):
         """
         super().__init__(agent)
         self.api_key = api_key
-        self.model = model or settings.openai_realtime_model
+        # Model precedence: explicit arg > per-agent realtime_model > global default.
+        self.model = (
+            model
+            or normalize_realtime_model(agent.realtime_model if agent else None)
+            or settings.openai_realtime_model
+        )
+        # Reasoning effort for gpt-realtime-2.x models (ignored by others).
+        self.reasoning_effort = normalize_reasoning_effort(
+            agent.reasoning_effort if agent else None
+        )
         self.additional_headers = additional_headers or {}
         resolved_auth_mode: OpenAIRealtimeAuthMode = auth_mode or (
             "client_secret" if use_client_secret else "api_key"
@@ -372,6 +386,7 @@ class VoiceAgentSession(VoiceAgentBase):
             idle_timeout_ms=settings.openai_realtime_idle_timeout_ms,
             language=self.agent.language if self.agent else None,
             tools=tools,
+            reasoning_effort=self.reasoning_effort,
         )
 
     async def _configure_session(self, session_config: RealtimeSessionConfig | None = None) -> None:
@@ -436,6 +451,7 @@ class VoiceAgentSession(VoiceAgentBase):
             idle_timeout_ms=settings.openai_realtime_idle_timeout_ms,
             language=self.agent.language if self.agent else None,
             tools=tools,
+            reasoning_effort=self.reasoning_effort,
         )
         await self._send_event(build_session_update_event(session_config))
         self.logger.info("session_reconfigured", updates=list(session_config.keys()))
@@ -934,6 +950,7 @@ class VoiceAgentSession(VoiceAgentBase):
             idle_timeout_ms=settings.openai_realtime_idle_timeout_ms,
             language=self.agent.language if self.agent else None,
             tools=tools,
+            reasoning_effort=self.reasoning_effort,
         )
 
         try:

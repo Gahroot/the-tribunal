@@ -21,8 +21,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.models.agent import Agent
+from app.services.ai.codex_app_server import CodexAppServerError, resolve_codex_binary
 from app.services.ai.elevenlabs_voice_agent import ElevenLabsVoiceAgentSession
 from app.services.ai.grok import GrokVoiceAgentSession
+from app.services.ai.live_voice_agent import LiveVoiceAgentSession
 from app.services.ai.openai_credentials import (
     OpenAICredentialError,
     get_openai_bearer_token,
@@ -35,7 +37,9 @@ from app.services.ai.voice_agent import VoiceAgentSession
 logger = structlog.get_logger()
 
 # Type alias for voice session union
-VoiceSessionType = VoiceAgentSession | GrokVoiceAgentSession | ElevenLabsVoiceAgentSession
+VoiceSessionType = (
+    VoiceAgentSession | GrokVoiceAgentSession | ElevenLabsVoiceAgentSession | LiveVoiceAgentSession
+)
 
 
 class VoiceSessionFactory:
@@ -78,6 +82,9 @@ class VoiceSessionFactory:
         """
         provider_lower = provider.lower()
 
+        if provider_lower == "live":
+            return self._create_live_session(agent, timezone)
+
         if provider_lower == "elevenlabs":
             return self._create_elevenlabs_session(agent, timezone)
 
@@ -97,6 +104,10 @@ class VoiceSessionFactory:
     ) -> tuple[VoiceSessionType | None, str | None]:
         """Create a voice session using workspace-aware credentials when possible."""
         provider_lower = provider.lower()
+        if provider_lower == "live":
+            # The Codex lane authenticates from the host's `codex login`, so
+            # there are no per-workspace credentials to resolve.
+            return self._create_live_session(agent, timezone)
         if provider_lower != "openai":
             return self.create_session(provider, agent, timezone)
 
@@ -147,6 +158,48 @@ class VoiceSessionFactory:
             credential_source="env_oauth"
             if self.settings.openai_oauth_access_token
             else "env_api_key",
+        ), None
+
+    def _create_live_session(
+        self,
+        agent: Agent | None,
+        timezone: str,
+    ) -> tuple[VoiceSessionType | None, str | None]:
+        """Create a GPT-Live session on the Codex subscription lane.
+
+        Args:
+            agent: Agent model for configuration
+            timezone: Timezone for date context
+
+        Returns:
+            Tuple of (session, error)
+        """
+        if not self.settings.live_voice_enabled:
+            return None, "GPT-Live voice is disabled (set LIVE_VOICE_ENABLED=true)"
+
+        try:
+            resolve_codex_binary(self.settings.live_voice_codex_binary or None)
+        except CodexAppServerError as exc:
+            self.logger.error("live_voice_unavailable", error=str(exc))
+            return None, str(exc)
+
+        ice_servers = [
+            url.strip() for url in self.settings.live_voice_ice_servers.split(",") if url.strip()
+        ]
+
+        self.logger.info(
+            "live_voice_session_creating",
+            agent_id=str(agent.id) if agent else None,
+            thread_model=self.settings.live_voice_thread_model or None,
+        )
+
+        return LiveVoiceAgentSession(
+            agent,
+            timezone,
+            binary_path=self.settings.live_voice_codex_binary or None,
+            cwd=self.settings.live_voice_cwd or None,
+            thread_model=self.settings.live_voice_thread_model or None,
+            ice_servers=ice_servers or None,
         ), None
 
     def _create_grok_session(

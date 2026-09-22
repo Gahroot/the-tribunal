@@ -11,6 +11,7 @@ import httpx
 from app.core.config import settings
 from app.core.encryption import encrypt_json
 from app.models.workspace import WorkspaceIntegration
+from app.services.ai.live_voice_agent import LiveVoiceAgentSession
 from app.services.ai.voice_agent import OPENAI_REALTIME_CLIENT_SECRETS_URL, VoiceAgentSession
 from app.services.ai.voice_session_factory import VoiceSessionFactory
 
@@ -156,3 +157,72 @@ async def test_workspace_api_key_voice_session_uses_direct_realtime_auth() -> No
     assert session.auth_mode == "api_key"
     assert session.credential_source == "workspace_api_key"
     assert session.additional_headers == {}
+
+
+class TestLiveVoiceProvider:
+    """Routing for the `live` provider (GPT-Live on the Codex subscription)."""
+
+    def test_disabled_by_default(self) -> None:
+        """The subscription lane must be opt-in, never a silent default."""
+        factory = VoiceSessionFactory(MagicMock())
+        factory.settings = MagicMock(live_voice_enabled=False)
+
+        session, error = factory.create_session("live", None, "America/New_York")
+
+        assert session is None
+        assert "LIVE_VOICE_ENABLED" in error
+
+    def test_missing_codex_cli_reports_install_hint(self) -> None:
+        """Without the codex CLI the call fails fast with an actionable error."""
+        factory = VoiceSessionFactory(MagicMock())
+        factory.settings = MagicMock(
+            live_voice_enabled=True,
+            live_voice_codex_binary="/nonexistent/codex",
+        )
+
+        session, error = factory.create_session("live", None, "America/New_York")
+
+        assert session is None
+        assert "codex" in error.lower()
+
+    def test_creates_session_when_enabled(self, tmp_path) -> None:
+        """A configured, present binary yields a LiveVoiceAgentSession."""
+        binary = tmp_path / "codex"
+        binary.write_text("#!/bin/sh\n")
+        binary.chmod(0o755)
+
+        factory = VoiceSessionFactory(MagicMock())
+        factory.settings = MagicMock(
+            live_voice_enabled=True,
+            live_voice_codex_binary=str(binary),
+            live_voice_cwd="",
+            live_voice_thread_model="",
+            live_voice_ice_servers="stun:stun.l.google.com:19302",
+        )
+
+        session, error = factory.create_session("live", None, "America/New_York")
+
+        assert error is None
+        assert isinstance(session, LiveVoiceAgentSession)
+
+    def test_workspace_path_skips_credential_lookup(self, tmp_path) -> None:
+        """The Codex lane authenticates from the host, not workspace secrets."""
+        binary = tmp_path / "codex"
+        binary.write_text("#!/bin/sh\n")
+        binary.chmod(0o755)
+
+        db = MagicMock()
+        db.execute = AsyncMock(side_effect=AssertionError("must not query credentials"))
+        factory = VoiceSessionFactory(db)
+        factory.settings = MagicMock(
+            live_voice_enabled=True,
+            live_voice_codex_binary=str(binary),
+            live_voice_cwd="",
+            live_voice_thread_model="",
+            live_voice_ice_servers="stun:stun.l.google.com:19302",
+        )
+
+        session, error = factory._create_live_session(None, "America/New_York")
+
+        assert error is None
+        assert isinstance(session, LiveVoiceAgentSession)
