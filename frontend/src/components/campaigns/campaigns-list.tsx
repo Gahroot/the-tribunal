@@ -28,7 +28,6 @@ import {
   ResourceListPagination,
   ResourceListLayout,
 } from "@/components/resource-list";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -58,10 +57,11 @@ import {
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { campaignsApi } from "@/lib/api/campaigns";
 import { queryKeys } from "@/lib/query-keys";
-import { campaignStatusColors } from "@/lib/status-colors";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 import { formatNumber } from "@/lib/utils/number";
 import type { Campaign, CampaignType } from "@/types";
+
+import { CampaignStatusBadge } from "./campaign-status-badge";
 
 const typeIcons: Record<CampaignType, LucideIcon> = {
   sms: MessageSquare,
@@ -332,12 +332,7 @@ export function CampaignsList() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={campaignStatusColors[campaign.status]}
-                        >
-                          {campaign.status}
-                        </Badge>
+                        <CampaignStatusBadge status={campaign.status} />
                       </TableCell>
                       <TableCell>
                         <div className="space-y-1">

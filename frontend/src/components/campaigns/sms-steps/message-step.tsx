@@ -1,7 +1,8 @@
 "use client";
 
-import { MessageSquare, Tag } from "lucide-react";
+import { Loader2, MessageSquare, Sparkles, Tag } from "lucide-react";
 import { motion } from "motion/react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -15,11 +16,18 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { messages } from "@/lib/messages";
 import { insertPlaceholderAtCursor } from "@/lib/utils/placeholder";
 import type { Offer } from "@/types";
 
+import type { BasicsFields } from "../_shared";
 import { OfferSelector } from "../offer-selector";
 import type { WizardStep } from "../wizard-types";
+
+import {
+  CampaignMediaUpload,
+  type CampaignMedia,
+} from "./campaign-media-upload";
 
 
 export interface MessageStepFields {
@@ -37,11 +45,24 @@ export interface MessageStepFields {
  */
 export function makeMessageStep<
   TStepId extends string,
-  TFormData extends MessageStepFields,
+  TFormData extends MessageStepFields & BasicsFields,
 >(opts: {
   id: TStepId;
   offers: Offer[];
   onCreateOffer?: (offer: Partial<Offer>) => Promise<void>;
+  /**
+   * AI generate → insert → edit: returns a fresh draft for the composer, or
+   * null when generation failed (the caller surfaces the error toast).
+   */
+  generateDraft?: (ctx: {
+    name: string;
+    description: string;
+    currentMessage: string;
+    offerName?: string;
+  }) => Promise<string | null>;
+  isGeneratingDraft?: boolean;
+  media?: CampaignMedia | null;
+  onMediaChange?: (media: CampaignMedia | null) => void;
 }): WizardStep<TStepId, TFormData> {
   return {
     id: opts.id,
@@ -68,6 +89,20 @@ export function makeMessageStep<
           formData.initial_message,
           (v) => setField("initial_message", v),
         );
+
+      const handleGenerateDraft = async () => {
+        if (!opts.generateDraft || opts.isGeneratingDraft) return;
+        const offer = opts.offers.find((o) => o.id === formData.offer_id);
+        const draft = await opts.generateDraft({
+          name: formData.name,
+          description: formData.description,
+          currentMessage: formData.initial_message,
+          offerName: offer?.name,
+        });
+        if (!draft) return;
+        insertPlaceholder(draft);
+        toast.success(messages.campaigns.aiDraftInserted);
+      };
 
       return (
         <div className="space-y-6">
@@ -108,8 +143,42 @@ export function makeMessageStep<
                 {errors.initial_message}
               </p>
             )}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground">
+                {formData.initial_message.length}/160 characters (standard SMS)
+              </p>
+              {opts.generateDraft && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={opts.isGeneratingDraft}
+                  onClick={() => void handleGenerateDraft()}
+                >
+                  {opts.isGeneratingDraft ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      Generating…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="size-4" />
+                      Generate draft
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Image (optional)</Label>
+            <CampaignMediaUpload
+              value={opts.media ?? null}
+              onChange={(m) => opts.onMediaChange?.(m)}
+            />
             <p className="text-xs text-muted-foreground">
-              {formData.initial_message.length}/160 characters (standard SMS)
+              Shown in your preview. Outbound messages send as text.
             </p>
           </div>
 

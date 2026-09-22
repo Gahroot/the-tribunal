@@ -1,10 +1,9 @@
-import { CampaignForm } from "@/components/campaigns/campaign-form";
-import { AppSidebar } from "@/components/layout/app-sidebar";
+import { redirect } from "next/navigation";
 
+/**
+ * Single guided campaign-creation flow lives at /campaigns/sms/new
+ * (Compose → Audience → Preview → send confirmation).
+ */
 export default function NewCampaignPage() {
-  return (
-    <AppSidebar>
-      <CampaignForm />
-    </AppSidebar>
-  );
+  redirect("/campaigns/sms/new");
 }

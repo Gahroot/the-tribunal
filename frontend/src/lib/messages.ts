@@ -30,6 +30,10 @@ export const messages = {
   campaigns: {
     smsCreated: "Campaign created successfully!",
     smsCreateFailed: "Failed to create campaign",
+    smsSent: "Campaign sent — it is now live in your campaign list",
+    startFailed: "Campaign created but it could not start sending",
+    aiDraftInserted: "AI draft inserted — review and edit before sending",
+    aiDraftFailed: "Failed to generate a draft. Try again.",
     voiceCreated: "Voice campaign created successfully!",
     voiceCreateFailed: "Failed to create campaign",
   },

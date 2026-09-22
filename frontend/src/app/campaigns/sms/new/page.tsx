@@ -19,7 +19,31 @@ import { smsCampaignsApi, type CreateSMSCampaignRequest } from "@/lib/api/sms-ca
 import { messages } from "@/lib/messages";
 import { queryKeys } from "@/lib/query-keys";
 import { getApiErrorMessage } from "@/lib/utils/errors";
-import type { Offer, SMSCampaign } from "@/types";
+import type {
+  Campaign,
+  CampaignStatus,
+  Offer,
+  SMSCampaign,
+} from "@/types";
+import type { PaginatedResponse } from "@/types/api";
+
+/**
+ * Map a freshly created SMS campaign onto the list-row shape so it can be
+ * seeded into the campaigns list cache and show status/results immediately.
+ */
+function toListCampaign(
+  campaign: SMSCampaign,
+  status: CampaignStatus,
+  totalContacts: number
+): Campaign {
+  return {
+    ...campaign,
+    campaign_type: "sms",
+    status,
+    total_contacts: totalContacts,
+    appointments_completed: 0,
+  };
+}
 
 export default function NewSMSCampaignPage() {
   const router = useRouter();
@@ -90,7 +114,8 @@ export default function NewSMSCampaignPage() {
     },
   });
 
-  // Create campaign mutation
+  // Create + populate + start the campaign, then seed the list cache so the
+  // new status row appears immediately on /campaigns.
   const createCampaignMutation = useMutation({
     mutationFn: async ({
       data,
@@ -109,14 +134,46 @@ export default function NewSMSCampaignPage() {
         await smsCampaignsApi.addContacts(workspaceId, campaign.id, contactIdsArray);
       }
 
-      return campaign;
+      // Start sending. A start failure leaves the campaign in draft — surface
+      // it, but keep the campaign so the operator can retry from the list.
+      let started = false;
+      let startError: string | null = null;
+      try {
+        await smsCampaignsApi.start(workspaceId, campaign.id);
+        started = true;
+      } catch (error) {
+        startError = getApiErrorMessage(error, messages.campaigns.startFailed);
+      }
+
+      return {
+        campaign,
+        totalContacts: contactIdsArray.length,
+        started,
+        startError,
+      };
     },
-    onSuccess: (campaign) => {
-      toast.success(messages.campaigns.smsCreated);
+    onSuccess: ({ campaign, totalContacts, started, startError }) => {
       if (workspaceId) {
+        const status: CampaignStatus = started ? "running" : campaign.status;
+        const row = toListCampaign(campaign, status, totalContacts);
+        queryClient.setQueryData<PaginatedResponse<Campaign>>(
+          queryKeys.campaigns.all(workspaceId),
+          (previous) => ({
+            items: [row, ...(previous?.items ?? [])],
+            total: (previous?.total ?? 0) + 1,
+            page: previous?.page ?? 1,
+            page_size: previous?.page_size ?? 50,
+            pages: previous?.pages ?? 1,
+          })
+        );
         queryClient.invalidateQueries({ queryKey: queryKeys.campaigns.all(workspaceId) });
       }
-      router.push(`/campaigns/${campaign.id}`);
+      if (started) {
+        toast.success(messages.campaigns.smsSent);
+      } else {
+        toast.error(startError ?? messages.campaigns.startFailed);
+      }
+      router.push("/campaigns");
     },
     onError: (error) => {
       toast.error(getApiErrorMessage(error, messages.campaigns.smsCreateFailed));
@@ -129,8 +186,8 @@ export default function NewSMSCampaignPage() {
   ): Promise<SMSCampaign> => {
     setIsSubmitting(true);
     try {
-      const campaign = await createCampaignMutation.mutateAsync({ data, contactIds });
-      return campaign as SMSCampaign;
+      const result = await createCampaignMutation.mutateAsync({ data, contactIds });
+      return result.campaign;
     } finally {
       setIsSubmitting(false);
     }
@@ -157,9 +214,9 @@ export default function NewSMSCampaignPage() {
             </Link>
           </Button>
           <div>
-            <h1 className="text-xl font-semibold">Create SMS Campaign</h1>
+            <h1 className="text-xl font-semibold">Create campaign</h1>
             <p className="text-sm text-muted-foreground">
-              Set up a new SMS or iMessage campaign to reach your contacts
+              Compose your message, choose an audience, preview, then send
             </p>
           </div>
         </div>
