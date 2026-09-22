@@ -11,6 +11,11 @@ Covers the full lifecycle:
 The service is deliberately framework-light: it raises ``HTTPException`` only
 for genuine request errors and otherwise returns plain data so both the
 authenticated router and the no-auth public router can share it.
+
+Core primitives come through ``app.core_api`` only. Cross-block calls go through
+each dependency block's public API: SMS send via the voice block
+(``TelnyxSMSService``), opt-out via compliance (``OptOutManager``), and the
+outbound from-number via the appointments block (``resolve_from_number``).
 """
 
 from __future__ import annotations
@@ -25,24 +30,34 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.config import settings
-from app.db.pagination import paginate
-from app.db.scope import apply_workspace_scope
+from app.core_api import (
+    EVENT_REVIEW_RECEIVED,
+    EVENT_REVIEW_REQUEST_RESPONSE,
+    apply_workspace_scope,
+    derive_outbound_key,
+    emit_automation_event,
+    paginate,
+    settings,
+)
 from app.models.appointment import Appointment
 from app.models.contact import Contact
-from app.models.review import (
+from app.models.workspace import Workspace
+
+# Cross-block public APIs (declared depends_on: appointments, compliance, voice).
+from app.services.calendar.reminder_service import resolve_from_number
+from app.services.rate_limiting.opt_out_manager import OptOutManager
+from app.services.telephony.telnyx import TelnyxSMSService
+
+from .models import (
     Review,
+    ReviewRequest,
+    ReviewRequestChannel,
+    ReviewRequestStatus,
     ReviewSentiment,
     ReviewSource,
     ReviewStatus,
 )
-from app.models.review_request import (
-    ReviewRequest,
-    ReviewRequestChannel,
-    ReviewRequestStatus,
-)
-from app.models.workspace import Workspace
-from app.schemas.review import (
+from .schemas import (
     PaginatedReviewRequests,
     PaginatedReviews,
     PublicRatingResult,
@@ -55,15 +70,6 @@ from app.schemas.review import (
     ReviewResponse,
     ReviewSettings,
 )
-from app.services.automations.events import (
-    EVENT_REVIEW_RECEIVED,
-    EVENT_REVIEW_REQUEST_RESPONSE,
-    emit_automation_event,
-)
-from app.services.calendar.reminder_service import resolve_from_number
-from app.services.idempotency import derive_outbound_key
-from app.services.rate_limiting.opt_out_manager import OptOutManager
-from app.services.telephony.telnyx import TelnyxSMSService
 
 logger = structlog.get_logger()
 

@@ -202,7 +202,7 @@ class AppointmentService:
             and appointment.status == AppointmentStatus.COMPLETED
         ):
             try:
-                from app.services.reviews import ReviewService
+                from tribunal_reviews import ReviewService
 
                 await ReviewService(self.db).enqueue_for_appointment(appointment)
             except Exception as exc:  # noqa: BLE001 — reputation is best-effort

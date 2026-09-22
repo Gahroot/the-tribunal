@@ -40,7 +40,6 @@ from app.schemas.dashboard import (
     TodayOverview,
 )
 from app.services.opportunities.deal_coach_service import _days_since, assess_risk
-from app.services.reviews.review_service import ReviewService
 from app.services.sla.speed_to_lead import (
     compute_sla_metrics,
     get_speed_to_lead_settings,
@@ -747,6 +746,11 @@ class DashboardService:
 
     async def get_reviews_stats(self, workspace: Workspace) -> ReviewsStats:
         """Get reviews & reputation metrics for the dashboard."""
+        # Imported lazily: the reviews block's package import pulls app.core_api,
+        # which itself imports app.workers.base; a module-level import here can
+        # re-enter a half-initialized tribunal_reviews during worker startup.
+        from tribunal_reviews import ReviewService
+
         summary = await ReviewService(self.db).get_summary(workspace.id)
         return ReviewsStats(
             average_rating=summary.average_rating,

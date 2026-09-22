@@ -2,9 +2,11 @@
 
 Generates a short, on-brand reply to a customer review. Public 5-star reviews get
 a warm thank-you; negative private feedback gets an empathetic, de-escalating
-response that offers to make things right. Mirrors the generation pattern in
-:mod:`app.services.ai.offer_generator` (graceful failure dict, shared OpenAI
-credential resolution, JSON-mode response).
+response that offers to make things right.
+
+This helper is reviews-specific, so it lives inside the block. The only
+cross-block dependency is OpenAI credential resolution, taken through the
+agent-brain block's public API (``get_openai_bearer_token``).
 """
 
 import json

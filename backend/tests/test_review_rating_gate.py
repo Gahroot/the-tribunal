@@ -3,9 +3,10 @@ from __future__ import annotations
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
-from app.models.review_request import ReviewRequest, ReviewRequestChannel, ReviewRequestStatus
+from tribunal_reviews.models import ReviewRequest, ReviewRequestChannel, ReviewRequestStatus
+from tribunal_reviews.service import ReviewService
+
 from app.models.workspace import Workspace
-from app.services.reviews.review_service import ReviewService
 
 
 def _workspace_with_review_settings(settings: dict[str, object]) -> Workspace:
@@ -38,7 +39,7 @@ async def test_positive_rating_signals_missing_public_destination(monkeypatch) -
     service._upsert_review_for_request = AsyncMock()  # type: ignore[method-assign]
     service._notify_review = AsyncMock()  # type: ignore[method-assign]
     emit = AsyncMock()
-    monkeypatch.setattr("app.services.reviews.review_service.emit_automation_event", emit)
+    monkeypatch.setattr("tribunal_reviews.service.emit_automation_event", emit)
 
     result = await service.submit_rating("rating-token", 5)
 
@@ -66,7 +67,7 @@ async def test_positive_rating_returns_public_destination(monkeypatch) -> None:
     service._upsert_review_for_request = AsyncMock()  # type: ignore[method-assign]
     service._notify_review = AsyncMock()  # type: ignore[method-assign]
     emit = AsyncMock()
-    monkeypatch.setattr("app.services.reviews.review_service.emit_automation_event", emit)
+    monkeypatch.setattr("tribunal_reviews.service.emit_automation_event", emit)
 
     result = await service.submit_rating("rating-token", 5)
 

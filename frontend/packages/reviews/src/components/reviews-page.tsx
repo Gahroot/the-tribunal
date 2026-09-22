@@ -1,0 +1,147 @@
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { AlertTriangle, MessageSquareWarning, Send, ShieldCheck, Star } from "lucide-react";
+import Link from "next/link";
+
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { PageErrorState, PageLoadingState } from "@/components/ui/page-state";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+import { useReviewsAdapter } from "../adapter";
+
+import { ReputationOverview } from "./reputation-overview";
+import { ReviewRequestsTab } from "./review-requests-tab";
+import { ReviewsList } from "./reviews-list";
+
+/**
+ * Reviews & Reputation dashboard content. The host route owns chrome (sidebar);
+ * this component renders the page body and reads all data through the injected
+ * reviews adapter.
+ */
+export function ReviewsPage() {
+  const { useWorkspaceId, api, queryKeys, pollOptions } = useReviewsAdapter();
+  const workspaceId = useWorkspaceId();
+
+  const {
+    data: summary,
+    isPending,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.summary(workspaceId ?? ""),
+    queryFn: () => api.getSummary(workspaceId!),
+    enabled: !!workspaceId,
+    ...pollOptions,
+  });
+
+  const { data: settings } = useQuery({
+    queryKey: queryKeys.settings(workspaceId ?? ""),
+    queryFn: () => api.getSettings(workspaceId!),
+    enabled: !!workspaceId,
+    ...pollOptions,
+  });
+
+  const missingPublicReviewDestination =
+    settings && !settings.google_review_url && !settings.facebook_review_url;
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Reviews &amp; Reputation
+          </h1>
+          <p className="text-muted-foreground">
+            Collect reviews after completed jobs, route unhappy customers to
+            private feedback, and reply on-brand.
+          </p>
+        </div>
+      </div>
+
+      {missingPublicReviewDestination && (
+        <Alert className="border-warning/40 bg-warning/10">
+          <AlertTriangle className="size-4 text-warning" />
+          <AlertTitle>No public review destination set</AlertTitle>
+          <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              Happy customers won&apos;t be routed to Google or Facebook until you
+              add a public review URL.
+            </span>
+            <Button asChild size="sm" variant="outline" className="shrink-0">
+              <Link href="/settings?tab=reviews#public-review-destination">
+                Set review destination
+              </Link>
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {isPending ? (
+        <PageLoadingState message="Loading reputation…" />
+      ) : error || !summary ? (
+        <PageErrorState
+          message="Failed to load reputation data."
+          onRetry={() => refetch()}
+        />
+      ) : (
+        <ReputationOverview summary={summary} />
+      )}
+
+      <Tabs defaultValue="reviews" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="reviews" className="gap-2">
+            <Star className="size-4" />
+            Reviews
+          </TabsTrigger>
+          <TabsTrigger value="feedback" className="gap-2">
+            <MessageSquareWarning className="size-4" />
+            Private Feedback
+          </TabsTrigger>
+          <TabsTrigger value="public" className="gap-2">
+            <ShieldCheck className="size-4" />
+            Public
+          </TabsTrigger>
+          <TabsTrigger value="requests" className="gap-2">
+            <Send className="size-4" />
+            Requests
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="reviews">
+          <Card>
+            <CardContent className="p-0">
+              <ReviewsList />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="feedback">
+          <Card>
+            <CardContent className="p-0">
+              <ReviewsList isPublic={false} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="public">
+          <Card>
+            <CardContent className="p-0">
+              <ReviewsList isPublic={true} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="requests">
+          <Card>
+            <CardContent className="p-0">
+              <ReviewRequestsTab />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}

@@ -15,6 +15,8 @@ import uuid
 
 import pytest
 from sqlalchemy import select
+from tribunal_reviews.models import ReviewRequest, ReviewRequestChannel, ReviewRequestStatus
+from tribunal_reviews.service import ReviewService
 
 from app.db.session import AsyncSessionLocal, engine
 from app.models.automation import Automation
@@ -26,7 +28,6 @@ from app.models.automation_event import (
 from app.models.automation_execution import AutomationExecution
 from app.models.contact import Contact
 from app.models.pipeline import Pipeline, PipelineStage
-from app.models.review_request import ReviewRequest, ReviewRequestChannel, ReviewRequestStatus
 from app.models.tag import ContactTag, Tag
 from app.models.workspace import Workspace
 from app.schemas.opportunity import OpportunityCreate, OpportunityUpdate
@@ -37,7 +38,6 @@ from app.services.automations.events import (
     emit_automation_event,
 )
 from app.services.opportunities.opportunity_service import OpportunityService
-from app.services.reviews.review_service import ReviewService
 from app.workers.automation_worker import AutomationWorker
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]

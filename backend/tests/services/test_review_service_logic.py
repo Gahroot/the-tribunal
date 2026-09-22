@@ -7,10 +7,9 @@ probes documented in the goal run.
 """
 
 import pytest
-
-from app.models.review import ReviewSentiment
-from app.schemas.review import ReviewSettings
-from app.services.reviews.review_service import (
+from tribunal_reviews.models import ReviewSentiment
+from tribunal_reviews.schemas import ReviewSettings
+from tribunal_reviews.service import (
     ReviewService,
     _public_review_url,
     _sentiment_for_rating,

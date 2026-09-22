@@ -5,7 +5,8 @@ import { Star } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
-import type { ReputationSummary } from "@/types/review";
+
+import type { ReputationSummary } from "../types";
 
 function scoreColor(score: number): string {
   if (score >= 75) return "text-success";

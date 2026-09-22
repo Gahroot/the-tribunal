@@ -882,7 +882,7 @@ async def handle_meeting_ended(data: dict[str, Any], log: Any) -> None:  # noqa:
             # dispatched later by the review-request worker after the configured
             # delay. Wrapped in try/except — never affects the webhook response.
             try:
-                from app.services.reviews import ReviewService
+                from tribunal_reviews import ReviewService
 
                 await ReviewService(db).enqueue_for_appointment(appointment)
             except Exception as e:

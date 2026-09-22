@@ -6,9 +6,9 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
+from tribunal_reviews import ReputationWorker
 
 from app.workers.base import BaseWorker
-from app.workers.reputation_worker import ReputationWorker
 from app.workers.retryable import RetryableWorker
 from tests.workers._retryable_helpers import wire_worker_for_retry_test
 

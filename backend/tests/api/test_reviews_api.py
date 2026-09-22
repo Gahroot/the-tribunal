@@ -14,9 +14,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from tribunal_reviews import ReviewService, get_public_router, get_router
 
 from app.api.deps import get_current_user, get_db, get_workspace
-from app.api.v1 import reviews as reviews_module
 from app.schemas.review import (
     PublicFeedbackResult,
     PublicRatingResult,
@@ -65,11 +65,9 @@ def _auth_app(mock_db: AsyncMock) -> FastAPI:
     app.dependency_overrides[get_workspace] = override_get_workspace
     app.dependency_overrides[get_current_user] = override_get_current_user
 
-    app.include_router(
-        reviews_module.router,
-        prefix="/api/v1/workspaces/{workspace_id}/reviews",
-    )
-    app.include_router(reviews_module.public_router, prefix="/api/v1/p/reviews")
+    # The extracted block routers carry their own prefixes; mount under /api/v1.
+    app.include_router(get_router(), prefix="/api/v1")
+    app.include_router(get_public_router(), prefix="/api/v1")
     return app
 
 
@@ -80,12 +78,9 @@ def _public_app(mock_db: AsyncMock) -> FastAPI:
         yield mock_db
 
     app.dependency_overrides[get_db] = override_get_db
-    app.include_router(reviews_module.public_router, prefix="/api/v1/p/reviews")
+    app.include_router(get_public_router(), prefix="/api/v1")
     # Include authed router too (no auth override) to assert 401 behavior.
-    app.include_router(
-        reviews_module.router,
-        prefix="/api/v1/workspaces/{workspace_id}/reviews",
-    )
+    app.include_router(get_router(), prefix="/api/v1")
     return app
 
 
@@ -141,9 +136,7 @@ class TestPublicRatingGate:
                 message="Thanks!",
             )
 
-        monkeypatch.setattr(
-            reviews_module.ReviewService, "submit_rating", fake_submit, raising=True
-        )
+        monkeypatch.setattr(ReviewService, "submit_rating", fake_submit, raising=True)
         resp = await public_client.post("/api/v1/p/reviews/sometoken/rate", json={"rating": 5})
         assert resp.status_code == 200
         body = resp.json()
@@ -164,9 +157,7 @@ class TestPublicRatingGate:
                 message="Tell us more.",
             )
 
-        monkeypatch.setattr(
-            reviews_module.ReviewService, "submit_rating", fake_submit, raising=True
-        )
+        monkeypatch.setattr(ReviewService, "submit_rating", fake_submit, raising=True)
         resp = await public_client.post("/api/v1/p/reviews/sometoken/rate", json={"rating": 2})
         assert resp.status_code == 200
         body = resp.json()
@@ -192,9 +183,7 @@ class TestPublicRatingGate:
                 already_submitted=False,
             )
 
-        monkeypatch.setattr(
-            reviews_module.ReviewService, "get_public_request", fake_get, raising=True
-        )
+        monkeypatch.setattr(ReviewService, "get_public_request", fake_get, raising=True)
         resp = await public_client.get("/api/v1/p/reviews/abc")
         assert resp.status_code == 200
         assert resp.json()["business_name"] == "QA Co"
@@ -207,9 +196,7 @@ class TestPublicRatingGate:
         ) -> None:
             return None
 
-        monkeypatch.setattr(
-            reviews_module.ReviewService, "submit_feedback", fake_feedback, raising=True
-        )
+        monkeypatch.setattr(ReviewService, "submit_feedback", fake_feedback, raising=True)
         resp = await public_client.post(
             "/api/v1/p/reviews/abc/feedback",
             json={"body": "Slow service", "reviewer_name": "Dana"},

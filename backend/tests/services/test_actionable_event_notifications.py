@@ -138,7 +138,7 @@ async def test_dispatch_email_respects_per_type_pref(monkeypatch: pytest.MonkeyP
 
 
 async def test_review_service_fires_review_notification(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services.reviews.review_service import ReviewService
+    from tribunal_reviews.service import ReviewService
 
     spy = AsyncMock()
     monkeypatch.setattr(notifications, "notify_workspace_event", spy)

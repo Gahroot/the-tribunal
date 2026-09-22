@@ -4,16 +4,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Sparkles, Loader2, Check, MessageSquare } from "lucide-react";
 import { useState } from "react";
 
-import { StarRating } from "@/components/reviews/star-rating";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageEmptyState, PageErrorState, PageLoadingState } from "@/components/ui/page-state";
 import { Textarea } from "@/components/ui/textarea";
-import { useWorkspaceId } from "@/hooks/useWorkspaceId";
-import { reviewsApi, type UpdateReviewPayload } from "@/lib/api/reviews";
-import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
-import type { Review, ReviewSentiment } from "@/types/review";
+
+import { useReviewsAdapter, type UpdateReviewPayload } from "../adapter";
+import type { Review, ReviewSentiment } from "../types";
+
+import { StarRating } from "./star-rating";
 
 const sentimentStyles: Record<ReviewSentiment, string> = {
   positive: "bg-success/10 text-success",
@@ -22,21 +22,22 @@ const sentimentStyles: Record<ReviewSentiment, string> = {
 };
 
 function ReviewCard({ review }: { review: Review }) {
+  const { useWorkspaceId, api, queryKeys } = useReviewsAdapter();
   const workspaceId = useWorkspaceId();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(review.reply_draft ?? "");
 
   const invalidate = () => {
     queryClient.invalidateQueries({
-      queryKey: queryKeys.reviews.all(workspaceId ?? ""),
+      queryKey: queryKeys.all(workspaceId ?? ""),
     });
     queryClient.invalidateQueries({
-      queryKey: queryKeys.reviews.summary(workspaceId ?? ""),
+      queryKey: queryKeys.summary(workspaceId ?? ""),
     });
   };
 
   const generateMutation = useMutation({
-    mutationFn: () => reviewsApi.generateReply(workspaceId!, review.id),
+    mutationFn: () => api.generateReply(workspaceId!, review.id),
     onSuccess: (result) => {
       if (result.reply) setDraft(result.reply);
     },
@@ -44,7 +45,7 @@ function ReviewCard({ review }: { review: Review }) {
 
   const updateMutation = useMutation({
     mutationFn: (data: UpdateReviewPayload) =>
-      reviewsApi.update(workspaceId!, review.id, data),
+      api.update(workspaceId!, review.id, data),
     onSuccess: invalidate,
   });
 
@@ -153,13 +154,14 @@ function ReviewCard({ review }: { review: Review }) {
 }
 
 export function ReviewsList({ isPublic }: { isPublic?: boolean }) {
+  const { useWorkspaceId, api, queryKeys } = useReviewsAdapter();
   const workspaceId = useWorkspaceId();
 
   const params = isPublic === undefined ? {} : { is_public: isPublic };
 
   const { data, isPending, isError, refetch } = useQuery({
-    queryKey: queryKeys.reviews.list(workspaceId ?? "", params),
-    queryFn: () => reviewsApi.list(workspaceId!, params),
+    queryKey: queryKeys.list(workspaceId ?? "", params),
+    queryFn: () => api.list(workspaceId!, params),
     enabled: !!workspaceId,
   });
 

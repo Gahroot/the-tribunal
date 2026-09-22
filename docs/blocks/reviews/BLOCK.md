@@ -2,34 +2,32 @@
 id: reviews
 name: Reviews & Reputation
 tier: A
-status: manifest
+status: extracted
 summary: Requests, collects, and analyzes customer reviews per workspace; auto-sends SMS review requests after appointments, routes positive raters to public review sites, and tracks reputation/sender warming.
 owns_paths:
-  - backend/app/services/reviews/
-  - backend/app/api/v1/reviews.py
-  - backend/app/models/review.py
-  - backend/app/models/review_request.py
-  - backend/app/workers/review_request_worker.py
-  - backend/app/workers/reputation_worker.py
-  - frontend/src/components/reviews/
+  - backend/packages/reviews/
+  - frontend/packages/reviews/
   - frontend/src/app/reviews/
 public_api:
-  - backend/app/api/v1/reviews.py::router
-  - backend/app/api/v1/reviews.py::public_router
-  - backend/app/services/reviews/review_service.py::ReviewService
-  - frontend/src/components/reviews/reviews-page.tsx
-  - frontend/src/components/reviews/reputation-overview.tsx
-  - frontend/src/components/reviews/send-review-request-dialog.tsx
+  - backend/packages/reviews/src/tribunal_reviews/__init__.py::get_router
+  - backend/packages/reviews/src/tribunal_reviews/__init__.py::get_public_router
+  - backend/packages/reviews/src/tribunal_reviews/__init__.py::register_workers
+  - backend/packages/reviews/src/tribunal_reviews/service.py::ReviewService
+  - backend/packages/reviews/src/tribunal_reviews/models.py::Review
+  - backend/packages/reviews/src/tribunal_reviews/models.py::ReviewRequest
+  - frontend/packages/reviews/src/index.ts::ReviewsPage
+  - frontend/packages/reviews/src/index.ts::ReputationOverview
+  - frontend/packages/reviews/src/index.ts::SendReviewRequestDialog
 depends_on: [core, voice, agent-brain, appointments, automations, compliance]
 external_integrations: [telnyx]
 env_vars: []
 db_tables:
-  - backend/app/models/review.py::reviews
-  - backend/app/models/review_request.py::review_requests
+  - backend/packages/reviews/src/tribunal_reviews/models.py::reviews
+  - backend/packages/reviews/src/tribunal_reviews/models.py::review_requests
 alembic_migrations: shared chain — 7015928a0882 (add reviews and review_requests)
 workers:
-  - backend/app/workers/review_request_worker.py
-  - backend/app/workers/reputation_worker.py
+  - backend/packages/reviews/src/tribunal_reviews/workers.py::ReviewRequestWorker
+  - backend/packages/reviews/src/tribunal_reviews/workers.py::ReputationWorker
 extraction_effort: medium
 extraction_notes: Review requests are dispatched as SMS via the voice block's TelnyxSMSService and use appointments' resolve_from_number; the worker layer pulls compliance's ReputationTracker/WarmingScheduler/OptOutManager, AI replies come from agent-brain, and review events are emitted through the core automation bus.
 ---

@@ -1,10 +1,11 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { StarRating } from "@tribunal/reviews";
 import { CheckCircle2, Loader2, Star } from "lucide-react";
 import { use, useState } from "react";
 
-import { StarRating } from "@/components/reviews/star-rating";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";

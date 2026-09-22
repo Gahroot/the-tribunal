@@ -2,7 +2,6 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import { SendReviewRequestDialog } from "@/components/reviews/send-review-request-dialog";
 import { Badge } from "@/components/ui/badge";
 import { PageEmptyState, PageErrorState, PageLoadingState } from "@/components/ui/page-state";
 import {
@@ -13,12 +12,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useWorkspaceId } from "@/hooks/useWorkspaceId";
-import { reviewsApi } from "@/lib/api/reviews";
-import { queryKeys } from "@/lib/query-keys";
-import { POLL_60S } from "@/lib/query-options";
 import { cn } from "@/lib/utils";
-import type { ReviewRequestStatus } from "@/types/review";
+
+import { useReviewsAdapter } from "../adapter";
+import type { ReviewRequestStatus } from "../types";
+
+import { SendReviewRequestDialog } from "./send-review-request-dialog";
 
 const statusStyles: Record<ReviewRequestStatus, string> = {
   pending: "bg-muted text-muted-foreground",
@@ -40,13 +39,14 @@ function formatDate(value: string | null): string {
 }
 
 export function ReviewRequestsTab() {
+  const { useWorkspaceId, api, queryKeys, pollOptions } = useReviewsAdapter();
   const workspaceId = useWorkspaceId();
 
   const { data, isPending, isError, refetch } = useQuery({
-    queryKey: queryKeys.reviews.requests(workspaceId ?? ""),
-    queryFn: () => reviewsApi.listRequests(workspaceId!),
+    queryKey: queryKeys.requests(workspaceId ?? ""),
+    queryFn: () => api.listRequests(workspaceId!),
     enabled: !!workspaceId,
-    ...POLL_60S,
+    ...pollOptions,
   });
 
   if (isPending) {
