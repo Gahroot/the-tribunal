@@ -2,21 +2,21 @@
 id: widget
 name: Embeddable Chat & Voice Widget
 tier: A
-status: manifest
+status: extracted
 summary: A drop-in, unauthenticated website widget that lets visitors chat, voice-call, or text an AI agent; pairs a vanilla-TS embed bundle with public backend embed endpoints.
 owns_paths:
-  - frontend/src/widget/
-  - backend/app/services/embed/
-  - backend/app/api/v1/embed.py
+  - frontend/packages/widget/
+  - backend/packages/widget/
 public_api:
-  - backend/app/api/v1/embed.py::router
-  - backend/app/services/embed/service.py::PublicEmbedService
-  - backend/app/services/embed/access.py::EmbedAccessService
-  - backend/app/services/embed/openai.py::EmbedOpenAIService
-  - frontend/src/widget/widget.ts::mount
-  - frontend/src/widget/render.ts
-  - frontend/src/widget/view.ts
-  - frontend/src/widget/styles.ts
+  - backend/packages/widget/src/tribunal_widget/__init__.py::get_router
+  - backend/packages/widget/src/tribunal_widget/__init__.py::register_providers
+  - backend/packages/widget/src/tribunal_widget/service.py::PublicEmbedService
+  - backend/packages/widget/src/tribunal_widget/access.py::EmbedAccessService
+  - backend/packages/widget/src/tribunal_widget/openai.py::EmbedOpenAIService
+  - frontend/packages/widget/src/index.ts::AIAgentElement
+  - frontend/packages/widget/src/render.ts
+  - frontend/packages/widget/src/view.ts
+  - frontend/packages/widget/src/styles.ts
 depends_on: [core, voice, agent-brain, compliance]
 external_integrations: [openai, telnyx]
 env_vars:
@@ -58,7 +58,70 @@ Shared (currently *unassigned*, not owned by any block) imports also to carry al
 - Services: `PublicEmbedService.get_config / create_realtime_token / send_chat_message / execute_tool_call / save_transcript / trigger_call / trigger_text`; `EmbedAccessService` (origin + rate-limit enforcement); `EmbedOpenAIService` (chat + Realtime).
 - Frontend: the `frontend/src/widget/` bundle (`widget.ts` entry/mount, `view.ts` view-model, `render.ts` DOM, `styles.ts` shadow-DOM CSS). Consumers embed the built bundle and pass an agent `public_id`.
 
+## Status: extracted
+
+This block is packaged into mountable workspace members. The block source no
+longer lives in the app tree (`frontend/src/widget/`, `backend/app/services/embed/`,
+`backend/app/api/v1/embed.py`); those paths were moved/severed:
+
+- **Frontend** → `frontend/packages/widget/` (npm package `@tribunal/widget`).
+- **Backend** → `backend/packages/widget/` (uv distribution `tribunal-widget`,
+  importable as `tribunal_widget`).
+
+The six sideways imports listed above are severed: the backend block imports core
+only through `app.core_api` / `app.core` / `app.db` / `app.models` and borrows
+Telnyx SMS/voice and OpenAI credential resolution through injection ports in
+`tribunal_widget.providers` (the host registers concrete implementations in
+`backend/app/blocks/widget_wiring.py`). The frontend package is self-contained
+vanilla TS with zero imports from `frontend/src/components`, `src/lib`, or app
+code (the embed `messaging`/`theme` helpers were vendored into the package).
+
+### Install & mount (frontend)
+
+1. The package is an npm workspace member; the app depends on it via
+   `"@tribunal/widget": "*"` and `npm ci` from `frontend/` links it.
+2. Build it: `npm run build -w @tribunal/widget` (tsup → `dist/` esm + d.ts).
+3. Consume it: `import "@tribunal/widget"` registers the `<ai-agent>` custom
+   element as a side effect, or import named exports
+   (`AIAgentElement`, `WidgetView`, `buildWidgetMarkup`, `WIDGET_CSS`, …) from
+   `@tribunal/widget`.
+4. Tests live in the package and run with `npm run test -w @tribunal/widget`
+   (standalone vitest/jsdom, no MSW/Next setup).
+
+### Install & mount (backend)
+
+1. The package is a uv workspace member (`backend/packages/widget/`); the host
+   `backend/pyproject.toml` declares `tribunal-widget` as a workspace dependency.
+   `uv sync` from `backend/` links it editable.
+2. Mount the router (already wired in `app/api/v1/router.py`):
+   ```python
+   from tribunal_widget import get_router
+   api_router.include_router(get_router())   # -> /api/v1/p/embed/...
+   ```
+   `get_router()` returns an `APIRouter` already prefixed `/p/embed` with the
+   `Public Embed` tag.
+3. Wire the injection ports once at startup (host adapter
+   `app/blocks/widget_wiring.py`, imported for its side effect by the v1 router):
+   ```python
+   from tribunal_widget import register_providers
+   register_providers(
+       sms_sender_factory=...,        # Telnyx SMS (voice block)
+       voice_caller_factory=...,      # Telnyx voice (voice block)
+       credential_resolver=...,       # per-workspace OpenAI creds (agent-brain)
+   )
+   ```
+   Provider gating, when an adapter is left unregistered: `GET /config` is the
+   only fully provider-free route. `chat` and `token` (Realtime) both resolve
+   OpenAI credentials, so without `credential_resolver` they return 503; `call`
+   needs `voice_caller_factory` and `text` needs `sms_sender_factory`, each 503
+   when unset.
+4. Provide the declared `env_vars` (Telnyx + demo rate-limit + OpenAI Realtime
+   idle timeout). The block owns no tables and no workers, so there are no
+   migrations or `register_workers` to wire.
+
 ## How to Extract
+
+> Historical guide (the extraction has been performed — see *Status: extracted*).
 
 1. Pull `core` plus `voice`, `agent-brain`, and `compliance` (transitively).
 2. Copy `frontend/src/widget/`, `backend/app/services/embed/`, and `backend/app/api/v1/embed.py`.

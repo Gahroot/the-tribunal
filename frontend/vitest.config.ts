@@ -9,7 +9,12 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    // Cover the app and every extracted workspace package (e.g. @tribunal/widget)
+    // in a single `npm run test` run.
+    include: [
+      'src/**/*.{test,spec}.{ts,tsx}',
+      'packages/*/src/**/*.{test,spec}.{ts,tsx}',
+    ],
     css: true,
   },
   resolve: {

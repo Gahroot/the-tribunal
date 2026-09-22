@@ -66,7 +66,7 @@ def patched_agent() -> AsyncIterator[MagicMock]:
     """Patch ``get_agent_by_public_id`` to return a ready-to-use agent mock."""
     agent = _build_agent_mock()
     with patch(
-        "app.services.embed.service.PublicEmbedService.get_agent_by_public_id",
+        "tribunal_widget.service.PublicEmbedService.get_agent_by_public_id",
         new=AsyncMock(return_value=agent),
     ):
         yield agent
@@ -74,7 +74,7 @@ def patched_agent() -> AsyncIterator[MagicMock]:
 
 @pytest.fixture
 def allow_origin() -> AsyncIterator[MagicMock]:
-    with patch("app.services.embed.access.is_origin_allowed", return_value=True) as patched:
+    with patch("tribunal_widget.access.is_origin_allowed", return_value=True) as patched:
         yield patched
 
 
@@ -112,11 +112,11 @@ class TestTokenEndpointRateLimit:
 
         with (
             patch(
-                "app.services.embed.access.enforce_token_rate_limits",
+                "tribunal_widget.access.enforce_token_rate_limits",
                 side_effect=fake_token_limits,
             ),
             patch(
-                "app.services.embed.openai.resolve_openai_credentials",
+                "tribunal_widget.openai.resolve_openai_credentials",
                 new=AsyncMock(
                     return_value=OpenAICredentialContext(
                         bearer_token="sk-test",
@@ -125,7 +125,7 @@ class TestTokenEndpointRateLimit:
                 ),
             ),
             patch(
-                "app.services.embed.openai.httpx.AsyncClient",
+                "tribunal_widget.openai.httpx.AsyncClient",
                 return_value=fake_http_client,
             ),
         ):
@@ -188,11 +188,11 @@ class TestChatEndpointRateLimit:
 
         with (
             patch(
-                "app.services.embed.access.enforce_chat_rate_limits",
+                "tribunal_widget.access.enforce_chat_rate_limits",
                 side_effect=fake_chat_limits,
             ),
             patch(
-                "app.services.embed.openai.resolve_openai_credentials",
+                "tribunal_widget.openai.resolve_openai_credentials",
                 new=AsyncMock(
                     return_value=OpenAICredentialContext(
                         bearer_token="sk-test",
@@ -201,7 +201,7 @@ class TestChatEndpointRateLimit:
                 ),
             ),
             patch(
-                "app.services.embed.openai.httpx.AsyncClient",
+                "tribunal_widget.openai.httpx.AsyncClient",
                 return_value=fake_http_client,
             ),
         ):
@@ -236,7 +236,7 @@ class TestChatEndpointRateLimit:
             )
 
         with patch(
-            "app.services.embed.access.enforce_chat_rate_limits",
+            "tribunal_widget.access.enforce_chat_rate_limits",
             side_effect=always_block,
         ):
             resp = await client.post(
@@ -260,7 +260,7 @@ class TestChatEndpointRateLimit:
             )
 
         with patch(
-            "app.services.embed.access.enforce_chat_rate_limits",
+            "tribunal_widget.access.enforce_chat_rate_limits",
             side_effect=always_block,
         ):
             resp = await client.post(

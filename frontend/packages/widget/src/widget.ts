@@ -9,21 +9,20 @@
  *   <ai-agent agent-id="ag_xK9mN2pQ" mode="voice"></ai-agent>
  *
  * This file is the custom-element shell. The substance lives in focused modules:
- *   - `./styles`              — CSS text + primary-color baking
- *   - `./render`              — pure shadow-DOM markup + iframe src builder
- *   - `./view`               — imperative open/state/audio-level DOM controller
- *   - `@/lib/embed/messaging` — typed postMessage protocol (origin rationale)
- *   - `@/lib/embed/theme`     — color math + theme-option resolution
+ *   - `./styles`    — CSS text + primary-color baking
+ *   - `./render`    — pure shadow-DOM markup + iframe src builder
+ *   - `./view`      — imperative open/state/audio-level DOM controller
+ *   - `./messaging` — typed postMessage protocol (origin rationale)
+ *   - `./theme`     — color math used to theme the orb
  */
 
 import {
   subscribeToEmbedMessages,
   type EmbedMessage,
-} from "@/lib/embed/messaging";
-import { derivePrimaryShades, DEFAULT_PRIMARY_COLOR } from "@/lib/embed/theme";
-
+} from "./messaging";
 import { buildEmbedIframeSrc, buildWidgetMarkup, WIDGET_ELEMENT_IDS } from "./render";
 import type { WidgetMode } from "./render";
+import { derivePrimaryShades, DEFAULT_PRIMARY_COLOR } from "./theme";
 import { WidgetView } from "./view";
 
 class AIAgentElement extends HTMLElement {

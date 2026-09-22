@@ -66,7 +66,7 @@ def agent() -> MagicMock:
 @pytest.fixture
 def patched_agent(agent: MagicMock) -> AsyncIterator[MagicMock]:
     with patch(
-        "app.services.embed.service.PublicEmbedService.get_agent_by_public_id",
+        "tribunal_widget.service.PublicEmbedService.get_agent_by_public_id",
         new=AsyncMock(return_value=agent),
     ):
         yield agent
@@ -144,15 +144,15 @@ class TestEmbedChatAndVoiceFlows:
 
         with (
             patch(
-                "app.services.embed.access.enforce_chat_rate_limits",
+                "tribunal_widget.access.enforce_chat_rate_limits",
                 new=AsyncMock(),
             ),
             patch(
-                "app.services.embed.openai.resolve_openai_credentials",
+                "tribunal_widget.openai.resolve_openai_credentials",
                 new=AsyncMock(return_value=_openai_context()),
             ),
             patch(
-                "app.services.embed.openai.httpx.AsyncClient",
+                "tribunal_widget.openai.httpx.AsyncClient",
                 return_value=fake_http_client,
             ),
         ):
@@ -200,15 +200,15 @@ class TestEmbedChatAndVoiceFlows:
 
         with (
             patch(
-                "app.services.embed.access.enforce_chat_rate_limits",
+                "tribunal_widget.access.enforce_chat_rate_limits",
                 new=AsyncMock(),
             ),
             patch(
-                "app.services.embed.openai.resolve_openai_credentials",
+                "tribunal_widget.openai.resolve_openai_credentials",
                 new=AsyncMock(return_value=_openai_context()),
             ),
             patch(
-                "app.services.embed.openai.httpx.AsyncClient",
+                "tribunal_widget.openai.httpx.AsyncClient",
                 return_value=fake_http_client,
             ),
         ):
@@ -240,7 +240,7 @@ class TestEmbedChatAndVoiceFlows:
         del patched_agent
 
         with patch(
-            "app.services.embed.access.enforce_chat_rate_limits",
+            "tribunal_widget.access.enforce_chat_rate_limits",
             new=AsyncMock(),
         ):
             response = await client.post(
@@ -265,15 +265,15 @@ class TestEmbedChatAndVoiceFlows:
 
         with (
             patch(
-                "app.services.embed.access.enforce_token_rate_limits",
+                "tribunal_widget.access.enforce_token_rate_limits",
                 new=AsyncMock(),
             ),
             patch(
-                "app.services.embed.openai.resolve_openai_credentials",
+                "tribunal_widget.openai.resolve_openai_credentials",
                 new=AsyncMock(return_value=_openai_context()),
             ),
             patch(
-                "app.services.embed.openai.httpx.AsyncClient",
+                "tribunal_widget.openai.httpx.AsyncClient",
                 return_value=fake_http_client,
             ),
         ):

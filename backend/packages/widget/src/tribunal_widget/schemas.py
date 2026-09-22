@@ -1,8 +1,8 @@
-"""Public embed API schemas."""
+"""Public embed API schemas for the widget block."""
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.services.ai.image_input import ImageValidationError, validate_image_data_url
+from ._image import ImageValidationError, validate_image_data_url
 
 
 class EmbedConfigResponse(BaseModel):

@@ -1,139 +1,34 @@
-"""Public embed API endpoints for embeddable agent widgets."""
+"""Back-compat shim for the public embed endpoints.
 
-from fastapi import APIRouter, Request
+The public embed surface was extracted into the mountable ``tribunal-widget``
+block (``backend/packages/widget``). The live router is built by
+``tribunal_widget.get_router()`` and mounted in ``app/api/v1/router.py``.
 
-from app.api.deps import DB
-from app.core.config import settings
-from app.core.utils import get_client_ip
-from app.schemas.embed import (
-    ChatRequest,
-    ChatResponse,
-    EmbedActionResponse,
-    EmbedConfigResponse,
-    EmbedPhoneRequest,
-    TokenRequest,
-    TokenResponse,
-    ToolCallRequest,
-    ToolCallResponse,
-    TranscriptRequest,
-    TranscriptResponse,
-)
-from app.services.embed.service import PublicEmbedService
+This module remains only as a thin compatibility surface:
 
-router = APIRouter()
+* ``router`` re-exposes the block's router for any legacy importer.
+* ``_check_embed_rate_limits`` adapts the block's per-phone/IP rate-limit check
+  for callers that exercise it directly.
+"""
 
+from __future__ import annotations
 
-def _origin(request: Request) -> str | None:
-    """Return the browser Origin header used by public embed validation."""
-    return request.headers.get("origin")
+from sqlalchemy.ext.asyncio import AsyncSession
+from tribunal_widget import get_router
+from tribunal_widget.access import EmbedAccessService
+
+# The block's router already carries the ``/p/embed`` prefix and ``Public Embed``
+# tag; the v1 aggregator mounts ``get_router()`` directly.
+router = get_router()
 
 
-def _client_ip(request: Request) -> str:
-    """Return the validated caller IP for public embed rate limits."""
-    return get_client_ip(request, settings.trusted_proxies)
-
-
-@router.get("/{public_id}/config", response_model=EmbedConfigResponse)
-async def get_embed_config(
-    public_id: str,
-    request: Request,
-    db: DB,
-) -> EmbedConfigResponse:
-    """Get public configuration for the embed widget."""
-    return await PublicEmbedService(db).get_config(public_id=public_id, origin=_origin(request))
-
-
-@router.post("/{public_id}/token", response_model=TokenResponse)
-async def get_ephemeral_token(
-    public_id: str,
-    request: Request,
-    db: DB,
-    body: TokenRequest | None = None,
-) -> TokenResponse:
-    """Get an ephemeral token for OpenAI Realtime WebRTC connection."""
-    del body
-    return await PublicEmbedService(db).create_realtime_token(
-        public_id=public_id,
-        origin=_origin(request),
-        client_ip=_client_ip(request),
-    )
-
-
-@router.post("/{public_id}/chat", response_model=ChatResponse)
-async def send_chat_message(
-    public_id: str,
-    body: ChatRequest,
-    request: Request,
-    db: DB,
-) -> ChatResponse:
-    """Send a chat message and get AI response."""
-    return await PublicEmbedService(db).send_chat_message(
-        public_id=public_id,
-        origin=_origin(request),
-        client_ip=_client_ip(request),
-        body=body,
-    )
-
-
-@router.post("/{public_id}/tool-call", response_model=ToolCallResponse)
-async def execute_tool_call(
-    public_id: str,
-    body: ToolCallRequest,
-    request: Request,
-    db: DB,
-) -> ToolCallResponse:
-    """Execute a tool call from the AI."""
-    return await PublicEmbedService(db).execute_tool_call(
-        public_id=public_id,
-        origin=_origin(request),
-        client_ip=_client_ip(request),
-        body=body,
-    )
-
-
-@router.post("/{public_id}/transcript", response_model=TranscriptResponse)
-async def save_transcript(
-    public_id: str,
-    body: TranscriptRequest,
-    request: Request,
-    db: DB,
-) -> TranscriptResponse:
-    """Save a conversation transcript."""
-    return await PublicEmbedService(db).save_transcript(
-        public_id=public_id,
-        origin=_origin(request),
-        client_ip=_client_ip(request),
-        body=body,
-    )
-
-
-@router.post("/{public_id}/call", response_model=EmbedActionResponse)
-async def trigger_embed_call(
-    public_id: str,
-    body: EmbedPhoneRequest,
-    request: Request,
-    db: DB,
-) -> EmbedActionResponse:
-    """Trigger an AI call via the embed widget."""
-    return await PublicEmbedService(db).trigger_call(
-        public_id=public_id,
-        origin=_origin(request),
-        client_ip=_client_ip(request),
-        body=body,
-    )
-
-
-@router.post("/{public_id}/text", response_model=EmbedActionResponse)
-async def trigger_embed_text(
-    public_id: str,
-    body: EmbedPhoneRequest,
-    request: Request,
-    db: DB,
-) -> EmbedActionResponse:
-    """Trigger an AI text via the embed widget."""
-    return await PublicEmbedService(db).trigger_text(
-        public_id=public_id,
-        origin=_origin(request),
-        client_ip=_client_ip(request),
-        body=body,
+async def _check_embed_rate_limits(
+    db: AsyncSession,
+    client_ip: str,
+    phone_number: str,
+) -> None:
+    """Enforce the DB-backed IP/phone rate limits for embed call/text requests."""
+    await EmbedAccessService(db).enforce_phone_limit(
+        client_ip=client_ip,
+        phone_number=phone_number,
     )

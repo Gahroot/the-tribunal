@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { derivePrimaryShades } from "@/lib/embed/theme";
-import { buildEmbedIframeSrc, buildWidgetMarkup, WIDGET_ELEMENT_IDS } from "@/widget/render";
-import { WidgetView } from "@/widget/view";
+import { buildEmbedIframeSrc, buildWidgetMarkup, WIDGET_ELEMENT_IDS } from "./render";
+import { derivePrimaryShades } from "./theme";
+import { WidgetView } from "./view";
 
 const DEFAULT_BUTTON_TEXT = "Talk to AI";
 

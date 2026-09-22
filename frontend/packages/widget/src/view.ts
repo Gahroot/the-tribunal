@@ -6,9 +6,7 @@
  * isolation from the custom-element lifecycle.
  */
 
-import type { EmbedAgentState } from "@/lib/embed/messaging";
-import { postToFrame } from "@/lib/embed/messaging";
-
+import { postToFrame, type EmbedAgentState } from "./messaging";
 import { WIDGET_ELEMENT_IDS } from "./render";
 
 const STATE_CLASSES = [

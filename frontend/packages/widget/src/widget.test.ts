@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Importing the module registers the custom element as a side effect.
-import { AIAgentElement } from "@/widget/widget";
+import { AIAgentElement } from "./widget";
 
 const TAG = "ai-agent";
 

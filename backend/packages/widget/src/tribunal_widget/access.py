@@ -10,10 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.rate_limit_helpers import raise_rate_limited
 from app.models.demo_request import DemoRequest
-from app.services.rate_limiting.embed_limiter import (
-    enforce_chat_rate_limits,
-    enforce_token_rate_limits,
-)
+
+from ._embed_limiter import enforce_chat_rate_limits, enforce_token_rate_limits
 
 
 def is_origin_allowed(origin: str | None, allowed_domains: list[str]) -> bool:

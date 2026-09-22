@@ -1,0 +1,29 @@
+[project]
+name = "tribunal-widget"
+version = "0.1.0"
+description = "Extracted 'widget' block from The Tribunal — mountable FastAPI block package."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "LicenseRef-Proprietary"
+dependencies = [
+    # The block depends on the host's core surface (``app.core_api`` / ``app.core``
+    # / ``app.db`` / ``app.models``). While developed in-repo as a uv workspace
+    # member it resolves those against the host ``aicrm-backend`` distribution
+    # sharing this venv; pin the real core dependency here when published
+    # standalone.
+    "fastapi>=0.136.1",
+    "sqlalchemy[asyncio]>=2.0.49",
+    "pydantic>=2.13.4",
+    "httpx>=0.27",
+    "structlog>=24.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tribunal_widget"]
+
+# This block owns no database tables, so it ships no ``migrations/`` directory
+# and no ``models`` module (see docs/blocks/widget/BLOCK.md: db_tables: []).

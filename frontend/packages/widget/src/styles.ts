@@ -8,7 +8,7 @@
  * literal values guarantee the orb gradient renders with the configured color.
  */
 
-import type { PrimaryShades } from "@/lib/embed/theme";
+import type { PrimaryShades } from "./theme";
 
 export const WIDGET_CSS = `
   .ai-widget-container {

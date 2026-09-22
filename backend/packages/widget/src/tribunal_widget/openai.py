@@ -1,6 +1,6 @@
 """OpenAI-backed behavior for public embed chat and voice sessions."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import httpx
@@ -10,15 +10,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.agent import Agent
-from app.schemas.embed import ChatRequest, ChatResponse, TokenResponse
-from app.services.ai.image_input import build_chat_user_message_with_image
-from app.services.ai.openai_credentials import OpenAICredentialError, resolve_openai_credentials
-from app.services.ai.openai_realtime_config import (
+
+from ._image import build_chat_user_message_with_image
+from ._realtime_config import (
     RealtimeSessionConfig,
     build_client_secret_request,
     build_realtime_session_config,
     extract_realtime_client_secret_value,
 )
+from .providers import OpenAICredentialError, resolve_openai_credentials
+from .schemas import ChatRequest, ChatResponse, TokenResponse
 
 logger = structlog.get_logger()
 
@@ -29,9 +30,23 @@ EMBED_CHAT_MODEL = "gpt-5.4-nano"
 HttpClientFactory = Callable[[], httpx.AsyncClient]
 
 
-def build_embed_tools() -> list[dict[str, object]]:
+def _normalize_enabled_tool_names(enabled_tools: object) -> set[str]:
+    """Return a safe set of enabled tool names from an agent field or override."""
+    if not isinstance(enabled_tools, (list, tuple, set, frozenset)):
+        return set()
+    return {tool_name for tool_name in enabled_tools if isinstance(tool_name, str)}
+
+
+def build_embed_tools(
+    agent: Agent | None = None,
+    *,
+    enabled_tools: Sequence[str] | None = None,
+) -> list[dict[str, object]]:
     """Build the browser-visible tools supported by embed sessions."""
-    return [
+    enabled_tool_names = _normalize_enabled_tool_names(
+        enabled_tools if enabled_tools is not None else getattr(agent, "enabled_tools", None)
+    )
+    tools: list[dict[str, object]] = [
         {
             "type": "function",
             "name": "end_call",
@@ -52,6 +67,41 @@ def build_embed_tools() -> list[dict[str, object]]:
         }
     ]
 
+    if "request_phone_demo" in enabled_tool_names:
+        tools.append(
+            {
+                "type": "function",
+                "name": "request_phone_demo",
+                "description": (
+                    "Request a one-time phone call demo for the current visitor. "
+                    "Use this only after the user explicitly consents to receive the call "
+                    "and confirms the phone number to call."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "phone_number": {
+                            "type": "string",
+                            "description": "The user's confirmed US phone number to call.",
+                        },
+                        "caller_name": {
+                            "type": "string",
+                            "description": "Optional name of the person requesting the call.",
+                        },
+                        "notes": {
+                            "type": "string",
+                            "description": (
+                                "Optional concise context about what the visitor wants to automate."
+                            ),
+                        },
+                    },
+                    "required": ["phone_number"],
+                },
+            }
+        )
+
+    return tools
+
 
 def build_embed_realtime_session(agent: Agent) -> RealtimeSessionConfig:
     """Build the server-bound Realtime session config for an embed agent."""
@@ -63,6 +113,7 @@ def build_embed_realtime_session(agent: Agent) -> RealtimeSessionConfig:
         silence_duration_ms=agent.silence_duration_ms,
         idle_timeout_ms=settings.openai_realtime_idle_timeout_ms,
         language=agent.language,
+        tools=build_embed_tools(agent),
     )
 
 
@@ -115,7 +166,17 @@ class EmbedOpenAIService:
                 detail="Voice service not configured",
             ) from None
 
-        session_config = build_embed_realtime_session(agent)
+        session_tools = build_embed_tools(agent)
+        session_config = build_realtime_session_config(
+            instructions=agent.system_prompt,
+            voice=agent.voice_id,
+            turn_detection_mode=agent.turn_detection_mode,
+            turn_detection_threshold=agent.turn_detection_threshold,
+            silence_duration_ms=agent.silence_duration_ms,
+            idle_timeout_ms=settings.openai_realtime_idle_timeout_ms,
+            language=agent.language,
+            tools=session_tools,
+        )
         client_secret_body = build_client_secret_request(session=session_config)
 
         async with self.http_client_factory() as client:
@@ -150,7 +211,7 @@ class EmbedOpenAIService:
                 "initial_greeting": agent.initial_greeting,
             },
             model=session_config["model"],
-            tools=build_embed_tools(),
+            tools=session_tools,
         )
 
     async def send_chat_message(self, agent: Agent, body: ChatRequest) -> ChatResponse:

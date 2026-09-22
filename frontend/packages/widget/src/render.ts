@@ -5,9 +5,8 @@
  * mutates it in response to state changes.
  */
 
-import type { PrimaryShades } from "@/lib/embed/theme";
-
 import { themeWidgetCss } from "./styles";
+import type { PrimaryShades } from "./theme";
 
 export type WidgetMode = "voice" | "chat";
 

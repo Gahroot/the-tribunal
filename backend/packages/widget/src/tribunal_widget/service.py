@@ -2,15 +2,19 @@
 
 import structlog
 from fastapi import HTTPException, status
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
-from app.core.encryption import hash_phone
+from app.core_api import derive_outbound_key, hash_phone, settings
 from app.models.agent import Agent
 from app.models.contact import Contact
 from app.models.demo_request import DemoRequest
-from app.schemas.embed import (
+
+from .access import EmbedAccessService
+from .openai import EmbedOpenAIService
+from .providers import make_sms_sender, make_voice_caller
+from .schemas import (
     ChatRequest,
     ChatResponse,
     EmbedActionResponse,
@@ -22,11 +26,6 @@ from app.schemas.embed import (
     TranscriptRequest,
     TranscriptResponse,
 )
-from app.services.embed.access import EmbedAccessService
-from app.services.embed.openai import EmbedOpenAIService
-from app.services.idempotency import derive_outbound_key
-from app.services.telephony.telnyx import TelnyxSMSService
-from app.services.telephony.telnyx_voice import TelnyxVoiceService
 
 logger = structlog.get_logger()
 
@@ -125,10 +124,54 @@ class PublicEmbedService:
                 message="Call ended successfully",
             )
 
+        if body.tool_name == "request_phone_demo":
+            if not _agent_has_enabled_tool(agent, "request_phone_demo"):
+                return ToolCallResponse(
+                    success=False,
+                    action="request_phone_demo",
+                    message="Phone demo requests are not enabled for this agent.",
+                    result={"error": "tool_not_enabled"},
+                )
+
+            try:
+                phone_request = EmbedPhoneRequest.model_validate(body.arguments)
+            except ValidationError:
+                return ToolCallResponse(
+                    success=False,
+                    action="request_phone_demo",
+                    message="Please provide a valid 10-digit US phone number before I can call.",
+                    result={"error": "invalid_phone_request"},
+                )
+
+            try:
+                call_response = await self.trigger_call(
+                    public_id=public_id,
+                    origin=origin,
+                    client_ip=client_ip,
+                    body=phone_request,
+                )
+            except HTTPException as exc:
+                detail = (
+                    exc.detail if isinstance(exc.detail, str) else "Unable to start the phone demo."
+                )
+                return ToolCallResponse(
+                    success=False,
+                    action="request_phone_demo",
+                    message=detail,
+                    result={"error": "phone_demo_failed", "status_code": exc.status_code},
+                )
+
+            return ToolCallResponse(
+                success=call_response.success,
+                action="request_phone_demo",
+                message=call_response.message,
+            )
+
         return ToolCallResponse(
-            success=True,
-            message=f"Tool {body.tool_name} executed",
-            result=body.arguments,
+            success=False,
+            action=body.tool_name,
+            message=f"Tool {body.tool_name} is not available for this agent.",
+            result={"error": "unknown_tool"},
         )
 
     async def save_transcript(
@@ -180,7 +223,7 @@ class PublicEmbedService:
             client_ip=client_ip,
         )
 
-        voice_service = TelnyxVoiceService(settings.telnyx_api_key)
+        voice_service = make_voice_caller()
         try:
             api_base = settings.api_base_url or "https://example.com"
             webhook_url = f"{api_base}/webhooks/telnyx/voice"
@@ -242,7 +285,7 @@ class PublicEmbedService:
 
         default_greeting = f"Hi! Thanks for reaching out to {agent.name}. How can I help you today?"
         greeting = agent.initial_greeting or default_greeting
-        sms_service = TelnyxSMSService(settings.telnyx_api_key)
+        sms_service = make_sms_sender()
         try:
             idempotency_key = derive_outbound_key("embed_text", demo_record.id)
             await sms_service.send_message(
@@ -332,6 +375,14 @@ class PublicEmbedService:
             self.db.add(contact)
 
         await self.db.flush()
+
+
+def _agent_has_enabled_tool(agent: Agent, tool_name: str) -> bool:
+    """Return whether an agent explicitly enables a public embed tool."""
+    enabled_tools = getattr(agent, "enabled_tools", None)
+    if not isinstance(enabled_tools, (list, tuple, set, frozenset)):
+        return False
+    return tool_name in enabled_tools
 
 
 def _split_caller_name(caller_name: str) -> tuple[str, str | None]:
