@@ -1,20 +1,9 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import {
-  Bell,
-  CalendarClock,
-  ClipboardCheck,
-  Megaphone,
-  MessageCircleReply,
-  Radar,
-  Sparkles,
-  Wrench,
-  type LucideIcon,
-} from "lucide-react";
+import { Sparkles } from "lucide-react";
 import Link from "next/link";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -23,29 +12,47 @@ import {
   PageLoadingState,
 } from "@/components/ui/page-state";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
-import { dashboardApi, type TodayQueueKind } from "@/lib/api/dashboard";
+import {
+  dashboardApi,
+  type TodayQueueItem,
+  type TodayQueueKind,
+} from "@/lib/api/dashboard";
 import { queryKeys } from "@/lib/query-keys";
 import { POLL_60S } from "@/lib/query-options";
 
-const KIND_ICONS: Record<TodayQueueKind, LucideIcon> = {
-  replies_waiting: MessageCircleReply,
-  appointments_today: CalendarClock,
-  approvals: ClipboardCheck,
-  hot_nudges: Bell,
-  prospect_batch: Radar,
-  draft_campaign: Megaphone,
-  setup_gap: Wrench,
+/** How many kind-phrases the headline shows before collapsing the rest. */
+const MAX_HEADLINE_PHRASES = 3;
+
+const HEADLINE_PHRASES: Record<TodayQueueKind, (n: number) => string> = {
+  replies_waiting: (n) => `${n} ${n === 1 ? "reply" : "replies"} waiting`,
+  appointments_today: (n) => `${n} ${n === 1 ? "appointment" : "appointments"} today`,
+  approvals: (n) => `${n} ${n === 1 ? "approval" : "approvals"} waiting`,
+  hot_nudges: (n) => `${n} ${n === 1 ? "nudge" : "nudges"} due today`,
+  prospect_batch: (n) => `${n} new ${n === 1 ? "lead" : "leads"} to review`,
+  draft_campaign: (n) => `${n} draft ${n === 1 ? "campaign" : "campaigns"}`,
+  setup_gap: (n) => `${n} setup ${n === 1 ? "step" : "steps"}`,
 };
 
-const KIND_LABELS: Record<TodayQueueKind, string> = {
-  replies_waiting: "Reply needed",
-  appointments_today: "Appointments",
-  approvals: "Approvals",
-  hot_nudges: "Nudges",
-  prospect_batch: "Fresh batch",
-  draft_campaign: "Draft campaign",
-  setup_gap: "Setup",
-};
+/**
+ * Summarize the queue as one briefing sentence, e.g.
+ * "3 replies waiting, 2 approvals waiting, 1 appointment today".
+ * Phrases follow queue order; anything past the third collapses to "and N more".
+ */
+function buildHeadline(items: TodayQueueItem[]): string {
+  const totals = new Map<TodayQueueKind, number>();
+  for (const item of items) {
+    // Draft campaigns and setup gaps are one row each — their `count` is
+    // contacts enrolled, not actions to take.
+    const quantity =
+      item.kind === "draft_campaign" || item.kind === "setup_gap" ? 1 : item.count;
+    totals.set(item.kind, (totals.get(item.kind) ?? 0) + quantity);
+  }
+
+  const phrases = Array.from(totals, ([kind, n]) => HEADLINE_PHRASES[kind](n));
+  const visible = phrases.slice(0, MAX_HEADLINE_PHRASES);
+  const hidden = phrases.length - visible.length;
+  return hidden > 0 ? `${visible.join(", ")}, and ${hidden} more` : visible.join(", ");
+}
 
 export function TodayPage() {
   const workspaceId = useWorkspaceId();
@@ -65,14 +72,19 @@ export function TodayPage() {
     ...POLL_60S,
   });
 
+  const items = queue?.items ?? [];
+  const headline = items.length > 0 ? buildHeadline(items) : null;
+
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">Today</h1>
-          <p className="text-sm text-muted-foreground">
-            Your ordered mission queue — work it top to bottom.
-          </p>
+          {headline ? (
+            <h2 className="mt-1 text-xl font-medium tracking-tight">{headline}</h2>
+          ) : (
+            <p className="mt-1 text-sm text-muted-foreground">Your morning briefing.</p>
+          )}
         </div>
         <Button asChild>
           <Link href="/assistant?briefing=1">
@@ -89,7 +101,7 @@ export function TodayPage() {
           message="We couldn't load today's queue. Please try again."
           onRetry={() => refetch()}
         />
-      ) : queue.items.length === 0 ? (
+      ) : items.length === 0 ? (
         <PageEmptyState
           title="All clear"
           description="Nothing needs you right now. The machine keeps scraping overnight."
@@ -101,36 +113,46 @@ export function TodayPage() {
         />
       ) : (
         <div className="flex flex-col gap-3">
-          {queue.items.map((item, index) => {
-            const Icon = KIND_ICONS[item.kind];
-            return (
-              <Card key={item.id}>
-                <CardContent className="flex flex-wrap items-center gap-4 p-4">
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted font-mono text-sm text-muted-foreground">
-                    {index + 1}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Icon className="size-4 shrink-0 text-muted-foreground" />
-                      <span className="font-medium">{item.title}</span>
-                      <Badge variant="secondary">{KIND_LABELS[item.kind]}</Badge>
-                      {item.count > 1 ? (
-                        <Badge variant="outline">{item.count}</Badge>
+          <p className="text-sm text-muted-foreground">
+            {items.length === 1 ? "1 item" : `${items.length} items`} — start at the top and
+            work down.
+          </p>
+          <ol className="flex flex-col gap-3">
+            {items.map((item, index) => (
+              <li key={item.id}>
+                <Card>
+                  <CardContent className="flex flex-wrap items-center gap-4 p-4">
+                    <div
+                      aria-hidden="true"
+                      className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted font-mono text-sm text-muted-foreground"
+                    >
+                      {index + 1}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium">{item.title}</p>
+                      {item.body ? (
+                        <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                          {item.body}
+                        </p>
                       ) : null}
                     </div>
-                    {item.body ? (
-                      <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                        {item.body}
-                      </p>
-                    ) : null}
-                  </div>
-                  <Button asChild variant="outline" className="shrink-0">
-                    <Link href={item.href}>{item.cta_label}</Link>
-                  </Button>
-                </CardContent>
-              </Card>
-            );
-          })}
+                    {index === 0 ? (
+                      <Button asChild className="shrink-0">
+                        <Link href={item.href}>{item.cta_label}</Link>
+                      </Button>
+                    ) : (
+                      <Link
+                        href={item.href}
+                        className="shrink-0 text-sm font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                      >
+                        {item.cta_label}
+                      </Link>
+                    )}
+                  </CardContent>
+                </Card>
+              </li>
+            ))}
+          </ol>
         </div>
       )}
     </div>
