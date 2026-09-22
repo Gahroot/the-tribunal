@@ -73,10 +73,27 @@ async def test_empty_workspace_surfaces_only_setup_gaps(
         ws = await _workspace(db)
         queue = await TodayQueueService(db).get_today_queue(ws.id)
 
+        # Autopilot is mandate-driven and the default mandate is enabled, so an
+        # empty workspace is blocked on the monitor, offer, and sending number.
         kinds = [item.kind for item in queue.items]
-        assert kinds == ["setup_gap", "setup_gap", "setup_gap", "setup_gap"]
+        assert kinds == ["setup_gap", "setup_gap", "setup_gap"]
         gaps = {item.payload["gap"] for item in queue.items}
-        assert gaps == {"monitor", "offer", "autopilot", "phone"}
+        assert gaps == {"monitor", "offer", "phone"}
+
+
+async def test_autopilot_gap_surfaces_when_mandate_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(availability.settings, "telnyx_api_key", "server-key")
+
+    async with AsyncSessionLocal() as db:
+        ws = await _workspace(db)
+        ws.autonomy_mandate = {"enabled": True, "auto_send_first_touches": False}
+        await db.flush()
+        queue = await TodayQueueService(db).get_today_queue(ws.id)
+
+        gaps = {item.payload["gap"] for item in queue.items}
+        assert "autopilot" in gaps
 
 
 async def test_empty_workspace_surfaces_telephony_gap_when_telnyx_unavailable(

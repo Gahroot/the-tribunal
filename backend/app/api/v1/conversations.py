@@ -3,7 +3,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.deps import DB, CurrentUser, get_workspace
 from app.models.conversation import Message
@@ -22,9 +22,39 @@ from app.schemas.conversation import (
     MessageResponse,
     PaginatedConversations,
 )
+from app.schemas.message_trace import MessageTraceResponse
 from app.services.conversations import ConversationService
+from app.services.outbound.message_trace import message_trace_service
 
 router = APIRouter()
+
+
+@router.get(
+    "/messages/{message_id}/trace",
+    response_model=MessageTraceResponse,
+)
+async def get_message_trace(
+    workspace_id: uuid.UUID,
+    message_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> MessageTraceResponse:
+    """Fetch the decision/trace for one autonomously-sent message.
+
+    Answers "why did the agent send that?" — returns the opener/prompt version,
+    retrieved knowledge snippets, model params, conversation state plus last
+    inbound, and which autonomy-mandate rule authorized the send.
+    """
+    trace = await message_trace_service.get_by_message(
+        db, workspace_id=workspace_id, message_id=message_id
+    )
+    if trace is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No trace recorded for this message",
+        )
+    return MessageTraceResponse.model_validate(trace)
 
 
 @router.get("", response_model=PaginatedConversations)
@@ -49,6 +79,28 @@ async def list_conversations(
         channel_filter=channel_filter,
         unread_only=unread_only,
     )
+
+
+@router.get(
+    "/{conversation_id}/traces",
+    response_model=list[MessageTraceResponse],
+)
+async def list_conversation_traces(
+    workspace_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+    limit: int = Query(100, ge=1, le=500),
+) -> list[MessageTraceResponse]:
+    """List decision/traces for every autonomous message in a conversation."""
+    traces = await message_trace_service.list_by_conversation(
+        db,
+        workspace_id=workspace_id,
+        conversation_id=conversation_id,
+        limit=limit,
+    )
+    return [MessageTraceResponse.model_validate(trace) for trace in traces]
 
 
 @router.get("/{conversation_id}", response_model=ConversationWithMessages)

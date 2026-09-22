@@ -1,33 +1,32 @@
-"""Outbound autopilot draft worker.
+"""Outbound autonomy worker.
 
-Once a day, for each workspace that opted in (workspace setting
-``outbound_autopilot.enabled``, default **off**):
+Once a day, for each workspace whose autonomy mandate permits first touches:
 
 1. Find ad-library contacts never enrolled in any campaign.
 2. Ensure the managed "Ad library — fresh" segment exists.
-3. Resolve the configured default offer (``outbound_autopilot.offer_id``);
-   if missing, emit a workspace-level nudge instead of guessing.
+3. Resolve the mandate's default offer; if missing, emit a workspace-level
+   nudge instead of guessing.
 4. Reuse :class:`OutboundGrowthWorkflowService` to draft the campaign
-   (copy, previews, responder resolution), then enroll the full batch.
-5. Park an ``outbound.launch_campaign`` PendingAction so the draft lands in
-   the existing approval pipe (web + SMS/push) — nothing sends without a
-   human approving it.
+   (copy, previews, responder resolution), then enroll the capped batch.
+5. Ask the approval gate. Under the workspace autonomy mandate, this launches
+   immediately; otherwise it still parks an ``outbound.launch_campaign``
+   PendingAction for human review.
 
-Idempotent per workspace per day: skips when an unexpired launch approval is
-already pending or one was already created today.
+Idempotent per workspace per day: skips when a launch approval is still pending
+or an autopilot campaign was already created today.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import AsyncSessionLocal
-from app.models.campaign import CampaignContact
+from app.models.campaign import Campaign, CampaignContact
 from app.models.contact import Contact
 from app.models.human_nudge import HumanNudge
 from app.models.offer import Offer
@@ -35,6 +34,8 @@ from app.models.pending_action import PendingAction
 from app.models.segment import Segment
 from app.models.workspace import Workspace
 from app.services.approval.approval_gate_service import approval_gate_service
+from app.services.autonomy_mandate import normalize_autonomy_mandate
+from app.services.campaigns.campaign_lifecycle import CampaignLifecycleError, start_campaign
 from app.services.outbound.growth_workflow import OutboundGrowthWorkflowService
 from app.workers.base import BaseWorker, WorkerRegistry
 
@@ -49,7 +50,7 @@ MAX_PREVIEWS_IN_DESCRIPTION = 3
 
 
 class OutboundAutoDraftWorker(BaseWorker):
-    """Draft tomorrow-morning's outbound campaign from fresh ad-library contacts."""
+    """Launch or draft tomorrow-morning's outbound campaign from fresh ad-library contacts."""
 
     POLL_INTERVAL_SECONDS = 86400  # daily; do not lower (one draft per day max)
     COMPONENT_NAME = "outbound_auto_draft_worker"
@@ -60,17 +61,20 @@ class OutboundAutoDraftWorker(BaseWorker):
             # Snapshot scalar values up front: mid-loop commits/rollbacks may
             # expire or detach ORM instances.
             result = await db.execute(
-                select(Workspace.id, Workspace.settings).where(Workspace.is_active.is_(True))
+                select(Workspace.id, Workspace.settings, Workspace.autonomy_mandate).where(
+                    Workspace.is_active.is_(True)
+                )
             )
             candidates = [
-                (workspace_id, settings.get(AUTOPILOT_SETTINGS_KEY, {}))
-                for workspace_id, settings in result.all()
+                (workspace_id, settings or {}, normalize_autonomy_mandate(autonomy_mandate))
+                for workspace_id, settings, autonomy_mandate in result.all()
             ]
-            for workspace_id, autopilot in candidates:
-                if not isinstance(autopilot, dict) or not autopilot.get("enabled", False):
+            for workspace_id, settings, mandate in candidates:
+                legacy_autopilot = settings.get(AUTOPILOT_SETTINGS_KEY, {})
+                if not self._mandate_enables_first_touches(mandate, legacy_autopilot):
                     continue
                 try:
-                    await self._process_workspace(db, workspace_id, autopilot)
+                    await self._process_workspace(db, workspace_id, mandate, legacy_autopilot)
                 except Exception:
                     self.logger.exception(
                         "auto_draft_workspace_failed", workspace_id=str(workspace_id)
@@ -81,7 +85,8 @@ class OutboundAutoDraftWorker(BaseWorker):
         self,
         db: AsyncSession,
         workspace_id: uuid.UUID,
-        autopilot: dict[str, Any],
+        mandate: dict[str, Any],
+        legacy_autopilot: Any,
     ) -> None:
         log = self.logger.bind(workspace_id=str(workspace_id))
 
@@ -90,11 +95,17 @@ class OutboundAutoDraftWorker(BaseWorker):
             return
 
         batch_contact_ids = await self._uncampaigned_ad_library_contact_ids(db, workspace_id)
+        daily_send_cap = int(mandate.get("daily_send_cap") or 100)
+        batch_contact_ids = batch_contact_ids[:daily_send_cap]
         if len(batch_contact_ids) < MIN_BATCH_SIZE:
             log.debug("auto_draft_skipped_small_batch", batch_size=len(batch_contact_ids))
             return
 
-        offer = await self._resolve_offer(db, workspace_id, autopilot.get("offer_id"))
+        offer = await self._resolve_offer(
+            db,
+            workspace_id,
+            mandate.get("default_offer_id") or self._legacy_offer_id(legacy_autopilot),
+        )
         if offer is None:
             await self._nudge_missing_offer(db, workspace_id)
             log.info("auto_draft_missing_offer_nudged")
@@ -122,6 +133,9 @@ class OutboundAutoDraftWorker(BaseWorker):
             return
 
         campaign_id = uuid.UUID(plan_result["draft"]["campaign_id"])
+        campaign = await db.get(Campaign, campaign_id)
+        if campaign is not None:
+            _apply_mandate_delivery_limits(campaign, mandate)
         enrolled = await self._enroll_batch(db, campaign_id, batch_contact_ids)
 
         description = _build_description(plan_result, enrolled)
@@ -132,10 +146,29 @@ class OutboundAutoDraftWorker(BaseWorker):
             action_type=LAUNCH_ACTION_TYPE,
             action_payload={"campaign_id": str(campaign_id)},
             description=description,
-            context={"source": "outbound_auto_draft", "segment_id": str(segment.id)},
+            context={
+                "source": "outbound_auto_draft",
+                "segment_id": str(segment.id),
+                "autonomy_mandate": True,
+            },
             urgency="high",
             require_approval_without_agent=True,
         )
+        start_result: dict[str, Any] | None = None
+        if decision == "auto" and campaign is not None:
+            try:
+                lifecycle_result = await start_campaign(db, campaign, contact_count=enrolled)
+                start_result = {
+                    "status": lifecycle_result.status.value,
+                    "contact_count": lifecycle_result.contact_count,
+                }
+            except CampaignLifecycleError as exc:
+                await db.rollback()
+                log.warning(
+                    "auto_draft_launch_failed", campaign_id=str(campaign_id), error=str(exc)
+                )
+                return
+
         await db.commit()
         self.record_items_processed(1)
         log.info(
@@ -144,10 +177,21 @@ class OutboundAutoDraftWorker(BaseWorker):
             enrolled=enrolled,
             decision=decision,
             action_id=(metadata or {}).get("action_id"),
+            start_result=start_result,
         )
 
+    @staticmethod
+    def _mandate_enables_first_touches(mandate: dict[str, Any], legacy_autopilot: Any) -> bool:
+        if mandate.get("enabled") and mandate.get("auto_send_first_touches"):
+            return True
+        return isinstance(legacy_autopilot, dict) and bool(legacy_autopilot.get("enabled", False))
+
+    @staticmethod
+    def _legacy_offer_id(legacy_autopilot: Any) -> Any:
+        return legacy_autopilot.get("offer_id") if isinstance(legacy_autopilot, dict) else None
+
     async def _already_drafted(self, db: AsyncSession, workspace_id: uuid.UUID) -> bool:
-        """True when a launch approval is still pending or was created today."""
+        """True when a launch approval is pending or an autopilot campaign exists today."""
         now = datetime.now(UTC)
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -173,7 +217,19 @@ class OutboundAutoDraftWorker(BaseWorker):
             )
             .limit(1)
         )
-        return today.scalar_one_or_none() is not None
+        if today.scalar_one_or_none() is not None:
+            return True
+
+        launched = await db.execute(
+            select(Campaign.id)
+            .where(
+                Campaign.workspace_id == workspace_id,
+                Campaign.created_at >= today_start,
+                Campaign.description.ilike("Assistant-created draft from intent: Autopilot:%"),
+            )
+            .limit(1)
+        )
+        return launched.scalar_one_or_none() is not None
 
     async def _uncampaigned_ad_library_contact_ids(
         self, db: AsyncSession, workspace_id: uuid.UUID
@@ -217,10 +273,10 @@ class OutboundAutoDraftWorker(BaseWorker):
                 workspace_id=workspace_id,
                 contact_id=None,
                 nudge_type="monitor_idle",
-                title="\u2699\ufe0f Autopilot needs an offer",
+                title="⚙️ Autonomy needs an offer",
                 message=(
-                    "\u2699\ufe0f Outbound autopilot is on, but no default offer is "
-                    "configured. Pick one in settings so morning drafts can be created."
+                    "⚙️ Outbound autonomy is on, but no default offer is configured. "
+                    "Pick one in the autonomy mandate so morning first-touches can launch."
                 ),
                 priority="high",
                 due_date=now,
@@ -273,6 +329,28 @@ class OutboundAutoDraftWorker(BaseWorker):
             added += 1
         await db.flush()
         return len(already) + added
+
+
+def _apply_mandate_delivery_limits(campaign: Campaign, mandate: dict[str, Any]) -> None:
+    """Project mandate send caps and quiet hours onto the campaign before launch."""
+
+    campaign.max_messages_per_campaign = int(mandate.get("daily_send_cap") or 100)
+    raw_quiet_hours = mandate.get("quiet_hours")
+    quiet_hours: dict[str, Any] = raw_quiet_hours if isinstance(raw_quiet_hours, dict) else {}
+    if not quiet_hours.get("enabled", True):
+        return
+    campaign.quiet_hours_start = _parse_hhmm(str(quiet_hours.get("start") or "20:00"))
+    campaign.quiet_hours_end = _parse_hhmm(str(quiet_hours.get("end") or "08:00"))
+    campaign.quiet_hours_timezone = str(quiet_hours.get("timezone") or "America/New_York")
+    campaign.timezone = campaign.quiet_hours_timezone
+
+
+def _parse_hhmm(value: str) -> time | None:
+    try:
+        hour, minute = value.split(":", 1)
+        return time(hour=int(hour), minute=int(minute))
+    except (TypeError, ValueError):
+        return None
 
 
 def _build_description(plan_result: dict[str, Any], enrolled: int) -> str:

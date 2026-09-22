@@ -7,6 +7,7 @@ Handles:
 """
 
 import asyncio
+import json
 import re
 from datetime import UTC, datetime
 from typing import Any
@@ -34,8 +35,46 @@ from app.services.ai.text_prompt_builder import (
 from app.services.ai.text_tool_executor import TextToolExecutor
 from app.services.ai.voice_tools import get_text_booking_tools, get_text_search_knowledge_tool
 from app.services.knowledge.knowledge_context_service import knowledge_context_service
+from app.services.outbound.message_trace import OutboundTraceDraft
+
+TEXT_MODEL = "gpt-5.4-nano"
+TEXT_LLM_TIMEOUT_SECONDS = 30.0
+TEXT_MAX_COMPLETION_TOKENS = 500
 
 logger = structlog.get_logger()
+
+
+def _capture_knowledge_snippets(
+    trace: OutboundTraceDraft,
+    tool_calls: list[Any],
+    tool_results: list[dict[str, Any]],
+) -> None:
+    """Pull retrieved passages out of search_knowledge tool results into the trace.
+
+    The tool result content is the JSON returned by the shared knowledge search
+    executor (``{"passages": [...]}"``). Matching is by ``tool_call_id`` so only
+    knowledge lookups (not booking calls) contribute snippets.
+    """
+    results_by_id = {r.get("tool_call_id"): r for r in tool_results}
+    for tool_call in tool_calls:
+        if tool_call.function.name != "search_knowledge":
+            continue
+        result = results_by_id.get(tool_call.id)
+        if result is None:
+            continue
+        try:
+            payload = json.loads(result.get("content") or "{}")
+        except (json.JSONDecodeError, TypeError):
+            continue
+        passages = payload.get("passages")
+        if not isinstance(passages, list):
+            continue
+        try:
+            args = json.loads(tool_call.function.arguments)
+            query = args.get("query")
+        except (json.JSONDecodeError, TypeError):
+            query = None
+        trace.add_knowledge_passages(passages, query=query)
 
 
 def should_require_booking_tools(message: str) -> bool:  # noqa: PLR0911
@@ -194,6 +233,7 @@ async def generate_text_response(  # noqa: PLR0915, PLR0912
     conversation: Conversation,
     db: AsyncSession,
     openai_api_key: str,
+    trace: OutboundTraceDraft | None = None,
 ) -> str | None:
     """Generate AI response for a text conversation.
 
@@ -204,6 +244,9 @@ async def generate_text_response(  # noqa: PLR0915, PLR0912
         conversation: The conversation
         db: Database session
         openai_api_key: OpenAI API key
+        trace: Optional decision/trace accumulator. When provided, it is filled
+            in place with the prompt, model params, and retrieved knowledge
+            snippets so the send can be explained after the fact.
 
     Returns:
         Generated response text, or None if failed
@@ -273,6 +316,13 @@ async def generate_text_response(  # noqa: PLR0915, PLR0912
         knowledge_context=knowledge_context,
     )
 
+    if trace is not None:
+        trace.set_prompt(
+            system_prompt=system_prompt,
+            booking_instructions_included=bool(booking_instructions),
+            knowledge_preamble_included=bool(knowledge_context),
+        )
+
     # Create OpenAI client
     client = AsyncOpenAI(api_key=openai_api_key)
 
@@ -285,10 +335,10 @@ async def generate_text_response(  # noqa: PLR0915, PLR0912
 
         # Prepare API call parameters
         api_params: dict[str, Any] = {
-            "model": "gpt-5.4-nano",
+            "model": TEXT_MODEL,
             "messages": api_messages,
             "temperature": agent.temperature,
-            "max_completion_tokens": 500,
+            "max_completion_tokens": TEXT_MAX_COMPLETION_TOKENS,
         }
 
         # Assemble the tool list: booking tools (if configured) plus the
@@ -352,10 +402,19 @@ async def generate_text_response(  # noqa: PLR0915, PLR0912
             api_params["tool_choice"] = "auto"
             log.info("knowledge_tool_enabled")
 
+        if trace is not None:
+            trace.set_model_params(
+                model=TEXT_MODEL,
+                temperature=agent.temperature,
+                max_completion_tokens=TEXT_MAX_COMPLETION_TOKENS,
+                tool_choice=api_params.get("tool_choice"),
+                timeout_seconds=TEXT_LLM_TIMEOUT_SECONDS,
+            )
+
         # Make initial LLM call
         response = await asyncio.wait_for(
             client.chat.completions.create(**api_params),
-            timeout=30.0,
+            timeout=TEXT_LLM_TIMEOUT_SECONDS,
         )
 
         assistant_message = response.choices[0].message
@@ -377,6 +436,9 @@ async def generate_text_response(  # noqa: PLR0915, PLR0912
             tool_results = await tool_executor.handle_tool_calls(
                 tool_calls=assistant_message.tool_calls,
             )
+
+            if trace is not None:
+                _capture_knowledge_snippets(trace, assistant_message.tool_calls, tool_results)
 
             # Add assistant message and tool results to conversation
             api_messages.append(
@@ -401,18 +463,20 @@ async def generate_text_response(  # noqa: PLR0915, PLR0912
             # Make follow-up call to get final response
             follow_up_response = await asyncio.wait_for(
                 client.chat.completions.create(
-                    model="gpt-5.4-nano",
+                    model=TEXT_MODEL,
                     messages=api_messages,  # type: ignore[arg-type]
                     temperature=agent.temperature,
-                    max_completion_tokens=500,
+                    max_completion_tokens=TEXT_MAX_COMPLETION_TOKENS,
                 ),
-                timeout=30.0,
+                timeout=TEXT_LLM_TIMEOUT_SECONDS,
             )
 
             final_message = follow_up_response.choices[0].message
             final_text: str | None = final_message.content
 
             if final_text:
+                if trace is not None:
+                    trace.generated_text = final_text
                 log.info(
                     "response_generated_with_tools",
                     length=len(final_text),
@@ -422,6 +486,8 @@ async def generate_text_response(  # noqa: PLR0915, PLR0912
             # No tool calls, use direct response
             response_text: str | None = assistant_message.content
             if response_text:
+                if trace is not None:
+                    trace.generated_text = response_text
                 log.info("response_generated", length=len(response_text))
                 return response_text
 

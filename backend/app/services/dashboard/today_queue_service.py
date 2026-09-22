@@ -19,20 +19,10 @@ from app.models.campaign import Campaign, CampaignContact, CampaignStatus
 from app.models.contact import Contact
 from app.models.conversation import Conversation, ConversationStatus
 from app.models.human_nudge import HumanNudge
-from app.models.offer import Offer
-from app.models.outbound_mission import OutboundMission
 from app.models.pending_action import PendingAction
-from app.models.phone_number import PhoneNumber
 from app.models.tag import ContactTag, Tag
-from app.models.workspace import Workspace
 from app.schemas.today_queue import TodayQueueItem, TodayQueueResponse
-from app.services.ad_intelligence.monitors import AD_MONITOR_KEY, is_active_monitor
-from app.services.telephony.availability import (
-    TELEPHONY_SETUP_ACTION_HREF,
-    TELEPHONY_UNAVAILABLE_MESSAGE,
-    is_telephony_enabled_for_workspace,
-)
-from app.workers.outbound_auto_draft_worker import AUTOPILOT_SETTINGS_KEY
+from app.services.dashboard.setup_prerequisites import SetupPrerequisiteService
 
 logger = structlog.get_logger()
 
@@ -373,128 +363,27 @@ class TodayQueueService:
     # ── setup gaps (cold-start guidance) ──────────────────────────────
 
     async def _setup_gap_items(self, workspace_id: uuid.UUID) -> list[TodayQueueItem]:
-        items: list[TodayQueueItem] = []
+        """Render each unmet setup prerequisite as a Today-queue card.
 
-        if not await self._has_active_monitor(workspace_id):
-            items.append(
-                _setup_gap(
-                    workspace_id,
-                    gap="monitor",
-                    title="The scraper is off — set an ad monitor",
-                    body=(
-                        "No active ad-library monitor. Save a recurring search so fresh "
-                        "advertisers land in your queue every morning."
-                    ),
-                    cta_label="Set up a monitor",
-                    href="/find-leads/ad-library",
-                )
+        Shares one source of truth with the operator-report prerequisite chase
+        (:class:`SetupPrerequisiteService`) so the cards and the iMessage nags
+        never drift apart.
+        """
+        report = await SetupPrerequisiteService(self.db).evaluate(workspace_id)
+        return [
+            TodayQueueItem(
+                id=f"setup_gap:{prereq.gap}:{workspace_id}",
+                kind="setup_gap",
+                priority=PRIORITY_SETUP_GAP,
+                title=prereq.title,
+                body=prereq.body,
+                count=1,
+                cta_label=prereq.cta_label,
+                href=prereq.href,
+                payload={"gap": prereq.gap},
             )
-
-        active_offer = await self.db.execute(
-            select(Offer.id)
-            .where(Offer.workspace_id == workspace_id, Offer.is_active.is_(True))
-            .limit(1)
-        )
-        if active_offer.scalar_one_or_none() is None:
-            items.append(
-                _setup_gap(
-                    workspace_id,
-                    gap="offer",
-                    title="No active offer",
-                    body="Outbound campaigns need an offer to promote. Create or activate one.",
-                    cta_label="Create an offer",
-                    href="/offers",
-                )
-            )
-
-        if not await self._autopilot_enabled(workspace_id):
-            items.append(
-                _setup_gap(
-                    workspace_id,
-                    gap="autopilot",
-                    title="Outbound autopilot is off",
-                    body=(
-                        "Fresh ad-library contacts won't become a drafted campaign "
-                        "overnight. Turn on autopilot and pick a default offer."
-                    ),
-                    cta_label="Turn on autopilot",
-                    href="/settings?tab=lead-sources",
-                )
-            )
-
-        sms_number = await self.db.execute(
-            select(PhoneNumber.id)
-            .where(
-                PhoneNumber.workspace_id == workspace_id,
-                PhoneNumber.is_active.is_(True),
-                PhoneNumber.sms_enabled.is_(True),
-            )
-            .limit(1)
-        )
-        if sms_number.scalar_one_or_none() is None:
-            if await is_telephony_enabled_for_workspace(self.db, workspace_id):
-                items.append(
-                    _setup_gap(
-                        workspace_id,
-                        gap="phone",
-                        title="No SMS-enabled phone number",
-                        body="You need an active SMS-enabled number before any campaign can send.",
-                        cta_label="Add a number",
-                        href="/phone-numbers",
-                    )
-                )
-            else:
-                items.append(
-                    _setup_gap(
-                        workspace_id,
-                        gap="telephony",
-                        title="Telephony is not connected",
-                        body=TELEPHONY_UNAVAILABLE_MESSAGE,
-                        cta_label="Connect Telnyx",
-                        href=TELEPHONY_SETUP_ACTION_HREF,
-                    )
-                )
-
-        return items
-
-    async def _autopilot_enabled(self, workspace_id: uuid.UUID) -> bool:
-        result = await self.db.execute(
-            select(Workspace.settings).where(Workspace.id == workspace_id)
-        )
-        settings = result.scalar_one_or_none() or {}
-        autopilot = settings.get(AUTOPILOT_SETTINGS_KEY, {})
-        return isinstance(autopilot, dict) and bool(autopilot.get("enabled", False))
-
-    async def _has_active_monitor(self, workspace_id: uuid.UUID) -> bool:
-        result = await self.db.execute(
-            select(OutboundMission).where(
-                OutboundMission.workspace_id == workspace_id,
-                OutboundMission.discovery_config[AD_MONITOR_KEY].isnot(None),
-            )
-        )
-        return any(is_active_monitor(m) for m in result.scalars().all())
-
-
-def _setup_gap(
-    workspace_id: uuid.UUID,
-    *,
-    gap: str,
-    title: str,
-    body: str,
-    cta_label: str,
-    href: str,
-) -> TodayQueueItem:
-    return TodayQueueItem(
-        id=f"setup_gap:{gap}:{workspace_id}",
-        kind="setup_gap",
-        priority=PRIORITY_SETUP_GAP,
-        title=title,
-        body=body,
-        count=1,
-        cta_label=cta_label,
-        href=href,
-        payload={"gap": gap},
-    )
+            for prereq in report.unmet
+        ]
 
 
 def _truncate(text: str, limit: int = 120) -> str:

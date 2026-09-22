@@ -7,6 +7,7 @@ HumanProfile policies.
 
 from __future__ import annotations
 
+import inspect
 import logging
 import uuid
 from collections.abc import Callable, Iterable
@@ -19,6 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.human_profile import HumanProfile
 from app.models.pending_action import PendingAction
+from app.models.workspace import Workspace
+from app.services.autonomy_mandate import autonomy_allows_action
 
 logger = logging.getLogger(__name__)
 
@@ -366,6 +369,21 @@ class ApprovalGateService:
         require_approval_without_agent: bool,
     ) -> tuple[str, dict[str, Any] | None]:
         """Core evaluation logic."""
+        raw_workspace = db.get(Workspace, workspace_id)
+        workspace = await raw_workspace if inspect.isawaitable(raw_workspace) else None
+        if workspace is not None and autonomy_allows_action(
+            workspace.autonomy_mandate,
+            action_type=action_type,
+            action_payload=action_payload,
+            context=context,
+        ):
+            logger.info(
+                "Workspace autonomy mandate auto-approved %s for workspace %s",
+                action_type,
+                workspace_id,
+            )
+            return ("auto", {"source": "autonomy_mandate"})
+
         profile: HumanProfile | None = None
         if agent_id is not None:
             result = await db.execute(select(HumanProfile).where(HumanProfile.agent_id == agent_id))

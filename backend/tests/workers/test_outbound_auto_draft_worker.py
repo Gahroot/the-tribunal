@@ -47,10 +47,10 @@ async def _setup_workspace(db, *, with_offer: bool = True, contacts: int = MIN_B
         db.add(offer)
         await db.flush()
 
-    settings = {"outbound_autopilot": {"enabled": True}}
+    ws.settings = {}
+    ws.autonomy_mandate = {"enabled": True, "auto_send_first_touches": True}
     if offer is not None:
-        settings["outbound_autopilot"]["offer_id"] = str(offer.id)
-    ws.settings = settings
+        ws.autonomy_mandate["default_offer_id"] = str(offer.id)
 
     for n in range(contacts):
         phone = f"+1512555{4000 + n:04d}"
@@ -87,24 +87,27 @@ async def _launch_actions(db, workspace_id: uuid.UUID) -> list[PendingAction]:
     return list(result.scalars().all())
 
 
-async def test_draft_created_and_parked_behind_approval() -> None:
+async def _campaigns(db, workspace_id: uuid.UUID) -> list[Campaign]:
+    result = await db.execute(select(Campaign).where(Campaign.workspace_id == workspace_id))
+    return list(result.scalars().all())
+
+
+async def test_mandate_launches_first_touch_campaign_without_pending_approval() -> None:
     worker = OutboundAutoDraftWorker()
     async with AsyncSessionLocal() as db:
         ws = await _setup_workspace(db)
 
         await worker._process_items()
 
-        actions = await _launch_actions(db, ws.id)
-        assert len(actions) == 1
-        action = actions[0]
-        assert action.status == "pending"
-        assert "ad-library contact" in action.description
-        assert action.context["source"] == "outbound_auto_draft"
+        assert await _launch_actions(db, ws.id) == []
 
-        campaign_id = uuid.UUID(action.action_payload["campaign_id"])
-        campaign = await db.get(Campaign, campaign_id)
-        assert campaign is not None
-        assert campaign.status == CampaignStatus.DRAFT
+        campaigns = await _campaigns(db, ws.id)
+        assert len(campaigns) == 1
+        campaign = campaigns[0]
+        assert campaign.status == CampaignStatus.RUNNING
+        assert campaign.max_messages_per_campaign == 100
+        assert campaign.quiet_hours_start is not None
+        campaign_id = campaign.id
 
         # Full batch enrolled, not just the 3 previews.
         enrolled = await db.execute(
@@ -131,8 +134,9 @@ async def test_second_tick_same_day_is_idempotent() -> None:
         await worker._process_items()
         await worker._process_items()
 
-        actions = await _launch_actions(db, ws.id)
-        assert len(actions) == 1
+        assert await _launch_actions(db, ws.id) == []
+        campaigns = await _campaigns(db, ws.id)
+        assert len(campaigns) == 1
 
 
 async def test_missing_offer_emits_nudge_instead_of_guessing() -> None:
@@ -154,11 +158,12 @@ async def test_missing_offer_emits_nudge_instead_of_guessing() -> None:
         assert "offer" in rows[0].message.lower()
 
 
-async def test_autopilot_off_does_nothing() -> None:
+async def test_mandate_off_does_nothing() -> None:
     worker = OutboundAutoDraftWorker()
     async with AsyncSessionLocal() as db:
         ws = await _setup_workspace(db)
         ws.settings = {"outbound_autopilot": {"enabled": False}}
+        ws.autonomy_mandate = {"enabled": False, "auto_send_first_touches": False}
         await db.commit()
 
         await worker._process_items()

@@ -35,6 +35,7 @@ from app.workers.message_test_worker import _registry as message_test_registry
 from app.workers.never_booked_worker import _registry as never_booked_registry
 from app.workers.noshow_reengagement_worker import _registry as noshow_reengagement_registry
 from app.workers.nudge_worker import _registry as nudge_registry
+from app.workers.operator_report_worker import _registry as operator_report_registry
 from app.workers.outbound_auto_draft_worker import (
     _registry as outbound_auto_draft_registry,
 )
@@ -50,8 +51,6 @@ from app.workers.prospect_promotion_worker import (
     _registry as prospect_promotion_registry,
 )
 from app.workers.reminder_worker import _registry as reminder_registry
-from app.workers.reputation_worker import _registry as reputation_registry
-from app.workers.review_request_worker import _registry as review_request_registry
 from app.workers.transcript_analysis_worker import _registry as transcript_analysis_registry
 from app.workers.voice_campaign_worker import _registry as voice_campaign_registry
 from app.workers.web_people_discovery_worker import (
@@ -81,6 +80,52 @@ class WorkerRegistryProtocol(Protocol):
 def _always_enabled(_settings: Settings) -> bool:
     """Default per-worker enablement predicate."""
     return True
+
+
+class _LazyBlockRegistry:
+    """Lazy proxy to a worker registry that lives in an extracted block package.
+
+    The Reviews & Reputation workers live in the mountable ``tribunal-reviews``
+    block, whose package import pulls ``app.core_api`` (which in turn imports
+    ``app.workers.base``). Importing the block's registries at *this* module's
+    load time would re-enter a half-initialized ``app.core_api`` /
+    ``tribunal_reviews`` cycle. Resolving them on first lifecycle call (during
+    the app lifespan, long after imports settle) breaks that cycle while keeping
+    the static :data:`WORKER_SPECS` list intact.
+    """
+
+    __slots__ = ("_module", "_attr", "_target")
+
+    def __init__(self, module: str, attr: str) -> None:
+        self._module = module
+        self._attr = attr
+        self._target: WorkerRegistryProtocol | None = None
+
+    def _resolve(self) -> WorkerRegistryProtocol:
+        if self._target is None:
+            import importlib
+
+            self._target = getattr(importlib.import_module(self._module), self._attr)
+        return self._target
+
+    async def start(self) -> BaseWorker:
+        return await self._resolve().start()
+
+    async def stop(self) -> None:
+        await self._resolve().stop()
+
+    def get(self) -> BaseWorker | None:
+        return self._resolve().get()
+
+
+# Reviews & Reputation workers live in the extracted ``tribunal-reviews`` block;
+# proxied lazily to avoid an import cycle through ``app.core_api`` at load time.
+review_request_registry: WorkerRegistryProtocol = _LazyBlockRegistry(
+    "tribunal_reviews", "review_request_registry"
+)
+reputation_registry: WorkerRegistryProtocol = _LazyBlockRegistry(
+    "tribunal_reviews", "reputation_registry"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -263,6 +308,15 @@ WORKER_SPECS: tuple[WorkerSpec, ...] = (
         name="outbound_auto_draft_worker",
         registry=outbound_auto_draft_registry,
         dependencies=("postgres",),
+    ),
+    # Proactive operator reporting over iMessage. Always started and cheap when
+    # idle; per-workspace opt-in lives in the autonomy mandate's operator_report.
+    WorkerSpec(
+        name="operator_report_worker",
+        registry=operator_report_registry,
+        dependencies=("postgres", "text_message_provider"),
+        enabled=lambda s: s.operator_report_worker_enabled,
+        enabled_setting="operator_report_worker_enabled",
     ),
 )
 

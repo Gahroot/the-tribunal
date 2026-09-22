@@ -7,6 +7,9 @@ Three orthogonal endpoints follow the Kubernetes/Railway convention:
 * ``/readyz`` — readiness: external dependencies (Postgres + Redis) reachable
   within a 2-second budget. Returns 503 if either probe fails or times out so
   load balancers can drain the instance.
+* ``/readyz/autonomy`` — focused readiness for the autonomy-critical worker
+  set (first-touch drafting, variant testing/winners, nudge delivery, and
+  operator reporting). Returns 503 with the name of any silent worker.
 * ``/version`` — build identifier sourced from the ``RAILWAY_GIT_COMMIT_SHA``
   environment variable (falls back to ``"unknown"``).
 """
@@ -24,6 +27,7 @@ from sqlalchemy import text
 from app.db.redis import get_redis
 from app.db.session import AsyncSessionLocal
 from app.workers import WORKER_SPECS
+from app.workers.autonomy_health import check_autonomy_workers
 from app.workers.base import heartbeat_key
 
 router = APIRouter()
@@ -197,6 +201,28 @@ async def readyz(request: Request, response: Response) -> dict[str, Any]:
         return {"status": "unavailable", "checks": checks}
 
     return {"status": "ok", "checks": checks}
+
+
+@router.get("/readyz/autonomy", tags=["Health"])
+async def readyz_autonomy(response: Response) -> dict[str, Any]:
+    """Readiness for the autonomy-critical worker set.
+
+    The unattended sales loop only runs if a specific subset of workers is
+    registered in ``start_all_workers`` *and* actively ticking. This probe
+    verifies, for each one, that it is registered, enabled, running, and has a
+    fresh Redis heartbeat (written only at the end of a completed poll cycle).
+
+    Returns HTTP 503 with ``silent`` listing any worker that is missing,
+    disabled, not running, or wedged — so operators see exactly which loop is
+    dark rather than a generic failure.
+    """
+    report = await check_autonomy_workers()
+    body = report.as_dict()
+    if not report.ok:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        logger.warning("readyz_autonomy_failed", silent=report.silent, error=report.error)
+        return {"status": "unavailable", **body}
+    return {"status": "ok", **body}
 
 
 @router.get("/version", tags=["Health"])

@@ -48,6 +48,14 @@ class Settings(BaseSettings):
     openai_realtime_client_secret_ttl_seconds: int = 600
     openai_realtime_idle_timeout_ms: int | None = 6000
     openai_codex_voice_enabled: bool = False
+    # GPT-Live (gpt-live-1-codex) over the Codex CLI subscription lane.
+    # Requires the codex CLI on the host with `codex login` completed. Billed
+    # against the ChatGPT plan's rolling voice allowance, not the OpenAI API.
+    live_voice_enabled: bool = False
+    live_voice_codex_binary: str = ""
+    live_voice_cwd: str = ""
+    live_voice_thread_model: str = ""
+    live_voice_ice_servers: str = "stun:stun.l.google.com:19302"
     openai_timeout: int = 60
 
     # Telnyx
@@ -164,6 +172,9 @@ class Settings(BaseSettings):
     # Web people-extraction discovery worker + crawl caps.
     web_people_discovery_worker_enabled: bool = True
     web_people_discovery_poll_interval: int = 20
+    # Proactive operator reporting (morning plan / EOD recap / escalations over iMessage).
+    operator_report_worker_enabled: bool = True
+    operator_report_poll_interval: int = 300
     # Max first-party pages crawled per company domain during people extraction.
     web_people_max_pages_per_domain: int = 8
     # Max people emitted per company domain in one discovery run.

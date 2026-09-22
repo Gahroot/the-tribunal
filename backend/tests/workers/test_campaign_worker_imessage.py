@@ -31,6 +31,13 @@ class _ExecuteResult:
     def scalars(self) -> _ScalarsResult:
         return _ScalarsResult(self._rows)
 
+    def scalar_one_or_none(self) -> object | None:
+        # Workspace.autonomy_mandate lookup. Return an explicitly disabled
+        # mandate so these routing-focused tests genuinely skip the first-touch
+        # tracing path (a None here would normalize to the *default* mandate,
+        # which has autonomy ON).
+        return {"enabled": False, "auto_send_first_touches": False}
+
 
 async def test_initial_message_uses_mac_relay_for_imessage_sender() -> None:
     workspace_id = uuid.uuid4()

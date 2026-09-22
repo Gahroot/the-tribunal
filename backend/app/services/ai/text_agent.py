@@ -22,6 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import Agent
 from app.models.conversation import Conversation, Message
+from app.models.prompt_version import PromptVersion
+from app.models.workspace import Workspace
 from app.services.ai.message_context_builder import build_message_context
 from app.services.ai.openai_credentials import get_openai_bearer_token
 from app.services.ai.opt_out_detector import (
@@ -30,6 +32,12 @@ from app.services.ai.opt_out_detector import (
 )
 from app.services.ai.text_response_generator import generate_text_response
 from app.services.ai.text_response_timing import calculate_text_response_delay_ms
+from app.services.outbound.message_trace import (
+    OutboundTraceDraft,
+    build_conversation_state,
+    build_mandate_authorization,
+    message_trace_service,
+)
 
 logger = structlog.get_logger()
 
@@ -132,17 +140,35 @@ async def process_inbound_with_ai(  # noqa: PLR0911
             )
             # Not a genuine opt-out - proceed with normal response
 
+    # Build a decision/trace draft so this autonomous send is explainable later.
+    trace = OutboundTraceDraft(
+        workspace_id=workspace_id,
+        conversation_id=conversation_id,
+        agent_id=agent.id,
+        prompt_version_id=await _active_prompt_version_id(db, agent.id),
+    )
+
     # Generate response
     response_text = await generate_text_response(
         agent=agent,
         conversation=conversation,
         db=db,
         openai_api_key=openai_key,
+        trace=trace,
     )
 
     if not response_text:
         log.warning("no_response_generated")
         return
+
+    # Snapshot the prospect/conversation state and the authorizing mandate rule
+    # at decision time (before the human-like send delay mutates anything).
+    mandate = await _workspace_autonomy_mandate(db, workspace_id)
+    trace.conversation_state = build_conversation_state(conversation, last_inbound=last_inbound)
+    trace.mandate = build_mandate_authorization(
+        mandate,
+        last_inbound_body=last_inbound.body if last_inbound else None,
+    )
 
     response_delay_ms = calculate_text_response_delay_ms(
         response_text=response_text,
@@ -162,6 +188,7 @@ async def process_inbound_with_ai(  # noqa: PLR0911
         elapsed_ms=elapsed_ms,
         wait_ms=send_wait_ms,
         log=log,
+        trace=trace,
     )
 
 
@@ -176,6 +203,7 @@ async def _send_ai_text_response_after_delay(
     elapsed_ms: int,
     wait_ms: int,
     log: Any,
+    trace: OutboundTraceDraft | None = None,
 ) -> None:
     """Wait the remaining human-like delay, re-check state, then send."""
     from app.services.telephony.text_provider import get_text_message_provider
@@ -203,7 +231,7 @@ async def _send_ai_text_response_after_delay(
     provider_name = _preferred_provider_for_conversation(current_conversation)
     sms_service = get_text_message_provider(provider_name)
     try:
-        await sms_service.send_message(
+        sent_message = await sms_service.send_message(
             to_number=current_conversation.contact_phone,
             from_number=current_conversation.workspace_phone,
             body=response_text,
@@ -211,6 +239,14 @@ async def _send_ai_text_response_after_delay(
             workspace_id=workspace_id,
             agent_id=agent_id,
         )
+        if trace is not None:
+            try:
+                await message_trace_service.record(db, draft=trace, message=sent_message)
+                await db.commit()
+            except Exception:
+                # Trace persistence must never block or undo a real send.
+                log.exception("ai_response_trace_persist_failed")
+                await db.rollback()
         log.info(
             "ai_response_sent",
             response_length=len(response_text),
@@ -225,6 +261,27 @@ async def _send_ai_text_response_after_delay(
         )
     finally:
         await sms_service.close()
+
+
+async def _active_prompt_version_id(db: AsyncSession, agent_id: uuid.UUID) -> uuid.UUID | None:
+    """Return the agent's active prompt-version id for trace attribution, if any."""
+    result = await db.execute(
+        select(PromptVersion.id).where(
+            PromptVersion.agent_id == agent_id,
+            PromptVersion.is_active.is_(True),
+        )
+    )
+    return result.scalars().first()
+
+
+async def _workspace_autonomy_mandate(
+    db: AsyncSession, workspace_id: uuid.UUID
+) -> dict[str, Any] | None:
+    """Load the raw workspace autonomy mandate that authorizes autonomous sends."""
+    result = await db.execute(
+        select(Workspace.autonomy_mandate).where(Workspace.id == workspace_id)
+    )
+    return result.scalars().first()
 
 
 async def _load_sendable_conversation(

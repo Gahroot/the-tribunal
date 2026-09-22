@@ -44,6 +44,7 @@ class Workspace(Base):
     settings: Mapped[dict[str, Any]] = mapped_column(
         JSONB, default=dict, nullable=False
     )  # timezone, business_hours
+    autonomy_mandate: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False

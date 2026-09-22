@@ -19,13 +19,32 @@ import { http, HttpResponse } from "msw";
 import type { AgentsListResponse } from "@/lib/api/agents";
 import type { ContactsListResponse } from "@/lib/api/contacts";
 import type { DashboardResponse } from "@/lib/api/dashboard";
-import type { WorkspaceWithMembership } from "@/lib/api/workspaces";
+import type { AutonomyMandate, WorkspaceWithMembership } from "@/lib/api/workspaces";
 
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
 
 const FIXED_NOW = "2026-01-01T00:00:00.000Z";
+
+export const stubAutonomyMandate: AutonomyMandate = {
+  version: 1,
+  enabled: true,
+  posture: "act_and_report",
+  auto_send_first_touches: true,
+  auto_close_batch_packs: true,
+  default_offer_id: null,
+  description: null,
+  batch_pack_anchor_key: "anchor_500",
+  batch_pack_max_price_cents: 399700,
+  allowed_batch_packs: [
+    { pack_key: "anchor_500", label: "500 ads", ad_count: 500, price_cents: 250000 },
+  ],
+  daily_send_cap: 100,
+  quiet_hours: { enabled: true, timezone: "America/New_York", start: "20:00", end: "08:00" },
+  escalation_rules: [],
+  operator_report: { enabled: true, channel: "sms", phone: null, events: [] },
+};
 
 export const stubWorkspace: WorkspaceWithMembership = {
   workspace: {
@@ -34,6 +53,7 @@ export const stubWorkspace: WorkspaceWithMembership = {
     slug: "test-workspace",
     description: null,
     settings: {},
+    autonomy_mandate: stubAutonomyMandate,
     is_active: true,
     created_at: FIXED_NOW,
     updated_at: FIXED_NOW,

@@ -14,6 +14,8 @@ from app.api.deps import (
 )
 from app.models.workspace import Workspace, WorkspaceMembership
 from app.schemas.workspace import (
+    AutonomyMandate,
+    AutonomyMandateUpdate,
     MemberResponse,
     UpdateMemberRoleRequest,
     WorkspaceCreate,
@@ -22,6 +24,7 @@ from app.schemas.workspace import (
     WorkspaceWithMembership,
 )
 from app.services.agents import ensure_default_agent
+from app.services.autonomy_mandate import default_autonomy_mandate, normalize_autonomy_mandate
 from app.services.opportunities import ensure_default_pipeline
 
 router = APIRouter()
@@ -73,6 +76,7 @@ async def create_workspace(
         slug=workspace_in.slug,
         description=workspace_in.description,
         settings=workspace_in.settings,
+        autonomy_mandate=default_autonomy_mandate(),
     )
     db.add(workspace)
     await db.flush()
@@ -106,6 +110,29 @@ async def get_workspace(
 ) -> WorkspaceResponse:
     """Get a specific workspace."""
     return WorkspaceResponse.model_validate(workspace)
+
+
+@router.get("/{workspace_id}/autonomy-mandate", response_model=AutonomyMandate)
+async def get_autonomy_mandate(
+    workspace: WorkspaceAccess,
+) -> AutonomyMandate:
+    """Get the workspace's autonomy mandate."""
+    return AutonomyMandate.model_validate(normalize_autonomy_mandate(workspace.autonomy_mandate))
+
+
+@router.put("/{workspace_id}/autonomy-mandate", response_model=AutonomyMandate)
+async def update_autonomy_mandate(
+    mandate_in: AutonomyMandateUpdate,
+    workspace: WorkspaceAdminAccess,
+    db: DB,
+) -> AutonomyMandate:
+    """Replace the workspace's autonomy mandate (owner/admin only)."""
+    workspace.autonomy_mandate = normalize_autonomy_mandate(
+        mandate_in.mandate.model_dump(mode="json")
+    )
+    await db.commit()
+    await db.refresh(workspace)
+    return AutonomyMandate.model_validate(normalize_autonomy_mandate(workspace.autonomy_mandate))
 
 
 @router.put("/{workspace_id}", response_model=WorkspaceResponse)

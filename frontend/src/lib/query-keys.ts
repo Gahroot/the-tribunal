@@ -369,6 +369,8 @@ export const queryKeys = {
       ["settings", "speed-to-lead-metrics", workspaceId] as const,
     missedCallTextback: (workspaceId: string) =>
       ["settings", "missed-call-textback", workspaceId] as const,
+    autonomyMandate: (workspaceId: string) =>
+      ["settings", "autonomy-mandate", workspaceId] as const,
   },
   smsCampaigns: createResourceQueryKeys("sms-campaigns"),
   tags: createResourceQueryKeys("tags"),

@@ -28,14 +28,23 @@ from app.models.campaign import (
     CampaignType,
 )
 from app.models.contact import Contact
+from app.models.conversation import Conversation
 from app.models.offer import Offer
 from app.models.phone_number import PhoneNumber
+from app.models.workspace import Workspace
+from app.services.autonomy_mandate import normalize_autonomy_mandate
 from app.services.compliance.outbound_compliance import (
     OutboundComplianceRequest,
     OutboundComplianceResult,
     OutboundComplianceService,
 )
 from app.services.idempotency import derive_outbound_key
+from app.services.outbound.message_trace import (
+    OutboundTraceDraft,
+    build_conversation_state,
+    build_mandate_authorization,
+    message_trace_service,
+)
 from app.services.rate_limiting.number_pool import NumberPoolManager
 from app.services.rate_limiting.opt_out_manager import OptOutManager
 from app.services.rate_limiting.rate_limiter import RateLimiter
@@ -174,6 +183,11 @@ class CampaignWorker(BaseCampaignWorker):
             return
 
         messages_to_send = MAX_MESSAGES_PER_TICK
+
+        # When the workspace runs in autonomy mode, the initial message is an
+        # autonomous first-touch: record one decision/trace per send so a bad
+        # opener is explainable (and is training data) after the fact.
+        first_touch_mandate = await self._autonomy_first_touch_mandate(db, campaign)
 
         # Get pending contacts with row-level locking
         pending_result = await db.execute(
@@ -335,6 +349,18 @@ class CampaignWorker(BaseCampaignWorker):
                 # Collect conversation for batch agent assignment after loop
                 if campaign.agent_id and message.conversation_id:
                     conversations_to_assign.append(message.conversation_id)
+
+                # Record the autonomous first-touch decision/trace (isolated so
+                # a trace failure never fails an already-sent message).
+                if first_touch_mandate is not None:
+                    await self._record_first_touch_trace(
+                        db,
+                        campaign=campaign,
+                        message=message,
+                        rendered_text=message_text,
+                        mandate=first_touch_mandate,
+                        log=log,
+                    )
 
                 # Schedule follow-up if enabled
                 if campaign.follow_up_enabled and campaign.follow_up_message:
@@ -600,6 +626,77 @@ class CampaignWorker(BaseCampaignWorker):
 
         if sent_count > 0:
             log.info("Follow-up messages batch complete", sent=sent_count)
+
+    async def _autonomy_first_touch_mandate(
+        self,
+        db: AsyncSession,
+        campaign: Campaign,
+    ) -> dict[str, Any] | None:
+        """Return the workspace mandate when it authorizes autonomous first-touches.
+
+        Returns ``None`` (no tracing) unless the workspace autonomy mandate is
+        enabled with ``auto_send_first_touches`` on — i.e. the worker is sending
+        the opener on the mandate's authority rather than a human's approval.
+        """
+        result = await db.execute(
+            select(Workspace.autonomy_mandate).where(Workspace.id == campaign.workspace_id)
+        )
+        mandate = normalize_autonomy_mandate(result.scalar_one_or_none())
+        if mandate.get("enabled") and mandate.get("auto_send_first_touches"):
+            return mandate
+        return None
+
+    async def _record_first_touch_trace(
+        self,
+        db: AsyncSession,
+        *,
+        campaign: Campaign,
+        message: Any,
+        rendered_text: str,
+        mandate: dict[str, Any],
+        log: Any,
+    ) -> None:
+        """Persist one decision/trace for an autonomous first-touch send.
+
+        Runs inside a SAVEPOINT and swallows failures: the opener was already
+        delivered, so an explainability-row problem must not roll back or fail
+        the campaign send.
+        """
+        if message.conversation_id is None:
+            return
+        try:
+            async with db.begin_nested():
+                existing = await message_trace_service.get_by_message(
+                    db,
+                    workspace_id=campaign.workspace_id,
+                    message_id=message.id,
+                )
+                if existing is not None:
+                    return
+                draft = OutboundTraceDraft(
+                    workspace_id=campaign.workspace_id,
+                    conversation_id=message.conversation_id,
+                    agent_id=campaign.agent_id,
+                    generated_text=rendered_text,
+                )
+                draft.set_prompt(system_prompt=campaign.initial_message or "")
+                draft.set_model_params(model="deterministic_campaign_opener")
+                conversation = await db.get(Conversation, message.conversation_id)
+                if conversation is not None:
+                    draft.conversation_state = build_conversation_state(
+                        conversation, last_inbound=None
+                    )
+                draft.mandate = build_mandate_authorization(
+                    mandate, last_inbound_body=None, action="first_touch"
+                )
+                await message_trace_service.record(db, draft=draft, message=message)
+        except Exception:
+            log.warning(
+                "first_touch_trace_record_failed",
+                campaign_id=str(campaign.id),
+                message_id=str(getattr(message, "id", "")),
+                exc_info=True,
+            )
 
     def _render_template(
         self,

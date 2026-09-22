@@ -409,6 +409,65 @@ class TestWorkerHeartbeatProbe:
         assert per_worker == dict.fromkeys(labels, False)
 
 
+class TestReadyzAutonomy:
+    """GET /readyz/autonomy — focused autonomy-critical worker probe."""
+
+    async def test_returns_200_when_all_workers_healthy(self, client: AsyncClient) -> None:
+        from app.workers.autonomy_health import AutonomyHealthReport, AutonomyWorkerStatus
+
+        report = AutonomyHealthReport(
+            ok=True,
+            workers=[
+                AutonomyWorkerStatus(
+                    name="nudge_worker",
+                    registered=True,
+                    enabled=True,
+                    running=True,
+                    heartbeat_present=True,
+                    ok=True,
+                )
+            ],
+        )
+        with patch(
+            "app.api.v1.health.check_autonomy_workers",
+            new=AsyncMock(return_value=report),
+        ):
+            response = await client.get("/readyz/autonomy")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "ok"
+        assert body["ok"] is True
+        assert body["silent"] == []
+
+    async def test_returns_503_and_names_silent_worker(self, client: AsyncClient) -> None:
+        from app.workers.autonomy_health import AutonomyHealthReport, AutonomyWorkerStatus
+
+        report = AutonomyHealthReport(
+            ok=False,
+            workers=[
+                AutonomyWorkerStatus(
+                    name="nudge_worker",
+                    registered=True,
+                    enabled=True,
+                    running=True,
+                    heartbeat_present=False,
+                    ok=False,
+                    reason="no_heartbeat",
+                )
+            ],
+        )
+        with patch(
+            "app.api.v1.health.check_autonomy_workers",
+            new=AsyncMock(return_value=report),
+        ):
+            response = await client.get("/readyz/autonomy")
+        assert response.status_code == 503
+        body = response.json()
+        assert body["status"] == "unavailable"
+        assert body["ok"] is False
+        assert body["silent"] == ["nudge_worker"]
+
+
 class TestVersion:
     """GET /version — git SHA from RAILWAY_GIT_COMMIT_SHA."""
 
