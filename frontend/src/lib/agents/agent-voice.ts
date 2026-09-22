@@ -37,6 +37,62 @@ export function getVoiceProviderForTier(tier: string): VoiceProvider {
   }
 }
 
+/**
+ * Selectable OpenAI Realtime models for the agent edit screen. Kept in sync
+ * with the backend registry (SUPPORTED_REALTIME_MODELS). The gpt-realtime-2.x
+ * models power the "GPT Live" experience (full-duplex + reasoning delegation).
+ */
+export const REALTIME_MODEL_OPTIONS: { id: string; label: string; description: string }[] = [
+  {
+    id: "gpt-realtime-2.1",
+    label: "GPT Live (Realtime 2.1)",
+    description: "Full-duplex + background reasoning, best quality",
+  },
+  {
+    id: "gpt-realtime-2.1-mini",
+    label: "GPT Live Mini (Realtime 2.1 mini)",
+    description: "Reasoning + tools at lower cost",
+  },
+  {
+    id: "gpt-realtime-2",
+    label: "Realtime 2",
+    description: "Previous reasoning voice model",
+  },
+  {
+    id: "gpt-realtime",
+    label: "Realtime",
+    description: "Non-reasoning, lowest latency",
+  },
+  {
+    id: "gpt-realtime-mini",
+    label: "Realtime mini",
+    description: "Non-reasoning, cheapest",
+  },
+];
+
+/** Sentinel Select value representing "use the workspace default model" (null). */
+export const REALTIME_MODEL_DEFAULT_VALUE = "default";
+
+/**
+ * Map a pricing tier id to the OpenAI Realtime model persisted on the agent.
+ * Returns null for tiers that use the global default model or a non-OpenAI
+ * provider, so the backend falls back to settings.openai_realtime_model.
+ */
+export function getRealtimeModelForTier(tier: string): string | null {
+  switch (tier) {
+    case "gpt-live":
+      return "gpt-realtime-2.1";
+    case "gpt-live-mini":
+      return "gpt-realtime-2.1-mini";
+    case "premium":
+      return "gpt-realtime";
+    case "premium-mini":
+      return "gpt-realtime-mini";
+    default:
+      return null;
+  }
+}
+
 /** Return the selectable voices for a given provider. */
 export function getVoicesForProvider(provider: string): VoiceOption[] {
   switch (provider) {

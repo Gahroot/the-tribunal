@@ -25,6 +25,10 @@ export interface CreateAgentRequest {
   voice_provider?: string;
   voice_id?: string;
   language?: string;
+  /** OpenAI Realtime model id (e.g. "gpt-realtime-2.1" for the GPT Live type). */
+  realtime_model?: string | null;
+  /** Reasoning effort for gpt-realtime-2.x models: minimal|low|medium|high|xhigh. */
+  reasoning_effort?: string;
   system_prompt: string;
   temperature?: number;
   text_response_delay_ms?: number;
@@ -59,6 +63,8 @@ export interface UpdateAgentRequest {
   voice_provider?: string;
   voice_id?: string;
   language?: string;
+  realtime_model?: string | null;
+  reasoning_effort?: string;
   system_prompt?: string;
   temperature?: number;
   text_response_delay_ms?: number;

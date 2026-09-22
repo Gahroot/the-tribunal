@@ -129,6 +129,8 @@ const HUME_EVI_LANGUAGES: Language[] = [
 ];
 
 export type PricingTierType =
+  | "gpt-live"
+  | "gpt-live-mini"
   | "budget"
   | "balanced"
   | "premium-mini"
@@ -154,6 +156,8 @@ export function getLanguagesForTier(tier: PricingTierType): Language[] {
         a.name.localeCompare(b.name)
       );
 
+    case "gpt-live":
+    case "gpt-live-mini":
     case "premium-mini":
     case "premium":
       return [...COMMON_LANGUAGES, ...PREMIUM_ADDITIONAL_LANGUAGES].sort((a, b) =>

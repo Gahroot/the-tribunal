@@ -9,7 +9,11 @@ import {
 } from "@/lib/text-response-timing";
 import type { Agent } from "@/types/agent";
 
-import { getDefaultVoiceForProvider, getVoiceProviderForTier } from "./agent-voice";
+import {
+  getDefaultVoiceForProvider,
+  getRealtimeModelForTier,
+  getVoiceProviderForTier,
+} from "./agent-voice";
 
 /**
  * Single source of truth for the agent create/edit forms: shared field schema
@@ -22,6 +26,8 @@ import { getDefaultVoiceForProvider, getVoiceProviderForTier } from "./agent-voi
  */
 
 export const PRICING_TIER_IDS = [
+  "gpt-live",
+  "gpt-live-mini",
   "budget",
   "balanced",
   "premium-mini",
@@ -31,6 +37,17 @@ export const PRICING_TIER_IDS = [
   "grok",
   "elevenlabs",
 ] as const;
+
+/** Reasoning effort levels accepted by gpt-realtime-2.x models. */
+export const REASONING_EFFORTS = [
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+] as const;
+
+export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
 
 export type PricingTierId = (typeof PRICING_TIER_IDS)[number];
 
@@ -42,6 +59,8 @@ export type PricingTierId = (typeof PRICING_TIER_IDS)[number];
 export const voiceFields = {
   voiceProvider: z.string(),
   voiceId: z.string(),
+  realtimeModel: z.string().nullable().optional(),
+  reasoningEffort: z.enum(REASONING_EFFORTS),
 } as const;
 
 /** Language selection. */
@@ -153,7 +172,7 @@ export const createAgentFormSchema = z.object({
 export type CreateAgentFormValues = z.infer<typeof createAgentFormSchema>;
 
 export const CREATE_AGENT_FORM_DEFAULTS: CreateAgentFormValues = {
-  pricingTier: "premium",
+  pricingTier: "gpt-live",
   name: "",
   description: "",
   language: "en-US",
@@ -224,6 +243,8 @@ export const EDIT_AGENT_FORM_DEFAULTS: EditAgentFormValues = {
   channelMode: "voice",
   voiceProvider: "openai",
   voiceId: "marin",
+  realtimeModel: "gpt-realtime-2.1",
+  reasoningEffort: "low",
   systemPrompt: "",
   temperature: 0.7,
   textResponseDelayMs: TEXT_RESPONSE_DEFAULT_DELAY_MS,
@@ -255,7 +276,7 @@ export const EDIT_AGENT_FORM_DEFAULTS: EditAgentFormValues = {
 // Map fields to their respective tabs for error tracking on the edit screen.
 export const TAB_FIELDS: Record<string, (keyof EditAgentFormValues)[]> = {
   basic: ["name", "description", "language", "channelMode", "isActive"],
-  voice: ["voiceProvider", "voiceId"],
+  voice: ["voiceProvider", "voiceId", "realtimeModel", "reasoningEffort"],
   prompt: ["systemPrompt", "temperature"],
   tools: ["enabledTools", "enabledToolIds"],
   advanced: [
@@ -300,6 +321,7 @@ export function buildCreateAgentRequest(data: CreateAgentFormValues): CreateAgen
     voice_provider: getVoiceProviderForTier(data.pricingTier),
     voice_id: data.voice,
     language: data.language,
+    realtime_model: getRealtimeModelForTier(data.pricingTier),
     system_prompt: data.systemPrompt,
     temperature: data.temperature,
     text_response_delay_ms: TEXT_RESPONSE_DEFAULT_DELAY_MS,
@@ -327,6 +349,8 @@ export function buildUpdateAgentRequest(data: EditAgentFormValues): UpdateAgentR
     channel_mode: data.channelMode,
     voice_provider: data.voiceProvider,
     voice_id: data.voiceId,
+    realtime_model: data.realtimeModel ?? null,
+    reasoning_effort: data.reasoningEffort,
     system_prompt: data.systemPrompt,
     temperature: data.temperature,
     text_response_delay_ms: clampTextResponseDelayMs(data.textResponseDelayMs),
@@ -381,6 +405,13 @@ function normalizeAssignmentStrategy(value: string | null | undefined): Assignme
     : "single";
 }
 
+/** Coerce a (possibly empty/unknown) reasoning effort to a valid value. */
+export function normalizeReasoningEffort(value: string | null | undefined): ReasoningEffort {
+  return REASONING_EFFORTS.includes(value as ReasoningEffort)
+    ? (value as ReasoningEffort)
+    : "low";
+}
+
 /** Map a loaded agent record into edit-screen form values. */
 export function agentToEditFormValues(agent: Agent): EditAgentFormValues {
   return {
@@ -390,6 +421,8 @@ export function agentToEditFormValues(agent: Agent): EditAgentFormValues {
     channelMode: (agent.channel_mode as "voice" | "text" | "both") ?? "voice",
     voiceProvider: agent.voice_provider ?? "openai",
     voiceId: agent.voice_id || getDefaultVoiceForProvider(agent.voice_provider ?? "openai"),
+    realtimeModel: agent.realtime_model ?? null,
+    reasoningEffort: normalizeReasoningEffort(agent.reasoning_effort),
     systemPrompt: agent.system_prompt,
     temperature: agent.temperature ?? 0.7,
     textResponseDelayMs: clampTextResponseDelayMs(agent.text_response_delay_ms),

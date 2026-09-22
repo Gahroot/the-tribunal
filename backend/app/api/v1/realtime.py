@@ -19,6 +19,7 @@ from app.services.ai.openai_realtime_config import (
     build_client_secret_request,
     build_realtime_session_config,
     extract_realtime_client_secret_value,
+    normalize_realtime_model,
 )
 from app.services.ai.voice_tools import get_tools_from_agent_config
 
@@ -74,6 +75,8 @@ async def create_realtime_token(
 
     session_config = build_realtime_session_config(
         instructions=instructions,
+        model=normalize_realtime_model(agent.realtime_model),
+        reasoning_effort=agent.reasoning_effort,
         voice=body.voice or agent.voice_id,
         turn_detection_mode=agent.turn_detection_mode,
         turn_detection_threshold=body.turn_detection_threshold

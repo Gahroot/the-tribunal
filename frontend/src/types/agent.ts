@@ -9,6 +9,8 @@ export interface Agent {
   voice_provider: string;
   voice_id: string;
   language: string;
+  realtime_model: string | null;
+  reasoning_effort: string;
   system_prompt: string;
   initial_greeting: string | null;
   temperature: number;

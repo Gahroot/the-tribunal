@@ -12,6 +12,10 @@ from app.constants.text_response_timing import (
     TEXT_RESPONSE_MAX_DELAY_MS,
     TEXT_RESPONSE_MIN_DELAY_MS,
 )
+from app.services.ai.openai_realtime_config import (
+    normalize_realtime_model,
+    normalize_reasoning_effort,
+)
 from app.services.ai.text_response_timing import clamp_text_response_delay_ms
 
 
@@ -60,6 +64,10 @@ class AgentCreate(BaseModel):
     voice_provider: str = "openai"  # openai, elevenlabs
     voice_id: str = "alloy"
     language: str = "en-US"
+    # Realtime model for OpenAI voice sessions. None = global default. The
+    # "GPT Live" agent type sends "gpt-realtime-2.1".
+    realtime_model: str | None = None
+    reasoning_effort: str = "low"
     system_prompt: str
     temperature: float = 0.7
     text_response_delay_ms: int = Field(
@@ -132,6 +140,20 @@ class AgentCreate(BaseModel):
         """Normalize the booking assignment strategy to a supported value."""
         return _normalize_assignment_strategy(value)
 
+    @field_validator("realtime_model", mode="before")
+    @classmethod
+    def validate_realtime_model(cls, value: object) -> object:
+        """Coerce unknown Realtime models to None so the default is used."""
+        if value is None:
+            return None
+        return normalize_realtime_model(value if isinstance(value, str) else None)
+
+    @field_validator("reasoning_effort", mode="before")
+    @classmethod
+    def validate_reasoning_effort(cls, value: object) -> object:
+        """Normalize reasoning effort to a supported GA Realtime value."""
+        return normalize_reasoning_effort(value if isinstance(value, str) else None)
+
 
 class AgentUpdate(BaseModel):
     """Schema for updating an agent."""
@@ -142,6 +164,8 @@ class AgentUpdate(BaseModel):
     voice_provider: str | None = None
     voice_id: str | None = None
     language: str | None = None
+    realtime_model: str | None = None
+    reasoning_effort: str | None = None
     system_prompt: str | None = None
     temperature: float | None = None
     text_response_delay_ms: int | None = Field(
@@ -219,6 +243,22 @@ class AgentUpdate(BaseModel):
             return None
         return _normalize_assignment_strategy(value)
 
+    @field_validator("realtime_model", mode="before")
+    @classmethod
+    def validate_realtime_model(cls, value: object) -> object:
+        """Coerce unknown Realtime models to None so the default is used."""
+        if value is None:
+            return None
+        return normalize_realtime_model(value if isinstance(value, str) else None)
+
+    @field_validator("reasoning_effort", mode="before")
+    @classmethod
+    def validate_reasoning_effort(cls, value: object) -> object:
+        """Normalize reasoning effort, leaving None untouched for partial updates."""
+        if value is None:
+            return None
+        return normalize_reasoning_effort(value if isinstance(value, str) else None)
+
 
 class AgentResponse(BaseModel):
     """Agent response schema."""
@@ -231,6 +271,8 @@ class AgentResponse(BaseModel):
     voice_provider: str
     voice_id: str
     language: str
+    realtime_model: str | None = None
+    reasoning_effort: str = "low"
     system_prompt: str
     temperature: float
     text_response_delay_ms: int

@@ -25,6 +25,64 @@ export interface PricingTier {
 
 export const PRICING_TIERS: PricingTier[] = [
   {
+    id: "gpt-live",
+    name: "GPT Live",
+    description:
+      "OpenAI's full-duplex GPT Live voice (gpt-realtime-2.1) — listens and speaks at once, delegates hard questions to background reasoning",
+    costPerHour: 2.52,
+    costPerMinute: 0.042,
+    recommended: true,
+    features: [
+      "Full-duplex: listens while it talks",
+      "Background reasoning delegation (configurable effort)",
+      "~25% lower p95 latency vs Realtime 2",
+      "Best interruption & noise handling",
+      "New voices: marin, cedar",
+    ],
+    config: {
+      llmProvider: "openai-realtime",
+      llmModel: "gpt-realtime-2.1",
+      sttProvider: "openai",
+      sttModel: "built-in",
+      ttsProvider: "openai",
+      ttsModel: "built-in",
+      telephonyProvider: "telnyx",
+    },
+    performance: {
+      latency: "~240ms",
+      speed: "Excellent",
+      quality: "Best",
+    },
+  },
+  {
+    id: "gpt-live-mini",
+    name: "GPT Live Mini",
+    description:
+      "GPT Live at mini price (gpt-realtime-2.1-mini) — reasoning + tools for high-volume voice agents",
+    costPerHour: 0.54,
+    costPerMinute: 0.009,
+    features: [
+      "Full-duplex reasoning at mini cost",
+      "Tool calling with spoken preambles",
+      "~25% lower p95 latency",
+      "Great for high volume",
+    ],
+    config: {
+      llmProvider: "openai-realtime",
+      llmModel: "gpt-realtime-2.1-mini",
+      sttProvider: "openai",
+      sttModel: "built-in",
+      ttsProvider: "openai",
+      ttsModel: "built-in",
+      telephonyProvider: "telnyx",
+    },
+    performance: {
+      latency: "~260ms",
+      speed: "Excellent",
+      quality: "Very Good",
+    },
+  },
+  {
     id: "grok",
     name: "Grok Voice",
     description: "xAI's Grok with realism enhancements - [whisper], [sigh], [laugh]",
@@ -142,7 +200,6 @@ export const PRICING_TIERS: PricingTier[] = [
     description: "Best quality with OpenAI's latest gpt-realtime model",
     costPerHour: 1.92,
     costPerMinute: 0.032,
-    recommended: true,
     features: [
       "Lowest latency: ~320ms",
       "Most natural & expressive voice",

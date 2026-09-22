@@ -70,6 +70,18 @@ class Agent(Base):
     turn_detection_threshold: Mapped[float] = mapped_column(Float, default=0.5, nullable=False)
     silence_duration_ms: Mapped[int] = mapped_column(Integer, default=500, nullable=False)
 
+    # Realtime model selection (OpenAI voice provider).
+    #   NULL  -> use the global default (settings.openai_realtime_model)
+    #   set   -> per-agent Realtime model id, e.g. the "GPT Live" agent type maps
+    #            to "gpt-realtime-2.1" (full-duplex reasoning voice model).
+    realtime_model: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    # Reasoning effort for reasoning-capable Realtime models (gpt-realtime-2.x):
+    # minimal | low | medium | high | xhigh. "low" keeps latency down and is the
+    # OpenAI-recommended default; higher effort delegates deeper background work.
+    reasoning_effort: Mapped[str] = mapped_column(
+        String(10), default="low", server_default="low", nullable=False
+    )
+
     # LLM settings
     system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     temperature: Mapped[float] = mapped_column(Float, default=0.7, nullable=False)

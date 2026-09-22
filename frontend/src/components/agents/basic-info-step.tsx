@@ -131,7 +131,9 @@ export function BasicInfoStep({ form, pricingTier, availableLanguages }: BasicIn
           />
         </div>
 
-        {(pricingTier === "premium" ||
+        {(pricingTier === "gpt-live" ||
+          pricingTier === "gpt-live-mini" ||
+          pricingTier === "premium" ||
           pricingTier === "premium-mini" ||
           pricingTier === "openai-hume" ||
           pricingTier === "grok" ||

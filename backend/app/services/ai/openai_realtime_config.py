@@ -125,8 +125,36 @@ REASONING_REALTIME_MODELS = frozenset(
     {
         "gpt-realtime-2",
         "gpt-realtime-2-2025-12-15",
+        # GPT-Realtime-2.1 family (July 2026): reasoning + tool use, ~25% lower
+        # p95 latency. The Realtime model behind the "GPT Live" agent type.
+        "gpt-realtime-2.1",
+        "gpt-realtime-2.1-mini",
     }
 )
+
+# Model the "GPT Live" agent type maps to on the Realtime API.
+#
+# Note: gpt-live-1 itself shipped on the API in September 2026, but on a
+# different endpoint (v1/live/sessions) that this Realtime client does not
+# speak -- v1/realtime is explicitly unsupported for it. gpt-realtime-2.1
+# remains the right default here. For the subscription-billed gpt-live-1-codex
+# lane see voice_provider="live" and backend/docs/voice/gpt-live-codex.md.
+DEFAULT_GPT_LIVE_MODEL = "gpt-realtime-2.1"
+
+# Reasoning effort levels accepted by the GA Realtime reasoning models.
+# "low" is the OpenAI-recommended default for production voice agents.
+VALID_REASONING_EFFORTS: frozenset[str] = frozenset({"minimal", "low", "medium", "high", "xhigh"})
+DEFAULT_REASONING_EFFORT = "low"
+
+# Officially available OpenAI Realtime models this app can drive, mapped to short
+# display labels. Keys are the exact model ids sent to the Realtime API.
+SUPPORTED_REALTIME_MODELS: dict[str, str] = {
+    "gpt-realtime-2.1": "GPT Live (Realtime 2.1)",
+    "gpt-realtime-2.1-mini": "GPT Live mini (Realtime 2.1 mini)",
+    "gpt-realtime-2": "Realtime 2",
+    "gpt-realtime-mini": "Realtime mini",
+    "gpt-realtime": "Realtime",
+}
 
 
 def extract_realtime_client_secret_value(payload: object) -> str | None:
@@ -384,9 +412,43 @@ def build_realtime_audio_config(
     }
 
 
+def normalize_reasoning_effort(
+    effort: str | None,
+    *,
+    default: str = DEFAULT_REASONING_EFFORT,
+) -> str:
+    """Normalize a reasoning effort string to a supported GA Realtime value."""
+    if not isinstance(effort, str) or not effort:
+        return default
+    normalized = effort.strip().lower()
+    return normalized if normalized in VALID_REASONING_EFFORTS else default
+
+
+def normalize_realtime_model(model: str | None) -> str | None:
+    """Return a supported Realtime model id, or None to use the global default.
+
+    Accepts the known model aliases plus dated snapshots of the
+    ``gpt-realtime-2`` / ``gpt-realtime-2.1`` families. Unknown values return
+    ``None`` so callers fall back to ``settings.openai_realtime_model``.
+    """
+    if not isinstance(model, str) or not model:
+        return None
+    normalized = model.strip()
+    if not normalized:
+        return None
+    if normalized in SUPPORTED_REALTIME_MODELS:
+        return normalized
+    if normalized.startswith("gpt-realtime-2.1") or normalized.startswith("gpt-realtime-2"):
+        return normalized
+    return None
+
+
 def model_supports_realtime_reasoning(model: str) -> bool:
     """Return whether the model accepts GA Realtime reasoning config."""
-    return model in REASONING_REALTIME_MODELS or model.startswith("gpt-realtime-2-")
+    # Covers gpt-realtime-2, gpt-realtime-2.1, gpt-realtime-2.1-mini and their
+    # dated snapshots. Non-reasoning models (gpt-realtime, gpt-realtime-mini)
+    # do not start with the ``gpt-realtime-2`` prefix.
+    return model in REASONING_REALTIME_MODELS or model.startswith("gpt-realtime-2")
 
 
 def _filter_openai_tools(tools: Sequence[Mapping[str, Any]] | None) -> list[dict[str, Any]]:
@@ -449,7 +511,7 @@ def build_realtime_session_config(
             session["parallel_tool_calls"] = True
 
     if model_supports_realtime_reasoning(selected_model):
-        session["reasoning"] = {"effort": reasoning_effort}
+        session["reasoning"] = {"effort": normalize_reasoning_effort(reasoning_effort)}
 
     return session
 

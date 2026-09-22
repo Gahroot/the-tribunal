@@ -34,6 +34,8 @@ function makeAgent(overrides: Partial<Agent> = {}): Agent {
     voice_provider: "grok",
     voice_id: "rex",
     language: "en-US",
+    realtime_model: null,
+    reasoning_effort: "low",
     system_prompt: "You are a helpful assistant.",
     initial_greeting: null,
     temperature: 0.5,
@@ -192,7 +194,12 @@ describe("editAgentFormSchema + defaults", () => {
   it("covers every advanced field in TAB_FIELDS", () => {
     expect(TAB_FIELDS.advanced).toContain("autoEvaluate");
     expect(TAB_FIELDS.advanced).toContain("reminderOffsets");
-    expect(TAB_FIELDS.voice).toEqual(["voiceProvider", "voiceId"]);
+    expect(TAB_FIELDS.voice).toEqual([
+      "voiceProvider",
+      "voiceId",
+      "realtimeModel",
+      "reasoningEffort",
+    ]);
   });
 });
 

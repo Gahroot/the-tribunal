@@ -17,6 +17,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  REALTIME_MODEL_DEFAULT_VALUE,
+  REALTIME_MODEL_OPTIONS,
+} from "@/lib/agents/agent-voice";
 import type { VoiceOption } from "@/lib/voice-constants";
 
 interface VoiceTabProps {
@@ -119,7 +123,82 @@ export function VoiceTab({ form, voices }: VoiceTabProps) {
             </FormItem>
           )}
         />
+
+        {form.watch("voiceProvider") === "openai" && (
+          <FormField
+            control={form.control}
+            name="realtimeModel"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Realtime Model</FormLabel>
+                <Select
+                  onValueChange={(value) =>
+                    field.onChange(value === REALTIME_MODEL_DEFAULT_VALUE ? null : value)
+                  }
+                  value={field.value ?? REALTIME_MODEL_DEFAULT_VALUE}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value={REALTIME_MODEL_DEFAULT_VALUE}>
+                      Workspace default
+                    </SelectItem>
+                    {REALTIME_MODEL_OPTIONS.map((model) => (
+                      <SelectItem key={model.id} value={model.id}>
+                        {model.label} - {model.description}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormDescription>
+                  Choose GPT Live (Realtime 2.1) for full-duplex conversation with background
+                  reasoning. Workspace default is used when unset.
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
+
+        {form.watch("voiceProvider") === "openai" && isGptLiveModel(form.watch("realtimeModel")) && (
+          <FormField
+            control={form.control}
+            name="reasoningEffort"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Reasoning Effort</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="minimal">Minimal - fastest, simplest turns</SelectItem>
+                    <SelectItem value="low">Low - recommended default</SelectItem>
+                    <SelectItem value="medium">Medium - deeper planning</SelectItem>
+                    <SelectItem value="high">High - complex multi-step work</SelectItem>
+                    <SelectItem value="xhigh">Extra high - maximum reasoning</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormDescription>
+                  How much GPT Live delegates to background reasoning. Higher effort improves hard
+                  answers but adds latency and cost. Start with Low.
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
       </CardContent>
     </Card>
   );
+}
+
+/** Reasoning is only configurable on the gpt-realtime-2.x (GPT Live) models. */
+function isGptLiveModel(model: string | null | undefined): boolean {
+  return typeof model === "string" && model.startsWith("gpt-realtime-2");
 }

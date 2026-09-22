@@ -1,4 +1,4 @@
-import { Zap, Crown, Sparkles, Shield, AlertTriangle, ShieldAlert } from "lucide-react";
+import { Zap, Crown, Sparkles, Shield, AlertTriangle, ShieldAlert, AudioLines } from "lucide-react";
 
 import { AVAILABLE_INTEGRATIONS, type ToolRiskLevel } from "@/lib/integrations";
 
@@ -19,6 +19,9 @@ export function getRiskLevelBadge(level: ToolRiskLevel) {
 
 export function getTierIcon(tierId: string) {
   switch (tierId) {
+    case "gpt-live":
+    case "gpt-live-mini":
+      return AudioLines;
     case "budget":
       return Zap;
     case "premium":
