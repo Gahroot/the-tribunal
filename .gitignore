@@ -156,3 +156,8 @@ test-results/
 # Local pg_dump output from `make db.backup.local`
 backend/backups/
 *.dump
+
+# Operator credential scratch files (e.g. Telnyx / Meta API keys pasted at the
+# repo root). Ignored by extension: no .rtf in this repo is source, so a future
+# credential drop is safe by default rather than one `git add -A` from leaking.
+*.rtf
