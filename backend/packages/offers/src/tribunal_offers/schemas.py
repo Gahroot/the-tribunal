@@ -1,0 +1,350 @@
+"""Offer schemas for API validation.
+
+The ``OfferResponseWithLeadMagnets`` / ``PublicOfferResponse`` schemas embed a
+``LeadMagnetResponse`` from the lead-capture block — imported through that block's
+public schema surface (``tribunal_lead_capture.schemas``) rather than the host
+shim, since lead-capture is a declared dependency.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+from enum import StrEnum
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
+from tribunal_lead_capture.schemas import LeadMagnetResponse
+
+
+# AI Generation Schemas
+class OfferGenerationRequest(BaseModel):
+    """Request schema for AI offer generation."""
+
+    business_type: str = Field(..., min_length=2, max_length=200)
+    target_audience: str = Field(..., min_length=2, max_length=500)
+    main_offer: str = Field(..., min_length=2, max_length=500)
+    price_point: float | None = Field(default=None, ge=0)
+    desired_outcome: str | None = Field(default=None, max_length=500)
+    pain_points: list[str] | None = None
+    unique_mechanism: str | None = Field(default=None, max_length=500)
+
+
+class GeneratedHeadline(BaseModel):
+    """Generated headline option."""
+
+    text: str
+    style: str | None = None
+
+
+class GeneratedSubheadline(BaseModel):
+    """Generated subheadline option."""
+
+    text: str
+
+
+class GeneratedValueStackItem(BaseModel):
+    """Generated value stack item."""
+
+    name: str
+    description: str
+    value: float
+
+
+class GeneratedGuarantee(BaseModel):
+    """Generated guarantee option."""
+
+    type: str
+    days: int
+    text: str
+
+
+class GeneratedUrgency(BaseModel):
+    """Generated urgency option."""
+
+    type: str
+    text: str
+    count: int | None = None
+
+
+class GeneratedCTA(BaseModel):
+    """Generated CTA option."""
+
+    text: str
+    subtext: str | None = None
+
+
+class GeneratedBonusIdea(BaseModel):
+    """Generated bonus idea."""
+
+    name: str
+    description: str
+    value: float
+    suggested_type: str
+
+
+class GeneratedOfferContent(BaseModel):
+    """Response schema for generated offer content."""
+
+    success: bool
+    error: str | None = None
+    headlines: list[GeneratedHeadline] = []
+    subheadlines: list[GeneratedSubheadline] = []
+    value_stack_items: list[GeneratedValueStackItem] = []
+    guarantees: list[GeneratedGuarantee] = []
+    urgency_options: list[GeneratedUrgency] = []
+    ctas: list[GeneratedCTA] = []
+    bonus_ideas: list[GeneratedBonusIdea] = []
+
+
+class DiscountType(StrEnum):
+    """Discount type options."""
+
+    PERCENTAGE = "percentage"
+    FIXED = "fixed"
+    FREE_SERVICE = "free_service"
+
+
+class GuaranteeType(StrEnum):
+    """Guarantee type options."""
+
+    MONEY_BACK = "money_back"
+    SATISFACTION = "satisfaction"
+    RESULTS = "results"
+
+
+class UrgencyType(StrEnum):
+    """Urgency type options."""
+
+    LIMITED_TIME = "limited_time"
+    LIMITED_QUANTITY = "limited_quantity"
+    EXPIRING = "expiring"
+
+
+class ValueStackItem(BaseModel):
+    """Value stack item for Hormozi-style offers."""
+
+    name: str
+    description: str | None = None
+    value: float = Field(ge=0)
+    included: bool = True
+
+
+class OfferPack(BaseModel):
+    """Structured package option for a multi-pack offer ladder."""
+
+    key: str = Field(..., min_length=1, max_length=100)
+    label: str = Field(..., min_length=1, max_length=120)
+    ad_count: int = Field(gt=0)
+    price: float = Field(ge=0)
+    problems_covered: int = Field(ge=0)
+    cost_per_ad: float = Field(ge=0)
+    role: str = Field(..., min_length=1, max_length=120)
+    recommended: bool = False
+    source_url: str | None = Field(default=None, max_length=500)
+    notes: str | None = None
+
+
+class NegotiationStep(BaseModel):
+    """Ordered autonomous sales strategy step for an offer."""
+
+    order: int = Field(ge=1)
+    stage: str = Field(..., min_length=1, max_length=80)
+    pack_key: str = Field(..., min_length=1, max_length=100)
+    action: str = Field(..., min_length=1, max_length=120)
+    talk_track: str
+    objective: str
+
+
+class OfferStrategyMetadata(BaseModel):
+    """Additional structured strategy metadata for autonomous sales agents."""
+
+    model_config = ConfigDict(extra="allow")
+
+    source_url: str | None = Field(default=None, max_length=500)
+    representation: str | None = Field(default=None, max_length=160)
+    default_anchor_pack_key: str | None = Field(default=None, max_length=100)
+    fallback_pack_key: str | None = Field(default=None, max_length=100)
+    upsell_pack_key: str | None = Field(default=None, max_length=100)
+    autonomy: str | None = None
+    human_escalation_triggers: list[str] = []
+    not_included: list[str] = []
+
+
+class OfferBase(BaseModel):
+    """Base offer schema."""
+
+    name: str = Field(..., min_length=1, max_length=255)
+    description: str | None = None
+    discount_type: DiscountType = DiscountType.PERCENTAGE
+    discount_value: float = Field(default=0, ge=0)
+    terms: str | None = None
+    valid_from: datetime | None = None
+    valid_until: datetime | None = None
+    is_active: bool = True
+
+    # Hormozi-style fields
+    headline: str | None = Field(default=None, max_length=500)
+    subheadline: str | None = None
+    regular_price: float | None = Field(default=None, ge=0)
+    offer_price: float | None = Field(default=None, ge=0)
+    savings_amount: float | None = Field(default=None, ge=0)
+    guarantee_type: GuaranteeType | None = None
+    guarantee_days: int | None = Field(default=None, ge=0)
+    guarantee_text: str | None = None
+    urgency_type: UrgencyType | None = None
+    urgency_text: str | None = Field(default=None, max_length=255)
+    scarcity_count: int | None = Field(default=None, ge=0)
+    value_stack_items: list[ValueStackItem] | None = None
+    package_options: list[OfferPack] | None = None
+    negotiation_sequence: list[NegotiationStep] | None = None
+    strategy_metadata: OfferStrategyMetadata | dict[str, Any] | None = None
+    cta_text: str | None = Field(default=None, max_length=100)
+    cta_subtext: str | None = Field(default=None, max_length=255)
+
+
+class OfferCreate(OfferBase):
+    """Schema for creating an offer."""
+
+    pass
+
+
+class OfferUpdate(BaseModel):
+    """Schema for updating an offer."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
+    discount_type: DiscountType | None = None
+    discount_value: float | None = Field(default=None, ge=0)
+    terms: str | None = None
+    valid_from: datetime | None = None
+    valid_until: datetime | None = None
+    is_active: bool | None = None
+
+    # Hormozi-style fields
+    headline: str | None = Field(default=None, max_length=500)
+    subheadline: str | None = None
+    regular_price: float | None = Field(default=None, ge=0)
+    offer_price: float | None = Field(default=None, ge=0)
+    savings_amount: float | None = Field(default=None, ge=0)
+    guarantee_type: GuaranteeType | None = None
+    guarantee_days: int | None = Field(default=None, ge=0)
+    guarantee_text: str | None = None
+    urgency_type: UrgencyType | None = None
+    urgency_text: str | None = Field(default=None, max_length=255)
+    scarcity_count: int | None = Field(default=None, ge=0)
+    value_stack_items: list[ValueStackItem] | None = None
+    package_options: list[OfferPack] | None = None
+    negotiation_sequence: list[NegotiationStep] | None = None
+    strategy_metadata: OfferStrategyMetadata | dict[str, Any] | None = None
+    cta_text: str | None = Field(default=None, max_length=100)
+    cta_subtext: str | None = Field(default=None, max_length=255)
+    # Public landing page fields
+    is_public: bool | None = None
+    public_slug: str | None = Field(default=None, max_length=100)
+    require_email: bool | None = None
+    require_phone: bool | None = None
+    require_name: bool | None = None
+
+
+class OfferResponse(OfferBase):
+    """Schema for offer response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    page_views: int = 0
+    opt_ins: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class PaginatedOffers(BaseModel):
+    """Paginated offers response."""
+
+    items: list[OfferResponse]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+class OfferCreateWithLeadMagnets(OfferCreate):
+    """Schema for creating an offer with lead magnets."""
+
+    lead_magnet_ids: list[uuid.UUID] | None = None
+
+
+class OfferResponseWithLeadMagnets(OfferResponse):
+    """Schema for offer response with attached lead magnets."""
+
+    lead_magnets: list[LeadMagnetResponse] = []
+    total_value: float | None = None  # Computed from value stack + lead magnets
+
+
+OfferResponseWithLeadMagnets.model_rebuild()
+
+
+# Public Offer Schemas
+class PublicOfferResponse(BaseModel):
+    """Public offer response - no sensitive data."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    # Basic info
+    name: str
+    headline: str | None = None
+    subheadline: str | None = None
+    description: str | None = None
+
+    # Pricing
+    regular_price: float | None = None
+    offer_price: float | None = None
+    savings_amount: float | None = None
+
+    # Guarantee
+    guarantee_type: str | None = None
+    guarantee_days: int | None = None
+    guarantee_text: str | None = None
+
+    # Urgency
+    urgency_type: str | None = None
+    urgency_text: str | None = None
+    scarcity_count: int | None = None
+
+    # Value stack and structured ladder/strategy data
+    value_stack_items: list[ValueStackItem] | None = None
+    package_options: list[OfferPack] | None = None
+    negotiation_sequence: list[NegotiationStep] | None = None
+    strategy_metadata: OfferStrategyMetadata | dict[str, Any] | None = None
+
+    # CTA
+    cta_text: str | None = None
+    cta_subtext: str | None = None
+
+    # Lead magnet bonuses
+    lead_magnets: list[LeadMagnetResponse] = []
+    total_value: float | None = None
+
+    # Required fields
+    require_email: bool = True
+    require_phone: bool = False
+    require_name: bool = False
+
+
+class OptInRequest(BaseModel):
+    """Request schema for opt-in submission."""
+
+    email: str | None = Field(default=None, max_length=255)
+    phone_number: str | None = Field(default=None, max_length=50)
+    name: str | None = Field(default=None, max_length=255)
+
+
+class OptInResponse(BaseModel):
+    """Response schema for successful opt-in."""
+
+    success: bool
+    message: str
+    contact_id: int | None = None
+    lead_magnet_lead_id: uuid.UUID | None = None

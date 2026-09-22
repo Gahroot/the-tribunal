@@ -22,6 +22,7 @@ dependencies = [
     "tribunal-short-links",
     "tribunal-reviews",
     "tribunal-lead-capture",
+    "tribunal-offers",
     # FastAPI + ASGI
     # CVE fix: fastapi 0.109.1+ vendors python-multipart fix for CVE-2024-24762 (Content-Type ReDoS).
     # CVE fix: fastapi >=0.136 pulls starlette >=0.47.2, which patches CVE-2025-54121 (multipart DoS).
@@ -149,6 +150,7 @@ dependencies = [
     # feature floor: python-docx 1.1 carries the typing + lxml fixes used for .docx text extraction
     # in app/services/knowledge/text_extraction.py.
     "python-docx>=1.1.2",
+    "aiortc>=1.15.0",
 ]
 
 [project.scripts]
@@ -181,6 +183,7 @@ tribunal-widget = { workspace = true }
 tribunal-short-links = { workspace = true }
 tribunal-reviews = { workspace = true }
 tribunal-lead-capture = { workspace = true }
+tribunal-offers = { workspace = true }
 
 [tool.ruff]
 line-length = 100

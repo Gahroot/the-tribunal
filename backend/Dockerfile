@@ -25,7 +25,11 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
 WORKDIR /app
 
 # Resolve dependencies first (cached layer; only invalidated when lock changes).
+# The in-repo blocks under packages/ are uv workspace members, so their sources
+# must be present before any `uv sync` -- otherwise resolution fails with
+# "Distribution not found at: file:///app/packages/<id>".
 COPY pyproject.toml uv.lock README.md ./
+COPY packages/ ./packages/
 RUN uv sync --frozen --no-dev --no-install-project
 
 # Then copy the project source and install the project itself.
@@ -55,6 +59,10 @@ WORKDIR /app
 
 # Bring the venv and the application source over from the builder.
 COPY --from=builder --chown=app:app /app/.venv /app/.venv
+# Workspace members are editable installs (.pth files point back at these
+# sources), and app/models imports them at startup -- the venv alone is not
+# enough.
+COPY --from=builder --chown=app:app /app/packages /app/packages
 COPY --from=builder --chown=app:app /app/app /app/app
 COPY --from=builder --chown=app:app /app/alembic /app/alembic
 COPY --from=builder --chown=app:app /app/alembic.ini /app/alembic.ini
