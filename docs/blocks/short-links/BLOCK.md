@@ -2,23 +2,23 @@
 id: short-links
 name: Short Links & Click Tracking
 tier: A
-status: manifest
+status: extracted
 summary: Generates tracked short URLs for outbound SMS and records per-click events (count, last-clicked, IP/UA/referer), attributing clicks back to contacts and campaigns.
 owns_paths:
-  - backend/app/models/short_link.py
-  - backend/app/models/link_click.py
-  - backend/app/api/redirects.py
+  - backend/packages/short-links/
 public_api:
-  - backend/app/api/redirects.py::router
-  - backend/app/models/short_link.py::ShortLink
-  - backend/app/models/link_click.py::LinkClick
+  - backend/packages/short-links/src/tribunal_short_links/__init__.py::get_router
+  - backend/packages/short-links/src/tribunal_short_links/__init__.py::shorten_urls_in_text
+  - backend/packages/short-links/src/tribunal_short_links/service.py::record_click
+  - backend/packages/short-links/src/tribunal_short_links/models.py::ShortLink
+  - backend/packages/short-links/src/tribunal_short_links/models.py::LinkClick
 depends_on: [core]
 external_integrations: []
 env_vars:
   - PUBLIC_BASE_URL
 db_tables:
-  - backend/app/models/short_link.py::short_links
-  - backend/app/models/link_click.py::link_clicks
+  - backend/packages/short-links/src/tribunal_short_links/models.py::short_links
+  - backend/packages/short-links/src/tribunal_short_links/models.py::link_clicks
 alembic_migrations: shared chain — a9b0c1d2e3f5 (sms_link_tracking)
 workers: []
 extraction_effort: low
@@ -46,9 +46,53 @@ Beyond the owned models, the *write path* is wired through other blocks (no impo
 
 - Route: `GET /r/{short_code}` (mounted at the app root in `app/main.py`, **no `/api/v1` prefix** — these are user-facing SMS URLs) → logs a click and 302-redirects.
 - Models: `ShortLink` (workspace-scoped, unique `short_code`, FKs to contacts/campaigns/messages) and `LinkClick` (per-click event, FK to `short_links`).
-- Helper consumed by senders: `shorten_urls_in_text(...)` — physically lives under messaging today; conceptually the short-links write API.
+- Helper consumed by senders: `shorten_urls_in_text(...)` — now the block's public write API (`tribunal_short_links.shorten_urls_in_text`, alias `shorten_url`).
+
+## Status: extracted
+
+This block is packaged into a mountable workspace member. The block source no
+longer lives in the app tree (`backend/app/api/redirects.py` and
+`backend/app/services/messaging/link_shortener.py` were removed); it moved to
+**`backend/packages/short-links/`** (uv distribution `tribunal-short-links`,
+importable as `tribunal_short_links`).
+
+The write-path coupling is severed: the Telnyx SMS sender
+(`app/services/telephony/telnyx.py`) now calls the block's public API
+`from tribunal_short_links import shorten_urls_in_text` instead of reaching into
+the messaging block's `link_shortener`. The redirect router's click-recording
+logic was extracted into `tribunal_short_links.service.record_click`.
+
+The two ORM models live in `tribunal_short_links.models`; thin back-compat shims
+remain at `app/models/short_link.py` and `app/models/link_click.py` that
+re-export `ShortLink`/`LinkClick`, so existing `from app.models...` imports keep
+working and `app.db.model_registry` still discovers the tables for Alembic.
+
+### Install & mount (backend)
+
+1. The package is a uv workspace member (`backend/packages/short-links/`); the
+   host `backend/pyproject.toml` declares `tribunal-short-links` as a workspace
+   dependency (`[tool.uv.sources]`). `uv sync` from `backend/` links it editable.
+2. Mount the redirect router at the **app root** (already wired in
+   `app/main.py`), preserving the public `/r/{short_code}` URL exactly:
+   ```python
+   from tribunal_short_links import get_router as get_short_links_router
+   app.include_router(get_short_links_router())   # -> GET /r/{short_code}
+   ```
+   `get_router()` returns an unprefixed `APIRouter` (these are user-facing SMS
+   URLs, so **no** `/api/v1` prefix).
+3. SMS/voice senders rewrite outbound URLs through the block's write API:
+   ```python
+   from tribunal_short_links import shorten_urls_in_text
+   body = await shorten_urls_in_text(body, workspace_id=..., db=..., base_url=settings.public_base_url, ...)
+   ```
+4. Provide the declared `env_vars` (`PUBLIC_BASE_URL`, read by senders to build
+   `/r/{code}` URLs). The block owns the `short_links` + `link_clicks` tables,
+   but their creating revision (`a9b0c1d2e3f5`) stays in the host's shared
+   Alembic chain, so there are no block-local migrations to wire.
 
 ## How to Extract
+
+> Historical guide (the extraction has been performed — see *Status: extracted*).
 
 1. Pull `core` only (models need just `app.db.base.Base`).
 2. Copy `app/models/short_link.py`, `app/models/link_click.py`, and `app/api/redirects.py`.

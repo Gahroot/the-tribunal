@@ -1,33 +1,16 @@
-"""Link click event model."""
+"""Back-compat shim for the ``LinkClick`` model.
 
-import uuid
-from datetime import UTC, datetime
+The short-link models were extracted into the mountable ``tribunal-short-links``
+block (``backend/packages/short-links``). The live definition lives in
+``tribunal_short_links.models``; this module re-exports it so that:
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+* existing imports (``from app.models.link_click import LinkClick``) keep working,
+* importing this module registers the ``link_clicks`` table in ``Base.metadata``,
+  so ``app.db.model_registry.import_model_modules`` still discovers it for Alembic.
+"""
 
-from app.db.base import Base
+from __future__ import annotations
 
+from tribunal_short_links.models import LinkClick
 
-class LinkClick(Base):
-    """A single click event on a ShortLink."""
-
-    __tablename__ = "link_clicks"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    short_link_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("short_links.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    clicked_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
-    )
-    ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
-    referer: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-    def __repr__(self) -> str:
-        return f"<LinkClick(short_link_id={self.short_link_id}, at={self.clicked_at})>"
+__all__ = ["LinkClick"]

@@ -1,6 +1,7 @@
 """Tests for the public short-link redirect endpoint.
 
-Covers :mod:`app.api.redirects`:
+Covers the extracted ``tribunal_short_links`` redirect router
+(``tribunal_short_links.get_router`` / ``tribunal_short_links.record_click``):
 
 * 404 when the short code is unknown.
 * Happy-path redirect: 302 to ``target_url``, a ``LinkClick`` row is added,
@@ -27,8 +28,8 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import Table
 from sqlalchemy.sql.dml import Update
+from tribunal_short_links import get_router as get_short_links_router
 
-from app.api.redirects import router as redirects_router
 from app.db.session import get_db
 from app.models.campaign import Campaign
 from app.models.link_click import LinkClick
@@ -104,7 +105,7 @@ def _make_app(db: AsyncMock) -> FastAPI:
         yield db
 
     app.dependency_overrides[get_db] = _override_db
-    app.include_router(redirects_router)
+    app.include_router(get_short_links_router())
     return app
 
 

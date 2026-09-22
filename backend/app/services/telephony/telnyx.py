@@ -10,6 +10,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from tribunal_short_links import shorten_urls_in_text
 
 from app.core.config import settings
 from app.core.encryption import hash_phone
@@ -25,7 +26,6 @@ from app.services.idempotency import (
     idempotency_headers,
     resolve_message_idempotency,
 )
-from app.services.messaging.link_shortener import shorten_urls_in_text
 from app.services.providers.http import (
     AsyncProviderHTTPClient,
     ProviderHTTPError,

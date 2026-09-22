@@ -1,0 +1,28 @@
+[project]
+name = "tribunal-short-links"
+version = "0.1.0"
+description = "Extracted 'short-links' block from The Tribunal — mountable FastAPI block package."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "LicenseRef-Proprietary"
+dependencies = [
+    # The block depends on the host's core surface via the `app.core_api` facade.
+    # While developed in-repo as a uv workspace member it resolves against
+    # `aicrm-backend`; pin the real core dependency here when published standalone.
+    "fastapi>=0.136.1",
+    "sqlalchemy[asyncio]>=2.0.49",
+    "pydantic>=2.13.4",
+    "structlog>=24.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tribunal_short_links"]
+
+# The block owns the ``short_links`` + ``link_clicks`` tables, but their creating
+# revision (a9b0c1d2e3f5) lives in the host's shared Alembic chain
+# (``backend/alembic/versions/``), so this package ships no ``migrations/`` dir.
+# See docs/blocks/short-links/BLOCK.md (alembic_migrations: shared chain).

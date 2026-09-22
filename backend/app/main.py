@@ -20,8 +20,8 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
+from tribunal_short_links import get_router as get_short_links_router
 
-from app.api.redirects import router as redirects_router
 from app.api.service_errors import install_service_error_handler
 from app.api.v1.health import router as health_router
 from app.api.v1.router import api_router
@@ -509,8 +509,11 @@ app.include_router(api_router, prefix="/api/v1")
 # (Railway, Kubernetes) can hit them without an API prefix.
 app.include_router(health_router, tags=["Health"])
 
-# Public short-link redirects (no /api/v1 prefix — these are user-facing URLs)
-app.include_router(redirects_router)
+# Public short-link redirects (no /api/v1 prefix — these are user-facing URLs).
+# Mounted from the extracted ``tribunal-short-links`` block; get_short_links_router()
+# returns an APIRouter carrying GET /r/{short_code} unprefixed, preserving the
+# existing public short-link URLs exactly.
+app.include_router(get_short_links_router())
 
 # Include webhook routers
 app.include_router(telnyx_webhook_router, prefix="/webhooks/telnyx", tags=["webhooks"])
