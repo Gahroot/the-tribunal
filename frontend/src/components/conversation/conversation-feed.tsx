@@ -10,12 +10,12 @@ import { PageEmptyState, PageErrorState } from "@/components/ui/page-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAgents } from "@/hooks/useAgents";
-import { useContactTimeline } from "@/hooks/useContacts";
 import {
-  useToggleConversationAI,
-  useAssignAgent,
-  useClearConversationHistory,
-} from "@/hooks/useConversations";
+  useContactTimeline,
+  useToggleContactAI,
+  useAssignContactAgent,
+} from "@/hooks/useContacts";
+import { useClearConversationHistory } from "@/hooks/useConversations";
 import { usePhoneNumbers } from "@/hooks/usePhoneNumbers";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { conversationsApi } from "@/lib/api/conversations";
@@ -133,9 +133,11 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
       );
     });
 
-  // Mutations for AI toggle, agent assignment, and clear history
-  const toggleAIMutation = useToggleConversationAI(workspaceId ?? "");
-  const assignAgentMutation = useAssignAgent(workspaceId ?? "");
+  // Mutations for AI toggle, agent assignment, and clear history.
+  // Toggle/assign use the contact-level endpoints, which find-or-create the
+  // conversation server-side — so they work even before the first message.
+  const toggleAIMutation = useToggleContactAI(workspaceId ?? "");
+  const assignAgentMutation = useAssignContactAgent(workspaceId ?? "");
   const clearHistoryMutation = useClearConversationHistory(workspaceId ?? "");
 
   // Auto-scroll to bottom when new messages arrive
@@ -204,14 +206,13 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
   };
 
   const handleToggleAI = () => {
-    if (!contactConversation) {
-      toast.error("No conversation found for this contact");
-      return;
-    }
+    if (!selectedContact) return;
 
-    const newState = !contactConversation.ai_enabled;
+    // Optimistic state already reflects the flip; derive the target from the
+    // current conversation (defaults to enabling when no thread exists yet).
+    const newState = !contactConversation?.ai_enabled;
     toggleAIMutation.mutate(
-      { conversationId: contactConversation.id, enabled: newState },
+      { contactId: selectedContact.id, enabled: newState },
       {
         onSuccess: () => {
           toast.success(
@@ -226,21 +227,12 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
   };
 
   const handleAssignAgent = (agentId: string | null) => {
-    if (!contactConversation) {
-      toast.error("No conversation found for this contact");
-      return;
-    }
+    if (!selectedContact) return;
 
     assignAgentMutation.mutate(
-      { conversationId: contactConversation.id, agentId },
+      { contactId: selectedContact.id, agentId },
       {
         onSuccess: () => {
-          void queryClient.invalidateQueries({
-            queryKey: queryKeys.conversations.byContact(
-              workspaceId ?? "",
-              selectedContact?.id,
-            ),
-          });
           toast.success(agentId ? "Agent assigned" : "Agent unassigned");
         },
         onError: (err: unknown) => {
@@ -297,6 +289,7 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
         conversation={contactConversation}
         agents={agents}
         hasTimelineItems={timeline.length > 0}
+        canManageAI={!!selectedContact?.phone_number}
         isToggleAIPending={toggleAIMutation.isPending}
         isAssignAgentPending={assignAgentMutation.isPending}
         isClearHistoryPending={clearHistoryMutation.isPending}

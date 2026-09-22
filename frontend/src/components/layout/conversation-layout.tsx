@@ -1,12 +1,12 @@
 "use client";
 
-import { ArrowLeft, Menu, User } from "lucide-react";
+import { ArrowLeft, ListOrdered, User } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
-import { ActionsPanel } from "@/components/actions/actions-panel";
 import { ContactSidebar } from "@/components/contacts/contact-sidebar";
 import { ConversationFeed } from "@/components/conversation/conversation-feed";
+import { LeadQueue } from "@/components/queue/lead-queue";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/useMobile";
@@ -18,7 +18,7 @@ interface ConversationLayoutProps {
 
 export function ConversationLayout({ className }: ConversationLayoutProps) {
   const isMobile = useIsMobile();
-  const [showActionsPanel, setShowActionsPanel] = useState(false);
+  const [showQueue, setShowQueue] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
 
   // On mobile, show sheets for left and right panels
@@ -33,14 +33,14 @@ export function ConversationLayout({ className }: ConversationLayoutProps) {
                 <ArrowLeft className="h-4 w-4" />
               </Button>
             </Link>
-            <Sheet open={showActionsPanel} onOpenChange={setShowActionsPanel}>
+            <Sheet open={showQueue} onOpenChange={setShowQueue}>
               <SheetTrigger asChild>
-                <Button size="icon" variant="ghost" className="h-9 w-9" aria-label="Open actions menu">
-                  <Menu className="h-4 w-4" />
+                <Button size="icon" variant="ghost" className="h-9 w-9" aria-label="Open lead queue">
+                  <ListOrdered className="h-4 w-4" />
                 </Button>
               </SheetTrigger>
               <SheetContent side="left" className="w-[320px] p-0">
-                <ActionsPanel onClose={() => setShowActionsPanel(false)} />
+                <LeadQueue onNavigate={() => setShowQueue(false)} />
               </SheetContent>
             </Sheet>
           </div>
@@ -73,9 +73,9 @@ export function ConversationLayout({ className }: ConversationLayoutProps) {
         gridTemplateColumns: "320px 1fr 320px",
       }}
     >
-      {/* Left Panel: Actions Panel */}
+      {/* Left Panel: Lead Queue */}
       <div className="flex flex-col h-full border-r overflow-hidden">
-        <ActionsPanel className="h-full" />
+        <LeadQueue className="h-full" />
       </div>
 
       {/* Center Panel: Conversation Feed */}

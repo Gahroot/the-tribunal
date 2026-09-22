@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { FollowupSection } from "@/components/actions/followup-section";
 import { ContactFormDialog } from "@/components/contacts/contact-form-dialog";
 import { ContactActions } from "@/components/contacts/contact-sidebar/contact-actions";
 import { ContactAppointments } from "@/components/contacts/contact-sidebar/contact-appointments";
@@ -203,6 +204,9 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
             workspaceId={workspaceId ?? ""}
             contactId={selectedContact.id}
           />
+
+          <Separator />
+          <FollowupSection />
 
           <Separator />
           <ContactTimeline contact={selectedContact} timeline={timeline} />

@@ -37,6 +37,9 @@ interface ChatHeaderProps {
   conversation?: Conversation;
   agents: Agent[];
   hasTimelineItems: boolean;
+  /** Whether AI toggle/assign can run (contact has a phone number). The
+   *  underlying conversation is created server-side on first use. */
+  canManageAI: boolean;
   isToggleAIPending: boolean;
   isAssignAgentPending: boolean;
   isClearHistoryPending: boolean;
@@ -51,6 +54,7 @@ export function ChatHeader({
   conversation,
   agents,
   hasTimelineItems,
+  canManageAI,
   isToggleAIPending,
   isAssignAgentPending,
   isClearHistoryPending,
@@ -85,7 +89,7 @@ export function ChatHeader({
             variant={conversation?.ai_enabled ? "default" : "outline"}
             className="h-8 gap-1.5"
             onClick={onToggleAI}
-            disabled={!conversation || isToggleAIPending}
+            disabled={!canManageAI || isToggleAIPending}
           >
             {isToggleAIPending ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -109,7 +113,7 @@ export function ChatHeader({
             <DropdownMenuContent align="end" className="w-48">
               <DropdownMenuItem
                 onClick={() => onAssignAgent(null)}
-                disabled={!conversation || isAssignAgentPending}
+                disabled={!canManageAI || isAssignAgentPending}
               >
                 <span className="text-muted-foreground">No Agent</span>
               </DropdownMenuItem>
@@ -118,7 +122,7 @@ export function ChatHeader({
                 <DropdownMenuItem
                   key={agent.id}
                   onClick={() => onAssignAgent(agent.id)}
-                  disabled={!conversation || isAssignAgentPending}
+                  disabled={!canManageAI || isAssignAgentPending}
                 >
                   <Bot className="h-4 w-4 mr-2" />
                   {agent.name}
