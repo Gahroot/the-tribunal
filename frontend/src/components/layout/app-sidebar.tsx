@@ -190,7 +190,7 @@ export function AppSidebar({ children }: AppSidebarProps) {
     if (count <= 0) return null;
 
     return (
-      <span className="ml-auto flex size-5 items-center justify-center rounded-full bg-orange-500 text-[10px] font-medium text-white">
+      <span className="ml-auto flex size-5 items-center justify-center rounded-full bg-orange-700 text-[10px] font-medium text-white">
         {count > 99 ? "99+" : count}
       </span>
     );
@@ -257,7 +257,7 @@ export function AppSidebar({ children }: AppSidebarProps) {
                 >
                   <SidebarGroup>
                     <CollapsibleTrigger asChild>
-                      <SidebarGroupLabel className="cursor-pointer rounded-md text-xs font-semibold uppercase tracking-widest text-muted-foreground/60 hover:bg-sidebar-accent">
+                      <SidebarGroupLabel className="cursor-pointer rounded-md text-xs font-semibold uppercase tracking-widest text-muted-foreground hover:bg-sidebar-accent">
                         {section.title}
                         <ChevronDown className="ml-auto size-4 transition-transform group-data-[state=open]/collapsible:rotate-180" />
                       </SidebarGroupLabel>
@@ -267,7 +267,7 @@ export function AppSidebar({ children }: AppSidebarProps) {
                 </Collapsible>
               ) : (
                 <SidebarGroup>
-                  <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/60">
+                  <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
                     {section.title}
                   </SidebarGroupLabel>
                   {renderSectionMenu(section)}

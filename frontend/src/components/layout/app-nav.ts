@@ -1,5 +1,4 @@
 import {
-  Bell,
   BookOpen,
   CalendarCheck,
   Bot,
@@ -12,6 +11,7 @@ import {
   FlaskConical,
   Gauge,
   Gift,
+  Inbox,
   KanbanSquare,
   LayoutDashboard,
   Layers,
@@ -30,6 +30,19 @@ import {
   Users,
   Zap,
 } from "lucide-react";
+
+/**
+ * Central navigation metadata for the app shell (sidebar + command palette).
+ *
+ * IA: ~9 primary destinations — Today, Inbox, Approvals, Campaigns, Pipeline,
+ * Contacts, AI Agents, Insights (Dashboard/Scorecard/Deal Coach), Settings —
+ * plus one Find Leads entry. Every other route stays reachable through the
+ * collapsed "More" section or the command palette.
+ *
+ * Flags control where each item renders: `sidebar` shows it in the app nav,
+ * `commandPalette` keeps it searchable via ⌘K. Badge counts (nudges,
+ * pending-actions) stay attached to the primary rows so they remain visible.
+ */
 
 export type AppNavBadgeKey = "nudges" | "pending-actions";
 
@@ -64,6 +77,7 @@ export const setupNavItem: AppNavItem = {
   commandPalette: true,
 };
 
+/** Primary destinations, shown first in the sidebar and the palette. */
 export const workspaceNavItems: AppNavItem[] = [
   {
     title: "Today",
@@ -73,29 +87,15 @@ export const workspaceNavItems: AppNavItem[] = [
     commandPalette: true,
   },
   {
-    title: "Dashboard",
-    url: "/dashboard",
-    icon: LayoutDashboard,
-    sidebar: true,
-    commandPalette: true,
-  },
-  {
-    title: "Assistant",
-    url: "/assistant",
-    icon: Sparkles,
-    sidebar: true,
-    commandPalette: true,
-  },
-  {
-    title: "Nudges",
+    title: "Inbox",
     url: "/nudges",
-    icon: Bell,
+    icon: Inbox,
     sidebar: true,
     commandPalette: true,
     badgeKey: "nudges",
   },
   {
-    title: "Pending Actions",
+    title: "Approvals",
     url: "/pending-actions",
     icon: ClipboardCheck,
     sidebar: true,
@@ -103,16 +103,16 @@ export const workspaceNavItems: AppNavItem[] = [
     badgeKey: "pending-actions",
   },
   {
-    title: "Opportunities",
-    url: "/opportunities",
-    icon: KanbanSquare,
+    title: "Campaigns",
+    url: "/campaigns",
+    icon: Megaphone,
     sidebar: true,
     commandPalette: true,
   },
   {
-    title: "Deal Coach",
-    url: "/deal-coach",
-    icon: Gauge,
+    title: "Pipeline",
+    url: "/opportunities",
+    icon: KanbanSquare,
     sidebar: true,
     commandPalette: true,
   },
@@ -124,16 +124,91 @@ export const workspaceNavItems: AppNavItem[] = [
     commandPalette: true,
   },
   {
-    title: "Segments",
-    url: "/segments",
-    icon: Boxes,
+    title: "AI Agents",
+    url: "/agents",
+    icon: Bot,
     sidebar: true,
     commandPalette: true,
   },
   {
-    title: "Campaigns",
-    url: "/campaigns",
-    icon: Megaphone,
+    title: "Find Leads",
+    url: "/find-leads",
+    icon: MapPin,
+    sidebar: true,
+    commandPalette: true,
+  },
+];
+
+/**
+ * Find Leads sub-pages. The four lead-discovery entries collapse into the one
+ * visible "Find Leads" row above; these deep links stay palette-only, so this
+ * section renders no sidebar group (empty sections are filtered out).
+ */
+export const leadDiscoveryNavItems: AppNavItem[] = [
+  {
+    title: "Find Leads AI",
+    url: "/find-leads-ai",
+    icon: Sparkles,
+    sidebar: false,
+    commandPalette: true,
+  },
+  {
+    title: "Ad Library",
+    url: "/find-leads/ad-library",
+    icon: Layers,
+    sidebar: false,
+    commandPalette: true,
+  },
+  {
+    title: "People Search",
+    url: "/find-leads/people",
+    icon: UserSearch,
+    sidebar: false,
+    commandPalette: true,
+  },
+];
+
+/** Reporting and coaching surfaces, grouped under one "Insights" label. */
+export const insightsNavItems: AppNavItem[] = [
+  {
+    title: "Dashboard",
+    url: "/dashboard",
+    icon: LayoutDashboard,
+    sidebar: true,
+    commandPalette: true,
+  },
+  {
+    title: "Scorecard",
+    url: "/scorecard",
+    icon: ClipboardList,
+    sidebar: true,
+    commandPalette: true,
+  },
+  {
+    title: "Deal Coach",
+    url: "/deal-coach",
+    icon: Gauge,
+    sidebar: true,
+    commandPalette: true,
+  },
+];
+
+/**
+ * Secondary destinations, collapsed into one "More" section by default and
+ * always available in the command palette.
+ */
+export const moreNavItems: AppNavItem[] = [
+  {
+    title: "Assistant",
+    url: "/assistant",
+    icon: Sparkles,
+    sidebar: true,
+    commandPalette: true,
+  },
+  {
+    title: "Segments",
+    url: "/segments",
+    icon: Boxes,
     sidebar: true,
     commandPalette: true,
   },
@@ -145,50 +220,9 @@ export const workspaceNavItems: AppNavItem[] = [
     commandPalette: true,
   },
   {
-    title: "Scorecard",
-    url: "/scorecard",
-    icon: ClipboardList,
-    sidebar: true,
-    commandPalette: true,
-  },
-];
-
-export const leadDiscoveryNavItems: AppNavItem[] = [
-  {
-    title: "Find Leads",
-    url: "/find-leads",
-    icon: MapPin,
-    sidebar: true,
-    commandPalette: true,
-  },
-  {
-    title: "Find Leads AI",
-    url: "/find-leads-ai",
-    icon: Sparkles,
-    sidebar: true,
-    commandPalette: true,
-  },
-  {
-    title: "Ad Library",
-    url: "/find-leads/ad-library",
-    icon: Layers,
-    sidebar: true,
-    commandPalette: true,
-  },
-  {
-    title: "People Search",
-    url: "/find-leads/people",
-    icon: UserSearch,
-    sidebar: true,
-    commandPalette: true,
-  },
-];
-
-export const toolsNavItems: AppNavItem[] = [
-  {
-    title: "AI Agents",
-    url: "/agents",
-    icon: Bot,
+    title: "AI Suggestions",
+    url: "/suggestions",
+    icon: Lightbulb,
     sidebar: true,
     commandPalette: true,
   },
@@ -203,13 +237,6 @@ export const toolsNavItems: AppNavItem[] = [
     title: "Knowledge Base",
     url: "/knowledge",
     icon: BookOpen,
-    sidebar: true,
-    commandPalette: true,
-  },
-  {
-    title: "AI Suggestions",
-    url: "/suggestions",
-    icon: Lightbulb,
     sidebar: true,
     commandPalette: true,
   },
@@ -289,14 +316,16 @@ export const appNavSections: AppNavSection[] = [
   {
     title: "Lead Discovery",
     items: leadDiscoveryNavItems,
-    collapsible: true,
-    defaultOpen: true,
   },
   {
-    title: "Tools",
-    items: toolsNavItems,
+    title: "Insights",
+    items: insightsNavItems,
+  },
+  {
+    title: "More",
+    items: moreNavItems,
     collapsible: true,
-    defaultOpen: true,
+    defaultOpen: false,
   },
   {
     title: "Account",
@@ -309,7 +338,7 @@ export const commandPaletteNavItems = appNavSections.flatMap((section) =>
 );
 
 export const breadcrumbLabels: Record<string, string> = {
-  nudges: "Nudges",
+  nudges: "Inbox",
   contacts: "Contacts",
   contact: "Contact",
   campaigns: "Campaigns",
