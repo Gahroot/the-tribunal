@@ -5,22 +5,22 @@ The Tribunal is a proprietary AI-powered CRM command center for capturing leads,
 ## Apps and stable structure
 
 - `frontend/` — Next.js 16 + React 19 + TypeScript dashboard. Key folders: `src/app/` routes, `src/components/` feature/UI components, `src/lib/api/` API clients and generated OpenAPI types, `src/providers/` auth/workspace providers, `src/types/` shared domain types, `src/widget/` embeddable chat widget.
-- `backend/` — FastAPI + SQLAlchemy async API. Key folders: `app/api/v1/` authenticated/public API routers, `app/api/webhooks/` Telnyx/Cal.com/Resend webhooks, `app/services/` domain logic, `app/models/` ORM models, `app/schemas/` Pydantic schemas, `app/workers/` in-process background jobs, `app/websockets/` voice/realtime bridges, `alembic/versions/` migrations, `tests/` pytest suites.
+- `backend/` — FastAPI + SQLAlchemy async API (Python >=3.12, `uv`). Key folders: `app/api/v1/` authenticated/public API routers, `app/api/webhooks/` Telnyx/Cal.com/Resend/mac-relay webhooks, `app/services/` domain logic, `app/models/` ORM models, `app/schemas/` Pydantic schemas, `app/workers/` background jobs, `app/websockets/` voice/realtime bridges, `alembic/versions/` migrations, `tests/` pytest suites.
 - `scripts/` — operational/demo scripts such as prompt updates, lead-magnet PDF generation/upload, encryption-key rotation, and stress/adversarial tests.
 - `docs/` and `backend/docs/` — strategy, architecture, migration, and operational notes.
 
 ## Product domains and integrations
 
 - Core domains include workspaces, contacts/leads, conversations, AI agents, SMS and voice campaigns, appointments, offers, lead magnets/forms, opportunities, pending approvals, nudges, automations, billing, and onboarding.
-- External integrations include OpenAI Realtime, Telnyx voice/SMS, Cal.com booking/webhooks, Resend email/webhooks, Stripe billing, and Follow Up Boss/realtor workflows.
-- Frontend root redirects to `/contacts`; the app also exposes public surfaces under routes such as `embed`, offers, lead magnets, demos, and lead forms.
+- External integrations: OpenAI Realtime + ElevenLabs (voice agents), Telnyx (voice/SMS, primary telephony), Cal.com (booking/webhooks), Resend (email/webhooks), Stripe (both SaaS subscription billing and in-call deposit/payment Checkout links), Follow Up Boss (real-estate CRM sync; realtor is the primary vertical), and a Mac/iMessage relay (`/webhooks/mac-relay` + `scripts/ops/mac_imessage_relay.py`). Per-workspace third-party credentials are Fernet-encrypted with `ENCRYPTION_KEY`.
+- Frontend root redirects to `/today`; public (unauthenticated) surfaces live under `src/app/p/` (offers, reviews, demo, lead forms) and `embed/`.
 
 ## Project-specific architecture notes
 
 - The backend is multi-tenant by workspace; most domain routes and services are scoped through workspace-aware APIs.
-- Background workers run inside the single FastAPI `backend-api` process via `start_all_workers()` in the app lifespan. There is no separate worker service or Celery process; deploying uvicorn/gunicorn with `--workers > 1` or multiple backend replicas multiplies every poll loop unless workers are extracted or leader-elected.
+- ~27 background workers (`app/workers/`) run in-process via `start_all_workers()` in the app lifespan, gated on `RUN_BACKGROUND_WORKERS`. Deploying uvicorn/gunicorn with `--workers > 1` or multiple backend replicas multiplies every poll loop. To split them out: set `RUN_BACKGROUND_WORKERS=false` on the API and run a separate `uv run backend-workers` (console script `app.workers.runner:main`) process.
 - `backend/static/` is served unauthenticated at `/static` for public marketing collateral such as lead-magnet PDFs only. Do not put customer files, exports, PII, credentials, or per-workspace assets there.
-- Frontend typed API contracts derive from `backend/openapi.json`; when backend public routes/schemas change, run `make ci.codegen` and commit both `backend/openapi.json` and `frontend/src/lib/api/_generated.ts`.
+- Frontend typed API contracts derive from `backend/openapi.json`; when backend public routes/schemas change, run `make codegen` to regenerate (`make ci.codegen` only checks for drift) and commit both `backend/openapi.json` and `frontend/src/lib/api/_generated.ts` (the latter is ~940KB — never hand-edit).
 - Shared local primitives: use `backend/app/services/contacts/contact_filters.py` for rule-based contact/list filtering, `frontend/src/lib/query-keys.ts` for React Query keys, `frontend/src/lib/query-options.ts` for query presets, and `frontend/src/components/ui/page-state.tsx` for page-level loading/error/empty states.
 
 ## Local commands
@@ -40,7 +40,7 @@ The Tribunal is a proprietary AI-powered CRM command center for capturing leads,
 
 ## Runtime and deployment facts
 
-- Backend local services are defined in `backend/docker-compose.yml` using PostgreSQL 17 and Redis 7 with `aicrm` database/container names.
+- Backend local services are defined in `backend/docker-compose.yml`: Postgres 17 with pgvector (`pgvector/pgvector:pg17`) and Redis 7.4, with `aicrm` database/user/container names. Frontend package name and internal project name is `aicrm`.
 - Frontend uses Node `20.18.0` from `frontend/.nvmrc`, `npm@10.9.0`, and deploys from `frontend/` on Vercel with `npm ci` + `npm run build`.
 - Backend deploys on Railway via `backend/railway.toml`; pre-deploy runs `alembic upgrade head`, start command runs `uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips=*`, and healthcheck is `/readyz`.
 - Production contains live CRM/contact data. Test migrations locally first and back up data before schema changes that touch contact/lead tables.
