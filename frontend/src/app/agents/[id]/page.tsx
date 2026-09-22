@@ -84,6 +84,11 @@ interface FoldSectionProps {
   icon: ReactNode;
   action?: ReactNode;
   defaultOpen?: boolean;
+  /** Controlled open state so external entry points (editor header) can reveal the section. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** DOM id so callers can scroll the section into view. */
+  id?: string;
   children: ReactNode;
 }
 
@@ -98,12 +103,27 @@ function FoldSection({
   icon,
   action,
   defaultOpen = false,
+  open: controlledOpen,
+  onOpenChange,
+  id,
   children,
 }: FoldSectionProps) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : uncontrolledOpen;
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!isControlled) setUncontrolledOpen(nextOpen);
+    onOpenChange?.(nextOpen);
+  };
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="space-y-3">
+    <Collapsible
+      id={id}
+      open={open}
+      onOpenChange={handleOpenChange}
+      className="scroll-mt-24 space-y-3"
+    >
       <div className="flex items-center gap-2">
         <CollapsibleTrigger asChild>
           <Button
@@ -145,6 +165,25 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
   const [isEmbedDialogOpen, setIsEmbedDialogOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const isDeletingRef = useRef(false);
+
+  // Folded Behavior sub-panels below the prompt editor. The editor header's
+  // Versions / A/B Test buttons reveal (and scroll to) these sections.
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [experimentsOpen, setExperimentsOpen] = useState(false);
+
+  const revealSection = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const showVersions = () => {
+    setHistoryOpen(true);
+    revealSection("agent-prompt-versions");
+  };
+
+  const showTests = () => {
+    setExperimentsOpen(true);
+    revealSection("agent-prompt-experiments");
+  };
 
   const {
     data: agent,
@@ -420,7 +459,12 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
             {/* Behavior: prompt + tools up front; Advanced, History, and
                 Experiments folded in as sub-panels */}
             <TabsContent value="behavior" className="mt-4 space-y-3">
-              <PromptTab form={form} />
+              <PromptTab
+                form={form}
+                agentId={agentId}
+                onShowVersions={showVersions}
+                onShowTests={showTests}
+              />
               <ToolsTab form={form} voiceProvider={voiceProvider} enabledToolIds={enabledToolIds} />
 
               <FoldSection
@@ -435,6 +479,9 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
                 title="History"
                 description="Prompt version history and performance"
                 icon={<History className="h-4 w-4" />}
+                id="agent-prompt-versions"
+                open={historyOpen}
+                onOpenChange={setHistoryOpen}
               >
                 <Card>
                   <CardHeader className="pb-3">
@@ -452,6 +499,9 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
                 description="Compare prompt variations and optimize performance"
                 icon={<FlaskConical className="h-4 w-4" />}
                 action={<PromptImprovementDialog agentId={agentId} agentName={agent.name} />}
+                id="agent-prompt-experiments"
+                open={experimentsOpen}
+                onOpenChange={setExperimentsOpen}
               >
                 <ABTestDashboard agentId={agentId} />
               </FoldSection>

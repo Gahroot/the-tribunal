@@ -20,6 +20,11 @@ export const messages = {
     updateFailed: "Failed to update agent",
     deleted: "Agent deleted successfully",
     deleteFailed: "Failed to delete agent",
+    promptImproveFailed: "Couldn't generate a prompt suggestion. Please try again.",
+    promptImproveTookAction:
+      "The assistant ran a CRM action instead of rewriting. Review Approvals, then try again.",
+    promptSuggestionInserted: "Suggestion inserted — review and save your changes",
+    promptReset: "Prompt reset to the last saved version",
   },
 
   campaigns: {
