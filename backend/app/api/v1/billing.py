@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -324,7 +325,9 @@ async def stripe_webhook(request: Request, db: DB) -> dict[str, str]:
         )
 
     try:
-        event = stripe.Webhook.construct_event(  # type: ignore[no-untyped-call]
+        # Verify the signature; the parsed return is intentionally unused because
+        # v15 typed objects lack dict-style access (see below).
+        stripe.Webhook.construct_event(  # type: ignore[no-untyped-call]
             payload, sig_header, settings.stripe_webhook_secret
         )
     except stripe.SignatureVerificationError as exc:
@@ -340,8 +343,13 @@ async def stripe_webhook(request: Request, db: DB) -> dict[str, str]:
             detail="Invalid payload.",
         ) from exc
 
-    event_type: str = event["type"]
-    event_data: dict[str, Any] = event["data"]["object"]
+    # Stripe v15 returns typed resource objects (e.g. ``checkout.Session``) that
+    # do NOT support dict-style ``.get(...)`` access, which the handlers rely on.
+    # The signature is already verified above, so route off the verified raw JSON
+    # payload, which deserializes to plain nested dicts.
+    parsed: dict[str, Any] = json.loads(payload)
+    event_type: str = parsed["type"]
+    event_data: dict[str, Any] = parsed["data"]["object"]
 
     logger.info("stripe_webhook_received", event_type=event_type)
 
