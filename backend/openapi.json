@@ -1986,6 +1986,22 @@
             ],
             "title": "Post Meeting Template"
           },
+          "realtime_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realtime Model"
+          },
+          "reasoning_effort": {
+            "default": "low",
+            "title": "Reasoning Effort",
+            "type": "string"
+          },
           "reminder_enabled": {
             "default": true,
             "title": "Reminder Enabled",
@@ -2309,6 +2325,22 @@
               }
             ],
             "title": "Post Meeting Template"
+          },
+          "realtime_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realtime Model"
+          },
+          "reasoning_effort": {
+            "default": "low",
+            "title": "Reasoning Effort",
+            "type": "string"
           },
           "reminder_enabled": {
             "title": "Reminder Enabled",
@@ -2801,6 +2833,28 @@
               }
             ],
             "title": "Post Meeting Template"
+          },
+          "realtime_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realtime Model"
+          },
+          "reasoning_effort": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Effort"
           },
           "reminder_enabled": {
             "anyOf": [
@@ -4173,6 +4227,154 @@
           }
         },
         "title": "AutomationUpdate",
+        "type": "object"
+      },
+      "AutonomyMandate": {
+        "description": "Workspace-level autonomy policy for act-and-report sales execution.",
+        "properties": {
+          "allowed_batch_packs": {
+            "items": {
+              "$ref": "#/components/schemas/BatchPackMandate"
+            },
+            "title": "Allowed Batch Packs",
+            "type": "array"
+          },
+          "auto_close_batch_packs": {
+            "default": true,
+            "title": "Auto Close Batch Packs",
+            "type": "boolean"
+          },
+          "auto_send_first_touches": {
+            "default": true,
+            "title": "Auto Send First Touches",
+            "type": "boolean"
+          },
+          "batch_pack_anchor_key": {
+            "default": "anchor_500",
+            "title": "Batch Pack Anchor Key",
+            "type": "string"
+          },
+          "batch_pack_max_price_cents": {
+            "default": 399700,
+            "maximum": 10000000.0,
+            "minimum": 0.0,
+            "title": "Batch Pack Max Price Cents",
+            "type": "integer"
+          },
+          "daily_send_cap": {
+            "default": 100,
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Daily Send Cap",
+            "type": "integer"
+          },
+          "default_offer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Offer Id"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "escalation_rules": {
+            "items": {
+              "$ref": "#/components/schemas/EscalationRuleMandate"
+            },
+            "title": "Escalation Rules",
+            "type": "array"
+          },
+          "operator_report": {
+            "$ref": "#/components/schemas/OperatorReportMandate"
+          },
+          "posture": {
+            "default": "act_and_report",
+            "enum": [
+              "draft_and_wait",
+              "act_and_report"
+            ],
+            "title": "Posture",
+            "type": "string"
+          },
+          "quiet_hours": {
+            "$ref": "#/components/schemas/QuietHoursMandate"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "title": "AutonomyMandate",
+        "type": "object"
+      },
+      "AutonomyMandateUpdate": {
+        "description": "Full replacement payload for a workspace autonomy mandate.",
+        "properties": {
+          "mandate": {
+            "$ref": "#/components/schemas/AutonomyMandate"
+          }
+        },
+        "required": [
+          "mandate"
+        ],
+        "title": "AutonomyMandateUpdate",
+        "type": "object"
+      },
+      "BatchPackMandate": {
+        "description": "Batch pack that autonomy may sell without approval.",
+        "properties": {
+          "ad_count": {
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Ad Count",
+            "type": "integer"
+          },
+          "label": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "pack_key": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Pack Key",
+            "type": "string"
+          },
+          "price_cents": {
+            "maximum": 10000000.0,
+            "minimum": 0.0,
+            "title": "Price Cents",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pack_key",
+          "label",
+          "ad_count",
+          "price_cents"
+        ],
+        "title": "BatchPackMandate",
         "type": "object"
       },
       "BatchQualifyResponse": {
@@ -10778,6 +10980,36 @@
         "title": "EnrollContactsRequest",
         "type": "object"
       },
+      "EscalationRuleMandate": {
+        "description": "Rule that hands a buyer to a human instead of continuing autonomously.",
+        "properties": {
+          "key": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Key",
+            "type": "string"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Keywords",
+            "type": "array"
+          },
+          "label": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "EscalationRuleMandate",
+        "type": "object"
+      },
       "FUBContact": {
         "description": "A contact from Follow Up Boss.",
         "properties": {
@@ -15637,6 +15869,123 @@
         "title": "MessageTestWithVariantsResponse",
         "type": "object"
       },
+      "MessageTraceResponse": {
+        "description": "Explainability record for one autonomously-sent outbound message.",
+        "properties": {
+          "agent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Id"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "conversation_state": {
+            "additionalProperties": true,
+            "title": "Conversation State",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "generated_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated Text"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "knowledge_snippets": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Knowledge Snippets",
+            "type": "array"
+          },
+          "mandate": {
+            "additionalProperties": true,
+            "title": "Mandate",
+            "type": "object"
+          },
+          "message_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Id"
+          },
+          "model_params": {
+            "additionalProperties": true,
+            "title": "Model Params",
+            "type": "object"
+          },
+          "prompt": {
+            "additionalProperties": true,
+            "title": "Prompt",
+            "type": "object"
+          },
+          "prompt_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Version Id"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "conversation_id",
+          "message_id",
+          "agent_id",
+          "prompt_version_id",
+          "generated_text",
+          "prompt",
+          "knowledge_snippets",
+          "model_params",
+          "conversation_state",
+          "mandate",
+          "created_at"
+        ],
+        "title": "MessageTraceResponse",
+        "type": "object"
+      },
       "MissedCallTextbackSettingsResponse": {
         "description": "Per-workspace missed-call text-back configuration.",
         "properties": {
@@ -15761,6 +16110,52 @@
         ],
         "title": "MissionStatus",
         "type": "string"
+      },
+      "NegotiationStep": {
+        "description": "Ordered autonomous sales strategy step for an offer.",
+        "properties": {
+          "action": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Action",
+            "type": "string"
+          },
+          "objective": {
+            "title": "Objective",
+            "type": "string"
+          },
+          "order": {
+            "minimum": 1.0,
+            "title": "Order",
+            "type": "integer"
+          },
+          "pack_key": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Pack Key",
+            "type": "string"
+          },
+          "stage": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Stage",
+            "type": "string"
+          },
+          "talk_track": {
+            "title": "Talk Track",
+            "type": "string"
+          }
+        },
+        "required": [
+          "order",
+          "stage",
+          "pack_key",
+          "action",
+          "talk_track",
+          "objective"
+        ],
+        "title": "NegotiationStep",
+        "type": "object"
       },
       "NextBestAction": {
         "description": "The single recommended next move for the operator.",
@@ -16566,6 +16961,20 @@
             "title": "Name",
             "type": "string"
           },
+          "negotiation_sequence": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/NegotiationStep"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Negotiation Sequence"
+          },
           "offer_price": {
             "anyOf": [
               {
@@ -16577,6 +16986,20 @@
               }
             ],
             "title": "Offer Price"
+          },
+          "package_options": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/OfferPack"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Package Options"
           },
           "regular_price": {
             "anyOf": [
@@ -16613,6 +17036,21 @@
               }
             ],
             "title": "Scarcity Count"
+          },
+          "strategy_metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OfferStrategyMetadata"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy Metadata"
           },
           "subheadline": {
             "anyOf": [
@@ -16783,6 +17221,88 @@
         "title": "OfferGenerationRequest",
         "type": "object"
       },
+      "OfferPack": {
+        "description": "Structured package option for a multi-pack offer ladder.",
+        "properties": {
+          "ad_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Ad Count",
+            "type": "integer"
+          },
+          "cost_per_ad": {
+            "minimum": 0.0,
+            "title": "Cost Per Ad",
+            "type": "number"
+          },
+          "key": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "price": {
+            "minimum": 0.0,
+            "title": "Price",
+            "type": "number"
+          },
+          "problems_covered": {
+            "minimum": 0.0,
+            "title": "Problems Covered",
+            "type": "integer"
+          },
+          "recommended": {
+            "default": false,
+            "title": "Recommended",
+            "type": "boolean"
+          },
+          "role": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Role",
+            "type": "string"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "ad_count",
+          "price",
+          "problems_covered",
+          "cost_per_ad",
+          "role"
+        ],
+        "title": "OfferPack",
+        "type": "object"
+      },
       "OfferResponse": {
         "description": "Schema for offer response.",
         "properties": {
@@ -16897,6 +17417,20 @@
             "title": "Name",
             "type": "string"
           },
+          "negotiation_sequence": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/NegotiationStep"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Negotiation Sequence"
+          },
           "offer_price": {
             "anyOf": [
               {
@@ -16913,6 +17447,20 @@
             "default": 0,
             "title": "Opt Ins",
             "type": "integer"
+          },
+          "package_options": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/OfferPack"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Package Options"
           },
           "page_views": {
             "default": 0,
@@ -16954,6 +17502,21 @@
               }
             ],
             "title": "Scarcity Count"
+          },
+          "strategy_metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OfferStrategyMetadata"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy Metadata"
           },
           "subheadline": {
             "anyOf": [
@@ -17180,6 +17743,20 @@
             "title": "Name",
             "type": "string"
           },
+          "negotiation_sequence": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/NegotiationStep"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Negotiation Sequence"
+          },
           "offer_price": {
             "anyOf": [
               {
@@ -17196,6 +17773,20 @@
             "default": 0,
             "title": "Opt Ins",
             "type": "integer"
+          },
+          "package_options": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/OfferPack"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Package Options"
           },
           "page_views": {
             "default": 0,
@@ -17237,6 +17828,21 @@
               }
             ],
             "title": "Scarcity Count"
+          },
+          "strategy_metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OfferStrategyMetadata"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy Metadata"
           },
           "subheadline": {
             "anyOf": [
@@ -17350,6 +17956,101 @@
           "updated_at"
         ],
         "title": "OfferResponseWithLeadMagnets",
+        "type": "object"
+      },
+      "OfferStrategyMetadata": {
+        "additionalProperties": true,
+        "description": "Additional structured strategy metadata for autonomous sales agents.",
+        "properties": {
+          "autonomy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Autonomy"
+          },
+          "default_anchor_pack_key": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Anchor Pack Key"
+          },
+          "fallback_pack_key": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Pack Key"
+          },
+          "human_escalation_triggers": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Human Escalation Triggers",
+            "type": "array"
+          },
+          "not_included": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Not Included",
+            "type": "array"
+          },
+          "representation": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Representation"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "upsell_pack_key": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upsell Pack Key"
+          }
+        },
+        "title": "OfferStrategyMetadata",
         "type": "object"
       },
       "OfferUpdate": {
@@ -17492,6 +18193,20 @@
             ],
             "title": "Name"
           },
+          "negotiation_sequence": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/NegotiationStep"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Negotiation Sequence"
+          },
           "offer_price": {
             "anyOf": [
               {
@@ -17503,6 +18218,20 @@
               }
             ],
             "title": "Offer Price"
+          },
+          "package_options": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/OfferPack"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Package Options"
           },
           "public_slug": {
             "anyOf": [
@@ -17584,6 +18313,21 @@
               }
             ],
             "title": "Scarcity Count"
+          },
+          "strategy_metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OfferStrategyMetadata"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy Metadata"
           },
           "subheadline": {
             "anyOf": [
@@ -17870,6 +18614,46 @@
           "realtime_model"
         ],
         "title": "OpenAIOAuthStatusResponse",
+        "type": "object"
+      },
+      "OperatorReportMandate": {
+        "description": "Operator reporting preferences for autonomous outcomes.",
+        "properties": {
+          "channel": {
+            "default": "sms",
+            "enum": [
+              "sms",
+              "push",
+              "email"
+            ],
+            "title": "Channel",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "events": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          }
+        },
+        "title": "OperatorReportMandate",
         "type": "object"
       },
       "OpportunityActivityResponse": {
@@ -22956,6 +23740,20 @@
             "title": "Name",
             "type": "string"
           },
+          "negotiation_sequence": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/NegotiationStep"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Negotiation Sequence"
+          },
           "offer_price": {
             "anyOf": [
               {
@@ -22966,6 +23764,20 @@
               }
             ],
             "title": "Offer Price"
+          },
+          "package_options": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/OfferPack"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Package Options"
           },
           "regular_price": {
             "anyOf": [
@@ -23014,6 +23826,21 @@
               }
             ],
             "title": "Scarcity Count"
+          },
+          "strategy_metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OfferStrategyMetadata"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy Metadata"
           },
           "subheadline": {
             "anyOf": [
@@ -23390,6 +24217,37 @@
           "success"
         ],
         "title": "QualifyContactResponse",
+        "type": "object"
+      },
+      "QuietHoursMandate": {
+        "description": "Daily quiet-hours window for autonomous sends.",
+        "properties": {
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "end": {
+            "default": "08:00",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "default": "20:00",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "title": "Start",
+            "type": "string"
+          },
+          "timezone": {
+            "default": "America/New_York",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "title": "QuietHoursMandate",
         "type": "object"
       },
       "QuizGenerationRequest": {
@@ -28940,6 +29798,9 @@
       "WorkspaceResponse": {
         "description": "Schema for workspace response.",
         "properties": {
+          "autonomy_mandate": {
+            "$ref": "#/components/schemas/AutonomyMandate"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -28990,6 +29851,7 @@
           "slug",
           "description",
           "settings",
+          "autonomy_mandate",
           "is_active",
           "created_at",
           "updated_at"
@@ -29351,7 +30213,7 @@
         "title": "LeadSubmitResponse",
         "type": "object"
       },
-      "app__schemas__lead_source__LeadSubmitRequest": {
+      "tribunal_lead_capture__schemas__LeadSubmitRequest": {
         "description": "Public-facing lead submission request.",
         "properties": {
           "company_name": {
@@ -29433,7 +30295,7 @@
         "title": "LeadSubmitRequest",
         "type": "object"
       },
-      "app__schemas__lead_source__LeadSubmitResponse": {
+      "tribunal_lead_capture__schemas__LeadSubmitResponse": {
         "description": "Response from public lead submission.",
         "properties": {
           "message": {
@@ -30513,7 +31375,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__schemas__lead_source__LeadSubmitRequest"
+                "$ref": "#/components/schemas/tribunal_lead_capture__schemas__LeadSubmitRequest"
               }
             }
           },
@@ -30524,7 +31386,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/app__schemas__lead_source__LeadSubmitResponse"
+                  "$ref": "#/components/schemas/tribunal_lead_capture__schemas__LeadSubmitResponse"
                 }
               }
             },
@@ -37077,6 +37939,112 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/autonomy-mandate": {
+      "get": {
+        "description": "Get the workspace's autonomy mandate.",
+        "operationId": "get_autonomy_mandate_api_v1_workspaces__workspace_id__autonomy_mandate_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutonomyMandate"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Autonomy Mandate",
+        "tags": [
+          "Workspaces"
+        ]
+      },
+      "put": {
+        "description": "Replace the workspace's autonomy mandate (owner/admin only).",
+        "operationId": "update_autonomy_mandate_api_v1_workspaces__workspace_id__autonomy_mandate_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutonomyMandateUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutonomyMandate"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Update Autonomy Mandate",
+        "tags": [
+          "Workspaces"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/calls": {
       "get": {
         "description": "List call history in workspace.\n\nArgs:\n    workspace_id: Workspace ID\n    current_user: Current user\n    db: Database session\n    workspace: Workspace object\n    page: Page number\n    page_size: Items per page\n    direction: Filter by direction (inbound/outbound)\n    status: Filter by status (completed/no_answer/busy/failed)\n    search: Search by contact name\n\nReturns:\n    Paginated list of calls",
@@ -40677,6 +41645,65 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/conversations/messages/{message_id}/trace": {
+      "get": {
+        "description": "Fetch the decision/trace for one autonomously-sent message.\n\nAnswers \"why did the agent send that?\" — returns the opener/prompt version,\nretrieved knowledge snippets, model params, conversation state plus last\ninbound, and which autonomy-mandate rule authorized the send.",
+        "operationId": "get_message_trace_api_v1_workspaces__workspace_id__conversations_messages__message_id__trace_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageTraceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Message Trace",
+        "tags": [
+          "Conversations"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/conversations/{conversation_id}": {
       "get": {
         "description": "Get a conversation with its messages.",
@@ -41471,6 +42498,81 @@
           }
         ],
         "summary": "Send Message",
+        "tags": [
+          "Conversations"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/conversations/{conversation_id}/traces": {
+      "get": {
+        "description": "List decision/traces for every autonomous message in a conversation.",
+        "operationId": "list_conversation_traces_api_v1_workspaces__workspace_id__conversations__conversation_id__traces_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MessageTraceResponse"
+                  },
+                  "title": "Response List Conversation Traces Api V1 Workspaces  Workspace Id  Conversations  Conversation Id  Traces Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Conversation Traces",
         "tags": [
           "Conversations"
         ]
@@ -54530,6 +55632,31 @@
           }
         },
         "summary": "Readyz",
+        "tags": [
+          "Health",
+          "Health"
+        ]
+      }
+    },
+    "/readyz/autonomy": {
+      "get": {
+        "description": "Readiness for the autonomy-critical worker set.\n\nThe unattended sales loop only runs if a specific subset of workers is\nregistered in ``start_all_workers`` *and* actively ticking. This probe\nverifies, for each one, that it is registered, enabled, running, and has a\nfresh Redis heartbeat (written only at the end of a completed poll cycle).\n\nReturns HTTP 503 with ``silent`` listing any worker that is missing,\ndisabled, not running, or wedged — so operators see exactly which loop is\ndark rather than a generic failure.",
+        "operationId": "readyz_autonomy_readyz_autonomy_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Readyz Autonomy Readyz Autonomy Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readyz Autonomy",
         "tags": [
           "Health",
           "Health"

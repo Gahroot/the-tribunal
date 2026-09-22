@@ -2193,6 +2193,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/autonomy-mandate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Autonomy Mandate
+         * @description Get the workspace's autonomy mandate.
+         */
+        get: operations["get_autonomy_mandate_api_v1_workspaces__workspace_id__autonomy_mandate_get"];
+        /**
+         * Update Autonomy Mandate
+         * @description Replace the workspace's autonomy mandate (owner/admin only).
+         */
+        put: operations["update_autonomy_mandate_api_v1_workspaces__workspace_id__autonomy_mandate_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/calls": {
         parameters: {
             query?: never;
@@ -3093,6 +3117,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/conversations/messages/{message_id}/trace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Message Trace
+         * @description Fetch the decision/trace for one autonomously-sent message.
+         *
+         *     Answers "why did the agent send that?" — returns the opener/prompt version,
+         *     retrieved knowledge snippets, model params, conversation state plus last
+         *     inbound, and which autonomy-mandate rule authorized the send.
+         */
+        get: operations["get_message_trace_api_v1_workspaces__workspace_id__conversations_messages__message_id__trace_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/conversations/{conversation_id}": {
         parameters: {
             query?: never;
@@ -3312,6 +3360,26 @@ export interface paths {
          * @description Clear all messages in a conversation.
          */
         delete: operations["clear_conversation_history_api_v1_workspaces__workspace_id__conversations__conversation_id__messages_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/conversations/{conversation_id}/traces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Conversation Traces
+         * @description List decision/traces for every autonomous message in a conversation.
+         */
+        get: operations["list_conversation_traces_api_v1_workspaces__workspace_id__conversations__conversation_id__traces_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -6490,6 +6558,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/readyz/autonomy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Readyz Autonomy
+         * @description Readiness for the autonomy-critical worker set.
+         *
+         *     The unattended sales loop only runs if a specific subset of workers is
+         *     registered in ``start_all_workers`` *and* actively ticking. This probe
+         *     verifies, for each one, that it is registered, enabled, running, and has a
+         *     fresh Redis heartbeat (written only at the end of a completed poll cycle).
+         *
+         *     Returns HTTP 503 with ``silent`` listing any worker that is missing,
+         *     disabled, not running, or wedged — so operators see exactly which loop is
+         *     dark rather than a generic failure.
+         */
+        get: operations["readyz_autonomy_readyz_autonomy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/version": {
         parameters: {
             query?: never;
@@ -7472,6 +7569,13 @@ export interface components {
             post_meeting_sms_enabled: boolean;
             /** Post Meeting Template */
             post_meeting_template?: string | null;
+            /** Realtime Model */
+            realtime_model?: string | null;
+            /**
+             * Reasoning Effort
+             * @default low
+             */
+            reasoning_effort: string;
             /**
              * Reminder Enabled
              * @default true
@@ -7636,6 +7740,13 @@ export interface components {
             post_meeting_sms_enabled: boolean;
             /** Post Meeting Template */
             post_meeting_template?: string | null;
+            /** Realtime Model */
+            realtime_model?: string | null;
+            /**
+             * Reasoning Effort
+             * @default low
+             */
+            reasoning_effort: string;
             /** Reminder Enabled */
             reminder_enabled: boolean;
             /** Reminder Minutes Before */
@@ -7767,6 +7878,10 @@ export interface components {
             post_meeting_sms_enabled?: boolean | null;
             /** Post Meeting Template */
             post_meeting_template?: string | null;
+            /** Realtime Model */
+            realtime_model?: string | null;
+            /** Reasoning Effort */
+            reasoning_effort?: string | null;
             /** Reminder Enabled */
             reminder_enabled?: boolean | null;
             /** Reminder Minutes Before */
@@ -8294,6 +8409,84 @@ export interface components {
             } | null;
             /** Trigger Type */
             trigger_type?: string | null;
+        };
+        /**
+         * AutonomyMandate
+         * @description Workspace-level autonomy policy for act-and-report sales execution.
+         */
+        AutonomyMandate: {
+            /** Allowed Batch Packs */
+            allowed_batch_packs?: components["schemas"]["BatchPackMandate"][];
+            /**
+             * Auto Close Batch Packs
+             * @default true
+             */
+            auto_close_batch_packs: boolean;
+            /**
+             * Auto Send First Touches
+             * @default true
+             */
+            auto_send_first_touches: boolean;
+            /**
+             * Batch Pack Anchor Key
+             * @default anchor_500
+             */
+            batch_pack_anchor_key: string;
+            /**
+             * Batch Pack Max Price Cents
+             * @default 399700
+             */
+            batch_pack_max_price_cents: number;
+            /**
+             * Daily Send Cap
+             * @default 100
+             */
+            daily_send_cap: number;
+            /** Default Offer Id */
+            default_offer_id?: string | null;
+            /** Description */
+            description?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Escalation Rules */
+            escalation_rules?: components["schemas"]["EscalationRuleMandate"][];
+            operator_report?: components["schemas"]["OperatorReportMandate"];
+            /**
+             * Posture
+             * @default act_and_report
+             * @enum {string}
+             */
+            posture: "draft_and_wait" | "act_and_report";
+            quiet_hours?: components["schemas"]["QuietHoursMandate"];
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+        };
+        /**
+         * AutonomyMandateUpdate
+         * @description Full replacement payload for a workspace autonomy mandate.
+         */
+        AutonomyMandateUpdate: {
+            mandate: components["schemas"]["AutonomyMandate"];
+        };
+        /**
+         * BatchPackMandate
+         * @description Batch pack that autonomy may sell without approval.
+         */
+        BatchPackMandate: {
+            /** Ad Count */
+            ad_count: number;
+            /** Label */
+            label: string;
+            /** Pack Key */
+            pack_key: string;
+            /** Price Cents */
+            price_cents: number;
         };
         /**
          * BatchQualifyResponse
@@ -10797,6 +10990,18 @@ export interface components {
             contact_ids: number[];
         };
         /**
+         * EscalationRuleMandate
+         * @description Rule that hands a buyer to a human instead of continuing autonomously.
+         */
+        EscalationRuleMandate: {
+            /** Key */
+            key: string;
+            /** Keywords */
+            keywords?: string[];
+            /** Label */
+            label: string;
+        };
+        /**
          * FUBContact
          * @description A contact from Follow Up Boss.
          */
@@ -12683,6 +12888,60 @@ export interface components {
             workspace_id: string;
         };
         /**
+         * MessageTraceResponse
+         * @description Explainability record for one autonomously-sent outbound message.
+         */
+        MessageTraceResponse: {
+            /** Agent Id */
+            agent_id: string | null;
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /** Conversation State */
+            conversation_state: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Generated Text */
+            generated_text: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Knowledge Snippets */
+            knowledge_snippets: {
+                [key: string]: unknown;
+            }[];
+            /** Mandate */
+            mandate: {
+                [key: string]: unknown;
+            };
+            /** Message Id */
+            message_id: string | null;
+            /** Model Params */
+            model_params: {
+                [key: string]: unknown;
+            };
+            /** Prompt */
+            prompt: {
+                [key: string]: unknown;
+            };
+            /** Prompt Version Id */
+            prompt_version_id: string | null;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+        };
+        /**
          * MissedCallTextbackSettingsResponse
          * @description Per-workspace missed-call text-back configuration.
          */
@@ -12726,6 +12985,24 @@ export interface components {
          * @enum {string}
          */
         MissionStatus: "draft" | "active" | "paused" | "completed" | "archived";
+        /**
+         * NegotiationStep
+         * @description Ordered autonomous sales strategy step for an offer.
+         */
+        NegotiationStep: {
+            /** Action */
+            action: string;
+            /** Objective */
+            objective: string;
+            /** Order */
+            order: number;
+            /** Pack Key */
+            pack_key: string;
+            /** Stage */
+            stage: string;
+            /** Talk Track */
+            talk_track: string;
+        };
         /**
          * NextBestAction
          * @description The single recommended next move for the operator.
@@ -13021,14 +13298,22 @@ export interface components {
             is_active: boolean;
             /** Name */
             name: string;
+            /** Negotiation Sequence */
+            negotiation_sequence?: components["schemas"]["NegotiationStep"][] | null;
             /** Offer Price */
             offer_price?: number | null;
+            /** Package Options */
+            package_options?: components["schemas"]["OfferPack"][] | null;
             /** Regular Price */
             regular_price?: number | null;
             /** Savings Amount */
             savings_amount?: number | null;
             /** Scarcity Count */
             scarcity_count?: number | null;
+            /** Strategy Metadata */
+            strategy_metadata?: components["schemas"]["OfferStrategyMetadata"] | {
+                [key: string]: unknown;
+            } | null;
             /** Subheadline */
             subheadline?: string | null;
             /** Terms */
@@ -13062,6 +13347,35 @@ export interface components {
             target_audience: string;
             /** Unique Mechanism */
             unique_mechanism?: string | null;
+        };
+        /**
+         * OfferPack
+         * @description Structured package option for a multi-pack offer ladder.
+         */
+        OfferPack: {
+            /** Ad Count */
+            ad_count: number;
+            /** Cost Per Ad */
+            cost_per_ad: number;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Notes */
+            notes?: string | null;
+            /** Price */
+            price: number;
+            /** Problems Covered */
+            problems_covered: number;
+            /**
+             * Recommended
+             * @default false
+             */
+            recommended: boolean;
+            /** Role */
+            role: string;
+            /** Source Url */
+            source_url?: string | null;
         };
         /**
          * OfferResponse
@@ -13105,6 +13419,8 @@ export interface components {
             is_active: boolean;
             /** Name */
             name: string;
+            /** Negotiation Sequence */
+            negotiation_sequence?: components["schemas"]["NegotiationStep"][] | null;
             /** Offer Price */
             offer_price?: number | null;
             /**
@@ -13112,6 +13428,8 @@ export interface components {
              * @default 0
              */
             opt_ins: number;
+            /** Package Options */
+            package_options?: components["schemas"]["OfferPack"][] | null;
             /**
              * Page Views
              * @default 0
@@ -13123,6 +13441,10 @@ export interface components {
             savings_amount?: number | null;
             /** Scarcity Count */
             scarcity_count?: number | null;
+            /** Strategy Metadata */
+            strategy_metadata?: components["schemas"]["OfferStrategyMetadata"] | {
+                [key: string]: unknown;
+            } | null;
             /** Subheadline */
             subheadline?: string | null;
             /** Terms */
@@ -13194,6 +13516,8 @@ export interface components {
             lead_magnets: components["schemas"]["LeadMagnetResponse"][];
             /** Name */
             name: string;
+            /** Negotiation Sequence */
+            negotiation_sequence?: components["schemas"]["NegotiationStep"][] | null;
             /** Offer Price */
             offer_price?: number | null;
             /**
@@ -13201,6 +13525,8 @@ export interface components {
              * @default 0
              */
             opt_ins: number;
+            /** Package Options */
+            package_options?: components["schemas"]["OfferPack"][] | null;
             /**
              * Page Views
              * @default 0
@@ -13212,6 +13538,10 @@ export interface components {
             savings_amount?: number | null;
             /** Scarcity Count */
             scarcity_count?: number | null;
+            /** Strategy Metadata */
+            strategy_metadata?: components["schemas"]["OfferStrategyMetadata"] | {
+                [key: string]: unknown;
+            } | null;
             /** Subheadline */
             subheadline?: string | null;
             /** Terms */
@@ -13237,6 +13567,36 @@ export interface components {
              * Format: uuid
              */
             workspace_id: string;
+        };
+        /**
+         * OfferStrategyMetadata
+         * @description Additional structured strategy metadata for autonomous sales agents.
+         */
+        OfferStrategyMetadata: {
+            /** Autonomy */
+            autonomy?: string | null;
+            /** Default Anchor Pack Key */
+            default_anchor_pack_key?: string | null;
+            /** Fallback Pack Key */
+            fallback_pack_key?: string | null;
+            /**
+             * Human Escalation Triggers
+             * @default []
+             */
+            human_escalation_triggers: string[];
+            /**
+             * Not Included
+             * @default []
+             */
+            not_included: string[];
+            /** Representation */
+            representation?: string | null;
+            /** Source Url */
+            source_url?: string | null;
+            /** Upsell Pack Key */
+            upsell_pack_key?: string | null;
+        } & {
+            [key: string]: unknown;
         };
         /**
          * OfferUpdate
@@ -13265,8 +13625,12 @@ export interface components {
             is_public?: boolean | null;
             /** Name */
             name?: string | null;
+            /** Negotiation Sequence */
+            negotiation_sequence?: components["schemas"]["NegotiationStep"][] | null;
             /** Offer Price */
             offer_price?: number | null;
+            /** Package Options */
+            package_options?: components["schemas"]["OfferPack"][] | null;
             /** Public Slug */
             public_slug?: string | null;
             /** Regular Price */
@@ -13281,6 +13645,10 @@ export interface components {
             savings_amount?: number | null;
             /** Scarcity Count */
             scarcity_count?: number | null;
+            /** Strategy Metadata */
+            strategy_metadata?: components["schemas"]["OfferStrategyMetadata"] | {
+                [key: string]: unknown;
+            } | null;
             /** Subheadline */
             subheadline?: string | null;
             /** Terms */
@@ -13363,6 +13731,27 @@ export interface components {
             realtime_model: string;
             /** Saved At */
             saved_at?: string | null;
+        };
+        /**
+         * OperatorReportMandate
+         * @description Operator reporting preferences for autonomous outcomes.
+         */
+        OperatorReportMandate: {
+            /**
+             * Channel
+             * @default sms
+             * @enum {string}
+             */
+            channel: "sms" | "push" | "email";
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Events */
+            events?: string[];
+            /** Phone */
+            phone?: string | null;
         };
         /**
          * OpportunityActivityResponse
@@ -15230,8 +15619,12 @@ export interface components {
             lead_magnets: components["schemas"]["LeadMagnetResponse"][];
             /** Name */
             name: string;
+            /** Negotiation Sequence */
+            negotiation_sequence?: components["schemas"]["NegotiationStep"][] | null;
             /** Offer Price */
             offer_price?: number | null;
+            /** Package Options */
+            package_options?: components["schemas"]["OfferPack"][] | null;
             /** Regular Price */
             regular_price?: number | null;
             /**
@@ -15253,6 +15646,10 @@ export interface components {
             savings_amount?: number | null;
             /** Scarcity Count */
             scarcity_count?: number | null;
+            /** Strategy Metadata */
+            strategy_metadata?: components["schemas"]["OfferStrategyMetadata"] | {
+                [key: string]: unknown;
+            } | null;
             /** Subheadline */
             subheadline?: string | null;
             /** Total Value */
@@ -15411,6 +15808,32 @@ export interface components {
             response_rate: number;
             /** Success */
             success: boolean;
+        };
+        /**
+         * QuietHoursMandate
+         * @description Daily quiet-hours window for autonomous sends.
+         */
+        QuietHoursMandate: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * End
+             * @default 08:00
+             */
+            end: string;
+            /**
+             * Start
+             * @default 20:00
+             */
+            start: string;
+            /**
+             * Timezone
+             * @default America/New_York
+             */
+            timezone: string;
         };
         /**
          * QuizGenerationRequest
@@ -17576,6 +17999,7 @@ export interface components {
          * @description Schema for workspace response.
          */
         WorkspaceResponse: {
+            autonomy_mandate: components["schemas"]["AutonomyMandate"];
             /**
              * Created At
              * Format: date-time
@@ -17755,7 +18179,7 @@ export interface components {
          * LeadSubmitRequest
          * @description Public-facing lead submission request.
          */
-        app__schemas__lead_source__LeadSubmitRequest: {
+        tribunal_lead_capture__schemas__LeadSubmitRequest: {
             /** Company Name */
             company_name?: string | null;
             /** Email */
@@ -17775,7 +18199,7 @@ export interface components {
          * LeadSubmitResponse
          * @description Response from public lead submission.
          */
-        app__schemas__lead_source__LeadSubmitResponse: {
+        tribunal_lead_capture__schemas__LeadSubmitResponse: {
             /** Message */
             message: string;
             /** Success */
@@ -18495,7 +18919,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["app__schemas__lead_source__LeadSubmitRequest"];
+                "application/json": components["schemas"]["tribunal_lead_capture__schemas__LeadSubmitRequest"];
             };
         };
         responses: {
@@ -18505,7 +18929,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app__schemas__lead_source__LeadSubmitResponse"];
+                    "application/json": components["schemas"]["tribunal_lead_capture__schemas__LeadSubmitResponse"];
                 };
             };
             /** @description Validation Error */
@@ -22179,6 +22603,72 @@ export interface operations {
             };
         };
     };
+    get_autonomy_mandate_api_v1_workspaces__workspace_id__autonomy_mandate_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutonomyMandate"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_autonomy_mandate_api_v1_workspaces__workspace_id__autonomy_mandate_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutonomyMandateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutonomyMandate"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_calls_api_v1_workspaces__workspace_id__calls_get: {
         parameters: {
             query?: {
@@ -23867,6 +24357,38 @@ export interface operations {
             };
         };
     };
+    get_message_trace_api_v1_workspaces__workspace_id__conversations_messages__message_id__trace_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageTraceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_conversation_api_v1_workspaces__workspace_id__conversations__conversation_id__get: {
         parameters: {
             query?: {
@@ -24273,6 +24795,40 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_conversation_traces_api_v1_workspaces__workspace_id__conversations__conversation_id__traces_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageTraceResponse"][];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -31027,6 +31583,28 @@ export interface operations {
         };
     };
     readyz_readyz_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    readyz_autonomy_readyz_autonomy_get: {
         parameters: {
             query?: never;
             header?: never;
