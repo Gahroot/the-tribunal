@@ -308,6 +308,16 @@ export const TAB_FIELDS: Record<string, (keyof EditAgentFormValues)[]> = {
   ],
 };
 
+// Map fields to their respective zones (top-level sections) for error
+// tracking on the edit screen. Derived from TAB_FIELDS so the per-tab lists
+// stay the single source of truth. "Knowledge & People" owns its own
+// sub-forms, so it has no fields from the main edit form.
+export const ZONE_FIELDS: Record<string, (keyof EditAgentFormValues)[]> = {
+  overview: [...TAB_FIELDS.basic, ...TAB_FIELDS.voice],
+  behavior: [...TAB_FIELDS.prompt, ...TAB_FIELDS.tools, ...TAB_FIELDS.advanced],
+  "knowledge-people": [],
+};
+
 // ---------------------------------------------------------------------------
 // Mappers
 // ---------------------------------------------------------------------------

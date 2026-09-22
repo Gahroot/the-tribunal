@@ -16,6 +16,7 @@ import {
   editAgentFormSchema,
   EDIT_AGENT_FORM_DEFAULTS,
   TAB_FIELDS,
+  ZONE_FIELDS,
 } from "./agent-form";
 import {
   getDefaultVoiceForProvider,
@@ -200,6 +201,18 @@ describe("editAgentFormSchema + defaults", () => {
       "realtimeModel",
       "reasoningEffort",
     ]);
+  });
+});
+
+describe("ZONE_FIELDS", () => {
+  it("assigns every tab field to exactly one zone", () => {
+    const zoned = Object.values(ZONE_FIELDS).flat();
+    expect(new Set(zoned).size).toBe(zoned.length);
+    expect(new Set(zoned)).toEqual(new Set(Object.values(TAB_FIELDS).flat()));
+  });
+
+  it("leaves Knowledge & People to its own sub-forms", () => {
+    expect(ZONE_FIELDS["knowledge-people"]).toEqual([]);
   });
 });
 

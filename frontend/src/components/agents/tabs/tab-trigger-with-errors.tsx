@@ -1,7 +1,7 @@
 import type { UseFormReturn } from "react-hook-form";
 
 import type { EditAgentFormValues } from "@/components/agents/agent-edit-schema";
-import { TAB_FIELDS } from "@/components/agents/agent-edit-schema";
+import { ZONE_FIELDS } from "@/components/agents/agent-edit-schema";
 import { TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
@@ -12,7 +12,7 @@ interface TabTriggerWithErrorsProps {
 }
 
 export function TabTriggerWithErrors({ value, label, form }: TabTriggerWithErrorsProps) {
-  const fields = TAB_FIELDS[value] ?? [];
+  const fields = ZONE_FIELDS[value] ?? [];
   const errors = form.formState.errors;
   const errorCount = fields.filter((field) => field in errors).length;
 

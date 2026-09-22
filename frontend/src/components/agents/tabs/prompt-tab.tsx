@@ -40,7 +40,9 @@ export function PromptTab({ form }: PromptTabProps) {
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => form.setValue("systemPrompt", BEST_PRACTICES_PROMPT)}
+            onClick={() =>
+              form.setValue("systemPrompt", BEST_PRACTICES_PROMPT, { shouldDirty: true })
+            }
             className="shrink-0"
           >
             <Wand2 className="mr-1.5 h-3.5 w-3.5" />

@@ -4,16 +4,18 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  ChevronDown,
   Code2,
-  Trash2,
+  FlaskConical,
   Headphones,
+  History,
+  Settings2,
   Sparkles,
-  UserCircle,
-  BookOpen,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { use, useState, useEffect, useRef, useMemo } from "react";
+import { use, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 
@@ -48,10 +50,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Form } from "@/components/ui/form";
 import { PageErrorState, PageLoadingState } from "@/components/ui/page-state";
-import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList } from "@/components/ui/tabs";
 import { useAgent } from "@/hooks/useAgents";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import {
@@ -66,9 +72,66 @@ import { agentsApi, type UpdateAgentRequest } from "@/lib/api/agents";
 import { getLanguagesForTier } from "@/lib/languages";
 import { messages } from "@/lib/messages";
 import { queryKeys } from "@/lib/query-keys";
+import { cn } from "@/lib/utils";
 
 interface EditAgentPageProps {
   params: Promise<{ id: string }>;
+}
+
+interface FoldSectionProps {
+  title: string;
+  description: string;
+  icon: ReactNode;
+  action?: ReactNode;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}
+
+/**
+ * Collapsible sub-panel used for the Advanced, History, and Experiments
+ * sections nested under the Behavior zone. Keeps the zone scannable while
+ * preserving every former top-level tab as a one-click disclosure.
+ */
+function FoldSection({
+  title,
+  description,
+  icon,
+  action,
+  defaultOpen = false,
+  children,
+}: FoldSectionProps) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} className="space-y-3">
+      <div className="flex items-center gap-2">
+        <CollapsibleTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-auto flex-1 justify-between gap-4 px-4 py-3 text-left"
+          >
+            <span className="flex min-w-0 flex-col items-start gap-0.5">
+              <span className="flex items-center gap-2 text-sm font-medium">
+                {icon}
+                {title}
+              </span>
+              <span className="text-sm font-normal text-muted-foreground">{description}</span>
+            </span>
+            <ChevronDown
+              aria-hidden="true"
+              className={cn(
+                "size-4 shrink-0 text-muted-foreground transition-transform duration-200 motion-reduce:transition-none",
+                open && "rotate-180"
+              )}
+            />
+          </Button>
+        </CollapsibleTrigger>
+        {action}
+      </div>
+      <CollapsibleContent className="space-y-3">{children}</CollapsibleContent>
+    </Collapsible>
+  );
 }
 
 export default function EditAgentPage({ params }: EditAgentPageProps) {
@@ -76,7 +139,7 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const workspaceId = useWorkspaceId();
-  const [activeTab, setActiveTab] = useState("basic");
+  const [activeTab, setActiveTab] = useState("overview");
   const [isDeleting, setIsDeleting] = useState(false);
   const [isVoiceTestOpen, setIsVoiceTestOpen] = useState(false);
   const [isEmbedDialogOpen, setIsEmbedDialogOpen] = useState(false);
@@ -130,12 +193,16 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
     const currentVoice = form.getValues("voiceId");
     const resolved = resolveVoiceForProvider(voiceProvider, currentVoice);
     if (resolved !== currentVoice) {
-      form.setValue("voiceId", resolved);
+      form.setValue("voiceId", resolved, { shouldDirty: true });
     }
   }, [voiceProvider, form]);
 
   // Watch tools for UI updates
   const enabledToolIds = useWatch({ control: form.control, name: "enabledToolIds" });
+
+  // Visible unsaved-changes state: true once any field diverges from the
+  // values loaded from (or last saved to) the API.
+  const isDirty = form.formState.isDirty;
 
   // Handle delete — custom logic with query cancellation before navigation
   const handleDeleteAgent = async () => {
@@ -171,10 +238,13 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
     setIsSaving(true);
     try {
       await agentsApi.update(workspaceId, agentId, request);
+      // Stay on this page: re-baseline the form to the saved values so the
+      // unsaved-changes indicator clears, refresh cached agent data, and
+      // confirm with a toast instead of navigating away.
+      form.reset(data);
       toast.success(messages.agents.updated);
       await queryClient.invalidateQueries({ queryKey: queryKeys.agents.all(workspaceId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(workspaceId, agentId) });
-      router.push("/agents");
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : messages.agents.updateFailed;
       toast.error(errorMessage);
@@ -243,21 +313,6 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="h-8" asChild>
-            <Link href={`/agents/practice?agentId=${agentId}`}>
-              <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-              Practice Arena
-            </Link>
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8"
-            onClick={() => setIsVoiceTestOpen(true)}
-          >
-            <Headphones className="mr-1.5 h-3.5 w-3.5" />
-            Test Voice
-          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -326,93 +381,110 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
           className="space-y-4"
         >
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList>
-              <TabTriggerWithErrors value="basic" label="Basic" form={form} />
-              <TabTriggerWithErrors value="voice" label="Voice" form={form} />
-              <TabTriggerWithErrors value="prompt" label="AI Prompt" form={form} />
-              <TabTriggerWithErrors value="tools" label="Tools" form={form} />
-              <TabTriggerWithErrors value="advanced" label="Advanced" form={form} />
-              <TabsTrigger value="versions">Versions</TabsTrigger>
-              <TabsTrigger value="ab-testing">A/B Testing</TabsTrigger>
-              <TabsTrigger value="my-human">
-                <UserCircle className="mr-1.5 h-3.5 w-3.5" />
-                My Human
-              </TabsTrigger>
-              <TabsTrigger value="knowledge-base">
-                <BookOpen className="mr-1.5 h-3.5 w-3.5" />
-                Knowledge
-              </TabsTrigger>
+            <TabsList className="w-full max-w-full overflow-x-auto sm:w-fit">
+              <TabTriggerWithErrors value="overview" label="Overview" form={form} />
+              <TabTriggerWithErrors value="behavior" label="Behavior" form={form} />
+              <TabTriggerWithErrors
+                value="knowledge-people"
+                label="Knowledge & People"
+                form={form}
+              />
             </TabsList>
 
-            <TabsContent value="basic" className="mt-4 space-y-3">
+            {/* Overview: identity, status, voice, and quick test links */}
+            <TabsContent value="overview" className="mt-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3">
+                <span className="text-sm font-medium">Quick test</span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsVoiceTestOpen(true)}
+                  >
+                    <Headphones className="mr-1.5 h-3.5 w-3.5" />
+                    Test call
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" asChild>
+                    <Link href={`/agents/practice?agentId=${agentId}`}>
+                      <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                      Practice Arena
+                    </Link>
+                  </Button>
+                </div>
+              </div>
               <BasicTab form={form} availableLanguages={availableLanguages} />
-            </TabsContent>
-
-            <TabsContent value="voice" className="mt-4 space-y-3">
               <VoiceTab form={form} voices={voices} />
             </TabsContent>
 
-            <TabsContent value="prompt" className="mt-4 space-y-3">
+            {/* Behavior: prompt + tools up front; Advanced, History, and
+                Experiments folded in as sub-panels */}
+            <TabsContent value="behavior" className="mt-4 space-y-3">
               <PromptTab form={form} />
-            </TabsContent>
-
-            <TabsContent value="tools" className="mt-4 space-y-3">
               <ToolsTab form={form} voiceProvider={voiceProvider} enabledToolIds={enabledToolIds} />
+
+              <FoldSection
+                title="Advanced"
+                description="Timing, transfers, reminders, IVR, and channel settings"
+                icon={<Settings2 className="h-4 w-4" />}
+              >
+                <AdvancedTab form={form} voiceProvider={voiceProvider} agent={agent} />
+              </FoldSection>
+
+              <FoldSection
+                title="History"
+                description="Prompt version history and performance"
+                icon={<History className="h-4 w-4" />}
+              >
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium">Prompt Version History</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <PromptVersionHistory agentId={agentId} />
+                  </CardContent>
+                </Card>
+                <PromptPerformanceChart agentId={agentId} />
+              </FoldSection>
+
+              <FoldSection
+                title="Experiments"
+                description="Compare prompt variations and optimize performance"
+                icon={<FlaskConical className="h-4 w-4" />}
+                action={<PromptImprovementDialog agentId={agentId} agentName={agent.name} />}
+              >
+                <ABTestDashboard agentId={agentId} />
+              </FoldSection>
             </TabsContent>
 
-            <TabsContent value="advanced" className="mt-4 space-y-3">
-              <AdvancedTab form={form} voiceProvider={voiceProvider} agent={agent} />
-            </TabsContent>
-
-            <TabsContent value="versions" className="mt-4 space-y-3">
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium">Prompt Version History</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <PromptVersionHistory agentId={agentId} />
-                </CardContent>
-              </Card>
-              <PromptPerformanceChart agentId={agentId} />
-            </TabsContent>
-
-            <TabsContent value="ab-testing" className="mt-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-medium">A/B Testing</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Compare prompt variations and optimize performance
-                  </p>
-                </div>
-                <PromptImprovementDialog agentId={agentId} agentName={agent.name} />
-              </div>
-              <ABTestDashboard agentId={agentId} />
-            </TabsContent>
-
-            <TabsContent value="my-human" className="mt-4 space-y-4">
-              <HumanProfileTab agentId={agentId} />
-            </TabsContent>
-
-            <TabsContent value="knowledge-base" className="mt-4 space-y-4">
+            {/* Knowledge & People: knowledge base plus My Human profile */}
+            <TabsContent value="knowledge-people" className="mt-4 space-y-4">
               <KnowledgeBaseTab agentId={agentId} />
+              <HumanProfileTab agentId={agentId} />
             </TabsContent>
           </Tabs>
 
-          <Separator />
-
-          <div className="flex justify-end gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              asChild
-              disabled={isSaving}
+          {/* Sticky save bar: always visible, announces dirty state */}
+          <div className="sticky bottom-0 z-10 -mx-6 flex flex-wrap items-center justify-between gap-3 border-t bg-background/95 px-6 py-3 backdrop-blur">
+            <p
+              aria-live="polite"
+              className="flex items-center gap-2 text-sm font-medium text-amber-600 dark:text-amber-400"
             >
-              <Link href="/agents">Cancel</Link>
-            </Button>
-            <Button type="submit" size="sm" disabled={isSaving}>
-              {isSaving ? "Saving..." : "Save Changes"}
-            </Button>
+              {isDirty && (
+                <>
+                  <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-current" />
+                  Unsaved changes
+                </>
+              )}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" size="sm" asChild disabled={isSaving}>
+                <Link href="/agents">Cancel</Link>
+              </Button>
+              <Button type="submit" size="sm" disabled={!isDirty || isSaving}>
+                {isSaving ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
           </div>
         </form>
       </Form>

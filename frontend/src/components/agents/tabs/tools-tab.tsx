@@ -64,10 +64,11 @@ export function ToolsTab({ form, voiceProvider, enabledToolIds }: ToolsTabProps)
                                       .map((t) => t.id) ?? [];
                                   if (defaultTools.length > 0) {
                                     const currentToolIds = form.getValues("enabledToolIds") ?? {};
-                                    form.setValue("enabledToolIds", {
-                                      ...currentToolIds,
-                                      [integration.id]: defaultTools,
-                                    });
+                                    form.setValue(
+                                      "enabledToolIds",
+                                      { ...currentToolIds, [integration.id]: defaultTools },
+                                      { shouldDirty: true }
+                                    );
                                   }
                                 } else {
                                   field.onChange(current.filter((v) => v !== integration.id));
@@ -75,7 +76,7 @@ export function ToolsTab({ form, voiceProvider, enabledToolIds }: ToolsTabProps)
                                   const currentToolIds = form.getValues("enabledToolIds") ?? {};
                                   // eslint-disable-next-line @typescript-eslint/no-unused-vars
                                   const { [integration.id]: _removed, ...rest } = currentToolIds;
-                                  form.setValue("enabledToolIds", rest);
+                                  form.setValue("enabledToolIds", rest, { shouldDirty: true });
                                 }
                               }}
                             />
@@ -119,10 +120,11 @@ export function ToolsTab({ form, voiceProvider, enabledToolIds }: ToolsTabProps)
                                     onClick={() => {
                                       const allToolIds = integration.tools?.map((t) => t.id) ?? [];
                                       const currentToolIds = form.getValues("enabledToolIds") ?? {};
-                                      form.setValue("enabledToolIds", {
-                                        ...currentToolIds,
-                                        [integration.id]: allToolIds,
-                                      });
+                                      form.setValue(
+                                        "enabledToolIds",
+                                        { ...currentToolIds, [integration.id]: allToolIds },
+                                        { shouldDirty: true }
+                                      );
                                     }}
                                   >
                                     Select All
@@ -133,10 +135,11 @@ export function ToolsTab({ form, voiceProvider, enabledToolIds }: ToolsTabProps)
                                     size="sm"
                                     onClick={() => {
                                       const currentToolIds = form.getValues("enabledToolIds") ?? {};
-                                      form.setValue("enabledToolIds", {
-                                        ...currentToolIds,
-                                        [integration.id]: [],
-                                      });
+                                      form.setValue(
+                                        "enabledToolIds",
+                                        { ...currentToolIds, [integration.id]: [] },
+                                        { shouldDirty: true }
+                                      );
                                     }}
                                   >
                                     Clear All
@@ -163,10 +166,11 @@ export function ToolsTab({ form, voiceProvider, enabledToolIds }: ToolsTabProps)
                                             const newTools = checked
                                               ? [...toolsForIntegration, tool.id]
                                               : toolsForIntegration.filter((t) => t !== tool.id);
-                                            form.setValue("enabledToolIds", {
-                                              ...allToolIds,
-                                              [integration.id]: newTools,
-                                            });
+                                            form.setValue(
+                                              "enabledToolIds",
+                                              { ...allToolIds, [integration.id]: newTools },
+                                              { shouldDirty: true }
+                                            );
                                           }}
                                         />
                                         <div>

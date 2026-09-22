@@ -4,5 +4,6 @@
 export {
   editAgentFormSchema,
   TAB_FIELDS,
+  ZONE_FIELDS,
   type EditAgentFormValues,
 } from "@/lib/agents/agent-form";
