@@ -44,6 +44,21 @@ TEXT_MAX_COMPLETION_TOKENS = 500
 logger = structlog.get_logger()
 
 
+def text_booking_enabled(agent: Agent) -> bool:
+    """Whether the text/SMS path may offer Cal.com booking for this agent.
+
+    Stricter than the voice path: the OpenAI realtime path gates booking on
+    ``agent.calcom_event_type_id`` alone, while text additionally requires
+    ``book_appointment`` in ``enabled_tools``. Both need the global API key,
+    which the tool executor also enforces at call time.
+    """
+    return bool(
+        agent.calcom_event_type_id
+        and settings.calcom_api_key
+        and "book_appointment" in (agent.enabled_tools or [])
+    )
+
+
 def _capture_knowledge_snippets(
     trace: OutboundTraceDraft,
     tool_calls: list[Any],
@@ -273,11 +288,7 @@ async def generate_text_response(  # noqa: PLR0915, PLR0912
     offer_context = await get_offer_context(conversation, db)
 
     # Build system instructions - include booking tools info if configured
-    has_booking_tools = bool(
-        agent.calcom_event_type_id
-        and settings.calcom_api_key
-        and "book_appointment" in (agent.enabled_tools or [])
-    )
+    has_booking_tools = text_booking_enabled(agent)
 
     booking_instructions = ""
     extracted_email = None
