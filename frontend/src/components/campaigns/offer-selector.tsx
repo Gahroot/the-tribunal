@@ -353,7 +353,7 @@ export function OfferSelector({
           <div className="flex-1 min-w-0 pr-6">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-medium">{offer.name}</span>
-              <Badge variant="secondary" className="bg-success/10 text-success">
+              <Badge variant="secondary">
                 {formatDiscount(offer)}
               </Badge>
               {totalValue > 0 && (
