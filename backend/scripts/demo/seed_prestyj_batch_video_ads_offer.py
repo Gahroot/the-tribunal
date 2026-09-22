@@ -5,27 +5,28 @@ import asyncio
 import os
 import uuid
 from dataclasses import dataclass
-from typing import TypedDict
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import AsyncSessionLocal
 from app.models.offer import Offer
+from app.services.offers.prestyj_batch_video_ads import (
+    PRESTYJ_BATCH_VIDEO_ADS_ENTRY_PRICE,
+    PRESTYJ_BATCH_VIDEO_ADS_MAX_PRICE,
+    PRESTYJ_BATCH_VIDEO_ADS_NEGOTIATION_SEQUENCE,
+    PRESTYJ_BATCH_VIDEO_ADS_PACKAGE_OPTIONS,
+    PRESTYJ_BATCH_VIDEO_ADS_PACK_LABELS,
+    PRESTYJ_BATCH_VIDEO_ADS_PACK_TERMS,
+    PRESTYJ_BATCH_VIDEO_ADS_PUBLIC_SLUG,
+    PRESTYJ_BATCH_VIDEO_ADS_STRATEGY_METADATA,
+    PRESTYJ_BATCH_VIDEO_ADS_VALUE_STACK_ITEMS,
+)
 
 DEFAULT_WORKSPACE_ID = uuid.UUID(
     os.environ.get("DEFAULT_WORKSPACE_ID", "ba0e0e99-c7c9-45ec-9625-567d54d6e9c2")
 )
-PRESTYJ_BATCH_VIDEO_ADS_PUBLIC_SLUG = "prestyj-batch-video-ads"
-
-
-class OfferValueStackItem(TypedDict):
-    """JSON shape stored in Offer.value_stack_items."""
-
-    name: str
-    description: str
-    value: float
-    included: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,7 +49,10 @@ class OfferTemplate:
     urgency_type: str
     urgency_text: str
     scarcity_count: int
-    value_stack_items: list[OfferValueStackItem]
+    value_stack_items: list[Any]
+    package_options: list[Any]
+    negotiation_sequence: list[Any]
+    strategy_metadata: dict[str, Any]
     cta_text: str
     cta_subtext: str
     is_active: bool
@@ -79,6 +83,9 @@ class OfferTemplate:
             "urgency_text": self.urgency_text,
             "scarcity_count": self.scarcity_count,
             "value_stack_items": self.value_stack_items,
+            "package_options": self.package_options,
+            "negotiation_sequence": self.negotiation_sequence,
+            "strategy_metadata": self.strategy_metadata,
             "cta_text": self.cta_text,
             "cta_subtext": self.cta_subtext,
             "is_active": self.is_active,
@@ -102,16 +109,15 @@ PRESTYJ_BATCH_VIDEO_ADS_TEMPLATE = OfferTemplate(
     terms=(
         "Built for paid video ads. Includes one recording session and batch production of "
         "selected ad volume. Delivery target is 1-2 days after the recording session and "
-        "receipt of required brand assets. Pricing tiers: 100 ads for $497, 300 ads for "
-        "$1,497, 500 ads for $2,497, or 1,000 ads for $3,997."
+        f"receipt of required brand assets. Pricing tiers: {PRESTYJ_BATCH_VIDEO_ADS_PACK_TERMS}."
     ),
     headline="Get 100-1,000 Paid Video Ads From One Recording Session",
     subheadline=(
         "Prestyj turns one focused recording session into a complete batch of paid-video ad "
         "creative in 1-2 days, so you can test more hooks, angles, and offers faster."
     ),
-    regular_price=3997.0,
-    offer_price=497.0,
+    regular_price=PRESTYJ_BATCH_VIDEO_ADS_MAX_PRICE,
+    offer_price=PRESTYJ_BATCH_VIDEO_ADS_ENTRY_PRICE,
     savings_amount=0.0,
     guarantee_type="satisfaction",
     guarantee_days=0,
@@ -122,50 +128,12 @@ PRESTYJ_BATCH_VIDEO_ADS_TEMPLATE = OfferTemplate(
     urgency_type="limited_quantity",
     urgency_text="1-2 day delivery windows depend on recording-session availability.",
     scarcity_count=1,
-    value_stack_items=[
-        {
-            "name": "100 paid video ads",
-            "description": "Entry batch for rapid creative testing from one recording session.",
-            "value": 497.0,
-            "included": True,
-        },
-        {
-            "name": "300 paid video ads",
-            "description": "Expanded creative batch for more hooks, formats, and audience angles.",
-            "value": 1497.0,
-            "included": True,
-        },
-        {
-            "name": "500 paid video ads",
-            "description": "Large paid-social testing library for scaling winning messages.",
-            "value": 2497.0,
-            "included": True,
-        },
-        {
-            "name": "1,000 paid video ads",
-            "description": "Maximum-volume creative batch for aggressive paid acquisition testing.",
-            "value": 3997.0,
-            "included": True,
-        },
-        {
-            "name": "One recording session",
-            "description": (
-                "Capture the core source material once, then repurpose it into batch ad creative."
-            ),
-            "value": 0.0,
-            "included": True,
-        },
-        {
-            "name": "1-2 day delivery",
-            "description": (
-                "Fast turnaround after the recording session and required assets are complete."
-            ),
-            "value": 0.0,
-            "included": True,
-        },
-    ],
+    value_stack_items=PRESTYJ_BATCH_VIDEO_ADS_VALUE_STACK_ITEMS,
+    package_options=PRESTYJ_BATCH_VIDEO_ADS_PACKAGE_OPTIONS,
+    negotiation_sequence=PRESTYJ_BATCH_VIDEO_ADS_NEGOTIATION_SEQUENCE,
+    strategy_metadata=PRESTYJ_BATCH_VIDEO_ADS_STRATEGY_METADATA,
     cta_text="Book Your Batch",
-    cta_subtext="Choose 100, 300, 500, or 1,000 paid video ads.",
+    cta_subtext=f"Choose {PRESTYJ_BATCH_VIDEO_ADS_PACK_LABELS}.",
     is_active=True,
     is_public=True,
     public_slug=PRESTYJ_BATCH_VIDEO_ADS_PUBLIC_SLUG,
@@ -217,8 +185,7 @@ def parse_args() -> argparse.Namespace:
         type=uuid.UUID,
         default=DEFAULT_WORKSPACE_ID,
         help=(
-            "Workspace UUID to seed into. Defaults to DEFAULT_WORKSPACE_ID env var or app "
-            "default."
+            "Workspace UUID to seed into. Defaults to DEFAULT_WORKSPACE_ID env var or app default."
         ),
     )
     return parser.parse_args()

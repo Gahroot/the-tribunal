@@ -10,6 +10,7 @@ Handles:
 
 import re
 import uuid
+from typing import Any
 
 import structlog
 from sqlalchemy import select
@@ -103,6 +104,70 @@ async def build_message_context(
     return context
 
 
+def _format_offer_ladder(package_options: list[dict[str, Any]] | None) -> list[str]:
+    """Format structured package options for a text-agent prompt."""
+    if not package_options:
+        return []
+
+    lines = ["Offer ladder:"]
+    for pack in package_options:
+        label = pack.get("label") or pack.get("key") or "Pack"
+        ad_count = pack.get("ad_count")
+        price = pack.get("price")
+        problems = pack.get("problems_covered")
+        cost_per_ad = pack.get("cost_per_ad")
+        role = pack.get("role")
+        recommended = " (anchor/sweet spot)" if pack.get("recommended") else ""
+        price_text = f"${price:,.0f}" if isinstance(price, (int, float)) else "price TBD"
+        cost_text = f", ${cost_per_ad:,.2f}/ad" if isinstance(cost_per_ad, (int, float)) else ""
+        lines.append(
+            f"- {label}{recommended}: {ad_count:,} ads for {price_text}, "
+            f"covers {problems} customer problem(s){cost_text}; role={role}."
+            if isinstance(ad_count, int)
+            else f"- {label}{recommended}: {price_text}; role={role}."
+        )
+    return lines
+
+
+def _format_negotiation_sequence(steps: list[dict[str, Any]] | None) -> list[str]:
+    """Format ordered negotiation strategy for a text-agent prompt."""
+    if not steps:
+        return []
+
+    lines = ["Negotiation sequence to follow in order:"]
+    ordered_steps = sorted(steps, key=lambda step: int(step.get("order", 999)))
+    for step in ordered_steps:
+        stage = step.get("stage") or "step"
+        talk_track = step.get("talk_track") or step.get("action") or ""
+        objective = step.get("objective")
+        suffix = f" Objective: {objective}" if objective else ""
+        lines.append(f"- {stage}: {talk_track}{suffix}")
+    return lines
+
+
+def _format_strategy_metadata(metadata: dict[str, Any] | None) -> list[str]:
+    """Format escalation and scope metadata for a text-agent prompt."""
+    if not metadata:
+        return []
+
+    lines: list[str] = []
+    autonomy = metadata.get("autonomy")
+    if autonomy:
+        lines.append(f"Autonomy: {autonomy}")
+
+    escalation_triggers = metadata.get("human_escalation_triggers")
+    if isinstance(escalation_triggers, list) and escalation_triggers:
+        lines.append("Escalate to the human only for:")
+        lines.extend(f"- {trigger}" for trigger in escalation_triggers)
+
+    not_included = metadata.get("not_included")
+    if isinstance(not_included, list) and not_included:
+        lines.append("Not included in the batch offer:")
+        lines.extend(f"- {item}" for item in not_included)
+
+    return lines
+
+
 async def get_offer_context(
     conversation: Conversation,
     db: AsyncSession,
@@ -156,7 +221,11 @@ async def get_offer_context(
     if offer.terms:
         context_parts.append(f"Terms: {offer.terms}")
 
-    context_parts.append("Refer to this offer in your responses if relevant to the conversation.")
+    context_parts.extend(_format_offer_ladder(offer.package_options))
+    context_parts.extend(_format_negotiation_sequence(offer.negotiation_sequence))
+    context_parts.extend(_format_strategy_metadata(offer.strategy_metadata))
+
+    context_parts.append("Follow this offer ladder and strategy in your responses when relevant.")
 
     return "\n".join(context_parts)
 

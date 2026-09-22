@@ -152,6 +152,29 @@ def _make_offer(**overrides: Any) -> Offer:
                 "included": True,
             }
         ],
+        "package_options": [
+            {
+                "key": "tune_up",
+                "label": "Tune-up",
+                "ad_count": 1,
+                "price": 149.0,
+                "problems_covered": 1,
+                "cost_per_ad": 149.0,
+                "role": "anchor",
+                "recommended": True,
+            }
+        ],
+        "negotiation_sequence": [
+            {
+                "order": 1,
+                "stage": "anchor",
+                "pack_key": "tune_up",
+                "action": "lead_with_tune_up",
+                "talk_track": "Lead with the tune-up.",
+                "objective": "Book the service.",
+            }
+        ],
+        "strategy_metadata": {"default_anchor_pack_key": "tune_up"},
         "cta_text": "Book now",
         "cta_subtext": "No obligation",
         "is_public": False,
@@ -269,6 +292,7 @@ async def test_list_offers_returns_campaign_ready_summaries(
             "is_active": False,
             "headline": "Get your system ready for spring",
             "offer_price": 149.0,
+            "package_options": offer.package_options,
             "cta_text": "Book now",
             "valid_until": None,
         }
@@ -301,6 +325,9 @@ async def test_get_offer_details_returns_full_offer(
     assert result["data"]["id"] == str(offer.id)
     assert result["data"]["terms"] == "New customers only"
     assert result["data"]["value_stack_items"] == offer.value_stack_items
+    assert result["data"]["package_options"] == offer.package_options
+    assert result["data"]["negotiation_sequence"] == offer.negotiation_sequence
+    assert result["data"]["strategy_metadata"] == offer.strategy_metadata
     assert result["data"]["created_at"] == "2026-05-01T00:00:00+00:00"
     compiled = str(db.execute.await_args.args[0].compile(compile_kwargs={"literal_binds": True}))
     assert "workspace_id" in compiled

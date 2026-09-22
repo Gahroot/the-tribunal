@@ -6,6 +6,10 @@ from app.services.agents import (
     PRESTYJ_COLD_LEAD_RESPONDER_TEMPLATE_ID,
     build_prestyj_cold_lead_responder_template,
 )
+from app.services.offers.prestyj_batch_video_ads import (
+    PRESTYJ_BATCH_VIDEO_ADS_NEGOTIATION_SEQUENCE,
+    PRESTYJ_BATCH_VIDEO_ADS_PACKAGE_OPTIONS,
+)
 
 
 def test_prestyj_template_builds_agent_create_payload() -> None:
@@ -22,18 +26,35 @@ def test_prestyj_template_builds_agent_create_payload() -> None:
 
 
 def test_prestyj_template_prompt_covers_required_sales_workflow() -> None:
-    """Prompt should cover cold replies, qualification, starter offer, and handoff."""
+    """Prompt should cover autonomous ladder sales workflow and escalation limits."""
     template = build_prestyj_cold_lead_responder_template()
     prompt = template.system_prompt
 
     normalized_prompt = " ".join(prompt.split())
+    anchor_pack = next(
+        pack for pack in PRESTYJ_BATCH_VIDEO_ADS_PACKAGE_OPTIONS if pack["recommended"]
+    )
+    fallback_pack = next(
+        pack
+        for pack in PRESTYJ_BATCH_VIDEO_ADS_PACKAGE_OPTIONS
+        if pack["role"] == "fallback_sampler"
+    )
+    upsell_pack = next(
+        pack for pack in PRESTYJ_BATCH_VIDEO_ADS_PACKAGE_OPTIONS if pack["role"] == "upsell_scale"
+    )
     required_phrases = [
         "Batch Video Ads",
         "cold or neutral",
-        "$497 starter",
-        "qualifying questions",
-        "Objection handling",
-        "Warm/high-intent handoff triggers",
+        "Pack ladder",
+        f"{anchor_pack['label']}: {anchor_pack['ad_count']} ads",
+        f"anchor on the {anchor_pack['label']} sweet spot first",
+        f"fall back to the {fallback_pack['label']} sampler",
+        f"upsell toward the {upsell_pack['label']}",
+        "move them to Stripe checkout",
+        (
+            "Human escalation triggers — only escalate when the buyer wants add-ons "
+            "beyond the batch"
+        ),
         "Do not guarantee",
         "stop selling",
     ]
@@ -42,6 +63,12 @@ def test_prestyj_template_prompt_covers_required_sales_workflow() -> None:
         assert phrase in normalized_prompt
 
     assert prompt == PRESTYJ_COLD_LEAD_RESPONDER_PROMPT
+    assert [step["stage"] for step in PRESTYJ_BATCH_VIDEO_ADS_NEGOTIATION_SEQUENCE] == [
+        "anchor",
+        "fallback",
+        "upsell",
+        "close",
+    ]
 
 
 def test_prestyj_template_enables_expected_tools_and_settings() -> None:
@@ -57,6 +84,6 @@ def test_prestyj_template_enables_expected_tools_and_settings() -> None:
     assert template.tool_settings == {
         "calendar": ["check_availability", "book_appointment"],
         "crm": ["update_contact", "tag_contact", "create_opportunity"],
-        "handoff": ["warm_lead", "high_intent", "human_review"],
+        "handoff": ["add_on_request", "legal_compliance", "refund_question"],
         "messaging": ["sms", "chat"],
     }

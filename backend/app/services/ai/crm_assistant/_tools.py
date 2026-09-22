@@ -443,10 +443,62 @@ CRM_TOOLS: list[dict[str, Any]] = [
                             "required": ["name", "value"],
                         },
                     },
+                    "package_options": {
+                        "type": "array",
+                        "description": (
+                            "Structured package ladder; each item includes key, ad_count, "
+                            "price, problems_covered, cost_per_ad, and role."
+                        ),
+                        "items": {"type": "object"},
+                    },
+                    "negotiation_sequence": {
+                        "type": "array",
+                        "description": "Ordered anchor/fallback/upsell sales strategy steps.",
+                        "items": {"type": "object"},
+                    },
+                    "strategy_metadata": {
+                        "type": "object",
+                        "description": (
+                            "Additional autonomous-sales strategy metadata and escalation rules."
+                        ),
+                    },
                     "cta_text": {"type": "string"},
                     "cta_subtext": {"type": "string"},
                 },
                 "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_checkout_link",
+            "description": (
+                "Close a Prestyj Batch Video Ads deal: generate a secure Stripe Checkout link "
+                "for the chosen pack and text it to the buyer over iMessage. Use ONLY after the "
+                "buyer agrees to buy a specific batch pack. The price is fixed server-side by "
+                "pack_key \u2014 never invent an amount. Do NOT use this for add-ons beyond the "
+                "batch (running ads, installing AI agents, consulting); those must be escalated "
+                "to a human."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pack_key": {
+                        "type": "string",
+                        "description": (
+                            "Batch pack key: sampler_100 (100 ads / $497), "
+                            "growth_300 (300 ads / $1497), anchor_500 (500 ads / $2500), "
+                            "scale_1000 (1,000 ads / $3997)."
+                        ),
+                    },
+                    "contact_id": {"type": "integer", "description": "The buyer's contact id"},
+                    "currency": {
+                        "type": "string",
+                        "description": "Optional ISO 4217 currency code; defaults to USD",
+                    },
+                },
+                "required": ["pack_key", "contact_id"],
             },
         },
     },
@@ -497,6 +549,25 @@ CRM_TOOLS: list[dict[str, Any]] = [
                             },
                             "required": ["name", "value"],
                         },
+                    },
+                    "package_options": {
+                        "type": "array",
+                        "description": (
+                            "Structured package ladder; each item includes key, ad_count, "
+                            "price, problems_covered, cost_per_ad, and role."
+                        ),
+                        "items": {"type": "object"},
+                    },
+                    "negotiation_sequence": {
+                        "type": "array",
+                        "description": "Ordered anchor/fallback/upsell sales strategy steps.",
+                        "items": {"type": "object"},
+                    },
+                    "strategy_metadata": {
+                        "type": "object",
+                        "description": (
+                            "Additional autonomous-sales strategy metadata and escalation rules."
+                        ),
                     },
                     "cta_text": {"type": "string"},
                     "cta_subtext": {"type": "string"},

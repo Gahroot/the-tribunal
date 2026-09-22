@@ -1,15 +1,74 @@
 """Reusable agent templates for common sales workflows."""
 
+from typing import cast
+
 from app.schemas.agent import AgentCreate
+from app.services.offers.prestyj_batch_video_ads import (
+    PRESTYJ_BATCH_VIDEO_ADS_NEGOTIATION_SEQUENCE,
+    PRESTYJ_BATCH_VIDEO_ADS_PACK_TERMS,
+    PRESTYJ_BATCH_VIDEO_ADS_PACKAGE_OPTIONS,
+    PRESTYJ_BATCH_VIDEO_ADS_STRATEGY_METADATA,
+    NegotiationStep,
+    OfferPack,
+    format_price,
+)
 
 PRESTYJ_COLD_LEAD_RESPONDER_TEMPLATE_ID = "prestyj_cold_lead_responder"
 
-PRESTYJ_COLD_LEAD_RESPONDER_PROMPT = """You are the Prestyj cold-lead responder for Batch Video Ads.
 
-Your job is to reply to cold or neutral inbound SMS/chat responses from leads who were
-contacted about Batch Video Ads, determine whether they are a fit, answer common objections,
-offer the $497 starter package when appropriate, and hand off warm or high-intent leads to a
-human closer.
+def _format_pack_line(pack: OfferPack) -> str:
+    """Return prompt copy for one Batch Video Ads pack."""
+    recommended = " anchor/sweet spot" if pack.get("recommended") else ""
+    price = pack.get("price")
+    price_text = format_price(price) if isinstance(price, (int, float)) else "price TBD"
+    return (
+        f"- {pack['label']}: {pack['ad_count']} ads, {price_text}, "
+        f"covers {pack['problems_covered']} customer problem(s), "
+        f"role={pack['role']}{recommended}."
+    )
+
+
+def _format_strategy_step(step: NegotiationStep) -> str:
+    """Return prompt copy for one negotiation step."""
+    return f"{step['order']}. {step['stage']}: {step['talk_track']}"
+
+
+def _format_bullets(items: list[str]) -> str:
+    """Return bullet-list prompt copy."""
+    return "\n".join(f"- {item}" for item in items)
+
+
+_PACK_LINES = "\n".join(_format_pack_line(pack) for pack in PRESTYJ_BATCH_VIDEO_ADS_PACKAGE_OPTIONS)
+_STRATEGY_LINES = "\n".join(
+    _format_strategy_step(step) for step in PRESTYJ_BATCH_VIDEO_ADS_NEGOTIATION_SEQUENCE
+)
+_ESCALATION_LINES = _format_bullets(
+    cast(list[str], PRESTYJ_BATCH_VIDEO_ADS_STRATEGY_METADATA["human_escalation_triggers"])
+)
+_NOT_INCLUDED_LINES = _format_bullets(
+    cast(list[str], PRESTYJ_BATCH_VIDEO_ADS_STRATEGY_METADATA["not_included"])
+)
+_ANCHOR_LABEL = next(
+    pack["label"] for pack in PRESTYJ_BATCH_VIDEO_ADS_PACKAGE_OPTIONS if pack["recommended"]
+)
+_FALLBACK_LABEL = next(
+    pack["label"]
+    for pack in PRESTYJ_BATCH_VIDEO_ADS_PACKAGE_OPTIONS
+    if pack["role"] == "fallback_sampler"
+)
+_UPSELL_LABEL = next(
+    pack["label"]
+    for pack in PRESTYJ_BATCH_VIDEO_ADS_PACKAGE_OPTIONS
+    if pack["role"] == "upsell_scale"
+)
+
+PRESTYJ_COLD_LEAD_RESPONDER_PROMPT = f"""\
+You are the Prestyj autonomous sales agent for Batch Video Ads.
+
+Your job is to run the sales conversation over iMessage/SMS: discover fit, make first touch,
+answer objections, negotiate the Batch Video Ads pack, move the buyer to Stripe checkout, and
+report the chosen pack/payment outcome to the operator. You do not need a human closer for the
+standard Batch Video Ads packs.
 
 Core behavior:
 - Keep replies concise, human, calm, and helpful. Prefer 1-3 short sentences.
@@ -22,13 +81,19 @@ Core behavior:
 
 Offer context:
 - Product: Batch Video Ads by Prestyj.
-- Starter offer: $497 starter package.
-- Positioning: a low-friction way to test short-form video ads without committing to a larger
-  production or ad campaign.
+- Source ladder: {PRESTYJ_BATCH_VIDEO_ADS_PACK_TERMS}.
+- Positioning: one recording session becomes a high-volume vertical ad testing batch for Meta,
+  TikTok, and YouTube Shorts.
 - Best-fit customers: businesses that already have an offer, service, product, location,
   landing page, or sales process and need better ad creative to test.
 - Poor-fit customers: no clear offer yet, no budget, no ability to respond to leads/orders, or
   people only asking for free work.
+
+Pack ladder:
+{_PACK_LINES}
+
+Negotiation strategy — follow this order:
+{_STRATEGY_LINES}
 
 Conversation flow:
 1. Acknowledge the lead's reply directly.
@@ -37,51 +102,37 @@ Conversation flow:
    - Are they currently running ads or planning to start soon?
    - Do they already have a landing page, booking page, or way to capture buyers/leads?
    - What result do they want from the first batch?
-3. If they appear fit but cautious, answer the specific concern and suggest the $497 starter as
-   the first step.
-4. If they show buying intent, urgency, budget, ask for next steps, request a call, or say they
-   want to start, hand off to a human immediately.
-5. If they are not a fit, be honest and either ask one clarifying question or politely decline
-   to push.
+3. When they are a fit, anchor on the {_ANCHOR_LABEL} sweet spot first.
+4. If they resist budget or volume, fall back to the {_FALLBACK_LABEL} sampler instead of
+   giving up.
+5. If they want the broadest test or fastest path to winners, upsell toward the {_UPSELL_LABEL}.
+6. If they choose a pack, confirm the pack and move them to Stripe checkout; after payment,
+   report the sale and selected pack to the operator.
 
 Objection handling:
-- "How much?" Answer directly: "The starter is $497." Then explain it is meant to test a
-  focused batch before scaling.
-- "What is included?" Say it is a starter batch of video ad creative for testing, then ask what
-  offer they want to promote so a human can confirm scope.
-- "Will this work?" Do not guarantee. Say the goal is to create testable ad angles/creative so
-  they can learn what gets response.
-- "Too expensive" Validate, then explain the starter exists to avoid a bigger upfront
-  commitment. Ask whether they already have an offer worth testing.
+- "How much?" Answer directly from the pack ladder and anchor on the {_ANCHOR_LABEL} first.
+- "What is included?" Explain the selected pack's ad count and customer problems covered, then
+  confirm which business/offer they want to promote.
+- "Will this work?" Do not guarantee. Say the goal is to create enough testable ad angles and
+  creative volume to learn what gets response.
+- "Too expensive" Validate, then fall back to the {_FALLBACK_LABEL} sampler if the
+  {_ANCHOR_LABEL} feels too big.
 - "Send info" Give a brief summary and ask one qualifying question instead of dumping a long
   pitch.
 - "Not interested" Acknowledge politely. If it sounds final, stop. If it is vague, ask whether
   timing or fit is the issue.
 
-Warm/high-intent handoff triggers:
-- They ask to buy, start, pay, book, schedule, or speak to someone.
-- They confirm the $497 starter works.
-- They share a concrete business/offer and timeline.
-- They ask detailed scope, delivery, payment, or onboarding questions.
-- They mention urgent launch timing or active ad spend.
+Human escalation triggers — only escalate when the buyer wants add-ons beyond the batch:
+{_ESCALATION_LINES}
 
-When a handoff trigger appears:
-- Tell them you will get a Prestyj specialist to take over.
-- Capture any missing essentials: business/offer, goal, timeline, preferred contact method.
-- Use available CRM/handoff tools according to tool settings.
-- Do not continue negotiating once a human handoff is clearly needed.
-
-Starter package close examples:
-- "Makes sense. The easiest first step is the $497 starter so we can test a focused batch before
-  you commit to anything bigger. What offer would you want the videos to push?"
-- "Yep — for a first test, the starter is $497. If you already have the offer and landing page,
-  that is usually the cleanest way to see what angles get traction. What are you selling?"
+Not included in the batch offer:
+{_NOT_INCLUDED_LINES}
 
 Compliance:
 - Do not mention internal tool names to the lead.
 - Do not invent availability, delivery dates, guarantees, discounts, or custom terms.
 - Do not ask for sensitive payment details in chat.
-- Escalate unclear pricing, custom scope, legal/compliance, or refund questions to a human.
+- Escalate unclear legal/compliance/refund questions to a human.
 """
 
 
@@ -90,8 +141,9 @@ def build_prestyj_cold_lead_responder_template() -> AgentCreate:
     return AgentCreate(
         name="Prestyj Cold-Lead Responder",
         description=(
-            "Cold and neutral reply responder for Prestyj Batch Video Ads that qualifies fit, "
-            "handles objections, offers the $497 starter, and hands off warm leads."
+            f"Autonomous Prestyj Batch Video Ads seller that anchors the {_ANCHOR_LABEL}, "
+            "handles objections, falls back/upsells by the ladder, and escalates only add-on "
+            "requests."
         ),
         channel_mode="text",
         voice_provider="openai",
@@ -111,7 +163,7 @@ def build_prestyj_cold_lead_responder_template() -> AgentCreate:
         tool_settings={
             "calendar": ["check_availability", "book_appointment"],
             "crm": ["update_contact", "tag_contact", "create_opportunity"],
-            "handoff": ["warm_lead", "high_intent", "human_review"],
+            "handoff": ["add_on_request", "legal_compliance", "refund_question"],
             "messaging": ["sms", "chat"],
         },
     )

@@ -123,6 +123,82 @@ async def test_tool_loop_dispatches_and_records_actions() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("response_channel", "expected_provider_pref"),
+    [("sms", "sms"), ("imessage", "imessage")],
+)
+async def test_operator_reply_sent_over_inbound_channel(
+    response_channel: str, expected_provider_pref: str
+) -> None:
+    """Operators commanding over SMS or iMessage get the reply on the same channel."""
+    db = _make_db()
+    workspace_id = uuid.uuid4()
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(
+            completions=SimpleNamespace(
+                create=AsyncMock(return_value=_make_response(content="Done."))
+            )
+        )
+    )
+
+    sms_service = SimpleNamespace(send_message=AsyncMock(), close=AsyncMock())
+    get_provider = MagicMock(return_value=sms_service)
+
+    with patch.object(
+        processor, "create_openai_client", return_value=fake_client
+    ), patch.object(
+        processor, "maybe_summarize", AsyncMock(side_effect=lambda _c, m: m)
+    ), patch(
+        "app.services.telephony.text_provider.get_text_message_provider", get_provider
+    ):
+        result = await processor.process_assistant_message(
+            db=db,
+            workspace_id=workspace_id,
+            user_id=7,
+            message="how'd we do today?",
+            response_channel=response_channel,
+            sms_from_number="+15550001111",
+            sms_to_number="+15550002222",
+        )
+
+    assert result["response"] == "Done."
+    get_provider.assert_called_once_with(expected_provider_pref)
+    sms_service.send_message.assert_awaited_once()
+    send_kwargs = sms_service.send_message.await_args.kwargs
+    assert send_kwargs["to_number"] == "+15550002222"
+    assert send_kwargs["from_number"] == "+15550001111"
+    assert send_kwargs["body"] == "Done."
+
+
+@pytest.mark.asyncio
+async def test_in_app_channel_does_not_send_text_reply() -> None:
+    """The in-app dashboard channel must not push an outbound text."""
+    db = _make_db()
+    workspace_id = uuid.uuid4()
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(
+            completions=SimpleNamespace(
+                create=AsyncMock(return_value=_make_response(content="Done."))
+            )
+        )
+    )
+    get_provider = MagicMock()
+
+    with patch.object(
+        processor, "create_openai_client", return_value=fake_client
+    ), patch.object(
+        processor, "maybe_summarize", AsyncMock(side_effect=lambda _c, m: m)
+    ), patch(
+        "app.services.telephony.text_provider.get_text_message_provider", get_provider
+    ):
+        await processor.process_assistant_message(
+            db=db, workspace_id=workspace_id, user_id=7, message="status",
+        )
+
+    get_provider.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_prompt_cache_key_is_stable_and_workspace_scoped() -> None:
     """Same (workspace, user) → same cache key. Different workspace → different key."""
     ws_a = uuid.uuid4()

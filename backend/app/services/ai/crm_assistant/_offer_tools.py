@@ -41,6 +41,7 @@ class OfferAssistantTools:
             "is_active": offer.is_active,
             "headline": offer.headline,
             "offer_price": offer.offer_price,
+            "package_options": offer.package_options or [],
             "cta_text": offer.cta_text,
             "valid_until": offer.valid_until.isoformat() if offer.valid_until else None,
         }
@@ -61,6 +62,9 @@ class OfferAssistantTools:
             "urgency_text": offer.urgency_text,
             "scarcity_count": offer.scarcity_count,
             "value_stack_items": offer.value_stack_items or [],
+            "package_options": offer.package_options or [],
+            "negotiation_sequence": offer.negotiation_sequence or [],
+            "strategy_metadata": offer.strategy_metadata or {},
             "cta_subtext": offer.cta_subtext,
             "is_public": offer.is_public,
             "public_slug": offer.public_slug,

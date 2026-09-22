@@ -16,6 +16,7 @@ from app.services.ai.crm_assistant._conversation_tools import ConversationAssist
 from app.services.ai.crm_assistant._offer_tools import OfferAssistantTools
 from app.services.ai.crm_assistant._opportunity_tools import OpportunityAssistantTools
 from app.services.ai.crm_assistant._outbound_tools import OutboundAssistantTools
+from app.services.ai.crm_assistant._payment_tools import PaymentAssistantTools
 from app.services.ai.crm_assistant._tool_context import CRMToolContext, ToolArguments, ToolHandler
 from app.services.ai.crm_assistant._tool_metadata import CRMToolMetadata, build_tool_metadata
 from app.services.approval.approval_gate_service import approval_gate_service
@@ -44,6 +45,7 @@ class CRMToolExecutor:
             OpportunityAssistantTools(self.context),
             OfferAssistantTools(self.context),
             OutboundAssistantTools(self.context),
+            PaymentAssistantTools(self.context),
         )
         for module in modules:
             handlers.update(module.handlers())
@@ -84,6 +86,8 @@ class CRMToolExecutor:
         )
         if decision == "blocked":
             return {"success": False, "error": "Action blocked by approval policy"}
+        if decision == "auto":
+            return await metadata.handler(payload)
         if decision != "pending" or approval_result is None:
             return {"success": False, "error": "Approval gate did not create a pending action"}
         return {

@@ -7,8 +7,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.models.offer import Offer
-from scripts.demo.seed_prestyj_batch_video_ads_offer import (
+from app.services.offers.prestyj_batch_video_ads import (
+    PRESTYJ_BATCH_VIDEO_ADS_NEGOTIATION_SEQUENCE,
+    PRESTYJ_BATCH_VIDEO_ADS_PACKAGE_OPTIONS,
     PRESTYJ_BATCH_VIDEO_ADS_PUBLIC_SLUG,
+    PRESTYJ_BATCH_VIDEO_ADS_STRATEGY_METADATA,
+)
+from scripts.demo.seed_prestyj_batch_video_ads_offer import (
     PRESTYJ_BATCH_VIDEO_ADS_TEMPLATE,
     upsert_prestyj_batch_video_ads_offer,
 )
@@ -51,6 +56,9 @@ async def test_upsert_creates_prestyj_batch_video_ads_offer() -> None:
     assert "100 ads for $497" in offer.terms
     assert "1-2 days" in offer.terms
     assert offer.value_stack_items == PRESTYJ_BATCH_VIDEO_ADS_TEMPLATE.value_stack_items
+    assert offer.package_options == PRESTYJ_BATCH_VIDEO_ADS_PACKAGE_OPTIONS
+    assert offer.negotiation_sequence == PRESTYJ_BATCH_VIDEO_ADS_NEGOTIATION_SEQUENCE
+    assert offer.strategy_metadata == PRESTYJ_BATCH_VIDEO_ADS_STRATEGY_METADATA
 
 
 @pytest.mark.asyncio
@@ -81,14 +89,22 @@ async def test_upsert_updates_existing_offer_without_adding_duplicate() -> None:
     assert offer.headline == "Get 100-1,000 Paid Video Ads From One Recording Session"
     assert offer.value_stack_items is not None
     tier_values = {item["name"]: item["value"] for item in offer.value_stack_items}
+    expected_tier_values = {
+        f"{pack['ad_count']:,} paid video ads": pack["price"]
+        for pack in PRESTYJ_BATCH_VIDEO_ADS_PACKAGE_OPTIONS
+    }
     assert tier_values == {
-        "100 paid video ads": 497.0,
-        "300 paid video ads": 1497.0,
-        "500 paid video ads": 2497.0,
-        "1,000 paid video ads": 3997.0,
+        **expected_tier_values,
         "One recording session": 0.0,
         "1-2 day delivery": 0.0,
     }
+    assert offer.package_options == PRESTYJ_BATCH_VIDEO_ADS_PACKAGE_OPTIONS
+    assert [step["stage"] for step in offer.negotiation_sequence] == [
+        "anchor",
+        "fallback",
+        "upsell",
+        "close",
+    ]
 
 
 def test_template_contains_required_batch_video_ads_terms() -> None:
@@ -105,5 +121,7 @@ def test_template_contains_required_batch_video_ads_terms() -> None:
     assert "1-2 day" in searchable_text.lower()
     assert "100 ads for $497" in searchable_text
     assert "300 ads for $1,497" in searchable_text
-    assert "500 ads for $2,497" in searchable_text
+    assert "500 ads for $2,500" in searchable_text
     assert "1,000 ads for $3,997" in searchable_text
+    assert template_values["package_options"] == PRESTYJ_BATCH_VIDEO_ADS_PACKAGE_OPTIONS
+    assert template_values["negotiation_sequence"] == PRESTYJ_BATCH_VIDEO_ADS_NEGOTIATION_SEQUENCE

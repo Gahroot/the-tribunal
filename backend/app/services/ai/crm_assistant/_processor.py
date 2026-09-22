@@ -693,14 +693,15 @@ async def process_assistant_message(  # noqa: PLR0915
 
         await db.commit()
 
-        if response_channel == "sms" and sms_from_number and sms_to_number:
-            await _send_sms_response(
-                sms_from_number,
-                sms_to_number,
-                final_text,
-                db,
-                workspace_id,
-                log,
+        if response_channel in {"sms", "imessage"} and sms_from_number and sms_to_number:
+            await _send_operator_reply(
+                from_number=sms_from_number,
+                to_number=sms_to_number,
+                body=final_text,
+                db=db,
+                workspace_id=workspace_id,
+                response_channel=response_channel,
+                log=log,
             )
 
         return {
@@ -727,18 +728,27 @@ async def process_assistant_message(  # noqa: PLR0915
         }
 
 
-async def _send_sms_response(
+async def _send_operator_reply(
+    *,
     from_number: str,
     to_number: str,
     body: str,
     db: AsyncSession,
     workspace_id: uuid.UUID,
+    response_channel: str,
     log: Any,
 ) -> None:
-    """Send the assistant's final reply through the configured text provider."""
+    """Send the assistant's final reply back over the operator's inbound channel.
+
+    Operators command the CRM over SMS or iMessage. We pick the matching
+    outbound provider so the reply lands in the same thread the operator
+    texted from. If iMessage relay isn't configured, the provider factory
+    safely falls back to Telnyx SMS.
+    """
     from app.services.telephony.text_provider import get_text_message_provider
 
-    sms_service = get_text_message_provider()
+    provider_preference = "imessage" if response_channel == "imessage" else "sms"
+    sms_service = get_text_message_provider(provider_preference)
     try:
         await sms_service.send_message(
             to_number=to_number,
@@ -747,8 +757,8 @@ async def _send_sms_response(
             db=db,
             workspace_id=workspace_id,
         )
-        log.info("assistant_sms_sent", to=to_number)
+        log.info("assistant_reply_sent", to=to_number, channel=response_channel)
     except Exception:
-        log.exception("assistant_sms_send_failed")
+        log.exception("assistant_reply_send_failed", channel=response_channel)
     finally:
         await sms_service.close()

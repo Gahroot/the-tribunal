@@ -250,4 +250,22 @@ _TOOL_POLICY_OVERRIDES: dict[str, CRMToolMetadata] = {
         handler=_missing_handler,
         risk_level=ToolRiskLevel.MEDIUM,
     ),
+    # Closing a deal + collecting money. Routed through the approval gate so the
+    # workspace autonomy mandate auto-approves allowed batch packs and escalates
+    # anything else (add-ons beyond the batch) to a human. No `confirmed` param
+    # is exposed so the model cannot bypass the mandate; the human-approved path
+    # re-runs via the approved executor with confirmation injected.
+    "create_checkout_link": CRMToolMetadata(
+        name="create_checkout_link",
+        handler=_missing_handler,
+        risk_level=ToolRiskLevel.HIGH,
+        approval=ApprovalPolicy(
+            required=True,
+            requires_confirmation=False,
+            urgency="high",
+            pending_message=("Approval required before I can send this Stripe checkout link."),
+        ),
+        approved_executor=execute_approved_crm_assistant_tool,
+        description_template="Send Stripe checkout link for {pack_key} to contact {contact_id}",
+    ),
 }
