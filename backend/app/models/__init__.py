@@ -61,6 +61,7 @@ from app.models.message_test import (
     TestContactStatus,
     TestVariant,
 )
+from app.models.message_trace import MessageTrace
 from app.models.offer import Offer
 from app.models.offer_lead_magnet import OfferLeadMagnet
 from app.models.opportunity import Opportunity, OpportunityActivity, OpportunityLineItem
@@ -178,6 +179,7 @@ __all__ = [
     "OpportunityLineItem",
     "OpportunityActivity",
     "MessageTemplate",
+    "MessageTrace",
     "MessageTest",
     "MessageTestStatus",
     "TestVariant",
