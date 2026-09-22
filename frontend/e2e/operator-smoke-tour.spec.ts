@@ -117,7 +117,7 @@ test.describe("Operator surfaces smoke tour", () => {
     // --- APPROVALS (/pending-actions) ---------------------------------------
     await page.goto("/pending-actions");
     await expect(
-      page.getByRole("heading", { name: "Pending Actions", level: 1 }),
+      page.getByRole("heading", { name: "Approvals", level: 1 }),
     ).toBeVisible({ timeout: 15_000 });
     await captureAndAssertNoError(page, testInfo, "approvals");
 

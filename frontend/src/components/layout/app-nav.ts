@@ -35,9 +35,9 @@ import {
  * Central navigation metadata for the app shell (sidebar + command palette).
  *
  * IA: ~9 primary destinations — Today, Inbox, Approvals, Campaigns, Pipeline,
- * Contacts, AI Agents, Insights (Dashboard/Scorecard/Deal Coach), Settings —
- * plus one Find Leads entry. Every other route stays reachable through the
- * collapsed "More" section or the command palette.
+ * Contacts, AI Agents, Insights (Dashboard/Scorecard/Deal Coach/AI
+ * Suggestions), Settings — plus one Find Leads entry. Every other route stays
+ * reachable through the collapsed "More" section or the command palette.
  *
  * Flags control where each item renders: `sidebar` shows it in the app nav,
  * `commandPalette` keeps it searchable via ⌘K. Badge counts (nudges,
@@ -168,7 +168,7 @@ export const leadDiscoveryNavItems: AppNavItem[] = [
   },
 ];
 
-/** Reporting and coaching surfaces, grouped under one "Insights" label. */
+/** Reporting, coaching, and AI-recommendation surfaces, grouped under one "Insights" label. */
 export const insightsNavItems: AppNavItem[] = [
   {
     title: "Dashboard",
@@ -188,6 +188,16 @@ export const insightsNavItems: AppNavItem[] = [
     title: "Deal Coach",
     url: "/deal-coach",
     icon: Gauge,
+    sidebar: true,
+    commandPalette: true,
+  },
+  {
+    // One home for the AI feed: the mission queue never links /suggestions
+    // (the backend today-queue has no suggestion kind), so it lives with the
+    // other reporting surfaces here instead of folding into Today.
+    title: "AI Suggestions",
+    url: "/suggestions",
+    icon: Lightbulb,
     sidebar: true,
     commandPalette: true,
   },
@@ -220,14 +230,7 @@ export const moreNavItems: AppNavItem[] = [
     commandPalette: true,
   },
   {
-    title: "AI Suggestions",
-    url: "/suggestions",
-    icon: Lightbulb,
-    sidebar: true,
-    commandPalette: true,
-  },
-  {
-    title: "Practice / Roleplay",
+    title: "Practice Arena",
     url: "/agents/practice",
     icon: Drama,
     sidebar: true,
@@ -348,7 +351,7 @@ export const breadcrumbLabels: Record<string, string> = {
   dashboard: "Dashboard",
   assistant: "Assistant",
   agents: "AI Agents",
-  practice: "Practice / Roleplay",
+  practice: "Practice Arena",
   knowledge: "Knowledge Base",
   segments: "Segments",
   suggestions: "AI Suggestions",
@@ -364,7 +367,7 @@ export const breadcrumbLabels: Record<string, string> = {
   "find-leads": "Find Leads",
   "find-leads-ai": "Find Leads AI",
   "ad-library": "Ad Library",
-  "pending-actions": "Pending Actions",
+  "pending-actions": "Approvals",
   opportunities: "Opportunities",
   new: "New",
   create: "Create",

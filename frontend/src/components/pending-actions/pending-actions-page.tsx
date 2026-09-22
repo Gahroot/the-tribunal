@@ -115,7 +115,7 @@ export function PendingActionsPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Pending Actions</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Approvals</h1>
             <p className="text-sm text-muted-foreground">
               Review and approve AI agent actions before they execute. Unattended actions are
               auto-rejected (never sent) when they expire.
