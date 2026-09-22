@@ -26,7 +26,7 @@ db_tables:
 alembic_migrations: shared linear chain — global_opt_outs (20260519_outbound_compliance_controls, extended by f1a2b3c4d5e6_add_sms_compliance_rate_limiting).
 workers: []
 extraction_effort: low
-extraction_notes: Compliance depends only on core (Redis for rate-limit counters, the opt_out model, rate_limit_helpers) and imports no other block — it is a near-clean leaf. The hazard is inbound, not outbound: voice and messaging gate every SMS/voice send on OptOutManager and OutboundComplianceService, so removing or weakening it silently enables unlawful/over-rate sending. Extract it first, before the blocks that depend on it.
+extraction_notes: Compliance depends only on core (Redis for rate-limit counters, the opt_out model, rate_limit_helpers) and imports no other block — it is a near-clean leaf. The hazard is inbound, not outbound — voice and messaging gate every SMS/voice send on OptOutManager and OutboundComplianceService, so removing or weakening it silently enables unlawful/over-rate sending. Extract it first, before the blocks that depend on it.
 ---
 
 ## Overview

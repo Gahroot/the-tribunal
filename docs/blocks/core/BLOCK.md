@@ -90,7 +90,7 @@ db_tables:
 alembic_migrations: shared linear chain — workspaces + workspace_memberships + workspace_integrations + users (e6c0ca7dd25e_initial_schema), refresh_tokens (rt01a1b2c3d4_add_refresh_token_table), api_keys (b3c4d5e6f7a8_add_api_keys_table). The entire chain lives in backend/alembic/versions/ and is owned operationally by core.
 workers: []
 extraction_effort: low
-extraction_notes: Core depends on nothing and is the mandatory floor of every closure — it is always pulled, never severed. The hazard is the reverse: forgetting to pull it. Every other block imports app.api.deps, app.db.scope/pagination/session, app.core.config.settings, app.core.encryption, app.services.idempotency, and the app.workers base/registry, so core must be copied first and wholesale.
+extraction_notes: Core depends on nothing and is the mandatory floor of every closure — it is always pulled, never severed. The hazard is the reverse — forgetting to pull it. Every other block imports app.api.deps, app.db.scope/pagination/session, app.core.config.settings, app.core.encryption, app.services.idempotency, and the app.workers base/registry, so core must be copied first and wholesale.
 ---
 
 ## Overview

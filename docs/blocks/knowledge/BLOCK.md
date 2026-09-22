@@ -26,7 +26,7 @@ db_tables:
 alembic_migrations: shared linear chain — knowledge_documents (79a0808ae761_add_human_profile_knowledge_docs_), knowledge_chunks (b546d7e401fe_rag_chunks_pgvector — requires the pgvector extension and creates the vector(1536) + generated tsvector columns).
 workers: []
 extraction_effort: medium
-extraction_notes: Knowledge depends on agent-brain for embeddings at the model layer — knowledge_chunk.py imports EMBEDDING_DIM and ingestion/retrieval import Embedder/embed_texts — so the embedding model/dimension is a hard coupling: the stored vector(1536) column must match agent-brain's embedder. Also requires Postgres with the pgvector extension; a plain Postgres target will fail the chunks migration.
+extraction_notes: Knowledge depends on agent-brain for embeddings at the model layer — knowledge_chunk.py imports EMBEDDING_DIM and ingestion/retrieval import Embedder/embed_texts — so the embedding model/dimension is a hard coupling — the stored vector(1536) column must match agent-brain's embedder. Also requires Postgres with the pgvector extension; a plain Postgres target will fail the chunks migration.
 ---
 
 ## Overview

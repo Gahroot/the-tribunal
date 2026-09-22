@@ -28,7 +28,7 @@ alembic_migrations: shared linear chain — automations (add_automations_001_add
 workers:
   - backend/app/workers/automation_worker.py
 extraction_effort: medium
-extraction_notes: The event-emit half (events.py::emit_automation_event) is a clean, core-adjacent seam many blocks already use to stay decoupled — that part travels easily. The hazard is the draining half: automation_worker executes actions by importing voice (telnyx_voice, text_provider), contacts (TagService), and hitl (approval_gate_service), so the worker, not the bus, carries the entanglement.
+extraction_notes: The event-emit half (events.py::emit_automation_event) is a clean, core-adjacent seam many blocks already use to stay decoupled — that part travels easily. The hazard is the draining half — automation_worker executes actions by importing voice (telnyx_voice, text_provider), contacts (TagService), and hitl (approval_gate_service), so the worker, not the bus, carries the entanglement.
 ---
 
 ## Overview

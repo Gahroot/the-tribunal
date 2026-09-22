@@ -41,7 +41,7 @@ db_tables:
 alembic_migrations: shared linear chain — contacts + tags (e6c0ca7dd25e_initial_schema), segments (z8a9b0c1d2e3_add_segments); contact columns extended across later revisions.
 workers: []
 extraction_effort: medium
-extraction_notes: Contacts is a near-leaf domain but has two sideways imports: the contacts router calls agent-brain's qualification (analyze_and_qualify_contact / batch_analyze_contacts) and contact_service pulls voice's text_provider to resolve the SMS sender. Conversely many blocks import contacts' apply_contact_filters and TagService and the Contact model directly, so it is widely depended-upon — the entanglement is mostly inbound.
+extraction_notes: Contacts is a near-leaf domain but has two sideways imports — the contacts router calls agent-brain's qualification (analyze_and_qualify_contact / batch_analyze_contacts) and contact_service pulls voice's text_provider to resolve the SMS sender. Conversely many blocks import contacts' apply_contact_filters and TagService and the Contact model directly, so it is widely depended-upon — the entanglement is mostly inbound.
 ---
 
 ## Overview
