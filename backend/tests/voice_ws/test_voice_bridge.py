@@ -421,7 +421,7 @@ class TestReceiveFromTelnyx:
         )
 
         assert holder["stream_id"] == "s1"
-        session.trigger_initial_response.assert_awaited_once_with()
+        session.trigger_initial_response.assert_awaited_once_with(is_outbound=False)
         assert greeting.is_set()
 
     async def test_start_event_skips_greeting_outbound_openai(self) -> None:
@@ -446,8 +446,9 @@ class TestReceiveFromTelnyx:
             ws, session, log, greeting, holder, is_outbound=True
         )
 
-        # Outbound on OpenAI: greeting is NOT triggered.
-        session.trigger_initial_response.assert_not_called()
+        # Outbound on OpenAI: the bridge forwards the flag; the session switches to
+        # the pattern-interrupt opener instead of the configured greeting.
+        session.trigger_initial_response.assert_awaited_once_with(is_outbound=True)
         assert greeting.is_set()
 
     async def test_start_event_triggers_greeting_outbound_grok(self) -> None:
@@ -787,13 +788,14 @@ class TestVoiceStreamBridgeBody:
             _patch_bridge_db(),
             patch.object(
                 vb,
-                "create_voice_session",
+                "create_workspace_voice_session",
                 return_value=(None, "no api key"),
             ),
         ):
             await vb._voice_stream_bridge_body(
                 websocket=ws,
                 call_id="c1",
+                workspace_id=str(uuid.uuid4()),
                 is_outbound=False,
                 connection_start=0.0,
                 log=log,
@@ -817,11 +819,12 @@ class TestVoiceStreamBridgeBody:
 
         with (
             _patch_bridge_db(),
-            patch.object(vb, "create_voice_session", return_value=(session, None)),
+            patch.object(vb, "create_workspace_voice_session", return_value=(session, None)),
         ):
             await vb._voice_stream_bridge_body(
                 websocket=ws,
                 call_id="c1",
+                workspace_id=str(uuid.uuid4()),
                 is_outbound=False,
                 connection_start=0.0,
                 log=log,
@@ -845,11 +848,12 @@ class TestVoiceStreamBridgeBody:
 
         with (
             _patch_bridge_db(),
-            patch.object(vb, "create_voice_session", return_value=(session, None)),
+            patch.object(vb, "create_workspace_voice_session", return_value=(session, None)),
         ):
             await vb._voice_stream_bridge_body(
                 websocket=ws,
                 call_id="c1",
+                workspace_id=str(uuid.uuid4()),
                 is_outbound=False,
                 connection_start=0.0,
                 log=log,
@@ -892,11 +896,12 @@ class TestVoiceStreamBridgeBody:
             patch.object(vb, "_stamp_prompt_version_on_message", new=AsyncMock()),
             patch.object(vb, "_save_call_duration", new=save_duration),
             patch.object(vb, "_save_call_transcript_wrapper", new=save_transcript),
-            patch.object(vb, "create_voice_session", return_value=(session, None)),
+            patch.object(vb, "create_workspace_voice_session", return_value=(session, None)),
         ):
             await vb._voice_stream_bridge_body(
                 websocket=ws,
                 call_id="c1",
+                workspace_id=str(uuid.uuid4()),
                 is_outbound=False,
                 connection_start=0.0,
                 log=log,
@@ -926,11 +931,12 @@ class TestVoiceStreamBridgeBody:
             patch.object(vb, "_stamp_prompt_version_on_message", new=AsyncMock()),
             patch.object(vb, "_save_call_duration", new=save_duration),
             patch.object(vb, "_save_call_transcript_wrapper", new=AsyncMock()),
-            patch.object(vb, "create_voice_session", return_value=(session, None)),
+            patch.object(vb, "create_workspace_voice_session", return_value=(session, None)),
         ):
             await vb._voice_stream_bridge_body(
                 websocket=ws,
                 call_id="c1",
+                workspace_id=str(uuid.uuid4()),
                 is_outbound=False,
                 connection_start=0.0,
                 log=log,
@@ -955,11 +961,12 @@ class TestVoiceStreamBridgeBody:
             patch.object(vb, "_stamp_prompt_version_on_message", new=stamp),
             patch.object(vb, "_save_call_duration", new=AsyncMock()),
             patch.object(vb, "_save_call_transcript_wrapper", new=AsyncMock()),
-            patch.object(vb, "create_voice_session", return_value=(session, None)),
+            patch.object(vb, "create_workspace_voice_session", return_value=(session, None)),
         ):
             await vb._voice_stream_bridge_body(
                 websocket=ws,
                 call_id="c1",
+                workspace_id=str(uuid.uuid4()),
                 is_outbound=False,
                 connection_start=0.0,
                 log=log,

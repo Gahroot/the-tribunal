@@ -96,7 +96,7 @@ async def test_upsert_updates_existing_offer_without_adding_duplicate() -> None:
     assert tier_values == {
         **expected_tier_values,
         "One recording session": 0.0,
-        "1-2 day delivery": 0.0,
+        "1-2 business day delivery": 0.0,
     }
     assert offer.package_options == PRESTYJ_BATCH_VIDEO_ADS_PACKAGE_OPTIONS
     assert [step["stage"] for step in offer.negotiation_sequence] == [
