@@ -147,14 +147,42 @@ class TestReportScorer:
 
 
 class TestDefaultPersonas:
-    def test_three_builtins_with_required_fields(self) -> None:
+    def test_builtins_with_required_fields(self) -> None:
         slugs = {p.slug for p in DEFAULT_PERSONAS}
         assert {
             "skeptical-homeowner",
             "price-shopping-patient",
             "budget-conscious-solar-lead",
+            "prestyj-ad-fatigued-ecom-operator",
+            "prestyj-agency-burned-founder",
+            "prestyj-in-house-editor-diyer",
+            "prestyj-cfo-cost-per-ad-skeptic",
+            "prestyj-polished-production-loyalist",
+            "prestyj-ugc-creator-comparer",
+            "prestyj-run-my-ads-escalation-buyer",
         } <= slugs
         for persona in DEFAULT_PERSONAS:
             assert persona.persona_prompt
             assert persona.opening_message
             assert persona.objections  # each ships with concrete objections
+
+    def test_prestyj_panel_covers_pricing_objections_and_escalation(self) -> None:
+        prestyj_personas = [p for p in DEFAULT_PERSONAS if p.slug.startswith("prestyj-")]
+        assert len(prestyj_personas) == 7
+        assert {p.difficulty.value for p in prestyj_personas} == {"easy", "medium", "hard"}
+
+        combined_objections = "\n".join(
+            objection.lower()
+            for persona in prestyj_personas
+            for objection in persona.objections
+        )
+        assert "ugc" in combined_objections
+        assert "polished" in combined_objections
+        assert "cost per winning ad" in combined_objections
+        assert "media" in combined_objections
+
+        escalation_persona = next(
+            p for p in prestyj_personas if p.slug == "prestyj-run-my-ads-escalation-buyer"
+        )
+        assert "human handoff" in escalation_persona.persona_prompt
+        assert "media buying is not included" in escalation_persona.goal

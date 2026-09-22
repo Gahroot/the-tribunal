@@ -5,7 +5,8 @@ configured AI agent (or a human rep) against synthetic prospect personas
 *before* the agent talks to real leads. This is intentionally distinct from the
 internal IVR-menu navigation harness in ``app.services.ai.testing`` — here an
 LLM role-plays a believable prospect (skeptical homeowner, price-shopping
-patient, budget-conscious solar lead) and the rehearsal is scored.
+patient, budget-conscious solar lead, or prestyj batch-video buyer) and the
+rehearsal is scored.
 
 Two tables:
 

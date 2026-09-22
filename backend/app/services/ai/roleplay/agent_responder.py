@@ -80,6 +80,7 @@ async def generate_agent_reply(
     system_prompt: str,
     transcript: list[dict[str, Any]],
     temperature: float = 0.7,
+    seed: int | None = None,
 ) -> str:
     """Generate the agent's next message for a rehearsal.
 
@@ -88,19 +89,23 @@ async def generate_agent_reply(
         system_prompt: Prompt from :func:`build_agent_system_prompt`.
         transcript: Conversation so far (prospect + agent turns).
         temperature: Sampling temperature (defaults to the agent's setting).
+        seed: Optional OpenAI sampling seed for best-effort reproducibility.
 
     Returns:
         The agent's next utterance, or a short fallback on failure.
     """
     messages = _build_messages(system_prompt, transcript)
+    create_kwargs: dict[str, Any] = {
+        "model": _MODEL,
+        "messages": messages,
+        "temperature": temperature,
+        "max_completion_tokens": _MAX_TOKENS,
+    }
+    if seed is not None:
+        create_kwargs["seed"] = seed
     try:
         response = await asyncio.wait_for(
-            client.chat.completions.create(
-                model=_MODEL,
-                messages=messages,  # type: ignore[arg-type]
-                temperature=temperature,
-                max_completion_tokens=_MAX_TOKENS,
-            ),
+            client.chat.completions.create(**create_kwargs),
             timeout=_TIMEOUT_SECONDS,
         )
         text = (response.choices[0].message.content or "").strip()

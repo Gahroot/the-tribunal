@@ -48,6 +48,7 @@ async def generate_prospect_reply(
     persona_prompt: str,
     transcript: list[dict[str, Any]],
     temperature: float = 0.8,
+    seed: int | None = None,
 ) -> str:
     """Generate the synthetic prospect's next message.
 
@@ -56,20 +57,24 @@ async def generate_prospect_reply(
         persona_prompt: The persona's in-character system prompt.
         transcript: Conversation so far (prospect + agent turns).
         temperature: Sampling temperature; prospects are a bit unpredictable.
+        seed: Optional OpenAI sampling seed for best-effort reproducibility.
 
     Returns:
         The prospect's next utterance. Falls back to a short neutral line on
         failure so a single transient error doesn't abort the rehearsal.
     """
     messages = _build_messages(persona_prompt, transcript)
+    create_kwargs: dict[str, Any] = {
+        "model": _MODEL,
+        "messages": messages,
+        "temperature": temperature,
+        "max_completion_tokens": _MAX_TOKENS,
+    }
+    if seed is not None:
+        create_kwargs["seed"] = seed
     try:
         response = await asyncio.wait_for(
-            client.chat.completions.create(
-                model=_MODEL,
-                messages=messages,  # type: ignore[arg-type]
-                temperature=temperature,
-                max_completion_tokens=_MAX_TOKENS,
-            ),
+            client.chat.completions.create(**create_kwargs),
             timeout=_TIMEOUT_SECONDS,
         )
         text = (response.choices[0].message.content or "").strip()
