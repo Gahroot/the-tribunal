@@ -211,6 +211,15 @@ class TestVoicePromptBuilder:
         assert "one relevant question" in prompt
         assert "hang up" not in prompt.lower()
 
+    def test_legacy_opener_unchanged_when_playbook_off(
+        self, mock_agent: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("OUTBOUND_CONVERSATION_PLAYBOOK", raising=False)
+        prompt = VoicePromptBuilder(agent=mock_agent).get_outbound_opener_prompt()
+        assert "pattern interrupt" in prompt.lower()
+        assert "sales call" in prompt.lower()
+        assert "hang up" in prompt.lower()
+
     def test_outbound_guidance_only_on_outbound_calls(
         self, mock_agent: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
