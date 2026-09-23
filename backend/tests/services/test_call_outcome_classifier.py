@@ -75,6 +75,17 @@ class TestClassifyNoAnswerCauses:
         assert result.error_message == "Call ended too quickly for conversation"
 
 
+@pytest.mark.parametrize(
+    "cause", ["UNALLOCATED_NUMBER", "INVALID_NUMBER_FORMAT", "NO_ROUTE_DESTINATION"]
+)
+def test_bad_numbers_do_not_enter_retry_ladder(
+    classifier: CallOutcomeClassifier, cause: str
+) -> None:
+    result = classifier.classify(hangup_cause=cause, duration_secs=0, hangup_source="caller")
+    assert result.outcome == "bad_number"
+    assert result.message_status == "failed"
+
+
 class TestClassifyBusyCauses:
     """BUSY_CAUSES → busy outcome."""
 

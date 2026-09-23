@@ -7,10 +7,11 @@ This background worker:
 4. Tracks call outcomes via webhook handlers
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import QueryableAttribute, selectinload
 
@@ -20,6 +21,13 @@ from app.models.campaign import (
     CampaignContact,
     CampaignContactStatus,
     CampaignType,
+)
+from app.services.campaigns.cadence import (
+    MAX_CALL_ATTEMPTS,
+    approved_best_hour,
+    contact_best_hour,
+    next_local_slot,
+    route_call_outcome,
 )
 from app.services.idempotency import derive_outbound_key
 from app.services.telephony.telnyx_voice import TelnyxVoiceService
@@ -53,6 +61,15 @@ class VoiceCampaignWorker(BaseCampaignWorker):
     def eager_loads(self) -> list[QueryableAttribute[Any]]:
         return [Campaign.voice_agent, Campaign.sms_fallback_agent]
 
+    def _is_within_sending_hours(self, campaign: Campaign) -> bool:
+        """Never dial outside the local daytime window, even on a late tick."""
+        now = datetime.now(ZoneInfo(campaign.timezone or "UTC"))
+        if campaign.sending_days and now.weekday() not in campaign.sending_days:
+            return False
+        start = campaign.sending_hours_start or time(9)
+        end = campaign.sending_hours_end or time(17)
+        return start <= now.time() <= end
+
     def _get_remaining_filter(self, campaign: Campaign) -> Any:
         return and_(
             CampaignContact.campaign_id == campaign.id,
@@ -60,6 +77,7 @@ class VoiceCampaignWorker(BaseCampaignWorker):
                 [
                     CampaignContactStatus.PENDING,
                     CampaignContactStatus.CALLING,
+                    CampaignContactStatus.SMS_FALLBACK_SENT,
                 ]
             ),
         )
@@ -73,6 +91,7 @@ class VoiceCampaignWorker(BaseCampaignWorker):
         """Process voice campaign contacts: clean up stuck calls and initiate new ones."""
         voice_service = TelnyxVoiceService(settings.telnyx_api_key)
         try:
+            await self._requeue_terminal_attempts(campaign, db)
             await self._cleanup_stuck_calls(campaign, db, log)
             await self._process_pending_calls(campaign, voice_service, db, log)
             await self._check_completion(campaign, db, log)
@@ -102,12 +121,20 @@ class VoiceCampaignWorker(BaseCampaignWorker):
             .where(
                 and_(
                     CampaignContact.campaign_id == campaign.id,
-                    CampaignContact.status == CampaignContactStatus.PENDING,
+                    CampaignContact.status.in_(
+                        (CampaignContactStatus.PENDING, CampaignContactStatus.SMS_FALLBACK_SENT)
+                    ),
+                    or_(
+                        CampaignContact.next_follow_up_at.is_(None),
+                        CampaignContact.next_follow_up_at <= datetime.now(UTC),
+                    ),
+                    CampaignContact.call_attempts < MAX_CALL_ATTEMPTS,
                     CampaignContact.opted_out.is_(False),
                 )
             )
             .order_by(
                 CampaignContact.priority.desc(),
+                CampaignContact.next_follow_up_at.asc().nulls_first(),
                 CampaignContact.created_at,
             )
             .limit(calls_to_make)
@@ -131,6 +158,7 @@ class VoiceCampaignWorker(BaseCampaignWorker):
         # Get connection ID from settings or campaign (None = auto-discover)
         connection_id = campaign.voice_connection_id or settings.telnyx_connection_id
 
+        best_hour = await approved_best_hour(db, campaign.workspace_id)
         for campaign_contact in pending_contacts:
             contact = campaign_contact.contact
             if not contact or not contact.phone_number:
@@ -141,6 +169,16 @@ class VoiceCampaignWorker(BaseCampaignWorker):
                 campaign_contact.status = CampaignContactStatus.FAILED
                 campaign_contact.last_error = "missing_phone_number"
                 continue
+
+            local_best_hour = contact_best_hour(campaign, contact, best_hour)
+            if (
+                campaign_contact.call_attempts == 0
+                and campaign_contact.next_follow_up_at is None
+            ):
+                due = next_local_slot(campaign, datetime.now(UTC), hour=local_best_hour)
+                if due > datetime.now(UTC):
+                    campaign_contact.next_follow_up_at = due
+                    continue
 
             try:
                 # Stable per-(campaign_contact, attempt) key so a crash
@@ -172,6 +210,10 @@ class VoiceCampaignWorker(BaseCampaignWorker):
                 campaign_contact.status = CampaignContactStatus.CALLING
                 campaign_contact.call_attempts += 1
                 campaign_contact.last_call_at = datetime.now(UTC)
+                campaign_contact.first_sent_at = (
+                    campaign_contact.first_sent_at or campaign_contact.last_call_at
+                )
+                campaign_contact.next_follow_up_at = None
                 campaign_contact.call_message_id = message.id
 
                 # Update campaign stats
@@ -201,6 +243,43 @@ class VoiceCampaignWorker(BaseCampaignWorker):
                 campaign.last_error = str(e)
                 campaign.last_error_at = datetime.now(UTC)
 
+    async def _requeue_terminal_attempts(self, campaign: Campaign, db: AsyncSession) -> None:
+        """Recover failed outcomes left terminal by workers deployed before cadence."""
+        result = await db.execute(
+            select(CampaignContact)
+            .options(selectinload(CampaignContact.contact))
+            .where(
+                CampaignContact.campaign_id == campaign.id,
+                or_(
+                    CampaignContact.status == CampaignContactStatus.CALL_FAILED,
+                    and_(
+                        CampaignContact.status == CampaignContactStatus.SMS_FALLBACK_SENT,
+                        CampaignContact.next_follow_up_at.is_(None),
+                    ),
+                    and_(
+                        CampaignContact.status == CampaignContactStatus.PENDING,
+                        CampaignContact.call_attempts >= MAX_CALL_ATTEMPTS,
+                    ),
+                ),
+                CampaignContact.opted_out.is_(False),
+            )
+            .order_by(CampaignContact.last_call_at)
+            .limit(100)
+            .with_for_update(skip_locked=True)
+        )
+        contacts = result.scalars().all()
+        if not contacts:
+            return
+        best_hour = await approved_best_hour(db, campaign.workspace_id)
+        for contact in contacts:
+            route_call_outcome(
+                campaign,
+                contact,
+                contact.last_call_status or "no_answer",
+                contact.last_call_at or datetime.now(UTC),
+                best_hour=contact_best_hour(campaign, contact.contact, best_hour),
+            )
+
     async def _cleanup_stuck_calls(
         self,
         campaign: Campaign,
@@ -217,7 +296,7 @@ class VoiceCampaignWorker(BaseCampaignWorker):
 
         # Find contacts stuck in calling status
         stuck_result = await db.execute(
-            select(CampaignContact).where(
+            select(CampaignContact).options(selectinload(CampaignContact.contact)).where(
                 and_(
                     CampaignContact.campaign_id == campaign.id,
                     CampaignContact.status == CampaignContactStatus.CALLING,
@@ -236,9 +315,16 @@ class VoiceCampaignWorker(BaseCampaignWorker):
             timeout_minutes=5,
         )
 
+        best_hour = await approved_best_hour(db, campaign.workspace_id)
         for contact in stuck_contacts:
-            contact.status = CampaignContactStatus.CALL_FAILED
             contact.last_call_status = "no_answer"
+            route_call_outcome(
+                campaign,
+                contact,
+                "no_answer",
+                datetime.now(UTC),
+                best_hour=contact_best_hour(campaign, contact.contact, best_hour),
+            )
             contact.last_error = "Call webhook timeout - no response after 5 minutes"
             campaign.calls_no_answer += 1
 

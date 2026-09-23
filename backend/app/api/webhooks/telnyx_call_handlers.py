@@ -535,7 +535,11 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:  # noqa
                 log.info("campaign_call_stats_skipped_retry")
 
             # Trigger SMS fallback for failed calls only
-            if classification.outcome:
+            if (
+                classification.outcome
+                and classification.outcome != "bad_number"
+                and not already_finalized
+            ):
                 log.info("triggering_sms_fallback", call_outcome=classification.outcome)
                 try:
                     from app.services.campaigns.sms_fallback import trigger_sms_fallback_for_call

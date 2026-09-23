@@ -4,6 +4,7 @@ Updates campaign and campaign_contact stats for ALL call outcomes
 (both successful and failed), ensuring calls_answered is always incremented.
 """
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 import structlog
@@ -12,6 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.campaign import CampaignContact, CampaignContactStatus
+from app.services.campaigns.cadence import (
+    approved_best_hour,
+    contact_best_hour,
+    route_call_outcome,
+)
 
 
 async def update_campaign_call_stats(
@@ -37,7 +43,7 @@ async def update_campaign_call_stats(
     # Find campaign contact linked to this call
     cc_result = await db.execute(
         select(CampaignContact)
-        .options(selectinload(CampaignContact.campaign))
+        .options(selectinload(CampaignContact.campaign), selectinload(CampaignContact.contact))
         .where(CampaignContact.call_message_id == message_id)
     )
     campaign_contact = cc_result.scalar_one_or_none()
@@ -51,12 +57,17 @@ async def update_campaign_call_stats(
         log.warning("missing_campaign_for_stats", message_id=str(message_id))
         return
 
+    # Hangup retries or delayed webhooks for an older attempt must not re-route
+    # a contact already queued or actively being called again.
+    if campaign_contact.status != CampaignContactStatus.CALLING:
+        return
+
     campaign_contact.call_duration_seconds = duration_secs
 
     if call_outcome is None and message_status == "completed":
         # Successful call — real conversation happened
-        campaign_contact.status = CampaignContactStatus.CALL_ANSWERED
         campaign_contact.last_call_status = "answered"
+        route_call_outcome(campaign, campaign_contact, "answered", datetime.now(UTC))
         campaign.calls_answered += 1
         log.info(
             "campaign_call_answered",
@@ -65,8 +76,15 @@ async def update_campaign_call_stats(
         )
     elif call_outcome:
         # Failed call
-        campaign_contact.status = CampaignContactStatus.CALL_FAILED
         campaign_contact.last_call_status = call_outcome
+        best_hour = await approved_best_hour(db, campaign.workspace_id)
+        route_call_outcome(
+            campaign,
+            campaign_contact,
+            call_outcome,
+            datetime.now(UTC),
+            best_hour=contact_best_hour(campaign, campaign_contact.contact, best_hour),
+        )
         if call_outcome == "no_answer":
             campaign.calls_no_answer += 1
         elif call_outcome == "busy":

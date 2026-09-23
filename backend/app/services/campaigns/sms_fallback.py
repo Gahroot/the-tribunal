@@ -132,7 +132,8 @@ async def send_sms_fallback(
         campaign_contact.sms_fallback_sent = True
         campaign_contact.sms_fallback_sent_at = datetime.now(UTC)
         campaign_contact.sms_fallback_message_id = message.id
-        campaign_contact.status = CampaignContactStatus.SMS_FALLBACK_SENT
+        if campaign_contact.status == CampaignContactStatus.CALL_FAILED:
+            campaign_contact.status = CampaignContactStatus.SMS_FALLBACK_SENT
         campaign_contact.conversation_id = message.conversation_id
         campaign_contact.messages_sent += 1
 

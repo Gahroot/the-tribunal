@@ -45,6 +45,11 @@ class CallOutcomeClassifier:
     # 5+ seconds = real interaction happened, no SMS fallback needed
     SHORT_CALL_THRESHOLD_SECS = 5
 
+    # Permanent dial failures must not be retried against a bad destination.
+    BAD_NUMBER_CAUSES = frozenset(
+        {"UNALLOCATED_NUMBER", "INVALID_NUMBER_FORMAT", "NO_ROUTE_DESTINATION"}
+    )
+
     # Hangup causes that indicate no answer
     NO_ANSWER_CAUSES = frozenset({"NO_ANSWER", "TIMEOUT", "ORIGINATOR_CANCEL"})
 
@@ -83,7 +88,10 @@ class CallOutcomeClassifier:
         message_status: MessageStatus = MessageStatus.COMPLETED  # Default to completed
         is_rejected_call = False
 
-        if hangup_cause in self.NO_ANSWER_CAUSES:
+        if hangup_cause in self.BAD_NUMBER_CAUSES:
+            call_outcome = "bad_number"
+            message_status = MessageStatus.FAILED
+        elif hangup_cause in self.NO_ANSWER_CAUSES:
             call_outcome = "no_answer"
             message_status = MessageStatus.FAILED
         elif hangup_cause in self.BUSY_CAUSES:
