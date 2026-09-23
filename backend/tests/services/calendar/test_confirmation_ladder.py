@@ -184,7 +184,8 @@ async def test_reply_targets_most_recent_invitation_not_first_appointment() -> N
 
 
 @pytest.mark.asyncio
-async def test_reschedule_reply_falls_through_when_link_sms_fails() -> None:
+@pytest.mark.parametrize("sent", [True, False])
+async def test_reschedule_reply_acknowledges_without_duplicate_booking(sent: bool) -> None:
     now = datetime.now(UTC)
     appt = SimpleNamespace(
         id=9,
@@ -203,7 +204,7 @@ async def test_reschedule_reply_falls_through_when_link_sms_fails() -> None:
     db.execute.return_value = result
     db.scalar.return_value = now - timedelta(minutes=1)
     db.get.side_effect = [
-        SimpleNamespace(id=3, calcom_event_type_id=12),
+        SimpleNamespace(id=3),
         SimpleNamespace(
             phone_number="+15551234567", email="a@example.com", first_name="A", last_name="B"
         ),
@@ -217,17 +218,18 @@ async def test_reschedule_reply_falls_through_when_link_sms_fails() -> None:
             new_callable=AsyncMock,
             return_value="+15551234567",
         ),
-        patch("app.services.calendar.confirmation_reply.settings.calcom_api_key", "test-key"),
-        patch("app.services.calendar.confirmation_reply.CalComService") as calcom,
         patch(
             "app.api.webhooks.calcom_events.send_lifecycle_sms",
             new_callable=AsyncMock,
-            return_value=False,
+            return_value=sent,
         ) as sender,
     ):
-        calcom.return_value.generate_booking_url.return_value = "https://example.com/book"
-        assert not await handle_confirmation_reply(
-            db, SimpleNamespace(created_at=now), conversation, "R"
+        assert (
+            await handle_confirmation_reply(db, SimpleNamespace(created_at=now), conversation, "R")
+            is sent
         )
     assert appt.reschedule_requested_at is not None
+    assert appt.scheduled_at == now + timedelta(days=1)
+    assert "Our team will follow up" in sender.await_args.kwargs["body_text"]
+    assert "http" not in sender.await_args.kwargs["body_text"]
     sender.assert_awaited_once()

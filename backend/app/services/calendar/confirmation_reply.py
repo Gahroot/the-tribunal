@@ -5,12 +5,10 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.models.agent import Agent
 from app.models.appointment import Appointment
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message, MessageStatus
-from app.services.calendar.calcom import CalComService
 from app.services.calendar.reminder_service import resolve_from_number
 from app.services.idempotency import derive_outbound_key
 
@@ -103,24 +101,19 @@ async def handle_confirmation_reply(
                     idempotency_parts=(appt.id, appt.scheduled_at),
                 )
             return True
-        return await _send_reschedule_link(db, appt, contact, agent)
+        return await _ack_reschedule_request(db, appt, contact, agent)
     return False
 
 
-async def _send_reschedule_link(
+async def _ack_reschedule_request(
     db: AsyncSession, appt: Appointment, contact: Contact | None, agent: Agent | None
 ) -> bool:
-    """Fall through to the existing AI/operator path if a link cannot be sent."""
-    if not (contact and agent and agent.calcom_event_type_id and settings.calcom_api_key):
-        return False
-    try:
-        url = CalComService(settings.calcom_api_key).generate_booking_url(
-            event_type_id=agent.calcom_event_type_id,
-            contact_email=contact.email or "",
-            contact_name=" ".join(filter(None, [contact.first_name, contact.last_name])) or "there",
-            contact_phone=contact.phone_number,
-        )
-    except Exception:
+    """Acknowledge the request; the operator is notified through the inbound pipeline.
+
+    A fresh booking URL would create a second appointment, not move this one.
+    Leave the original booking in place until a real Cal.com reschedule webhook arrives.
+    """
+    if not contact:
         return False
     from app.api.webhooks.calcom_events import send_lifecycle_sms
 
@@ -129,7 +122,7 @@ async def _send_reschedule_link(
         workspace_id=appt.workspace_id,
         contact=contact,
         agent=agent,
-        body_text=f"To reschedule your appointment, choose a new time: {url}",
+        body_text="We received your request to reschedule. Our team will follow up with you.",
         idempotency_scope="appointment_reschedule_reply",
         idempotency_parts=(appt.id, appt.scheduled_at),
     )
