@@ -52,7 +52,7 @@ function QueueRow({ contact, isActive, onSelect }: QueueRowProps) {
         "flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors",
         "hover:bg-muted hover:border-accent",
         isActive
-          ? "border-primary bg-primary/5"
+          ? "border-primary bg-secondary"
           : "border-transparent bg-card",
         hasUnread && !isActive && "border-l-2 border-l-info",
       )}

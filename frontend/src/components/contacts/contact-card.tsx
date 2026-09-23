@@ -75,7 +75,7 @@ export function ContactCard({
         "flex flex-col p-4 rounded-xl border bg-card card-interactive",
         "hover:bg-muted hover:border-accent transition-colors cursor-pointer",
         "group",
-        isSelected && "ring-2 ring-primary border-primary bg-primary/5",
+        isSelected && "ring-2 ring-primary border-primary bg-secondary",
         isActive && !isSelected && "border-primary ring-1 ring-primary/40",
         hasUnread && !isSelected && "border-l-4 border-l-info",
       )}

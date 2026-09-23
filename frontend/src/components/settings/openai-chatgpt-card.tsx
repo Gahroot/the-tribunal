@@ -237,7 +237,7 @@ export function OpenAIChatGPTCard() {
   };
 
   return (
-    <Card className="border-primary/20 bg-primary/5">
+    <Card className="border-primary/40 bg-secondary">
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3">

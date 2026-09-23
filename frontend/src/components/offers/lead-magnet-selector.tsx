@@ -305,7 +305,7 @@ export function LeadMagnetSelector({
                 onClick={() => handleToggle(magnet.id)}
                 className={`relative p-4 rounded-lg border-2 cursor-pointer transition-colors ${
                   isSelected
-                    ? "border-primary bg-primary/5"
+                    ? "border-primary bg-secondary"
                     : "border-border hover:border-primary/50"
                 }`}
               >
@@ -338,7 +338,7 @@ export function LeadMagnetSelector({
                         {magnetTypeLabels[magnet.magnet_type]}
                       </Badge>
                       {magnet.estimated_value && magnet.estimated_value > 0 && (
-                        <Badge variant="outline" className="text-success border-success/20">
+                        <Badge variant="outline" className="text-primary">
                           <DollarSign className="size-3 mr-0.5" />
                           {magnet.estimated_value} value
                         </Badge>

@@ -322,8 +322,8 @@ export function AIOfferWriter({ workspaceId, onApply }: AIOfferWriterProps) {
           return (
             <Card
               key={index}
-              className={`cursor-pointer transition-all ${
-                isSelected ? "ring-2 ring-primary bg-primary/5" : "hover:bg-accent"
+              className={`cursor-pointer transition-colors ${
+                isSelected ? "ring-2 ring-primary bg-secondary" : "hover:bg-muted"
               }`}
               onClick={() => onSelect(option)}
             >

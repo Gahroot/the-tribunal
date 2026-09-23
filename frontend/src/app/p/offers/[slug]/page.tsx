@@ -174,7 +174,7 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
                   {offer.lead_magnets.map((lm) => (
                     <div
                       key={lm.id}
-                      className="flex items-start gap-3 p-3 rounded-lg bg-primary/5 border border-primary/10"
+                      className="flex items-start gap-3 p-3 rounded-lg border bg-background"
                     >
                       <Gift className="size-5 text-primary mt-0.5 flex-shrink-0" />
                       <div className="flex-1 space-y-3">

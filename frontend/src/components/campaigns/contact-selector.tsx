@@ -244,7 +244,7 @@ export function ContactSelector({
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-center gap-2 p-3 bg-primary/5 rounded-lg border border-primary/20"
+          className="flex items-center gap-2 p-3 bg-secondary rounded-lg border border-primary/40"
         >
           <CheckCircle2 className="size-5 text-primary" />
           <span className="text-sm font-medium">

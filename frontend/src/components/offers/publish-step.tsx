@@ -77,7 +77,7 @@ export function PublishStep({ formData, onFieldChange, existingOffer }: PublishS
           </div>
 
           {formData.public_slug && (
-            <div className="flex items-center gap-2 p-3 bg-primary/5 rounded-lg border border-primary/20">
+            <div className="flex items-center gap-2 p-3 border rounded-lg bg-background">
               <Globe className="size-4 text-primary" />
               <span className="text-sm flex-1 truncate">
                 {typeof window !== "undefined" ? window.location.origin : ""}/p/offers/{formData.public_slug}

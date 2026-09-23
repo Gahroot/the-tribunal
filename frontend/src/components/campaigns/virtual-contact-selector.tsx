@@ -421,7 +421,7 @@ export function VirtualContactSelector({
 
       {/* Selected summary */}
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-2 p-3 bg-primary/5 rounded-lg border border-primary/20">
+        <div className="flex items-center gap-2 p-3 bg-secondary rounded-lg border border-primary/40">
           <CheckCircle2 className="size-5 text-primary" />
           <span className="text-sm font-medium">
             {selectedIds.size} contact{selectedIds.size !== 1 ? "s" : ""} selected

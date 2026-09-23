@@ -191,7 +191,7 @@ function LeadRow({ result, selected, onToggle, maxTypes }: LeadRowProps) {
       tabIndex={0}
       className={cn(
         "p-3 rounded-lg border cursor-pointer transition-colors",
-        selected ? "bg-primary/5 border-primary" : "hover:bg-muted/50",
+        selected ? "bg-secondary border-primary" : "hover:bg-muted/50",
       )}
       onClick={onToggle}
       onKeyDown={(e) => {
