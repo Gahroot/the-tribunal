@@ -77,7 +77,7 @@ function renderConfirmation(
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  render(
+  const view = render(
     <QueryClientProvider client={client}>
       {/* Production renders the flow inside the calendar detail dialog. */}
       <Dialog open>
@@ -92,7 +92,25 @@ function renderConfirmation(
       </Dialog>
     </QueryClientProvider>,
   );
-  return { onRebook, onRefresh };
+
+  // Re-render with fresh props, mirroring a webhook-driven list refetch.
+  const rerender = (next: Appointment) =>
+    view.rerender(
+      <QueryClientProvider client={client}>
+        <Dialog open>
+          <DialogContent>
+            <AppointmentConfirmation
+              appointment={next}
+              workspaceId="ws_1"
+              onRefresh={onRefresh}
+              onRebook={onRebook}
+            />
+          </DialogContent>
+        </Dialog>
+      </QueryClientProvider>,
+    );
+
+  return { onRebook, onRefresh, rerender };
 }
 
 describe("AppointmentConfirmation", () => {
@@ -245,5 +263,73 @@ describe("AppointmentConfirmation", () => {
     expect(
       screen.getByRole("button", { name: /rebook appointment/i }),
     ).toBeInTheDocument();
+  });
+
+  it("keeps the confirmation open with an announced error when cancel fails, then retries", async () => {
+    const user = userEvent.setup();
+    updateAppointmentMock
+      .mockReset()
+      .mockRejectedValueOnce({
+        response: { data: { detail: "Cal.com rejected the update" } },
+      })
+      .mockImplementationOnce(async (_ws: string, _id: number, data: Partial<Appointment>) =>
+        makeAppointment({ status: "cancelled", ...data }),
+      );
+    renderConfirmation(makeAppointment());
+
+    await user.click(
+      screen.getByRole("button", { name: /cancel appointment/i }),
+    );
+    await user.type(
+      screen.getByLabelText(/reason \(optional\)/i),
+      "Client asked to move",
+    );
+    await user.click(
+      screen.getByRole("button", { name: /cancel appointment/i }),
+    );
+
+    // Failure: announced inline, still in the confirmation, nothing cancelled.
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Cal.com rejected the update");
+    expect(
+      screen.getByRole("heading", { name: /cancel this appointment\?/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: /this appointment is cancelled/i }),
+    ).toBeNull();
+
+    // Retry from the same block succeeds.
+    await user.click(
+      screen.getByRole("button", { name: /cancel appointment/i }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: /this appointment is cancelled/i }),
+      ).toBeInTheDocument(),
+    );
+    expect(updateAppointmentMock).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("reflects a webhook-driven cancel arriving while the dialog is open", async () => {
+    const appointment = makeAppointment();
+    const { rerender } = renderConfirmation(appointment);
+
+    expect(
+      screen.getByRole("heading", { name: /this appointment is scheduled/i }),
+    ).toBeInTheDocument();
+
+    // The list refetch delivers Cal.com BOOKING_CANCELLED's status change.
+    rerender({ ...appointment, status: "cancelled" });
+
+    const heading = await screen.findByRole("heading", {
+      name: /this appointment is cancelled/i,
+    });
+    // Focus moves to the new heading so the state change is announced.
+    expect(heading).toHaveFocus();
+    expect(
+      screen.getByRole("button", { name: /rebook appointment/i }),
+    ).toBeInTheDocument();
+    expect(updateAppointmentMock).not.toHaveBeenCalled();
   });
 });
