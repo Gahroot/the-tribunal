@@ -64,7 +64,7 @@ async def update_campaign_call_stats(
 
     campaign_contact.call_duration_seconds = duration_secs
 
-    if call_outcome is None and message_status == "completed":
+    if booking_outcome == "success" or (call_outcome is None and message_status == "completed"):
         # Successful call — real conversation happened
         campaign_contact.last_call_status = "answered"
         route_call_outcome(campaign, campaign_contact, "answered", datetime.now(UTC))

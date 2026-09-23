@@ -22,12 +22,15 @@ from app.models.campaign import (
     CampaignContactStatus,
     CampaignType,
 )
+from app.models.contact import Contact
 from app.services.campaigns.cadence import (
     MAX_CALL_ATTEMPTS,
     approved_best_hour,
     contact_best_hour,
     next_local_slot,
     route_call_outcome,
+    sms_touch_due_at,
+    sms_touch_pending,
 )
 from app.services.idempotency import derive_outbound_key
 from app.services.telephony.telnyx_voice import TelnyxVoiceService
@@ -93,11 +96,85 @@ class VoiceCampaignWorker(BaseCampaignWorker):
         try:
             await self._requeue_terminal_attempts(campaign, db)
             await self._cleanup_stuck_calls(campaign, db, log)
+            await self._process_scheduled_sms(campaign, db, log)
             await self._process_pending_calls(campaign, voice_service, db, log)
             await self._check_completion(campaign, db, log)
             await db.commit()
         finally:
             await voice_service.close()
+
+    async def _process_scheduled_sms(self, campaign: Campaign, db: AsyncSession, log: Any) -> None:
+        """Send due SMS between calls, bounded by the campaign message caps."""
+        if not campaign.sms_fallback_enabled or not settings.telnyx_api_key:
+            return
+        if not campaign.sms_fallback_template and not (
+            campaign.sms_fallback_use_ai and campaign.sms_fallback_agent_id
+        ):
+            return
+        from app.services.campaigns.sms_fallback import send_sms_fallback
+
+        sms_limit = campaign.max_messages_per_contact
+        if sms_limit is None:
+            sms_limit = 5
+        result = await db.execute(
+            select(CampaignContact)
+            .options(selectinload(CampaignContact.contact))
+            .where(
+                CampaignContact.campaign_id == campaign.id,
+                CampaignContact.status.in_(
+                    (CampaignContactStatus.PENDING, CampaignContactStatus.SMS_FALLBACK_SENT)
+                ),
+                CampaignContact.call_attempts.in_((1, 3, 5)),
+                CampaignContact.last_call_status.in_(("no_answer", "busy", "voicemail")),
+                CampaignContact.last_call_at <= datetime.now(UTC) - timedelta(hours=2),
+                or_(
+                    CampaignContact.sms_fallback_sent_at.is_(None),
+                    CampaignContact.sms_fallback_sent_at < CampaignContact.last_call_at,
+                ),
+                CampaignContact.opted_out.is_(False),
+                CampaignContact.messages_sent < sms_limit,
+                or_(
+                    CampaignContact.last_reply_at.is_(None),
+                    CampaignContact.last_reply_at < CampaignContact.last_call_at,
+                ),
+                CampaignContact.contact.has(Contact.phone_number.is_not(None)),
+            )
+            .order_by(CampaignContact.last_call_at)
+            .limit(MAX_CALLS_PER_TICK)
+            .with_for_update(skip_locked=True)
+        )
+        best_hour = await approved_best_hour(db, campaign.workspace_id)
+        for entry in result.scalars():
+            if not sms_touch_pending(campaign, entry):
+                continue
+            outcome = entry.last_call_status
+            if outcome is None:
+                continue
+            if sms_touch_due_at(campaign, entry) > datetime.now(UTC):
+                continue
+            if not entry.contact or not entry.contact.phone_number:
+                continue
+            sent = await send_sms_fallback(
+                db,
+                campaign,
+                entry,
+                entry.contact,
+                outcome,
+                settings.telnyx_api_key,
+            )
+            if not sent:
+                # A refused or failed delivery does not retry every ten seconds.
+                # The next eligible call can try a new, separately keyed touch.
+                entry.sms_fallback_sent_at = datetime.now(UTC)
+                log.info("scheduled_sms_skipped", campaign_contact_id=str(entry.id))
+            if entry.next_follow_up_at:
+                earliest = datetime.now(UTC) + timedelta(hours=2)
+                if entry.next_follow_up_at < earliest:
+                    entry.next_follow_up_at = next_local_slot(
+                        campaign,
+                        earliest,
+                        hour=contact_best_hour(campaign, entry.contact, best_hour),
+                    )
 
     async def _process_pending_calls(
         self,
@@ -171,10 +248,9 @@ class VoiceCampaignWorker(BaseCampaignWorker):
                 continue
 
             local_best_hour = contact_best_hour(campaign, contact, best_hour)
-            if (
-                campaign_contact.call_attempts == 0
-                and campaign_contact.next_follow_up_at is None
-            ):
+            if self._defer_call_for_sms(campaign, campaign_contact, local_best_hour):
+                continue
+            if campaign_contact.call_attempts == 0 and campaign_contact.next_follow_up_at is None:
                 due = next_local_slot(campaign, datetime.now(UTC), hour=local_best_hour)
                 if due > datetime.now(UTC):
                     campaign_contact.next_follow_up_at = due
@@ -243,6 +319,25 @@ class VoiceCampaignWorker(BaseCampaignWorker):
                 campaign.last_error = str(e)
                 campaign.last_error_at = datetime.now(UTC)
 
+    def _defer_call_for_sms(
+        self, campaign: Campaign, entry: CampaignContact, best_hour: int | None
+    ) -> bool:
+        if settings.telnyx_api_key and sms_touch_pending(campaign, entry):
+            # The SMS slot comes before the next call, even when overdue.
+            return True
+        if (
+            entry.sms_fallback_sent_at
+            and entry.last_call_at
+            and entry.sms_fallback_sent_at >= entry.last_call_at
+        ):
+            earliest = entry.sms_fallback_sent_at + timedelta(hours=2)
+            if datetime.now(UTC) < earliest and (
+                entry.next_follow_up_at is None or entry.next_follow_up_at < earliest
+            ):
+                entry.next_follow_up_at = next_local_slot(campaign, earliest, hour=best_hour)
+                return True
+        return False
+
     async def _requeue_terminal_attempts(self, campaign: Campaign, db: AsyncSession) -> None:
         """Recover failed outcomes left terminal by workers deployed before cadence."""
         result = await db.execute(
@@ -254,7 +349,10 @@ class VoiceCampaignWorker(BaseCampaignWorker):
                     CampaignContact.status == CampaignContactStatus.CALL_FAILED,
                     and_(
                         CampaignContact.status == CampaignContactStatus.SMS_FALLBACK_SENT,
-                        CampaignContact.next_follow_up_at.is_(None),
+                        or_(
+                            CampaignContact.next_follow_up_at.is_(None),
+                            CampaignContact.call_attempts >= MAX_CALL_ATTEMPTS,
+                        ),
                     ),
                     and_(
                         CampaignContact.status == CampaignContactStatus.PENDING,
@@ -289,20 +387,22 @@ class VoiceCampaignWorker(BaseCampaignWorker):
         """Clean up contacts stuck in 'calling' status when webhooks never arrive.
 
         If a contact has been in 'calling' status for more than 5 minutes,
-        mark it as 'call_failed' so the campaign can complete.
+        route it as no-answer through the bounded retry ladder.
         """
         stuck_timeout = timedelta(minutes=5)
         cutoff_time = datetime.now(UTC) - stuck_timeout
 
         # Find contacts stuck in calling status
         stuck_result = await db.execute(
-            select(CampaignContact).options(selectinload(CampaignContact.contact)).where(
-                and_(
-                    CampaignContact.campaign_id == campaign.id,
-                    CampaignContact.status == CampaignContactStatus.CALLING,
-                    CampaignContact.last_call_at < cutoff_time,
-                )
+            select(CampaignContact)
+            .options(selectinload(CampaignContact.contact))
+            .where(
+                CampaignContact.campaign_id == campaign.id,
+                CampaignContact.status == CampaignContactStatus.CALLING,
+                CampaignContact.last_call_at < cutoff_time,
             )
+            .limit(100)
+            .with_for_update(skip_locked=True)
         )
         stuck_contacts = stuck_result.scalars().all()
 

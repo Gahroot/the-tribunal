@@ -454,7 +454,9 @@ class TestAdditionalRetrySendKeys:
         assert call_kwargs["idempotency_key"] == derive("automation_sms", automation_id, contact_id)
 
     async def test_sms_fallback_forwards_campaign_contact_key(self) -> None:
+        from app.services.campaigns import sms_fallback
         from app.services.campaigns.sms_fallback import send_sms_fallback
+        from app.services.outbound.delivery import OutboundDeliveryStatus
 
         campaign_contact_id = uuid4()
         campaign = SimpleNamespace(
@@ -474,6 +476,8 @@ class TestAdditionalRetrySendKeys:
             sms_fallback_sent=False,
             sms_fallback_sent_at=None,
             sms_fallback_message_id=None,
+            call_attempts=3,
+            last_call_at=None,
             status=None,
             conversation_id=None,
             messages_sent=0,
@@ -490,13 +494,14 @@ class TestAdditionalRetrySendKeys:
         db = MagicMock()
         db.commit = AsyncMock()
 
-        with patch("app.services.campaigns.sms_fallback.TelnyxSMSService") as sms_cls:
-            sms_instance = sms_cls.return_value
-            sms_instance.send_message = AsyncMock(
-                return_value=SimpleNamespace(id=uuid4(), conversation_id=uuid4())
+        with patch.object(
+            sms_fallback.outbound_delivery_service, "deliver", new_callable=AsyncMock
+        ) as deliver:
+            deliver.return_value = SimpleNamespace(
+                status=OutboundDeliveryStatus.SENT,
+                delivered=True,
+                message=SimpleNamespace(id=uuid4(), conversation_id=uuid4()),
             )
-            sms_instance.close = AsyncMock()
-
             ok = await send_sms_fallback(
                 db,
                 campaign,  # type: ignore[arg-type]
@@ -507,7 +512,8 @@ class TestAdditionalRetrySendKeys:
             )
 
         assert ok is True
-        call_kwargs = sms_instance.send_message.call_args.kwargs
-        assert call_kwargs["idempotency_key"] == derive(
-            "voice_campaign_sms_fallback", campaign_contact_id, "no_answer"
+        request = deliver.await_args.args[1]
+        assert request.idempotency_parts == (campaign_contact_id, 3)
+        assert derive(request.idempotency_scope, *request.idempotency_parts) == derive(
+            "voice_campaign_sms_fallback", campaign_contact_id, 3
         )

@@ -1,7 +1,7 @@
 """Bounded voice/SMS cadence for voice campaigns.
 
-Six voice attempts across fourteen days at most; SMS fallback is a single,
-consent-checked touch after a failed call. All timestamps are stored in UTC.
+Six voice attempts across roughly fourteen days, interleaved with at most
+three consent-checked SMS touches. All timestamps are stored in UTC.
 """
 
 import re
@@ -55,6 +55,7 @@ def contact_best_hour(
 
 
 MAX_CALL_ATTEMPTS = 6
+SMS_TOUCH_ATTEMPTS = frozenset({1, 3, 5})
 # Relative to the first call. A busy signal gets an earlier alternate-hour slot.
 ATTEMPT_DAYS = (0, 0, 2, 4, 7, 14)
 NO_CONNECT_SUNSET = 6
@@ -78,33 +79,98 @@ def recommended_hour(label: str | None) -> int | None:
     return hour if 9 <= hour <= 17 else None
 
 
-def next_local_slot(
-    campaign: Campaign, earliest: datetime, *, hour: int | None = None
-) -> datetime:
+def next_local_slot(campaign: Campaign, earliest: datetime, *, hour: int | None = None) -> datetime:
     """Find the first permitted local slot after earliest, including DST boundaries."""
     tz = ZoneInfo(campaign.timezone or "UTC")
     local = earliest.astimezone(tz)
     start = campaign.sending_hours_start or time(9)
     end = campaign.sending_hours_end or time(17)
     # Prefer observed hour, otherwise morning and late-afternoon contact peaks.
-    hours = [hour] if hour is not None and start <= time(hour) <= end else [10, 16]
+    # If neither peak fits a configured window, use its first permitted hour.
+    hours = (
+        [time(hour)] if hour is not None and start <= time(hour) <= end else [time(10), time(16)]
+    )
+    if not any(start <= value <= end for value in hours):
+        hours = [start]
     for day_offset in range(16):
         day = local.date() + timedelta(days=day_offset)
         if campaign.sending_days and day.weekday() not in campaign.sending_days:
             continue
-        for candidate_hour in hours:
-            candidate_time = time(candidate_hour)
+        for candidate_time in hours:
             if not start <= candidate_time <= end:
                 continue
             candidate = datetime.combine(day, candidate_time, tzinfo=tz)
-            if (
-                candidate.astimezone(UTC) >= earliest
-                and candidate.astimezone(tz).hour == candidate_hour
-            ):
+            utc_candidate = candidate.astimezone(UTC)
+            if utc_candidate >= earliest and utc_candidate.astimezone(tz).replace(
+                tzinfo=None
+            ) == candidate.replace(tzinfo=None):
                 return candidate.astimezone(UTC)
-    # No legal slot (e.g. configured hours exclude both peaks). Use earliest;
-    # the worker still enforces the campaign's sending window before dialing.
-    return earliest
+    # A valid weekly sending window always has a slot within sixteen days.
+    # Fail closed for invalid windows instead of scheduling outside one.
+    raise ValueError("No permitted campaign sending slot within sixteen days")
+
+
+def sms_touch_pending(campaign: Campaign, contact: CampaignContact) -> bool:
+    """Only send between active voice attempts, never after a reply or sunset."""
+    return bool(
+        campaign.sms_fallback_enabled
+        and (
+            campaign.sms_fallback_template
+            or (campaign.sms_fallback_use_ai and campaign.sms_fallback_agent_id)
+        )
+        and contact.status
+        in {
+            CampaignContactStatus.PENDING,
+            CampaignContactStatus.SMS_FALLBACK_SENT,
+        }
+        and not contact.opted_out
+        and contact.call_attempts in SMS_TOUCH_ATTEMPTS
+        and contact.last_call_status in {"no_answer", "busy", "voicemail"}
+        and contact.last_call_at
+        and (not contact.last_reply_at or contact.last_reply_at < contact.last_call_at)
+        and (
+            not contact.sms_fallback_sent_at or contact.sms_fallback_sent_at < contact.last_call_at
+        )
+        and (contact.messages_sent or 0)
+        < (
+            campaign.max_messages_per_contact
+            if campaign.max_messages_per_contact is not None
+            else 5
+        )
+        and (
+            campaign.max_messages_per_campaign is None
+            or (campaign.messages_sent or 0) < campaign.max_messages_per_campaign
+        )
+    )
+
+
+def sms_touch_due_at(campaign: Campaign, contact: CampaignContact) -> datetime:
+    """Earliest legal local SMS slot, at least two hours after a failed call.
+
+    Unlike voice, SMS does not wait for the morning/afternoon call peaks: that
+    would crowd the same-day alternate-hour voice attempt.
+    """
+    assert contact.last_call_at is not None
+    earliest = contact.last_call_at + timedelta(hours=2)
+    tz = ZoneInfo(campaign.timezone or "UTC")
+    local = earliest.astimezone(tz)
+    start = campaign.sending_hours_start or time(9)
+    end = campaign.sending_hours_end or time(17)
+    for day_offset in range(16):
+        day = local.date() + timedelta(days=day_offset)
+        if campaign.sending_days and day.weekday() not in campaign.sending_days:
+            continue
+        if day_offset == 0 and start <= local.time() <= end:
+            return earliest
+        candidate = datetime.combine(day, start, tzinfo=tz)
+        utc_candidate = candidate.astimezone(UTC)
+        if (
+            utc_candidate >= earliest
+            and start <= candidate.time() <= end
+            and utc_candidate.astimezone(tz).replace(tzinfo=None) == candidate.replace(tzinfo=None)
+        ):
+            return utc_candidate
+    raise ValueError("No permitted SMS sending slot within sixteen days")
 
 
 def route_call_outcome(
@@ -112,7 +178,8 @@ def route_call_outcome(
     contact: CampaignContact,
     outcome: str,
     now: datetime,
-    *, best_hour: int | None = None,
+    *,
+    best_hour: int | None = None,
 ) -> None:
     """Advance one completed attempt, never retrying a human or bad number."""
     if outcome in {"answered", "live_human"}:
@@ -129,6 +196,7 @@ def route_call_outcome(
         return
 
     first = contact.first_sent_at or contact.last_call_at or now
+    hour: int | None
     # Escalate busy at an alternate hour; voicemail gives the recipient more time.
     if outcome == "busy" and contact.call_attempts == 1:
         earliest = now + timedelta(hours=4)

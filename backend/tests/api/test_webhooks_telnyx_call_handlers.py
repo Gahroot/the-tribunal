@@ -11,8 +11,8 @@ Pins the call-lifecycle handler contracts:
   ``hangup_cause`` / ``duration_seconds`` / ``hangup_source``, captures
   recording URL, and updates campaign stats / engagement *exactly once*
   per call (subsequent hangup retries short-circuit the counters).
-- ``handle_machine_detection`` — hangs up the call and triggers SMS
-  fallback when Telnyx reports voicemail/fax.
+- ``handle_machine_detection`` — persists voicemail before hangup, without
+  sending an immediate SMS.
 
 Real-shape fixtures are loaded from ``tests/fixtures/webhooks/telnyx/``.
 """
@@ -51,6 +51,7 @@ def _make_db(execute_returns: list[Any]) -> MagicMock:
     db.flush = AsyncMock()
     db.refresh = AsyncMock()
     db.get = AsyncMock(return_value=None)
+    db.scalar = AsyncMock(return_value=None)
     return db
 
 
@@ -516,7 +517,7 @@ def _stub_hangup_side_effects(monkeypatch: pytest.MonkeyPatch) -> dict[str, Magi
     stubs: dict[str, MagicMock] = {}
 
     from app.services.ai import call_outcome_service
-    from app.services.campaigns import campaign_call_stats, sms_fallback
+    from app.services.campaigns import campaign_call_stats
     from app.services.contacts import engagement_score
 
     create_outcome = AsyncMock(return_value=None)
@@ -534,14 +535,6 @@ def _stub_hangup_side_effects(monkeypatch: pytest.MonkeyPatch) -> dict[str, Magi
         update_stats,
     )
     stubs["update_campaign_call_stats"] = update_stats
-
-    trigger_fallback = AsyncMock(return_value=None)
-    monkeypatch.setattr(
-        sms_fallback,
-        "trigger_sms_fallback_for_call",
-        trigger_fallback,
-    )
-    stubs["trigger_sms_fallback_for_call"] = trigger_fallback
 
     record_engagement = AsyncMock(return_value=None)
     monkeypatch.setattr(engagement_score, "record_engagement", record_engagement)
@@ -614,11 +607,13 @@ async def test_call_hangup_normal_clearing_85s_completes(
     assert message.status == MessageStatus.COMPLETED
     assert message.duration_seconds == 85
     _stub_hangup_side_effects["update_campaign_call_stats"].assert_awaited_once()
-    # No SMS fallback for completed calls (classification.outcome is None).
-    _stub_hangup_side_effects["trigger_sms_fallback_for_call"].assert_not_awaited()
+    assert (
+        _stub_hangup_side_effects["update_campaign_call_stats"].await_args.kwargs["call_outcome"]
+        is None
+    )
 
 
-async def test_call_hangup_rejected_marks_failed_and_triggers_fallback(
+async def test_call_hangup_rejected_marks_failed_without_immediate_sms(
     monkeypatch: pytest.MonkeyPatch,
     hangup_rejected: dict[str, Any],
     _stub_hangup_side_effects: dict[str, MagicMock],
@@ -640,10 +635,13 @@ async def test_call_hangup_rejected_marks_failed_and_triggers_fallback(
     assert message.status == MessageStatus.FAILED
     assert message.error_code == "CALL_REJECTED"
     log.info.assert_any_call("rejected_call_detected", hangup_source="callee")
-    _stub_hangup_side_effects["trigger_sms_fallback_for_call"].assert_awaited_once()
+    assert (
+        _stub_hangup_side_effects["update_campaign_call_stats"].await_args.kwargs["call_outcome"]
+        == "rejected"
+    )
 
 
-async def test_call_hangup_no_answer_marks_failed_and_triggers_fallback(
+async def test_call_hangup_no_answer_routes_without_immediate_sms(
     monkeypatch: pytest.MonkeyPatch,
     hangup_no_answer: dict[str, Any],
     _stub_hangup_side_effects: dict[str, MagicMock],
@@ -663,7 +661,29 @@ async def test_call_hangup_no_answer_marks_failed_and_triggers_fallback(
 
     assert message.status == MessageStatus.FAILED
     assert message.error_code == "NO_ANSWER"
-    _stub_hangup_side_effects["trigger_sms_fallback_for_call"].assert_awaited_once()
+    assert (
+        _stub_hangup_side_effects["update_campaign_call_stats"].await_args.kwargs["call_outcome"]
+        == "no_answer"
+    )
+
+
+async def test_voicemail_detection_routes_long_machine_call_to_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    hangup_normal: dict[str, Any],
+    _stub_hangup_side_effects: dict[str, MagicMock],
+) -> None:
+    message = _make_hangup_message()
+    db = _make_db(execute_returns=[_Result(scalar=message), _Result(), _Result()])
+    message.error_code = "VOICEMAIL_DETECTED"
+    _patch_session_local(monkeypatch, db)
+
+    await handlers.handle_call_hangup(hangup_normal, _make_log())
+
+    assert message.status == MessageStatus.FAILED
+    assert (
+        _stub_hangup_side_effects["update_campaign_call_stats"].await_args.kwargs["call_outcome"]
+        == "voicemail"
+    )
 
 
 async def test_call_hangup_captures_recording_url(
@@ -747,6 +767,30 @@ async def test_call_hangup_successful_booking_overrides_failed_status(
     await handlers.handle_call_hangup(hangup_no_answer, _make_log())
 
     assert message.status == MessageStatus.COMPLETED
+    assert (
+        _stub_hangup_side_effects["update_campaign_call_stats"].await_args.kwargs["call_outcome"]
+        is None
+    )
+
+
+async def test_booking_beats_prior_voicemail_detection(
+    monkeypatch: pytest.MonkeyPatch,
+    hangup_no_answer: dict[str, Any],
+    _stub_hangup_side_effects: dict[str, MagicMock],
+) -> None:
+    message = _make_hangup_message(booking_outcome="success")
+    message.error_code = "VOICEMAIL_DETECTED"
+    db = _make_db(execute_returns=[_Result(scalar=message), _Result(), _Result()])
+    _patch_session_local(monkeypatch, db)
+
+    await handlers.handle_call_hangup(hangup_no_answer, _make_log())
+
+    assert message.status == MessageStatus.COMPLETED
+    assert message.error_code is None
+    assert (
+        _stub_hangup_side_effects["update_campaign_call_stats"].await_args.kwargs["call_outcome"]
+        is None
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -764,16 +808,22 @@ async def test_machine_detection_human_is_no_op(
     # If we got here without exceptions and no DB session was opened, success.
 
 
-async def test_machine_detection_machine_hangs_up_and_triggers_fallback(
+async def test_machine_detection_persists_voicemail_before_hangup(
     monkeypatch: pytest.MonkeyPatch,
     machine_detection: dict[str, Any],
 ) -> None:
     message = MagicMock()
     message.id = uuid.uuid4()
+    message.direction = "outbound"
+    message.campaign_id = uuid.uuid4()
+    message.error_code = None
     message.conversation = MagicMock()
     message.conversation.workspace_id = uuid.uuid4()
 
     push_db = _make_db(execute_returns=[_Result(scalar=message)])
+    campaign_contact = MagicMock()
+    campaign_contact.last_call_status = None
+    push_db.scalar.side_effect = [message, campaign_contact]
     _patch_session_local(monkeypatch, push_db)
 
     monkeypatch.setattr(app_settings, "telnyx_api_key", "test-key")
@@ -789,21 +839,31 @@ async def test_machine_detection_machine_hangs_up_and_triggers_fallback(
         lambda *a, **kw: voice_service,
     )
 
-    from app.services.campaigns import sms_fallback
-
-    trigger_fallback = AsyncMock(return_value=None)
-    monkeypatch.setattr(
-        sms_fallback,
-        "trigger_sms_fallback_for_call",
-        trigger_fallback,
-    )
-
     await handlers.handle_machine_detection(machine_detection, _make_log())
 
     voice_service.hangup_call.assert_awaited_once_with(
         "v3:call-control-id-machine-001",
     )
-    trigger_fallback.assert_awaited_once()
+    assert message.error_code == "VOICEMAIL_DETECTED"
+    assert campaign_contact.last_call_status == "voicemail"
+    push_db.commit.assert_awaited_once()
+
+
+async def test_machine_detection_survives_campaign_contact_commit_race(
+    monkeypatch: pytest.MonkeyPatch,
+    machine_detection: dict[str, Any],
+) -> None:
+    message = _make_hangup_message()
+    message.campaign_id = uuid.uuid4()
+    db = _make_db(execute_returns=[_Result(scalar=None)])
+    db.scalar.side_effect = [message, None]
+    _patch_session_local(monkeypatch, db)
+    monkeypatch.setattr(app_settings, "telnyx_api_key", "")
+
+    await handlers.handle_machine_detection(machine_detection, _make_log())
+
+    assert message.error_code == "VOICEMAIL_DETECTED"
+    db.commit.assert_awaited_once()
 
 
 # --------------------------------------------------------------------------- #

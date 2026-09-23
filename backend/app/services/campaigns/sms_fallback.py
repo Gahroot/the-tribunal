@@ -1,7 +1,7 @@
 """SMS fallback service for voice campaigns.
 
-This service handles sending SMS messages when voice calls fail
-(no answer, busy, voicemail, rejected).
+The voice worker sends at most three spaced, consent-checked SMS touches
+between unanswered call attempts (1, 3, and 5).
 """
 
 import contextlib
@@ -9,11 +9,8 @@ import re
 from datetime import UTC, datetime
 
 import structlog
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from app.core.config import settings
 from app.models.campaign import Campaign, CampaignContact, CampaignContactStatus
 from app.models.contact import Contact
 from app.services.outbound.delivery import (
@@ -42,7 +39,7 @@ async def send_sms_fallback(
         campaign: The voice campaign
         campaign_contact: Campaign contact record
         contact: Contact record
-        call_outcome: Why the call failed (no_answer, busy, voicemail, rejected)
+        call_outcome: Why the call failed (no_answer, busy, voicemail)
         telnyx_api_key: Telnyx API key
 
     Returns:
@@ -58,8 +55,12 @@ async def send_sms_fallback(
         log.info("sms_fallback_disabled")
         return False
 
-    if campaign_contact.sms_fallback_sent:
-        log.info("sms_fallback_already_sent")
+    if (
+        campaign_contact.sms_fallback_sent_at
+        and campaign_contact.last_call_at
+        and campaign_contact.sms_fallback_sent_at >= campaign_contact.last_call_at
+    ):
+        log.info("sms_fallback_already_sent_for_attempt")
         return False
 
     # Determine message content
@@ -112,7 +113,7 @@ async def send_sms_fallback(
                 campaign_contact=campaign_contact,
                 agent_id=campaign.sms_fallback_agent_id or campaign.agent_id,
                 idempotency_scope="voice_campaign_sms_fallback",
-                idempotency_parts=(campaign_contact.id, call_outcome),
+                idempotency_parts=(campaign_contact.id, campaign_contact.call_attempts),
                 action_type="voice_campaign_sms_fallback",
                 require_sms_consent=True,
                 metadata={"telnyx_api_key_configured": bool(telnyx_api_key)},
@@ -205,98 +206,3 @@ def render_fallback_template(
             message = pattern.sub(value, message)
 
     return message
-
-
-async def trigger_sms_fallback_for_call(
-    call_control_id: str,
-    call_outcome: str,
-    log: structlog.BoundLogger,
-) -> bool:
-    """Trigger SMS fallback for a failed campaign call.
-
-    This function is called from the webhook handler when a call fails.
-
-    Args:
-        call_control_id: Telnyx call control ID
-        call_outcome: Why the call failed (no_answer, busy, voicemail, rejected)
-        log: Logger instance
-
-    Returns:
-        True if SMS fallback was triggered successfully
-    """
-    from app.db.session import AsyncSessionLocal
-    from app.models.conversation import Message
-
-    log.info("trigger_sms_fallback_started", call_control_id=call_control_id)
-
-    async with AsyncSessionLocal() as db:
-        # Find the message by call_control_id
-        msg_result = await db.execute(
-            select(Message).where(Message.provider_message_id == call_control_id)
-        )
-        message = msg_result.scalar_one_or_none()
-
-        if not message:
-            log.warning("message_not_found_for_fallback", call_control_id=call_control_id)
-            return False
-
-        log.info("found_message", message_id=str(message.id))
-
-        # Find campaign contact linked to this call
-        cc_result = await db.execute(
-            select(CampaignContact)
-            .options(
-                selectinload(CampaignContact.campaign),
-                selectinload(CampaignContact.contact),
-            )
-            .where(CampaignContact.call_message_id == message.id)
-        )
-        campaign_contact = cc_result.scalar_one_or_none()
-
-        if not campaign_contact:
-            log.info("not_a_campaign_call", message_id=str(message.id))
-            return False
-
-        log.info("found_campaign_contact", campaign_contact_id=str(campaign_contact.id))
-
-        campaign = campaign_contact.campaign
-        contact = campaign_contact.contact
-
-        if not campaign or not contact:
-            log.warning("missing_campaign_or_contact")
-            return False
-
-        if campaign.campaign_type != "voice_sms_fallback":
-            log.info(
-                "campaign_not_voice_sms_fallback",
-                campaign_type=campaign.campaign_type,
-            )
-            return False
-
-        # Stats are already updated by campaign_call_stats.update_campaign_call_stats()
-        # before this function is called — no need to duplicate here.
-
-        # Send SMS fallback
-        if not settings.telnyx_api_key:
-            log.warning("no_telnyx_api_key_for_fallback")
-            return False
-
-        # Refresh relationships after commit
-        await db.refresh(campaign_contact)
-        camp_result = await db.execute(
-            select(Campaign).where(Campaign.id == campaign_contact.campaign_id)
-        )
-        refreshed_campaign = camp_result.scalar_one()
-        contact_result = await db.execute(
-            select(Contact).where(Contact.id == campaign_contact.contact_id)
-        )
-        refreshed_contact = contact_result.scalar_one()
-
-        return await send_sms_fallback(
-            db=db,
-            campaign=refreshed_campaign,
-            campaign_contact=campaign_contact,
-            contact=refreshed_contact,
-            call_outcome=call_outcome,
-            telnyx_api_key=settings.telnyx_api_key,
-        )

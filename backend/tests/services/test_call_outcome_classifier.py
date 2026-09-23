@@ -202,8 +202,8 @@ class TestClassifyBookingOverride:
             hangup_source="caller",
             booking_outcome="success",
         )
-        # Outcome remains no_answer but status is upgraded
-        assert result.outcome == "no_answer"
+        # A booking terminates the cadence even if Telnyx reports no answer.
+        assert result.outcome is None
         assert result.message_status == "completed"
         # When status is completed, error fields are not populated
         assert result.error_code is None

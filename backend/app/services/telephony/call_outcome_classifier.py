@@ -117,9 +117,11 @@ class CallOutcomeClassifier:
                 message_status = MessageStatus.FAILED
             # 5+ seconds with NORMAL_CLEARING = real interaction, leave as completed
 
-        # If booking was successful, override failed status
-        if booking_outcome == "success" and message_status == MessageStatus.FAILED:
+        # A confirmed booking is a human conversion, never a retry or fallback.
+        if booking_outcome == "success":
+            call_outcome = None
             message_status = MessageStatus.COMPLETED
+            is_rejected_call = False
 
         # Populate error fields for failed calls
         error_code: str | None = None

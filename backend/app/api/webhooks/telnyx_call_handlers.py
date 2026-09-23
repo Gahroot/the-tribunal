@@ -384,6 +384,7 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:  # noqa
             select(Message)
             .options(selectinload(Message.conversation))
             .where(Message.provider_message_id == call_control_id)
+            .with_for_update()
         )
         message = result.scalar_one_or_none()
 
@@ -426,8 +427,28 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:  # noqa
                 hangup_source=hangup_source,
                 booking_outcome=message.booking_outcome,
             )
+            if message.direction == "outbound" and message.booking_outcome != "success":
+                from app.models.campaign import CampaignContact
+
+                detected = message.error_code == "VOICEMAIL_DETECTED"
+                if not detected:
+                    detected = (
+                        await db.scalar(
+                            select(CampaignContact.last_call_status).where(
+                                CampaignContact.call_message_id == message.id
+                            )
+                        )
+                        == "voicemail"
+                    )
+                if detected:
+                    classification.outcome = "voicemail"
+                    classification.message_status = MessageStatus.FAILED
+                    classification.error_code = None
+                    classification.error_message = None
 
             message.status = classification.message_status
+            if message.booking_outcome == "success" and message.error_code == "VOICEMAIL_DETECTED":
+                message.error_code = None
 
             # Store error info for failed calls
             if classification.error_code:
@@ -436,14 +457,6 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:  # noqa
 
             if classification.is_rejection:
                 log.info("rejected_call_detected", hangup_source=hangup_source)
-
-            # Override if booking was successful
-            if (
-                message.booking_outcome == "success"
-                and classification.message_status == MessageStatus.FAILED
-            ):
-                log.info("overriding_failed_status_due_to_successful_booking")
-                message.status = MessageStatus.COMPLETED
 
             await db.commit()
             log.info("message_updated", message_id=str(message.id), status=message.status)
@@ -534,23 +547,8 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:  # noqa
             else:
                 log.info("campaign_call_stats_skipped_retry")
 
-            # Trigger SMS fallback for failed calls only
-            if (
-                classification.outcome
-                and classification.outcome != "bad_number"
-                and not already_finalized
-            ):
-                log.info("triggering_sms_fallback", call_outcome=classification.outcome)
-                try:
-                    from app.services.campaigns.sms_fallback import trigger_sms_fallback_for_call
-
-                    await trigger_sms_fallback_for_call(
-                        call_control_id=call_control_id,
-                        call_outcome=classification.outcome,
-                        log=log,
-                    )
-                except Exception as e:
-                    log.exception("sms_fallback_trigger_failed", error=str(e))
+            # Campaign SMS is paced by the worker after the routed call outcome,
+            # never sent from the webhook (including booking or bad-number calls).
 
             # Automatic missed-call text-back: for unanswered INBOUND calls,
             # invite the caller to book via SMS. The service is idempotent on
@@ -670,6 +668,34 @@ async def handle_machine_detection(payload: dict[Any, Any], log: Any) -> None:
 
     log.info("voicemail_detected_hanging_up")
 
+    # Store the detection on the active attempt before the hangup webhook can
+    # classify a long machine greeting as a live human conversation.
+    from app.models.campaign import CampaignContact, CampaignContactStatus
+    from app.models.conversation import Message
+
+    async with AsyncSessionLocal() as detection_db:
+        message = await detection_db.scalar(
+            select(Message).where(Message.provider_message_id == call_control_id).with_for_update()
+        )
+        if (
+            message
+            and message.direction == "outbound"
+            and message.campaign_id
+            and message.status not in _TERMINAL_HANGUP_STATUSES
+        ):
+            message.error_code = "VOICEMAIL_DETECTED"
+            campaign_contact = await detection_db.scalar(
+                select(CampaignContact)
+                .where(
+                    CampaignContact.call_message_id == message.id,
+                    CampaignContact.status == CampaignContactStatus.CALLING,
+                )
+                .with_for_update()
+            )
+            if campaign_contact:
+                campaign_contact.last_call_status = "voicemail"
+            await detection_db.commit()
+
     # Push notification for voicemail
     try:
         from app.models.conversation import Message
@@ -712,17 +738,7 @@ async def handle_machine_detection(payload: dict[Any, Any], log: Any) -> None:
         finally:
             await voice_service.close()
 
-        # Trigger SMS fallback
-        try:
-            from app.services.campaigns.sms_fallback import trigger_sms_fallback_for_call
-
-            await trigger_sms_fallback_for_call(
-                call_control_id=call_control_id,
-                call_outcome=call_outcome,
-                log=log,
-            )
-        except Exception as e:
-            log.exception("sms_fallback_trigger_failed", error=str(e))
+        # The campaign worker schedules SMS after the hangup is routed.
 
         # Automatic missed-call text-back for voicemail-detected calls. The
         # service self-guards on inbound direction and is idempotent on

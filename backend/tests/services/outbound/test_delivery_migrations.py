@@ -182,7 +182,9 @@ async def test_campaign_sms_fallback_uses_outbound_delivery(
         sms_fallback_sent=False,
         sms_fallback_sent_at=None,
         sms_fallback_message_id=None,
-        status=None,
+        call_attempts=1,
+        last_call_at=None,
+        status=CampaignContactStatus.PENDING,
         conversation_id=None,
         messages_sent=0,
         last_error=None,
@@ -216,9 +218,9 @@ async def test_campaign_sms_fallback_uses_outbound_delivery(
     assert request.campaign is campaign
     assert request.campaign_contact is campaign_contact
     assert request.idempotency_scope == "voice_campaign_sms_fallback"
-    assert request.idempotency_parts == (campaign_contact.id, "no_answer")
+    assert request.idempotency_parts == (campaign_contact.id, 1)
     assert request.require_sms_consent is True
-    assert campaign_contact.status is CampaignContactStatus.SMS_FALLBACK_SENT
+    assert campaign_contact.status is CampaignContactStatus.PENDING
     assert campaign_contact.sms_fallback_sent is True
     assert campaign.sms_fallbacks_sent == 1
     assert campaign.messages_sent == 1
