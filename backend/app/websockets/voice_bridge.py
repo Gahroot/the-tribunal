@@ -227,9 +227,17 @@ async def _setup_voice_session(
         )
 
     if agent:
+        system_prompt = agent.system_prompt or ""
+        from app.services.calendar.reconfirm_context import reconfirm_prompt
+
+        system_prompt += (
+            await reconfirm_prompt(call_control_id, workspace_id, agent.id)
+            if is_outbound and workspace_id and call_control_id
+            else ""
+        )
         await voice_session.configure_session(
             voice=agent.voice_id,
-            system_prompt=agent.system_prompt,
+            system_prompt=system_prompt,
             temperature=agent.temperature,
             turn_detection_mode=agent.turn_detection_mode,
             turn_detection_threshold=agent.turn_detection_threshold,

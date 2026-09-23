@@ -16,6 +16,7 @@ from sqlalchemy import select
 
 from app.api.webhooks.calcom_events import (
     build_confirmation_body,
+    build_logistics_body,
     find_recent_voice_message,
     get_workspace_owner,
     resolve_campaign_id,
@@ -145,6 +146,10 @@ async def handle_booking_created(data: dict[str, Any], log: Any) -> None:  # noq
         if appointment:
             # Update existing appointment
             log.info("updating_existing_appointment", appointment_id=appointment.id)
+            if appointment.scheduled_at != scheduled_at:
+                appointment.confirmed_at = None
+                appointment.reschedule_requested_at = None
+                appointment.reminders_sent = []
             appointment.scheduled_at = scheduled_at
             appointment.duration_minutes = duration_minutes
             appointment.calcom_booking_id = booking_id
@@ -219,6 +224,17 @@ async def handle_booking_created(data: dict[str, Any], log: Any) -> None:  # noq
                 idempotency_scope="calcom_booking_confirmation_sms",
                 idempotency_parts=(appointment.id,),
             )
+            logistics_body = build_logistics_body(workspace)
+            if logistics_body:
+                await send_lifecycle_sms(
+                    db=db,
+                    workspace_id=workspace_id,
+                    contact=contact,
+                    agent=agent,
+                    body_text=logistics_body,
+                    idempotency_scope="calcom_booking_logistics_sms",
+                    idempotency_parts=(appointment.id,),
+                )
 
         # Email notification to realtor for new bookings
         if is_new_booking:
@@ -359,12 +375,17 @@ async def handle_booking_rescheduled(data: dict[str, Any], log: Any) -> None:  #
             return
 
         # Update appointment
+        previous_scheduled_at = appointment.scheduled_at
         appointment.scheduled_at = scheduled_at
         appointment.duration_minutes = duration_minutes
         appointment.sync_status = "synced"
         appointment.last_synced_at = datetime.now(UTC)
 
-        # Reset reminder tracking so the reminder worker re-fires for the new time
+        # A new time starts a fresh confirmation and reminder ladder.
+        if previous_scheduled_at != scheduled_at:
+            appointment.reminders_sent = []
+            appointment.confirmed_at = None
+            appointment.reschedule_requested_at = None
         appointment.reminder_sent_at = None
         log.info(
             "reminder_tracking_reset_for_rescheduled_appointment",
@@ -413,7 +434,7 @@ async def handle_booking_rescheduled(data: dict[str, Any], log: Any) -> None:  #
                 rescheduled_body = (
                     f"Hi {first_name}, your appointment has been rescheduled to "
                     f"{new_date} at {new_time}. See you then! "
-                    "Reply here if you need to make any changes."
+                    "Reply C to confirm / R to reschedule."
                 )
 
                 log.info(

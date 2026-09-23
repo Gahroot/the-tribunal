@@ -48,9 +48,8 @@ __all__ = [
 
 
 DEFAULT_CONFIRMATION_BODY = (
-    "Hi {first_name}! Your appointment is confirmed for {appointment_date} at "
-    "{appointment_time}. We'll send you a reminder beforehand. "
-    "Reply here if you need to reschedule."
+    "Hi {first_name}! Your appointment is booked for {appointment_date} at "
+    "{appointment_time}. Reply C to confirm / R to reschedule."
 )
 
 
@@ -274,7 +273,26 @@ def build_confirmation_body(
         except Exception:
             pass  # Non-fatal; leave placeholder as-is
 
+    if "Reply C to confirm / R to reschedule" not in message:
+        message += " Reply C to confirm / R to reschedule."
     return message
+
+
+def build_logistics_body(workspace: Workspace | None) -> str | None:
+    """Use only operator-provided logistics; never invent an address or link."""
+    settings_data = (workspace.settings if workspace else None) or {}
+    parts = []
+    for label, key in (
+        ("Address", "appointment_address"),
+        ("Parking", "appointment_parking"),
+        ("Meeting link", "appointment_link"),
+    ):
+        value = settings_data.get(key)
+        if isinstance(value, str) and value.strip():
+            parts.append(f"{label}: {value.strip()}")
+    if not parts:
+        return None
+    return "Appointment details: " + ". ".join(parts) + ". Reply with questions."
 
 
 async def send_lifecycle_sms(

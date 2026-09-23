@@ -180,6 +180,12 @@ async def run_inbound_text_side_effects(
     """Run AI, drip, campaign, and notification side effects for an inbound text."""
     conversation = await _load_conversation(db, message.conversation_id)
     if conversation is not None:
+        from app.services.calendar.confirmation_reply import handle_confirmation_reply
+
+        if event.channel == MessageChannel.SMS and await handle_confirmation_reply(
+            db, message, conversation, event.body
+        ):
+            return
         await _schedule_ai_if_enabled(
             db=db,
             conversation=conversation,

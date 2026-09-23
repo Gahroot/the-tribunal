@@ -30,6 +30,7 @@ from app.models.agent import Agent
 from app.models.appointment import Appointment
 from app.models.contact import Contact
 from app.models.conversation import Conversation
+from app.models.phone_number import PhoneNumber
 from app.models.workspace import Workspace
 from app.services.calendar.reminder_service import resolve_from_number
 from app.services.idempotency import derive_outbound_key, derive_worker_retry_key
@@ -47,6 +48,8 @@ _AGENTLESS_DEFAULT_OFFSETS = [60]
 # has already been sent for an appointment.  Uses -1 because normal reminder
 # offsets are always positive integers and the column is ARRAY(Integer).
 VR_SENTINEL = -1
+MORNING_SENTINEL = -2
+RECONFIRM_CALL_SENTINEL = -3
 
 
 class ReminderWorker(RetryableWorker, BaseWorker):
@@ -86,7 +89,9 @@ class ReminderWorker(RetryableWorker, BaseWorker):
                 .where(
                     and_(
                         Appointment.status == "scheduled",
+                        Appointment.reschedule_requested_at.is_(None),
                         Appointment.scheduled_at > now,
+
                         Appointment.scheduled_at <= now + timedelta(minutes=lookahead_minutes),
                         Appointment.contact_id.is_not(None),
                     )
@@ -137,6 +142,97 @@ class ReminderWorker(RetryableWorker, BaseWorker):
 
             # Value-reinforcement pre-appointment messages
             await self._process_value_reinforcement(appointments, now, db)
+            for appt in appointments:
+                if appt.agent is not None and not appt.agent.reminder_enabled:
+                    continue
+                if self._morning_due(appt, now) and MORNING_SENTINEL not in (
+                    appt.reminders_sent or []
+                ):
+                    await self._send_reminder(appt, MORNING_SENTINEL, db)
+                if (
+                    appt.confirmed_at is None
+                    and appt.reschedule_requested_at is None
+                    and RECONFIRM_CALL_SENTINEL not in (appt.reminders_sent or [])
+                    and now + timedelta(minutes=90) >= appt.scheduled_at
+                ):
+                    await self._send_reconfirm_call(appt, db)
+
+    @staticmethod
+    def _morning_due(appt: Appointment, now: datetime) -> bool:
+        tz_name = (appt.workspace.settings or {}).get("timezone", "UTC")
+        try:
+            tz = zoneinfo.ZoneInfo(str(tz_name))
+        except (KeyError, zoneinfo.ZoneInfoNotFoundError):
+            tz = zoneinfo.ZoneInfo("UTC")
+        local_now = now.astimezone(tz)
+        local_appt = appt.scheduled_at.astimezone(tz)
+        morning_start = local_appt.replace(hour=9, minute=0, second=0, microsecond=0)
+        if local_appt < morning_start:
+            morning_start = local_appt - timedelta(hours=1)
+        return local_now.date() == local_appt.date() and local_now >= morning_start
+
+    async def _send_reconfirm_call(self, appt: Appointment, db: AsyncSession) -> None:
+        """One extra AI call for unconfirmed appointments, 90 minutes before start."""
+        from app.services.telephony.telnyx_voice import TelnyxVoiceService
+
+        contact = appt.contact
+        agent = appt.agent
+        if (
+            not contact
+            or not agent
+            or not agent.is_active
+            or not contact.phone_number
+            or not settings.telnyx_api_key
+        ):
+            return
+        tz_name = (appt.workspace.settings or {}).get("timezone", "UTC")
+        try:
+            local_now = datetime.now(UTC).astimezone(zoneinfo.ZoneInfo(str(tz_name)))
+        except zoneinfo.ZoneInfoNotFoundError:
+            local_now = datetime.now(UTC)
+        if not 8 <= local_now.hour < 21:
+            return  # Never make automated calls during local quiet hours.
+        if await self.opt_out_manager.check_opt_out(appt.workspace_id, contact.phone_number, db):
+            await self._mark_offset_sent(appt, RECONFIRM_CALL_SENTINEL, db)
+            await db.commit()
+            return
+        phone = await db.scalar(
+            select(PhoneNumber.phone_number)
+            .where(
+                PhoneNumber.workspace_id == appt.workspace_id,
+                PhoneNumber.assigned_agent_id == agent.id,
+                PhoneNumber.is_active.is_(True),
+                PhoneNumber.voice_enabled.is_(True),
+            )
+            .limit(1)
+        )
+        if not phone or not settings.telnyx_connection_id:
+            return
+        voice = TelnyxVoiceService(settings.telnyx_api_key)
+        try:
+            await voice.initiate_call(
+                to_number=contact.phone_number,
+                from_number=phone,
+                connection_id=settings.telnyx_connection_id,
+                webhook_url=f"{settings.api_base_url or 'http://localhost:8000'}/webhooks/telnyx/voice",
+                db=db,
+                workspace_id=appt.workspace_id,
+                contact_phone=contact.phone_number,
+                agent_id=agent.id,
+                idempotency_key=derive_outbound_key(
+                    "appointment_reconfirm_call", appt.id, appt.scheduled_at
+                ),
+                call_purpose=f"appointment_reconfirm:{appt.id}",
+            )
+            await self._mark_offset_sent(appt, RECONFIRM_CALL_SENTINEL, db)
+            await db.commit()
+        except Exception:
+            self.logger.exception(
+                "Failed to initiate appointment reconfirm call", appointment_id=appt.id
+            )
+            await db.rollback()
+        finally:
+            await voice.close()
 
     async def _send_reminder(
         self,
@@ -205,13 +301,16 @@ class ReminderWorker(RetryableWorker, BaseWorker):
             workspace=workspace,
             agent=agent,
         )
+        body += " Reply C to confirm / R to reschedule."
 
         sms_service = TelnyxSMSService(telnyx_key)
         try:
             # Stable per-(appointment, offset) key so a worker crash between
             # the Message insert and the Telnyx POST is recoverable on the
             # next tick without sending the reminder twice.
-            idempotency_key = derive_outbound_key("reminder", appt.id, offset_minutes)
+            idempotency_key = derive_outbound_key(
+                "reminder", appt.id, appt.scheduled_at, offset_minutes
+            )
             message = await sms_service.send_message(
                 to_number=contact_phone,
                 from_number=from_number,

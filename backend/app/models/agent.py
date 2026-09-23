@@ -142,7 +142,9 @@ class Agent(Base):
     # Appointment reminder settings
     reminder_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     reminder_minutes_before: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
-    # Multi-touch reminder offsets (minutes before appointment) and custom SMS body
+    # Multi-touch reminder offsets (minutes before appointment) and custom SMS body.
+    # The worker also sends a timezone-aware morning-of SMS and, for unconfirmed
+    # bookings with a voice-capable agent, one reconfirmation call at 90 minutes.
     reminder_offsets: Mapped[list[int]] = mapped_column(
         ARRAY(Integer), default=lambda: [1440, 120, 30], nullable=False
     )

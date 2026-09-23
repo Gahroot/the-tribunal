@@ -127,6 +127,10 @@ class Appointment(Base):
     )
     # Multi-touch reminder tracking — list of offsets (minutes) already sent
     reminders_sent: Mapped[list[int]] = mapped_column(ARRAY(Integer), default=list, nullable=False)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reschedule_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(

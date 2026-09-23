@@ -204,6 +204,7 @@ class TelnyxVoiceService:
         enable_machine_detection: bool = False,
         campaign_id: uuid.UUID | None = None,
         idempotency_key: uuid.UUID | None = None,
+        call_purpose: str | None = None,
     ) -> Message:
         """Initiate outbound call via Telnyx Call Control API.
 
@@ -282,7 +283,7 @@ class TelnyxVoiceService:
                 conversation_id=conversation.id,
                 direction="outbound",
                 channel="voice",
-                body="",  # Voice calls don't have body text
+                body=call_purpose or "",  # Internal context for purpose-specific AI calls
                 status="queued",
                 agent_id=agent_id,
                 is_ai=agent_id is not None,
