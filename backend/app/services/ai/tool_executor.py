@@ -108,7 +108,11 @@ class VoiceToolExecutor(BaseToolExecutor):
         self.log.info(
             "executing_voice_tool",
             function_name=function_name,
-            arguments=arguments,
+            arguments=(
+                {"caller_consented": arguments.get("caller_consented") is True}
+                if function_name == "transfer_call"
+                else arguments
+            ),
         )
 
         if function_name == "check_availability":
@@ -177,6 +181,9 @@ class VoiceToolExecutor(BaseToolExecutor):
                 reason=arguments.get("reason", ""),
                 intent=arguments.get("intent"),
                 summary=arguments.get("summary"),
+                caller_consented=arguments.get("caller_consented") is True,
+                consent_quote=arguments.get("consent_quote"),
+                qualification=arguments.get("qualification"),
             )
 
         self.log.warning("unknown_voice_tool", function_name=function_name)
@@ -1266,14 +1273,11 @@ class VoiceToolExecutor(BaseToolExecutor):
         reason: str,
         intent: str | None,
         summary: str | None,
+        caller_consented: bool = False,
+        consent_quote: str | None = None,
+        qualification: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Hand the active call to a human closer (warm or cold transfer).
-
-        Resolves the destination + mode from agent/workspace config, then:
-        - cold: issues the Telnyx ``transfer`` command (immediate bridge);
-        - warm: dials a new leg to the closer, stashes pending state in Redis,
-          and speaks a briefing \u2014 the voice webhook bridges on speak end.
-        """
+        """Brief the closer; bridge only after explicit consent and a spoken briefing."""
         from app.services.telephony.call_transfer import resolve_transfer_config
         from app.services.telephony.telnyx_voice import TelnyxVoiceService
 
@@ -1295,20 +1299,181 @@ class VoiceToolExecutor(BaseToolExecutor):
             call_control_id=self.call_control_id,
             transfer_mode=resolution.mode,
         )
+        briefing = await self._build_transfer_briefing(
+            ctx, resolution, intent, summary, qualification
+        )
+        # Notify the configured human even when the caller has not agreed to a live handoff.
+        notified = await self._push_transfer_briefing(ctx, resolution.destination_number, briefing)
+        if not caller_consented or not isinstance(consent_quote, str) or not consent_quote.strip():
+            await self._audit_transfer(
+                ctx,
+                "briefed" if notified else "blocked",
+                reason,
+                {"consent": False, "notified": notified},
+            )
+            return {
+                "success": notified,
+                "transferred": False,
+                "message": (
+                    "Briefing sent; stay on the call and ask before a live handoff."
+                    if notified
+                    else "Could not notify the closer. Keep assisting the caller."
+                ),
+            }
         voice_service = TelnyxVoiceService(settings.telnyx_api_key)
         try:
-            if resolution.mode == "cold":
-                return await self._do_cold_transfer(
-                    voice_service, resolution, ctx, reason, intent, log
-                )
             return await self._do_warm_transfer(
-                voice_service, resolution, ctx, reason, intent, summary, log
+                voice_service,
+                resolution,
+                ctx,
+                reason,
+                intent,
+                log,
+                briefing=briefing,
+                consent_quote=consent_quote[:200],
             )
         except Exception as e:
             log.exception("transfer_call_error", error=str(e))
             return {"success": False, "error": f"Failed to transfer call: {e!s}"}
         finally:
             await voice_service.close()
+
+    async def _audit_transfer(
+        self, ctx: dict[str, Any], decision: str, reason: str, payload: dict[str, Any]
+    ) -> None:
+        from app.services.telephony.call_transfer import log_transfer_audit
+
+        await log_transfer_audit(
+            workspace_id=ctx["workspace_id"],
+            agent_id=getattr(self.agent, "id", None),
+            message_id=ctx["message_id"],
+            contact_id=ctx["contact_id"],
+            campaign_id=ctx["campaign_id"],
+            decision=decision,
+            reason=reason,
+            payload=payload,
+        )
+
+    async def _build_transfer_briefing(
+        self,
+        ctx: dict[str, Any],
+        resolution: Any,
+        intent: str | None,
+        summary: str | None,
+        qualification: dict[str, Any] | None = None,
+    ) -> str:
+        """Use only records belonging to the active call's workspace."""
+        from sqlalchemy import select
+
+        from app.db.session import AsyncSessionLocal
+        from app.models.appointment import Appointment
+        from app.models.contact import Contact
+        from app.models.opportunity import Opportunity
+        from app.services.telephony.call_transfer import build_briefing
+
+        details: list[str] = []
+        contact_id = ctx["contact_id"]
+        if contact_id is not None:
+            async with AsyncSessionLocal() as db:
+                contact = (
+                    await db.execute(
+                        select(Contact).where(
+                            Contact.id == contact_id, Contact.workspace_id == ctx["workspace_id"]
+                        )
+                    )
+                ).scalar_one_or_none()
+                if contact:
+                    signals = contact.qualification_signals or {}
+                    details.append(f"Source: {contact.source or 'unknown'}")
+                    details.append(
+                        f"Intent: {intent or signals.get('interest_level') or 'unknown'}"
+                    )
+                    for key in ("budget", "authority", "need", "timeline"):
+                        signal = signals.get(key) or {}
+                        value = signal.get("value") if isinstance(signal, dict) else None
+                        details.append(
+                            f"{key.title()}: {str(value)[:65] if value else 'not established'}"
+                        )
+                    objections = signals.get("objections") or []
+                    if isinstance(objections, list):
+                        details.append(
+                            "Objections: "
+                            + (", ".join(str(v)[:65] for v in objections[:2]) or "none noted")
+                        )
+                    opportunity = (
+                        await db.execute(
+                            select(Opportunity)
+                            .where(
+                                Opportunity.workspace_id == ctx["workspace_id"],
+                                Opportunity.primary_contact_id == contact_id,
+                                Opportunity.is_active.is_(True),
+                            )
+                            .order_by(Opportunity.created_at.desc())
+                            .limit(1)
+                        )
+                    ).scalar_one_or_none()
+                    if opportunity:
+                        details.append(
+                            f"Opportunity: {opportunity.name[:65]} ({opportunity.status})"
+                        )
+                    appointment = (
+                        await db.execute(
+                            select(Appointment)
+                            .where(
+                                Appointment.workspace_id == ctx["workspace_id"],
+                                Appointment.contact_id == contact_id,
+                            )
+                            .order_by(Appointment.scheduled_at.desc())
+                            .limit(1)
+                        )
+                    ).scalar_one_or_none()
+                    if appointment:
+                        details.insert(
+                            0,
+                            f"Calendar: {appointment.status} at "
+                            f"{appointment.scheduled_at.isoformat()}",
+                        )
+                    else:
+                        details.insert(0, "Calendar: no appointment on record")
+        base = build_briefing(
+            template=resolution.briefing_template,
+            caller_name=self.get_contact_name(),
+            intent=intent,
+            summary=(summary or "")[:300],
+        )
+        live_facts = []
+        if isinstance(qualification, dict):
+            live_facts = [
+                f"{key.title()}: {qualification[key][:150]}"
+                for key in ("budget", "authority", "need", "timeline", "objections")
+                if isinstance(qualification.get(key), str) and qualification[key].strip()
+            ]
+        live_section = " Current call: " + "; ".join(live_facts) if live_facts else ""
+        return (base[:150] + live_section[:400] + " " + ". ".join(details)[:650])[:1200]
+
+    async def _push_transfer_briefing(
+        self,
+        ctx: dict[str, Any],
+        destination: str,
+        briefing: str,
+    ) -> bool:
+        """Text the configured closer, not the caller; dedupe by call leg."""
+        from app.services.idempotency import derive_outbound_key
+        from app.services.telephony.telnyx import TelnyxSMSService
+
+        provider = TelnyxSMSService(settings.telnyx_api_key)
+        try:
+            return await provider.send_internal_notification(
+                to_number=destination,
+                from_number=ctx["workspace_phone"],
+                body="Live lead briefing: " + briefing,
+                idempotency_key=derive_outbound_key("closer_brief", self.call_control_id),
+            )
+        except Exception:
+            self.log.exception("closer_briefing_sms_failed")
+            return False
+        finally:
+            await provider.close()
 
     async def _load_transfer_context(self) -> dict[str, Any] | None:
         """Load workspace/contact/campaign context for the current call leg."""
@@ -1331,7 +1496,9 @@ class VoiceToolExecutor(BaseToolExecutor):
                 return None
 
             conversation = call_message.conversation
-            workspace_id = self.workspace_id or conversation.workspace_id
+            workspace_id = conversation.workspace_id
+            if self.workspace_id is not None and self.workspace_id != workspace_id:
+                return None
             ws_result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
             workspace = ws_result.scalar_one_or_none()
 
@@ -1372,53 +1539,6 @@ class VoiceToolExecutor(BaseToolExecutor):
             ),
         }
 
-    async def _do_cold_transfer(
-        self,
-        voice_service: Any,
-        resolution: Any,
-        ctx: dict[str, Any],
-        reason: str,
-        intent: str | None,
-        log: Any,
-    ) -> dict[str, Any]:
-        """Issue the native Telnyx transfer command and audit the outcome."""
-        from app.services.telephony.call_transfer import log_transfer_audit
-
-        assert self.call_control_id is not None
-        ok = await voice_service.transfer_call(
-            call_control_id=self.call_control_id,
-            to_number=resolution.destination_number,
-            from_number=ctx["workspace_phone"],
-        )
-        await log_transfer_audit(
-            workspace_id=ctx["workspace_id"],
-            agent_id=getattr(self.agent, "id", None),
-            message_id=ctx["message_id"],
-            contact_id=ctx["contact_id"],
-            campaign_id=ctx["campaign_id"],
-            decision="executed" if ok else "failed",
-            reason=reason or "cold_transfer",
-            payload={
-                "mode": "cold",
-                "destination": resolution.destination_number,
-                "intent": intent,
-            },
-        )
-        if not ok:
-            return {
-                "success": False,
-                "error": "The transfer could not be started. Keep assisting the caller.",
-            }
-        log.info("cold_transfer_started")
-        return {
-            "success": True,
-            "transferred": True,
-            "mode": "cold",
-            "message": (
-                "Connecting the caller to a team member now. Let them know, then stop speaking."
-            ),
-        }
-
     async def _do_warm_transfer(
         self,
         voice_service: Any,
@@ -1426,8 +1546,10 @@ class VoiceToolExecutor(BaseToolExecutor):
         ctx: dict[str, Any],
         reason: str,
         intent: str | None,
-        summary: str | None,
         log: Any,
+        *,
+        briefing: str,
+        consent_quote: str,
     ) -> dict[str, Any]:
         """Dial the closer, stash pending state, and speak a briefing.
 
@@ -1436,7 +1558,6 @@ class VoiceToolExecutor(BaseToolExecutor):
         """
         from app.services.telephony.call_transfer import (
             PendingTransfer,
-            build_briefing,
             log_transfer_audit,
             make_transfer_leg_client_state,
             store_pending_transfer,
@@ -1477,14 +1598,8 @@ class VoiceToolExecutor(BaseToolExecutor):
                 "error": "Could not reach a team member right now. Keep assisting the caller.",
             }
 
-        briefing = build_briefing(
-            template=resolution.briefing_template,
-            caller_name=self.get_contact_name(),
-            intent=intent,
-            summary=summary,
-        )
         language = getattr(self.agent, "language", None) or "en-US"
-        await store_pending_transfer(
+        stored = await store_pending_transfer(
             PendingTransfer(
                 caller_call_control_id=self.call_control_id,
                 closer_call_control_id=closer_ccid,
@@ -1496,6 +1611,12 @@ class VoiceToolExecutor(BaseToolExecutor):
                 created_at=datetime.now(UTC).isoformat(),
             )
         )
+        if stored is False:
+            await voice_service.hangup_call(closer_ccid)
+            return {
+                "success": False,
+                "error": "Could not prepare the human briefing. Keep assisting the caller.",
+            }
         await log_transfer_audit(
             workspace_id=ctx["workspace_id"],
             agent_id=agent_id,
@@ -1510,6 +1631,7 @@ class VoiceToolExecutor(BaseToolExecutor):
                 "closer_call_control_id": closer_ccid,
                 "intent": intent,
                 "briefing": briefing,
+                "consent_quote": consent_quote,
             },
         )
         log.info("warm_transfer_dialing", closer_call_control_id=closer_ccid)

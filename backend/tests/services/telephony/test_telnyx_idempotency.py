@@ -21,6 +21,7 @@ crash-safety contract introduced with the ``idempotency_key`` column:
 from __future__ import annotations
 
 import base64
+import json
 import uuid
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -35,6 +36,37 @@ from app.services.telephony.telnyx_voice import TelnyxVoiceService
 # ---------------------------------------------------------------------------
 # SMS: header forwarding on the low-level POST
 # ---------------------------------------------------------------------------
+
+
+async def test_internal_briefing_posts_sms_without_creating_crm_rows() -> None:
+    svc = TelnyxSMSService(api_key="k")
+    key = uuid.uuid4()
+    seen_requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_requests.append(request)
+        return httpx.Response(200, json={"data": {"id": "m1"}})
+
+    svc._client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url=svc.BASE_URL)
+    try:
+        ok = await svc.send_internal_notification(
+            to_number="+12025550101",
+            from_number="+12025550102",
+            body="Live lead briefing: ready to buy",
+            idempotency_key=key,
+        )
+    finally:
+        await svc.close()
+
+    assert ok is True
+    assert len(seen_requests) == 1
+    assert seen_requests[0].headers["X-Idempotency-Key"] == str(key)
+    assert json.loads(seen_requests[0].content) == {
+        "to": "+12025550101",
+        "from": "+12025550102",
+        "text": "Live lead briefing: ready to buy",
+        "type": "SMS",
+    }
 
 
 class TestPostMessageHeader:

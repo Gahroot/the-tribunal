@@ -588,14 +588,16 @@ async def _handle_transfer_leg_answered(call_control_id: str, log: Any) -> bool:
             language=pending.language,
         )
         if not spoke:
-            # If we can't brief, bridge immediately so the caller still reaches
-            # a human rather than getting stuck on a parked leg.
-            log.warning("transfer_briefing_failed_bridging_now")
-            await voice_service.bridge_calls(
-                call_control_id=call_control_id,
-                other_call_control_id=pending.caller_call_control_id,
-            )
+            # Never cold-dump the caller if the human did not hear the briefing.
+            from app.services.telephony.call_transfer import pop_pending_transfer
+
+            await pop_pending_transfer(call_control_id)
+            log.warning("transfer_briefing_failed_no_bridge")
+            await voice_service.hangup_call(call_control_id)
     except Exception as e:
+        from app.services.telephony.call_transfer import pop_pending_transfer
+
+        await pop_pending_transfer(call_control_id)
         log.exception("transfer_leg_answered_error", error=str(e))
     finally:
         await voice_service.close()
@@ -635,6 +637,8 @@ async def handle_speak_ended(payload: dict[Any, Any], log: Any) -> None:
             other_call_control_id=pending.caller_call_control_id,
         )
         if bridged:
+            # Detach the AI audio stream; the caller now speaks only to the closer.
+            await voice_service.stop_streaming(pending.caller_call_control_id)
             log.info("warm_transfer_bridged")
         else:
             log.error("warm_transfer_bridge_failed")

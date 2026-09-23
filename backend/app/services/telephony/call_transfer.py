@@ -115,10 +115,8 @@ def resolve_transfer_config(
     if not destination:
         return None
 
-    raw_mode = getattr(agent, "transfer_mode", None) or ws_settings.get("transfer_mode") or "warm"
-    mode = str(raw_mode).lower()
-    if mode not in {"warm", "cold"}:
-        mode = "warm"
+    # Cold transfers are never permitted: the human must hear the briefing first.
+    mode = "warm"
 
     briefing_template = getattr(agent, "transfer_briefing_template", None) or ws_settings.get(
         "transfer_briefing_template"
@@ -173,7 +171,7 @@ def make_transfer_leg_client_state(token: str) -> str:
     return encode_client_state(uuid.uuid5(uuid.NAMESPACE_DNS, raw))
 
 
-async def store_pending_transfer(pending: PendingTransfer) -> None:
+async def store_pending_transfer(pending: PendingTransfer) -> bool:
     """Persist warm-transfer pending state keyed by the closer leg id."""
     try:
         client = await get_redis()
@@ -182,8 +180,10 @@ async def store_pending_transfer(pending: PendingTransfer) -> None:
             pending.to_json(),
             ex=_PENDING_TRANSFER_TTL_SECONDS,
         )
-    except Exception as exc:  # pragma: no cover - Redis best-effort
+        return True
+    except Exception as exc:
         logger.warning("store_pending_transfer_failed", error=str(exc))
+        return False
 
 
 async def peek_pending_transfer(closer_call_control_id: str) -> PendingTransfer | None:

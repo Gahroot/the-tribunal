@@ -73,15 +73,12 @@ TRANSFER_CALL_TOOL: dict[str, Any] = {
     "type": "function",
     "name": "transfer_call",
     "description": (
-        "Transfer (hand off) the current live phone call to a human closer. "
-        "Call this ONLY when the caller explicitly asks to speak to a human, "
-        "is frustrated, or clearly qualifies as a hot lead that a person should "
-        "close now. The destination number and whether the human hears a spoken "
-        "briefing first (warm) or is connected immediately (cold) are configured "
-        "by the operator \u2014 you do NOT choose the number. "
-        "After you call this tool, briefly tell the caller you're connecting them "
-        "to a team member, then stop talking and WAIT \u2014 do not keep "
-        "conversing, the call is being handed off."
+        "Brief a human closer when the caller shows high intent or BANT-qualifies. "
+        "Ask if they want to speak to a human now before transferring. Set "
+        "caller_consented true ONLY after an explicit yes or direct request to "
+        "speak to the human. Otherwise this only briefs the closer and the AI "
+        "stays on the call. Never infer consent from intent or frustration. "
+        "After a successful handoff, tell the caller and stop talking."
     ),
     "parameters": {
         "type": "object",
@@ -102,14 +99,29 @@ TRANSFER_CALL_TOOL: dict[str, Any] = {
             },
             "summary": {
                 "type": "string",
-                "description": (
-                    "Optional 1\u20132 sentence briefing of key facts for the human "
-                    "closer (caller's situation, name, any numbers already discussed). "
-                    "Used only in warm mode."
-                ),
+                "description": "Brief factual summary of what the caller said on this call.",
+            },
+            "caller_consented": {
+                "type": "boolean",
+                "description": "True only after explicit agreement to speak with a human now.",
+            },
+            "consent_quote": {
+                "type": "string",
+                "description": "The caller's actual words agreeing to speak to a human now.",
+            },
+            "qualification": {
+                "type": "object",
+                "description": "Facts the caller gave during this call, not guesses.",
+                "properties": {
+                    "budget": {"type": "string"},
+                    "authority": {"type": "string"},
+                    "need": {"type": "string"},
+                    "timeline": {"type": "string"},
+                    "objections": {"type": "string"},
+                },
             },
         },
-        "required": ["reason"],
+        "required": ["reason", "caller_consented"],
     },
 }
 

@@ -673,6 +673,24 @@ class TelnyxSMSService:
             "type": self.provider_payload_type,
         }
 
+    async def send_internal_notification(
+        self,
+        *,
+        to_number: str,
+        from_number: str,
+        body: str,
+        idempotency_key: uuid.UUID,
+    ) -> bool:
+        """Send an operator alert without creating a customer CRM conversation."""
+        payload = {
+            "to": self._normalize_outbound_to(to_number),
+            "from": self._normalize_outbound_from(from_number),
+            "text": body,
+            "type": self.provider_payload_type,
+        }
+        response = await self._post_message(payload, idempotency_key)
+        return bool(response.get("data", {}).get("id"))
+
     async def _post_message(
         self,
         payload: dict[str, str],

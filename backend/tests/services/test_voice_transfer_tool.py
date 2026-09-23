@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -20,6 +21,9 @@ from app.services.telephony.call_transfer import (
     build_briefing,
     resolve_transfer_config,
 )
+
+_real_build_briefing = VoiceToolExecutor._build_transfer_briefing
+_real_push_briefing = VoiceToolExecutor._push_transfer_briefing
 
 
 def _make_agent(**overrides: Any) -> Agent:
@@ -140,7 +144,7 @@ def test_resolve_transfer_config_prefers_agent_over_workspace() -> None:
     res = resolve_transfer_config(agent, {"transfer_destination_number": "+19998887777"})
     assert res is not None
     assert res.destination_number == "+15551112222"
-    assert res.mode == "cold"
+    assert res.mode == "warm"  # operator cannot override the no-cold-dump rule
 
 
 def test_resolve_transfer_config_falls_back_to_workspace() -> None:
@@ -192,18 +196,28 @@ def test_pending_transfer_json_roundtrip() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Execution: cold transfer
+# Execution: consent and warm-only transfer
 # --------------------------------------------------------------------------- #
 
 
+@pytest.fixture(autouse=True)
+def stub_briefing_delivery(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Exercise handoff independently of the SMS network and database records."""
+    monkeypatch.setattr(
+        VoiceToolExecutor, "_build_transfer_briefing", AsyncMock(return_value="Lead brief")
+    )
+    monkeypatch.setattr(VoiceToolExecutor, "_push_transfer_briefing", AsyncMock(return_value=True))
+
+
 @pytest.mark.asyncio
-async def test_cold_transfer_issues_telnyx_transfer_and_audits() -> None:
+async def test_cold_config_still_dials_warm_leg_after_consent() -> None:
     agent = _make_agent(transfer_mode="cold")
     call_message = _make_call_message(agent)
     workspace = Workspace(id=agent.workspace_id, name="WS", slug="ws", settings={})
 
     voice_service = AsyncMock()
-    voice_service.transfer_call = AsyncMock(return_value=True)
+    voice_service.dial_transfer_leg = AsyncMock(return_value="closer-leg")
+    voice_service.get_call_control_application_id = AsyncMock(return_value="conn-1")
     voice_service.close = AsyncMock()
 
     audit = AsyncMock()
@@ -219,19 +233,30 @@ async def test_cold_transfer_issues_telnyx_transfer_and_audits() -> None:
             return_value=voice_service,
         ),
         patch("app.services.telephony.call_transfer.log_transfer_audit", audit),
+        patch(
+            "app.services.telephony.call_transfer.store_pending_transfer",
+            AsyncMock(return_value=True),
+        ),
         patch("app.core.config.settings.telnyx_api_key", "key-123"),
     ):
         result = await VoiceToolExecutor(
             agent=agent,
             contact_info={"name": "Jane Doe"},
             call_control_id="caller-ccid-1",
-        ).execute("transfer_call", {"reason": "hot lead", "intent": "buy now"})
+        ).execute(
+            "transfer_call",
+            {
+                "reason": "hot lead",
+                "intent": "buy now",
+                "caller_consented": True,
+                "consent_quote": "Yes, connect me",
+            },
+        )
 
     assert result["success"] is True
-    assert result["mode"] == "cold"
-    voice_service.transfer_call.assert_awaited_once()
-    kwargs = voice_service.transfer_call.await_args.kwargs
-    assert kwargs["call_control_id"] == "caller-ccid-1"
+    assert result["mode"] == "warm"
+    voice_service.dial_transfer_leg.assert_awaited_once()
+    kwargs = voice_service.dial_transfer_leg.await_args.kwargs
     assert kwargs["to_number"] == "+15551234567"
     assert kwargs["from_number"] == "+15550001111"
     audit.assert_awaited()
@@ -240,7 +265,7 @@ async def test_cold_transfer_issues_telnyx_transfer_and_audits() -> None:
 
 
 @pytest.mark.asyncio
-async def test_cold_transfer_reports_failure_when_telnyx_rejects() -> None:
+async def test_without_consent_only_briefs_closer() -> None:
     agent = _make_agent(transfer_mode="cold")
     call_message = _make_call_message(agent)
     workspace = Workspace(id=agent.workspace_id, name="WS", slug="ws", settings={})
@@ -267,8 +292,10 @@ async def test_cold_transfer_reports_failure_when_telnyx_rejects() -> None:
             call_control_id="caller-ccid-1",
         ).execute("transfer_call", {"reason": "human please"})
 
-    assert result["success"] is False
-    assert "could not be started" in result["error"]
+    assert result["success"] is True
+    assert result["transferred"] is False
+    voice_service.transfer_call.assert_not_awaited()
+    voice_service.dial_transfer_leg.assert_not_awaited()
 
 
 # --------------------------------------------------------------------------- #
@@ -311,7 +338,13 @@ async def test_warm_transfer_dials_closer_and_stores_pending_state() -> None:
             call_control_id="caller-ccid-1",
         ).execute(
             "transfer_call",
-            {"reason": "hot lead", "intent": "wants premium", "summary": "Budget 5k."},
+            {
+                "reason": "hot lead",
+                "intent": "wants premium",
+                "summary": "Budget 5k.",
+                "caller_consented": True,
+                "consent_quote": "Yes, please connect me",
+            },
         )
 
     assert result["success"] is True
@@ -326,8 +359,7 @@ async def test_warm_transfer_dials_closer_and_stores_pending_state() -> None:
     pending = store_pending.await_args.args[0]
     assert pending.caller_call_control_id == "caller-ccid-1"
     assert pending.closer_call_control_id == "closer-ccid-9"
-    assert "Jane Doe" in pending.briefing
-    assert "wants premium" in pending.briefing
+    assert pending.briefing == "Lead brief"
 
 
 @pytest.mark.asyncio
@@ -360,10 +392,156 @@ async def test_warm_transfer_fails_gracefully_when_dial_fails() -> None:
         result = await VoiceToolExecutor(
             agent=agent,
             call_control_id="caller-ccid-1",
-        ).execute("transfer_call", {"reason": "hot lead"})
+        ).execute(
+            "transfer_call",
+            {"reason": "hot lead", "caller_consented": True, "consent_quote": "Yes, connect me"},
+        )
 
     assert result["success"] is False
     assert "Could not reach a team member" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_consent_requires_a_quote() -> None:
+    agent = _make_agent()
+    call_message = _make_call_message(agent)
+    workspace = Workspace(id=agent.workspace_id, name="WS", slug="ws", settings={})
+    voice_service = AsyncMock()
+    with (
+        patch.object(
+            db_session_module,
+            "AsyncSessionLocal",
+            side_effect=lambda: _SequencedSession([call_message, workspace]),
+        ),
+        patch("app.services.telephony.telnyx_voice.TelnyxVoiceService", return_value=voice_service),
+        patch("app.services.telephony.call_transfer.log_transfer_audit", AsyncMock()),
+        patch("app.core.config.settings.telnyx_api_key", "key-123"),
+    ):
+        result = await VoiceToolExecutor(agent=agent, call_control_id="caller-ccid-1").execute(
+            "transfer_call",
+            {"reason": "high intent", "caller_consented": True, "consent_quote": "  "},
+        )
+    assert result["transferred"] is False
+    voice_service.dial_transfer_leg.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_briefing_contains_workspace_contact_bant_objections_and_calendar() -> None:
+    agent = _make_agent()
+    contact = SimpleNamespace(
+        source="inbound_call",
+        qualification_signals={
+            "budget": {"value": "$5k"},
+            "authority": {"value": "owner"},
+            "need": {"value": "new home"},
+            "timeline": {"value": "this month"},
+            "interest_level": "high",
+            "objections": ["price"],
+        },
+    )
+    opportunity = SimpleNamespace(name="House search", status="open")
+    appointment = SimpleNamespace(
+        status="scheduled", scheduled_at=datetime(2026, 10, 1, tzinfo=UTC)
+    )
+    with patch.object(
+        db_session_module,
+        "AsyncSessionLocal",
+        side_effect=lambda: _SequencedSession([contact, opportunity, appointment]),
+    ):
+        briefing = await _real_build_briefing(
+            VoiceToolExecutor(agent=agent),
+            {"workspace_id": agent.workspace_id, "contact_id": 42},
+            resolve_transfer_config(agent, {}),
+            "ready to buy",
+            "Asked about homes",
+        )
+    for fact in (
+        "inbound_call",
+        "$5k",
+        "owner",
+        "new home",
+        "this month",
+        "price",
+        "House search",
+        "scheduled",
+        "ready to buy",
+    ):
+        assert fact in briefing
+
+
+@pytest.mark.asyncio
+async def test_failed_pending_state_never_hands_caller_to_human() -> None:
+    agent = _make_agent()
+    call_message = _make_call_message(agent)
+    workspace = Workspace(id=agent.workspace_id, name="WS", slug="ws", settings={})
+    voice_service = AsyncMock()
+    voice_service.dial_transfer_leg = AsyncMock(return_value="closer-leg")
+    voice_service.get_call_control_application_id = AsyncMock(return_value="conn-1")
+    with (
+        patch.object(
+            db_session_module,
+            "AsyncSessionLocal",
+            side_effect=lambda: _SequencedSession([call_message, workspace]),
+        ),
+        patch("app.services.telephony.telnyx_voice.TelnyxVoiceService", return_value=voice_service),
+        patch(
+            "app.services.telephony.call_transfer.store_pending_transfer",
+            AsyncMock(return_value=False),
+        ),
+        patch("app.core.config.settings.telnyx_api_key", "key-123"),
+    ):
+        result = await VoiceToolExecutor(agent=agent, call_control_id="caller-ccid-1").execute(
+            "transfer_call",
+            {
+                "reason": "hot lead",
+                "caller_consented": True,
+                "consent_quote": "Yes, please connect me",
+            },
+        )
+    assert result["success"] is False
+    voice_service.hangup_call.assert_awaited_once_with("closer-leg")
+    voice_service.bridge_calls.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_transfer_rejects_mismatched_workspace() -> None:
+    agent = _make_agent()
+    call_message = _make_call_message(agent)
+    with (
+        patch.object(
+            db_session_module,
+            "AsyncSessionLocal",
+            side_effect=lambda: _SequencedSession([call_message]),
+        ),
+        patch("app.core.config.settings.telnyx_api_key", "key-123"),
+    ):
+        result = await VoiceToolExecutor(
+            agent=agent, workspace_id=uuid.uuid4(), call_control_id="caller-ccid-1"
+        ).execute("transfer_call", {"reason": "hot lead"})
+    assert result["success"] is False
+    assert "current call" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_sms_briefing_is_direct_and_does_not_write_customer_conversation() -> None:
+    agent = _make_agent()
+    ctx = {"workspace_id": agent.workspace_id, "workspace_phone": "+15550001111"}
+    provider = AsyncMock()
+    provider.send_internal_notification = AsyncMock(return_value=True)
+    with patch("app.services.telephony.telnyx.TelnyxSMSService", return_value=provider):
+        sent = await _real_push_briefing(
+            VoiceToolExecutor(agent=agent, call_control_id="caller-ccid-1"),
+            ctx,
+            "+15551234567",
+            "Lead brief",
+        )
+    assert sent is True
+    assert provider.send_internal_notification.await_args.kwargs["to_number"] == "+15551234567"
+    assert (
+        provider.send_internal_notification.await_args.kwargs["body"]
+        == "Live lead briefing: Lead brief"
+    )
+    provider.close.assert_awaited_once()
 
 
 # --------------------------------------------------------------------------- #

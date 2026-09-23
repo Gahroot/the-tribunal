@@ -935,12 +935,11 @@ async def test_call_answered_transfer_leg_speaks_briefing_and_short_circuits(
     voice_service.bridge_calls.assert_not_awaited()
 
 
-async def test_call_answered_transfer_leg_bridges_now_if_speak_fails(
+async def test_call_answered_transfer_leg_does_not_bridge_if_speak_fails(
     monkeypatch: pytest.MonkeyPatch,
     call_answered: dict[str, Any],
 ) -> None:
-    """If briefing speech can't start, bridge immediately so the caller still
-    reaches a human."""
+    """If briefing cannot start, never cold-dump the caller."""
     from app.services.telephony import call_transfer as ct_module
     from app.services.telephony import telnyx_voice as voice_module
 
@@ -955,20 +954,22 @@ async def test_call_answered_transfer_leg_bridges_now_if_speak_fails(
         created_at="2026-06-05T00:00:00+00:00",
     )
     monkeypatch.setattr(ct_module, "peek_pending_transfer", AsyncMock(return_value=pending))
+    pop = AsyncMock(return_value=pending)
+    monkeypatch.setattr(ct_module, "pop_pending_transfer", pop)
     monkeypatch.setattr(app_settings, "telnyx_api_key", "test-key")
 
     voice_service = MagicMock()
     voice_service.speak_text = AsyncMock(return_value=False)
+    voice_service.hangup_call = AsyncMock(return_value=True)
     voice_service.bridge_calls = AsyncMock(return_value=True)
     voice_service.close = AsyncMock(return_value=None)
     monkeypatch.setattr(voice_module, "TelnyxVoiceService", lambda *a, **kw: voice_service)
 
     await handlers.handle_call_answered(call_answered, _make_log())
 
-    voice_service.bridge_calls.assert_awaited_once()
-    bridge_kwargs = voice_service.bridge_calls.await_args.kwargs
-    assert bridge_kwargs["call_control_id"] == "v3:call-control-id-initiated-001"
-    assert bridge_kwargs["other_call_control_id"] == "caller-leg"
+    voice_service.bridge_calls.assert_not_awaited()
+    voice_service.hangup_call.assert_awaited_once()
+    pop.assert_awaited_once()
 
 
 async def test_speak_ended_bridges_warm_transfer(
@@ -993,6 +994,7 @@ async def test_speak_ended_bridges_warm_transfer(
 
     voice_service = MagicMock()
     voice_service.bridge_calls = AsyncMock(return_value=True)
+    voice_service.stop_streaming = AsyncMock(return_value=True)
     voice_service.close = AsyncMock(return_value=None)
     monkeypatch.setattr(voice_module, "TelnyxVoiceService", lambda *a, **kw: voice_service)
 
@@ -1003,6 +1005,7 @@ async def test_speak_ended_bridges_warm_transfer(
         call_control_id="closer-leg",
         other_call_control_id="caller-leg",
     )
+    voice_service.stop_streaming.assert_awaited_once_with("caller-leg")
 
 
 async def test_speak_ended_ignores_non_transfer_speak(
