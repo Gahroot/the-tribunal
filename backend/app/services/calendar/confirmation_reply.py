@@ -9,7 +9,7 @@ from app.core.config import settings
 from app.models.agent import Agent
 from app.models.appointment import Appointment
 from app.models.contact import Contact
-from app.models.conversation import Conversation, Message
+from app.models.conversation import Conversation, Message, MessageStatus
 from app.services.calendar.calcom import CalComService
 from app.services.calendar.reminder_service import resolve_from_number
 from app.services.idempotency import derive_outbound_key
@@ -67,6 +67,7 @@ async def handle_confirmation_reply(
             .where(
                 Message.conversation_id == conversation.id,
                 Message.direction == "outbound",
+                Message.status != MessageStatus.FAILED,
                 Message.body.contains("Reply C to confirm / R to reschedule"),
                 Message.idempotency_key.in_(keys),
                 Message.created_at >= appt.created_at,
