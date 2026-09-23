@@ -154,7 +154,6 @@ def build_briefing(
         parts.append(f"They want {intent_text}.")
     if summary_text:
         parts.append(summary_text)
-    parts.append("Connecting you now.")
     return " ".join(parts)
 
 
