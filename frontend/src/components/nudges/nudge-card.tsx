@@ -20,15 +20,15 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { addDays, formatDayMonth } from "@/lib/utils/date";
 import type { HumanNudge } from "@/types/nudge";
 
 import {
-  PRIORITY_STYLES,
+  PRIORITY_DOTS,
   SUGGESTED_ACTION_LABELS,
   formatDueDate,
-  getNudgeEmoji,
+  getNudgeIcon,
 } from "./nudge-presentation";
 import { NudgeStatusBadge } from "./nudge-status-badge";
 
@@ -50,15 +50,15 @@ export function NudgeCard({
   isDismissing,
 }: NudgeCardProps) {
   const [snoozeOpen, setSnoozeOpen] = useState(false);
-  const emoji = getNudgeEmoji(nudge.nudge_type);
+  const NudgeIcon = getNudgeIcon(nudge.nudge_type);
   const isPending = nudge.status === "pending";
 
   return (
     <Card>
       <CardContent className="flex items-start gap-4 p-4">
-        {/* Emoji icon */}
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-xl">
-          {emoji}
+        {/* Type icon */}
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+          <NudgeIcon aria-hidden className="size-5 text-muted-foreground" />
         </div>
 
         {/* Content */}
@@ -71,9 +71,9 @@ export function NudgeCard({
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
-              <Badge className={cn("text-xs", PRIORITY_STYLES[nudge.priority])}>
+              <StatusBadge dotClass={PRIORITY_DOTS[nudge.priority]} className="text-xs">
                 {nudge.priority}
-              </Badge>
+              </StatusBadge>
               {nudge.suggested_action && (
                 <Badge variant="outline" className="text-xs">
                   {SUGGESTED_ACTION_LABELS[nudge.suggested_action]}

@@ -81,7 +81,7 @@ export default function InviteAcceptPage({ params }: PageProps) {
       <div className="flex min-h-screen items-center justify-center px-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full">
               <XCircle className="h-6 w-6 text-destructive" />
             </div>
             <CardTitle>Invalid Invitation</CardTitle>
@@ -105,7 +105,7 @@ export default function InviteAcceptPage({ params }: PageProps) {
       <div className="flex min-h-screen items-center justify-center px-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-warning/10">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full">
               <Clock className="h-6 w-6 text-warning" />
             </div>
             <CardTitle>Invitation Expired</CardTitle>
@@ -129,8 +129,8 @@ export default function InviteAcceptPage({ params }: PageProps) {
     <div className="flex min-h-screen items-center justify-center px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-            <Users className="h-6 w-6 text-primary" />
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full">
+            <Users className="h-6 w-6 text-muted-foreground" />
           </div>
           <CardTitle>You&apos;re Invited!</CardTitle>
           <CardDescription>
@@ -157,16 +157,16 @@ export default function InviteAcceptPage({ params }: PageProps) {
           </div>
 
           {!isAuthenticated && (
-            <div className="rounded-lg border border-warning/20 bg-warning/10 p-3 text-center text-sm">
-              <p className="text-warning">
+            <div className="rounded-lg border bg-background p-3 text-center text-sm">
+              <p className="text-foreground">
                 You need to sign in to accept this invitation.
               </p>
             </div>
           )}
 
           {isAuthenticated && user?.email !== invitation.email && (
-            <div className="rounded-lg border border-warning/20 bg-warning/10 p-3 text-center text-sm">
-              <p className="text-warning">
+            <div className="rounded-lg border bg-background p-3 text-center text-sm">
+              <p className="text-foreground">
                 This invitation was sent to {invitation.email}. You&apos;re
                 currently signed in as {user?.email}.
               </p>

@@ -10,7 +10,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
-import { contactStatusColors, contactStatusLabels } from "@/lib/status-colors";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { contactStatusDotColors, contactStatusLabels } from "@/lib/status-colors";
 import { cn } from "@/lib/utils";
 import { getContactInitials } from "@/lib/utils/initials";
 import { formatPhoneNumber } from "@/lib/utils/phone";
@@ -72,7 +73,7 @@ export function ContactCard({
       transition={{ type: "spring", stiffness: 300, damping: 24 }}
       className={cn(
         "flex flex-col p-4 rounded-xl border bg-card card-interactive",
-        "hover:bg-accent/50 hover:border-accent transition-all cursor-pointer",
+        "hover:bg-muted hover:border-accent transition-colors cursor-pointer",
         "group",
         isSelected && "ring-2 ring-primary border-primary bg-primary/5",
         isActive && !isSelected && "border-primary ring-1 ring-primary/40",
@@ -116,12 +117,12 @@ export function ContactCard({
             >
               {displayName}
             </span>
-            <Badge
-              variant="secondary"
-              className={cn("text-xs shrink-0", contactStatusColors[contact.status])}
+            <StatusBadge
+              dotClass={contactStatusDotColors[contact.status]}
+              className="text-xs shrink-0"
             >
               {contactStatusLabels[contact.status]}
-            </Badge>
+            </StatusBadge>
           </div>
           {contact.company_name && (
             <p className="text-sm text-muted-foreground truncate mt-0.5">{contact.company_name}</p>

@@ -160,7 +160,7 @@ export function ReviewSettingsTab() {
           </div>
 
           {!settings?.google_review_url && !settings?.facebook_review_url && (
-            <Alert className="border-warning/40 bg-warning/10">
+            <Alert>
               <AlertTriangle className="size-4 text-warning" />
               <AlertDescription>
                 Add at least one public review URL before sending review

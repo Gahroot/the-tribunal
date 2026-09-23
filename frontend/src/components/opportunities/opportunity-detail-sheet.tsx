@@ -156,7 +156,7 @@ export function OpportunityDetailSheet({
                         <span className="font-medium text-foreground">
                           {activity.activity_type.replace("_", " ")}
                         </span>
-                        {activity.description ? ` — ${activity.description}` : null}
+                        {activity.description ? `: ${activity.description}` : null}
                       </li>
                     ))}
                   </ul>

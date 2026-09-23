@@ -70,12 +70,11 @@ export function AgentSelector({
           {/* No agent option - only show if allowNone is true */}
           {allowNone && (
             <motion.div
-              whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.99 }}
               onClick={() => onSelect(undefined)}
               className={`relative p-4 rounded-lg border-2 cursor-pointer transition-colors ${
                 !selectedId
-                  ? "border-primary bg-primary/5"
+                  ? "border-primary bg-secondary"
                   : "border-border hover:border-primary/50"
               }`}
             >
@@ -107,12 +106,11 @@ export function AgentSelector({
             return (
               <motion.div
                 key={agent.id}
-                whileHover={{ scale: 1.01 }}
                 whileTap={{ scale: 0.99 }}
                 onClick={() => onSelect(agent.id)}
                 className={`relative p-4 rounded-lg border-2 cursor-pointer transition-colors ${
                   isSelected
-                    ? "border-primary bg-primary/5"
+                    ? "border-primary bg-secondary"
                     : "border-border hover:border-primary/50"
                 }`}
               >
@@ -125,7 +123,7 @@ export function AgentSelector({
                 )}
 
                 <div className="flex items-start gap-3">
-                  <div className="size-10 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                  <div className="size-10 rounded-full bg-muted flex items-center justify-center">
                     <Sparkles className="size-5 text-primary" />
                   </div>
 

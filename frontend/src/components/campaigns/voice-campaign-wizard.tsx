@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { StatusBadge } from "@/components/ui/status-badge";
 import type { CreateVoiceCampaignRequest } from "@/lib/api/voice-campaigns";
 import type { Agent, PhoneNumber, VoiceCampaign } from "@/types";
 
@@ -206,14 +207,11 @@ export function VoiceCampaignWizard({
                 <CardContent>
                   {formData.sms_fallback_enabled ? (
                     <div className="space-y-2">
-                      <Badge
-                        variant="secondary"
-                        className="bg-success/10 text-success"
-                      >
+                      <StatusBadge dotClass="bg-success">
                         {formData.sms_fallback_mode === "ai"
                           ? "AI-Generated"
                           : "Template"}
-                      </Badge>
+                      </StatusBadge>
                       {formData.sms_fallback_mode === "ai" &&
                         selectedFallbackAgent && (
                           <p className="text-sm text-muted-foreground">

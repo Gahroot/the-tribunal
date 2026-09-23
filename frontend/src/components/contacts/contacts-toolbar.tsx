@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { ContactSortBy } from "@/lib/api/contacts";
-import { contactStatusColors, contactStatusLabels } from "@/lib/status-colors";
+import { contactStatusDotColors, contactStatusLabels } from "@/lib/status-colors";
 import { cn } from "@/lib/utils";
 import type { ContactStatus } from "@/types";
 import type { FilterDefinition } from "@/types";
@@ -35,11 +35,17 @@ function StatusFilter({ selectedStatus, onStatusChange, counts }: StatusFilterPr
           variant={selectedStatus === status || (status === "all" && !selectedStatus) ? "default" : "outline"}
           size="sm"
           onClick={() => onStatusChange(status === "all" ? null : status)}
-          className={cn(
-            "gap-1.5",
-            status !== "all" && selectedStatus !== status && contactStatusColors[status]
-          )}
+          className="gap-1.5"
         >
+          {status !== "all" && selectedStatus !== status && (
+            <span
+              aria-hidden="true"
+              className={cn(
+                "size-1.5 shrink-0 rounded-full",
+                contactStatusDotColors[status],
+              )}
+            />
+          )}
           {status === "all" ? "All" : contactStatusLabels[status]}
           <span className="text-xs opacity-70">({counts[status]})</span>
         </Button>

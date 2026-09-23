@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { StatusBadge } from "@/components/ui/status-badge";
 import type { AIImportLeadsResponse } from "@/lib/api/find-leads-ai";
 import { cn } from "@/lib/utils";
 
@@ -21,11 +22,7 @@ export function AIImportResultBanner({
   onToggleDetails,
 }: AIImportResultBannerProps) {
   return (
-    <Card
-      className={
-        result.imported > 0 ? "border-success/20 bg-success/10" : "border-warning/20 bg-warning/10"
-      }
-    >
+    <Card>
       <CardContent className="p-4">
         <div className="flex items-center gap-4">
           {result.imported > 0 ? (
@@ -81,20 +78,19 @@ export function AIImportResultBanner({
                   key={i}
                   className={cn(
                     "flex items-center justify-between text-xs px-2 py-1.5 rounded",
-                    detail.status === "imported" && "bg-success/10 text-success",
-                    detail.status === "rejected_low_score" && "bg-warning/10 text-warning",
-                    detail.status === "enrichment_failed" && "bg-destructive/10 text-destructive",
                     detail.status === "skipped_duplicate" && "bg-muted text-muted-foreground",
                     detail.status === "skipped_no_phone" && "bg-muted text-muted-foreground",
                   )}
                 >
                   <div className="flex items-center gap-2 min-w-0">
-                    {detail.status === "imported" && <CheckCircle2 className="h-3 w-3 shrink-0" />}
+                    {detail.status === "imported" && (
+                      <CheckCircle2 className="h-3 w-3 shrink-0 text-success" />
+                    )}
                     {detail.status === "rejected_low_score" && (
-                      <XCircle className="h-3 w-3 shrink-0" />
+                      <XCircle className="h-3 w-3 shrink-0 text-warning" />
                     )}
                     {detail.status === "enrichment_failed" && (
-                      <AlertCircle className="h-3 w-3 shrink-0" />
+                      <AlertCircle className="h-3 w-3 shrink-0 text-destructive" />
                     )}
                     <span className="truncate font-medium">{detail.name}</span>
                     {detail.decision_maker_name && (
@@ -110,19 +106,18 @@ export function AIImportResultBanner({
                       </Badge>
                     )}
                     {detail.lead_score != null && (
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "text-[10px] px-1 py-0 font-semibold",
+                      <StatusBadge
+                        dotClass={
                           detail.lead_score >= 100
-                            ? "text-success bg-success/10 border-success/20"
+                            ? "bg-success"
                             : detail.lead_score >= 80
-                              ? "text-info bg-info/10 border-info/20"
-                              : "text-warning bg-warning/10 border-warning/20",
-                        )}
+                              ? "bg-info"
+                              : "bg-warning"
+                        }
+                        className="text-[10px] px-1 py-0 font-semibold"
                       >
                         Score: {detail.lead_score}
-                      </Badge>
+                      </StatusBadge>
                     )}
                   </div>
                 </div>

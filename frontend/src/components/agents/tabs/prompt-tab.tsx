@@ -61,7 +61,7 @@ const ASSISTANT_FAILURE_RESPONSES = new Set([
  */
 function buildImproveMessage(currentPrompt: string): string {
   const source =
-    currentPrompt.trim() || "(The prompt is empty — write a strong starting prompt.)";
+    currentPrompt.trim() || "(The prompt is empty: write a strong starting prompt.)";
   return [
     "Improve the system prompt below for an AI phone agent.",
     "",
@@ -69,7 +69,7 @@ function buildImproveMessage(currentPrompt: string): string {
     "- Keep the agent's role, language, and intent; keep markdown structure where it helps.",
     "- Make every instruction clearer, more specific, and easier to follow on a live call.",
     "- Keep the whole prompt under 1,600 characters.",
-    "- Do not call any tools and do not modify any records — this is a writing task only.",
+    "- Do not call any tools and do not modify any records; this is a writing task only.",
     "- Reply with ONLY the improved prompt text: no preamble, no explanation,",
     "  no markdown code fences, no surrounding quotes.",
     "",
@@ -213,7 +213,7 @@ export function PromptTab({ form, agentId, onShowVersions, onShowTests }: Prompt
 
           {/* AI suggestion: generate → review → insert or discard */}
           {suggestion && (
-            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+            <div className="rounded-lg border bg-background p-3">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <p className="flex items-center gap-1.5 text-sm font-medium">
                   <Sparkles className="size-4 text-primary" aria-hidden="true" />
@@ -335,7 +335,7 @@ export function PromptTab({ form, agentId, onShowVersions, onShowTests }: Prompt
                       <span aria-hidden="true"> · </span>
                       <span
                         className={
-                          lengthOptimal ? "text-emerald-600 dark:text-emerald-400" : ""
+                          lengthOptimal ? "text-success" : ""
                         }
                       >
                         {lengthOptimal ? "optimal" : "recommended: under 2,000"}

@@ -16,10 +16,10 @@ import { useCallback, useId, useState } from "react";
 import { useFormContext } from "react-hook-form";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { verifyCalcom } from "@/lib/api/realtor";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 
@@ -134,13 +134,10 @@ export function CalcomStep() {
         </Button>
 
         {calcomConnected && (
-          <Badge
-            variant="outline"
-            className="text-green-600 border-green-500 gap-1"
-          >
+          <StatusBadge dotClass="bg-success">
             <CheckCircle2 className="size-3.5" />
             {calcomUsername ? `Connected as @${calcomUsername}` : "Connected"}
-          </Badge>
+          </StatusBadge>
         )}
 
         {testError && (

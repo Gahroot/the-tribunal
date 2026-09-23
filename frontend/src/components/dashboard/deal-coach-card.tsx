@@ -4,7 +4,6 @@ import { AlertTriangle, ArrowUpRight, ShieldAlert, Target } from "lucide-react";
 import Link from "next/link";
 import { memo } from "react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -14,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/ui/status-badge";
 import type { DealCoachStats } from "@/lib/api/dashboard";
 import { formatCurrency } from "@/lib/utils/number";
 
@@ -22,11 +22,11 @@ interface DealCoachCardProps {
   isPending: boolean;
 }
 
-const HEALTH_STYLES: Record<string, string> = {
-  critical: "bg-destructive/10 text-destructive border-destructive/20",
-  at_risk: "bg-warning/10 text-warning border-warning/20",
-  watch: "bg-info/10 text-info border-info/20",
-  healthy: "bg-success/10 text-success border-success/20",
+const HEALTH_DOTS: Record<string, string> = {
+  critical: "bg-destructive",
+  at_risk: "bg-warning",
+  watch: "bg-info",
+  healthy: "bg-success",
 };
 
 function healthLabel(health: string): string {
@@ -133,12 +133,12 @@ export const DealCoachCard = memo(function DealCoachCard({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="truncate font-medium">{deal.name}</span>
-                    <Badge
-                      variant="outline"
-                      className={HEALTH_STYLES[deal.deal_health] ?? ""}
+                    <StatusBadge
+                      dotClass={HEALTH_DOTS[deal.deal_health] ?? "bg-muted-foreground"}
+                      className="text-xs"
                     >
                       {healthLabel(deal.deal_health)}
-                    </Badge>
+                    </StatusBadge>
                   </div>
                   <p className="truncate text-sm text-muted-foreground">
                     {deal.top_risk}
@@ -154,7 +154,7 @@ export const DealCoachCard = memo(function DealCoachCard({
 
         {dealCoachStats && topDeals.length === 0 && (
           <p className="py-2 text-center text-sm text-muted-foreground">
-            No at-risk deals — your pipeline is healthy.
+            No at risk deals. Your pipeline is healthy.
           </p>
         )}
       </CardContent>

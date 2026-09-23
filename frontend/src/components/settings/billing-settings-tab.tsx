@@ -20,7 +20,7 @@ export function BillingSettingsTab() {
           <CardDescription>You are currently on the Pro plan</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-between p-4 rounded-lg border bg-primary/5">
+          <div className="flex items-center justify-between border border-primary bg-secondary p-4 rounded-lg">
             <div>
               <h3 className="text-lg font-semibold">Pro Plan</h3>
               <p className="text-sm text-muted-foreground">

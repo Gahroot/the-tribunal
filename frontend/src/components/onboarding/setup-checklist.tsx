@@ -40,7 +40,7 @@ export function SetupChecklist({ onDismiss, className }: SetupChecklistProps) {
       return;
     }
     if (allComplete && completedCount > previousCompletedCount.current) {
-      toast.success("Setup complete — you're all set!", { id: "setup-complete" });
+      toast.success("Setup complete, you're all set!", { id: "setup-complete" });
     }
     previousCompletedCount.current = completedCount;
   }, [isLoading, completedCount, allComplete]);
@@ -75,28 +75,16 @@ export function SetupChecklist({ onDismiss, className }: SetupChecklistProps) {
       aria-label="Finish setup checklist"
       className={cn("overflow-hidden rounded-xl border bg-card shadow-sm", className)}
     >
-      <div
-        className={cn(
-          "border-b px-6 py-5",
-          allComplete
-            ? "bg-gradient-to-r from-emerald-500/10 to-green-600/10"
-            : "bg-gradient-to-r from-violet-500/10 to-purple-600/10",
-        )}
-      >
+      <div className="border-b px-6 py-5">
         <div className="flex items-start gap-4">
           <div
-            className={cn(
-              "flex size-10 shrink-0 items-center justify-center rounded-xl text-white shadow-sm",
-              allComplete
-                ? "bg-gradient-to-br from-emerald-500 to-green-600"
-                : "bg-gradient-to-br from-violet-500 to-purple-600",
-            )}
+            className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-muted shadow-sm"
             aria-hidden="true"
           >
             {allComplete ? (
-              <PartyPopper className="size-5" />
+              <PartyPopper className="size-5 text-success" />
             ) : (
-              <Rocket className="size-5" />
+              <Rocket className="size-5 text-muted-foreground" />
             )}
           </div>
           <div className="min-w-0 flex-1">
@@ -105,7 +93,7 @@ export function SetupChecklist({ onDismiss, className }: SetupChecklistProps) {
             </p>
             <p className="text-sm text-muted-foreground">
               {allComplete
-                ? "Every step is checked off — your workspace is ready to run."
+                ? "Every step is checked off. Your workspace is ready to run."
                 : "Complete these steps to get The Tribunal running your sales floor."}
             </p>
           </div>
@@ -131,9 +119,6 @@ export function SetupChecklist({ onDismiss, className }: SetupChecklistProps) {
           <Progress
             value={percentage}
             aria-label={`Setup progress: ${completedCount} of ${total} complete`}
-            className={cn(
-              allComplete && "[&_[data-slot=progress-indicator]]:bg-emerald-500",
-            )}
           />
         </div>
       </div>
@@ -147,7 +132,7 @@ export function SetupChecklist({ onDismiss, className }: SetupChecklistProps) {
             >
               {step.done ? (
                 <CheckCircle2
-                  className="size-5 shrink-0 text-emerald-500"
+                  className="size-5 shrink-0 text-success"
                   aria-hidden="true"
                 />
               ) : (

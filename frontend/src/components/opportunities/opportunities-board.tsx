@@ -24,7 +24,6 @@ import {
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -40,6 +39,7 @@ import {
   PageErrorState,
   PageLoadingState,
 } from "@/components/ui/page-state";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Table,
   TableBody,
@@ -53,13 +53,13 @@ import { useDebouncedSearch } from "@/hooks/useDebouncedSearch";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { opportunitiesApi } from "@/lib/api/opportunities";
 import { queryKeys } from "@/lib/query-keys";
+import { opportunityStatusDotColors } from "@/lib/status-colors";
 import { cn } from "@/lib/utils";
 import { formatDate } from "@/lib/utils/date";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 import { formatCompactCurrency, formatCurrency } from "@/lib/utils/number";
 import type {
   Opportunity,
-  OpportunityStatus,
   Pipeline,
   PipelineStage,
 } from "@/types";
@@ -70,10 +70,10 @@ import { OpportunityDetailSheet } from "./opportunity-detail-sheet";
 const BOARD_PAGE_SIZE = 200;
 
 /**
- * The board's single accent. Amber is reserved for money figures and won
- * states only — stage names, controls, and decoration stay neutral.
+ * The board's single accent: money figures use the primary token so amounts
+ * read as money, while stage names, controls, and decoration stay neutral.
  */
-const MONEY = "text-amber-700 dark:text-amber-400";
+const MONEY = "text-primary";
 
 /** Shared white-card surface for deals in both views (neutral canvas behind it). */
 const CARD_SURFACE =
@@ -611,27 +611,19 @@ function StageColumn({
       <div
         className={cn(
           "flex items-center justify-between gap-2 px-2 py-1.5",
-          isWon && "rounded-md bg-amber-50 dark:bg-amber-500/10"
+          isWon && "rounded-md"
         )}
       >
         <div className="flex min-w-0 items-baseline gap-1.5">
           <h2
             id={headingId}
-            className={cn(
-              "truncate text-sm font-medium",
-              isWon
-                ? "text-amber-800 dark:text-amber-300"
-                : "text-foreground"
-            )}
+            className="truncate text-sm font-medium text-foreground"
           >
             {stage.name}
           </h2>
           <span
             data-testid={`stage-count-${stage.id}`}
-            className={cn(
-              "rounded-full bg-neutral-200 px-1.5 py-0.5 text-xs font-medium tabular-nums dark:bg-neutral-800",
-              isWon && "bg-amber-100 dark:bg-amber-500/20"
-            )}
+            className="rounded-full bg-secondary px-1.5 py-0.5 text-xs font-medium tabular-nums text-foreground"
           >
             {total.count}
           </span>
@@ -798,22 +790,6 @@ function OpportunityCardBody({ opportunity }: { opportunity: Opportunity }) {
   );
 }
 
-function StatusBadge({ status }: { status: OpportunityStatus }) {
-  const isWon = status === "won";
-  return (
-    <Badge
-      variant="outline"
-      className={cn(
-        "border-neutral-200 text-neutral-600 dark:border-neutral-700 dark:text-neutral-400",
-        isWon &&
-          "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
-      )}
-    >
-      {status.charAt(0).toUpperCase() + status.slice(1)}
-    </Badge>
-  );
-}
-
 function OpportunitiesList({
   stages,
   opportunities,
@@ -934,7 +910,10 @@ function OpportunitiesList({
                     : "—"}
                 </TableCell>
                 <TableCell>
-                  <StatusBadge status={opportunity.status} />
+                  <StatusBadge dotClass={opportunityStatusDotColors[opportunity.status]}>
+                    {opportunity.status.charAt(0).toUpperCase() +
+                      opportunity.status.slice(1)}
+                  </StatusBadge>
                 </TableCell>
                 <TableCell className="text-right">
                   <StageMoveMenu

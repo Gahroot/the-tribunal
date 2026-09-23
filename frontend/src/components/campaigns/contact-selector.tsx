@@ -11,7 +11,6 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { useState, useMemo } from "react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -22,7 +21,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { contactStatusColors } from "@/lib/status-colors";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { contactStatusDotColors } from "@/lib/status-colors";
 import type { Contact, ContactStatus } from "@/types";
 
 interface ContactSelectorProps {
@@ -178,7 +178,7 @@ export function ContactSelector({
                   onClick={() => toggleContact(contact.id)}
                   className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
                     isSelected
-                      ? "bg-primary/10 border border-primary/30"
+                      ? "bg-secondary border border-primary/40"
                       : "hover:bg-muted/50"
                   }`}
                 >
@@ -195,12 +195,12 @@ export function ContactSelector({
                       <span className="font-medium truncate">
                         {fullName || "Unknown"}
                       </span>
-                      <Badge
-                        variant="secondary"
-                        className={`text-xs ${contactStatusColors[contact.status]}`}
+                      <StatusBadge
+                        dotClass={contactStatusDotColors[contact.status]}
+                        className="text-xs"
                       >
                         {contact.status}
-                      </Badge>
+                      </StatusBadge>
                     </div>
                     <div className="flex items-center gap-3 text-sm text-muted-foreground">
                       {contact.phone_number && (

@@ -144,7 +144,7 @@ export function AdLibraryClient() {
         <h1 className="text-2xl font-semibold tracking-tight">Ad Library</h1>
         <p className="text-sm text-muted-foreground">
           Find advertisers already spending on ads who run the same creatives for
-          months — the people you can help start proper creative testing.
+          months: the people you can help start proper creative testing.
         </p>
       </div>
 
@@ -220,7 +220,7 @@ function JobStatusBanner({ job }: { job: AdLibraryJob }) {
         {isRunning ? (
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         ) : isDone ? (
-          <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+          <CheckCircle2 className="h-5 w-5 text-success" />
         ) : (
           <Clock className="h-5 w-5 text-muted-foreground" />
         )}
@@ -228,7 +228,7 @@ function JobStatusBanner({ job }: { job: AdLibraryJob }) {
           <p className="text-sm font-medium capitalize">{job.status}</p>
           <p className="text-xs text-muted-foreground">
             {isRunning
-              ? "Scanning the ad library — this can take a moment."
+              ? "Scanning the ad library. This can take a moment."
               : isDone
                 ? `Found ${job.discovered_count} advertiser${job.discovered_count === 1 ? "" : "s"}. View them below.`
                 : (job.last_error ?? "Search finished.")}

@@ -19,9 +19,9 @@ import type { RehearsalRun } from "@/types/roleplay";
 
 function scoreColor(value: number | null | undefined): string {
   if (value === null || value === undefined) return "text-muted-foreground";
-  if (value >= 75) return "text-emerald-600";
-  if (value >= 50) return "text-amber-600";
-  return "text-red-600";
+  if (value >= 75) return "text-success";
+  if (value >= 50) return "text-warning";
+  return "text-destructive";
 }
 
 function ScoreStat({
@@ -65,10 +65,10 @@ function FeedbackList({
   if (items.length === 0) return null;
   const toneClass =
     tone === "good"
-      ? "text-emerald-600"
+      ? "text-success"
       : tone === "warn"
-        ? "text-amber-600"
-        : "text-sky-600";
+        ? "text-warning"
+        : "text-info";
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -148,9 +148,9 @@ export function RehearsalReport({ run }: { run: RehearsalRun }) {
               {run.booking_attempted === null ? (
                 "—"
               ) : run.booking_attempted ? (
-                <span className="text-emerald-600">Yes</span>
+                <span className="text-success">Yes</span>
               ) : (
-                <span className="text-red-600">No</span>
+                <span className="text-destructive">No</span>
               )}
             </div>
           </CardContent>
@@ -187,9 +187,9 @@ export function RehearsalReport({ run }: { run: RehearsalRun }) {
             {breakdown.map((item, i) => (
               <div key={i} className="flex items-start gap-3 text-sm">
                 {item.addressed ? (
-                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" />
+                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" />
                 ) : (
-                  <XCircle className="mt-0.5 size-4 shrink-0 text-red-600" />
+                  <XCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
                 )}
                 <div>
                   <div className="font-medium">{item.objection}</div>
@@ -234,8 +234,8 @@ export function RehearsalReport({ run }: { run: RehearsalRun }) {
       </Card>
 
       {run.status === "failed" && run.error ? (
-        <Card className="border-red-300">
-          <CardContent className="flex items-center gap-2 p-4 text-sm text-red-600">
+        <Card className="border-destructive/50 bg-background">
+          <CardContent className="flex items-center gap-2 p-4 text-sm text-destructive">
             <Badge variant="destructive">Failed</Badge>
             {run.error}
           </CardContent>

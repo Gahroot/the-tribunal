@@ -28,7 +28,7 @@ export const PRICING_TIERS: PricingTier[] = [
     id: "gpt-live",
     name: "GPT Live",
     description:
-      "OpenAI's full-duplex GPT Live voice (gpt-realtime-2.1) — listens and speaks at once, delegates hard questions to background reasoning",
+      "OpenAI's full-duplex GPT Live voice (gpt-realtime-2.1): listens and speaks at once, delegates hard questions to background reasoning",
     costPerHour: 2.52,
     costPerMinute: 0.042,
     recommended: true,
@@ -58,7 +58,7 @@ export const PRICING_TIERS: PricingTier[] = [
     id: "gpt-live-mini",
     name: "GPT Live Mini",
     description:
-      "GPT Live at mini price (gpt-realtime-2.1-mini) — reasoning + tools for high-volume voice agents",
+      "GPT Live at mini price (gpt-realtime-2.1-mini): reasoning + tools for high-volume voice agents",
     costPerHour: 0.54,
     costPerMinute: 0.009,
     features: [

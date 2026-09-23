@@ -55,7 +55,7 @@ export function PostMeetingSmsSection({ control }: PostMeetingSmsSectionProps) {
                 <div className="flex items-center justify-between">
                   <FormLabel>Post-Meeting Message</FormLabel>
                   <span
-                    className={`text-xs ${postMeetingCharCount > 160 ? "text-amber-600 font-medium" : "text-muted-foreground"}`}
+                    className={`text-xs ${postMeetingCharCount > 160 ? "text-warning font-medium" : "text-muted-foreground"}`}
                   >
                     {postMeetingCharCount} / 160
                     {postMeetingCharCount > 160 ? ` (${Math.ceil(postMeetingCharCount / 153)} segments)` : ""}

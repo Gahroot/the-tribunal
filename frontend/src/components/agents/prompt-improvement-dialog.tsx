@@ -73,7 +73,7 @@ export function PromptImprovementDialog({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-amber-500" />
+            <Sparkles className="h-5 w-5 text-muted-foreground" />
             AI Prompt Improvement
           </DialogTitle>
           <DialogDescription>
@@ -107,19 +107,19 @@ export function PromptImprovementDialog({
                 <h4 className="mb-2 font-medium">How it works</h4>
                 <ul className="space-y-2 text-sm text-muted-foreground">
                   <li className="flex items-start gap-2">
-                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-medium text-muted-foreground">
                       1
                     </span>
                     AI analyzes your recent call outcomes to identify patterns
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-medium text-muted-foreground">
                       2
                     </span>
                     Identifies strengths, weaknesses, and areas for improvement
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-medium text-muted-foreground">
                       3
                     </span>
                     Generates targeted prompt variations to test via A/B testing
@@ -148,8 +148,8 @@ export function PromptImprovementDialog({
           </div>
         ) : (
           <div className="space-y-4 py-4">
-            <div className="rounded-lg border border-success/20 bg-success/10 p-4">
-              <p className="text-sm text-success">
+            <div className="rounded-lg border bg-background p-4">
+              <p className="text-sm text-foreground">
                 Suggestions generated! Review them below or from the Suggestions page.
               </p>
             </div>

@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { PageEmptyState, PageErrorState, PageLoadingState } from "@/components/ui/page-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Textarea } from "@/components/ui/textarea";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import {
@@ -152,12 +153,12 @@ export function PromptDiff({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700">
+        <StatusBadge dotClass="bg-destructive">
           − {sourceLabel}
-        </Badge>
-        <Badge variant="outline" className="border-green-200 bg-green-50 text-green-700">
+        </StatusBadge>
+        <StatusBadge dotClass="bg-success">
           + {suggestedLabel}
-        </Badge>
+        </StatusBadge>
         {!hasChanges && <span>No text changes detected.</span>}
       </div>
       <ScrollArea className="h-96 rounded-md border bg-muted/30">
@@ -167,12 +168,16 @@ export function PromptDiff({
               key={`${line.type}-${line.oldLineNumber ?? ""}-${line.newLineNumber ?? ""}-${index}`}
               className={cn(
                 "grid grid-cols-[2rem_3rem_3rem_minmax(0,1fr)] gap-2 px-3 py-0.5",
-                line.type === "removed" && "bg-red-500/10 text-red-950 dark:text-red-100",
-                line.type === "added" && "bg-green-500/10 text-green-950 dark:text-green-100",
                 line.type === "unchanged" && "text-muted-foreground",
               )}
             >
-              <span className="select-none text-center">
+              <span
+                className={cn(
+                  "select-none text-center",
+                  line.type === "added" && "text-success",
+                  line.type === "removed" && "text-destructive",
+                )}
+              >
                 {line.type === "added" ? "+" : line.type === "removed" ? "−" : " "}
               </span>
               <span className="select-none text-right text-muted-foreground">
@@ -255,17 +260,6 @@ export function SuggestionsQueue({
   });
 
   const getMutationTypeBadge = (type: string) => {
-    const colors: Record<string, string> = {
-      warmer_tone: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
-      more_concise: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-      add_urgency: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-      better_objections: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
-      more_personalization: "bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200",
-      clearer_value: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-      natural_flow: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200",
-      trust_building: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
-    };
-
     const labels: Record<string, string> = {
       warmer_tone: "Warmer Tone",
       more_concise: "More Concise",
@@ -277,11 +271,7 @@ export function SuggestionsQueue({
       trust_building: "Trust Building",
     };
 
-    return (
-      <Badge className={cn("text-xs", colors[type] || "bg-gray-100 text-gray-800")}>
-        {labels[type] || type}
-      </Badge>
-    );
+    return <Badge variant="secondary">{labels[type] || type}</Badge>;
   };
 
   const getStatusBadge = (status: string) => {
@@ -289,11 +279,7 @@ export function SuggestionsQueue({
       case "pending":
         return <Badge variant="outline">Pending</Badge>;
       case "approved":
-        return (
-          <Badge variant="default" className="bg-green-600">
-            Approved
-          </Badge>
-        );
+        return <StatusBadge dotClass="bg-success">Approved</StatusBadge>;
       case "rejected":
         return <Badge variant="destructive">Rejected</Badge>;
       default:

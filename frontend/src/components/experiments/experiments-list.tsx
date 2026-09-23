@@ -46,6 +46,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Table,
   TableBody,
@@ -60,7 +61,7 @@ import { useRowSelection } from "@/hooks/useRowSelection";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { messageTestsApi } from "@/lib/api/message-tests";
 import { queryKeys } from "@/lib/query-keys";
-import { messageTestStatusColors } from "@/lib/status-colors";
+import { messageTestStatusDotColors } from "@/lib/status-colors";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 import { formatNumber } from "@/lib/utils/number";
 import type { MessageTest } from "@/types";
@@ -337,9 +338,9 @@ export function ExperimentsList() {
                         </Link>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={messageTestStatusColors[test.status]}>
+                        <StatusBadge dotClass={messageTestStatusDotColors[test.status]}>
                           {test.status}
-                        </Badge>
+                        </StatusBadge>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
@@ -360,8 +361,8 @@ export function ExperimentsList() {
                       </TableCell>
                       <TableCell>
                         {test.winning_variant_id ? (
-                          <Badge variant="secondary" className="bg-success/10 text-success">
-                            <Trophy className="mr-1 size-3" />
+                          <Badge variant="secondary">
+                            <Trophy className="mr-1 size-3 text-success" />
                             Winner selected
                           </Badge>
                         ) : test.status === "completed" ? (

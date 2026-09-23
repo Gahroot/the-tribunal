@@ -14,10 +14,10 @@ import { useCallback, useId, useState } from "react";
 import { useFormContext } from "react-hook-form";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { verifyFub } from "@/lib/api/realtor";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 
@@ -72,7 +72,7 @@ export function FubStep({ onSkip }: FubStepProps) {
       <div>
         <h2 className="text-2xl font-bold">Connect Your CRM</h2>
         <p className="text-muted-foreground mt-1">
-          Optional — connect Follow Up Boss to import CRM leads, or skip this and
+          Optional: connect Follow Up Boss to import CRM leads, or skip this and
           upload a CSV instead.
         </p>
       </div>
@@ -133,18 +133,15 @@ export function FubStep({ onSkip }: FubStepProps) {
 
         {onSkip && (
           <Button type="button" variant="ghost" onClick={onSkip}>
-            Skip — I don&apos;t use Follow Up Boss
+            Skip (I don&apos;t use Follow Up Boss)
           </Button>
         )}
 
         {fubConnected && (
-          <Badge
-            variant="outline"
-            className="text-green-600 border-green-500 gap-1"
-          >
+          <StatusBadge dotClass="bg-success">
             <CheckCircle2 className="size-3.5" />
             {fubName ? `Connected as ${fubName}` : "Connected"}
-          </Badge>
+          </StatusBadge>
         )}
 
         {testError && (

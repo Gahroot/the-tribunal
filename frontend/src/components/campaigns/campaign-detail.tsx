@@ -19,7 +19,6 @@ import { toast } from "sonner";
 
 import { GuaranteeProgress } from "@/components/campaigns/guarantee-progress";
 import { CampaignReportCard } from "@/components/suggestions/campaign-report-card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageEmptyState, PageLoadingState } from "@/components/ui/page-state";
@@ -31,10 +30,11 @@ import { campaignsApi, type CampaignAnalytics } from "@/lib/api/campaigns";
 import { voiceCampaignsApi } from "@/lib/api/voice-campaigns";
 import { queryKeys } from "@/lib/query-keys";
 import { POLL_5S } from "@/lib/query-options";
-import { campaignStatusColors } from "@/lib/status-colors";
 import { formatDate } from "@/lib/utils/date";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 import type { Campaign, VoiceCampaignAnalytics } from "@/types";
+
+import { CampaignStatusBadge } from "./campaign-status-badge";
 
 interface CampaignDetailProps {
   campaignId: string;
@@ -221,7 +221,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-2">
               <h1 className="text-2xl font-bold">{campaign.name}</h1>
-              <Badge className={campaignStatusColors[campaign.status]}>{campaign.status}</Badge>
+              <CampaignStatusBadge status={campaign.status} />
             </div>
             <p className="text-sm text-muted-foreground">
               Created {formatDate(campaign.created_at)}
@@ -655,5 +655,5 @@ function PercentageRateStat({ label, rate }: { label: string; rate: number | und
 }
 
 function rateColorClass(rate: number) {
-  return rate >= 0.2 ? "text-success" : rate >= 0.05 ? "text-amber-500" : "text-muted-foreground";
+  return rate >= 0.2 ? "text-success" : rate >= 0.05 ? "text-warning" : "text-muted-foreground";
 }

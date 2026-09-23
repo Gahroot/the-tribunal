@@ -107,7 +107,7 @@ export function PracticeArena({
         });
       }
       if (run.status === "failed") {
-        toast.error("Rehearsal failed — check the report for details");
+        toast.error("Rehearsal failed: check the report for details");
       } else if (mode === "ai") {
         toast.success("Rehearsal complete");
       }
@@ -299,7 +299,7 @@ export function PracticeArena({
             </Button>
             {mode === "ai" && runMutation.isPending ? (
               <p className="text-xs text-muted-foreground">
-                Simulating the full conversation and scoring it — this can take a
+                Simulating the full conversation and scoring it; this can take a
                 moment.
               </p>
             ) : null}

@@ -38,6 +38,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Table,
   TableBody,
@@ -300,8 +301,8 @@ export function OwnedNumbersContent({
         {phoneNumbers.map((number) => (
           <div key={number.id} className="flex items-center justify-between p-3 rounded-lg border">
             <div className="flex items-center gap-3">
-              <div className="flex size-8 items-center justify-center rounded-full bg-green-500/10">
-                <Phone className="size-4 text-green-500" />
+              <div className="flex size-8 items-center justify-center rounded-full bg-muted">
+                <Phone className="size-4 text-muted-foreground" />
               </div>
               <div>
                 <p className="font-medium">{formatPhoneNumber(number.phone_number)}</p>
@@ -315,19 +316,13 @@ export function OwnedNumbersContent({
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5">
                 {number.sms_enabled && (
-                  <Badge
-                    variant="outline"
-                    className="bg-blue-500/10 text-blue-500 border-blue-500/20"
-                  >
+                  <Badge variant="outline">
                     <MessageSquare className="size-3 mr-1" />
                     SMS
                   </Badge>
                 )}
                 {number.voice_enabled && (
-                  <Badge
-                    variant="outline"
-                    className="bg-purple-500/10 text-purple-500 border-purple-500/20"
-                  >
+                  <Badge variant="outline">
                     <Mic className="size-3 mr-1" />
                     Voice
                   </Badge>
@@ -341,7 +336,7 @@ export function OwnedNumbersContent({
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    className="text-destructive hover:text-destructive hover:bg-muted"
                   >
                     <Trash2 className="size-4" />
                   </Button>
@@ -375,19 +370,13 @@ export function OwnedNumbersContent({
             <TableCell>
               <div className="flex items-center gap-1.5">
                 {number.sms_enabled && (
-                  <Badge
-                    variant="outline"
-                    className="bg-blue-500/10 text-blue-600 border-blue-500/20"
-                  >
+                  <Badge variant="outline">
                     <MessageSquare className="size-3 mr-1" />
                     SMS
                   </Badge>
                 )}
                 {number.voice_enabled && (
-                  <Badge
-                    variant="outline"
-                    className="bg-purple-500/10 text-purple-600 border-purple-500/20"
-                  >
+                  <Badge variant="outline">
                     <Mic className="size-3 mr-1" />
                     Voice
                   </Badge>
@@ -396,7 +385,7 @@ export function OwnedNumbersContent({
             </TableCell>
             <TableCell>
               {number.is_active ? (
-                <Badge className="bg-green-500/10 text-green-600 border-green-500/20">Active</Badge>
+                <StatusBadge dotClass="bg-success">Active</StatusBadge>
               ) : (
                 <Badge variant="secondary">Inactive</Badge>
               )}
@@ -409,7 +398,7 @@ export function OwnedNumbersContent({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    className="text-destructive hover:text-destructive hover:bg-muted"
                   >
                     <Trash2 className="size-4" />
                   </Button>
@@ -471,10 +460,10 @@ export function SearchResultsContent({
               >
                 <div className="flex items-center gap-3">
                   <div
-                    className={`flex ${variant === "section" ? "size-8" : "size-10"} items-center justify-center rounded-full bg-primary/10`}
+                    className={`flex ${variant === "section" ? "size-8" : "size-10"} items-center justify-center rounded-full bg-muted`}
                   >
                     <Phone
-                      className={`${variant === "section" ? "size-4" : "size-5"} text-primary`}
+                      className={`${variant === "section" ? "size-4" : "size-5"} text-muted-foreground`}
                     />
                   </div>
                   <div>
@@ -484,19 +473,19 @@ export function SearchResultsContent({
                     >
                       {result.capabilities?.sms && (
                         <span className="text-xs text-muted-foreground flex items-center gap-0.5">
-                          <Check className="size-3 text-green-500" />
+                          <Check className="size-3 text-success" />
                           SMS
                         </span>
                       )}
                       {result.capabilities?.voice && (
                         <span className="text-xs text-muted-foreground flex items-center gap-0.5">
-                          <Check className="size-3 text-green-500" />
+                          <Check className="size-3 text-success" />
                           Voice
                         </span>
                       )}
                       {result.capabilities?.mms && (
                         <span className="text-xs text-muted-foreground flex items-center gap-0.5">
-                          <Check className="size-3 text-green-500" />
+                          <Check className="size-3 text-success" />
                           MMS
                         </span>
                       )}

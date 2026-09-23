@@ -46,7 +46,7 @@ export function LiveCallsPanel() {
   }
 
   return (
-    <Card className="border-success/40">
+    <Card className="border">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
           <Radio className="h-4 w-4 text-success animate-pulse" />
@@ -61,7 +61,7 @@ export function LiveCallsPanel() {
             className="flex items-center justify-between gap-3 rounded-md border p-3"
           >
             <div className="flex items-center gap-3 min-w-0">
-              <div className="flex-shrink-0 size-9 rounded-full bg-primary/10 flex items-center justify-center">
+              <div className="flex-shrink-0 size-9 rounded-full flex items-center justify-center">
                 <PhoneCall className="size-4 text-primary" />
               </div>
               <div className="min-w-0">

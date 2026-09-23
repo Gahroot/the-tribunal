@@ -76,7 +76,7 @@ export function RemindersSection({ control }: RemindersSectionProps) {
                     Send reminders at each of these times before the appointment.
                   </FormDescription>
                   {field.value.length === 0 && (
-                    <p className="text-xs text-amber-600">
+                    <p className="text-xs text-warning">
                       Add at least one reminder time for reminders to be sent.
                     </p>
                   )}
@@ -93,7 +93,7 @@ export function RemindersSection({ control }: RemindersSectionProps) {
                   <div className="flex items-center justify-between">
                     <FormLabel>Custom SMS Template</FormLabel>
                     <span
-                      className={`text-xs ${charCount > 160 ? "text-amber-600 font-medium" : "text-muted-foreground"}`}
+                      className={`text-xs ${charCount > 160 ? "text-warning font-medium" : "text-muted-foreground"}`}
                     >
                       {charCount} / 160
                       {charCount > 160 ? ` (${Math.ceil(charCount / 153)} segments)` : ""}

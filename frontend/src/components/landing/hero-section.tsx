@@ -112,8 +112,8 @@ export function HeroSection() {
               <div aria-live="polite" role="status">
                 {isSuccess && (
                   <div className="py-6 space-y-3">
-                    <CheckCircle2 className="size-12 text-green-500" aria-hidden="true" />
-                    <p className="text-green-600 font-medium text-lg">
+                    <CheckCircle2 className="size-12 text-success" aria-hidden="true" />
+                    <p className="text-success font-medium text-lg">
                       {successMessage}
                     </p>
                   </div>

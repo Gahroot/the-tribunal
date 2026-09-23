@@ -243,7 +243,7 @@ function BothEmbedPageContent({ params }: BothEmbedPageProps) {
   if (error && !config) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-transparent">
-        <div className="rounded-lg bg-red-50 p-4 text-red-600 shadow-lg">
+        <div className="rounded-lg border border-destructive/50 bg-background text-destructive p-4 shadow-lg">
           <p className="text-sm">{error}</p>
         </div>
       </div>
@@ -327,7 +327,7 @@ function BothEmbedPageContent({ params }: BothEmbedPageProps) {
           className="border-t p-3"
           style={{ backgroundColor: theme.panelBg, borderColor: theme.panelBorder }}
         >
-          {error && <p className="mb-2 text-xs text-red-500">{error}</p>}
+          {error && <p className="mb-2 text-xs text-destructive">{error}</p>}
           <ChatInput
             inputRef={inputRef}
             value={inputValue}
@@ -335,7 +335,7 @@ function BothEmbedPageContent({ params }: BothEmbedPageProps) {
             onKeyDown={handleKeyDown}
             onSend={() => void sendMessage()}
             disabled={!inputValue.trim() || isChatLoading}
-            placeholder={voiceActive ? "Voice active — or type here..." : "Type a message..."}
+            placeholder={voiceActive ? "Voice active, or type here..." : "Type a message..."}
             isLoading={isChatLoading}
             theme={theme}
             primaryColor={primaryColor}
@@ -343,7 +343,7 @@ function BothEmbedPageContent({ params }: BothEmbedPageProps) {
               <button
                 onClick={toggleVoice}
                 disabled={voiceStatus === "connecting"}
-                className="flex h-10 w-10 items-center justify-center rounded-full transition-all hover:scale-105 disabled:opacity-50"
+                className="flex h-10 w-10 items-center justify-center rounded-full transition-opacity hover:opacity-90 disabled:opacity-50"
                 style={{ backgroundColor: voiceActive ? "#ef4444" : theme.iconBg }}
                 title={voiceActive ? "Stop voice" : "Start voice"}
               >

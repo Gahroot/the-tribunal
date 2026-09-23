@@ -140,7 +140,7 @@ export function PeopleSearchClient() {
       });
     },
     onSuccess: () => {
-      toast.success("People crawl started — results appear as enrichment runs.");
+      toast.success("People crawl started: results appear as enrichment runs.");
       setDiscoveryInput("");
     },
     onError: (error) =>
@@ -232,7 +232,7 @@ export function PeopleSearchClient() {
             <Label htmlFor="people-discovery">Crawl a company for people</Label>
             <Input
               id="people-discovery"
-              placeholder="acme.com  —  or  —  roofing companies in Austin"
+              placeholder="acme.com or roofing companies in Austin"
               value={discoveryInput}
               onChange={(e) => setDiscoveryInput(e.target.value)}
             />

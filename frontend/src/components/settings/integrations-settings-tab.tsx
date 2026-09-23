@@ -26,6 +26,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import {
   integrationsApi,
@@ -56,23 +57,6 @@ function getIntegrationIcon(type: string) {
       return Users;
     default:
       return Webhook;
-  }
-}
-
-function getIntegrationColor(type: string) {
-  switch (type) {
-    case "calcom":
-      return "text-primary bg-primary/10";
-    case "telnyx":
-      return "text-destructive bg-destructive/10";
-    case "resend":
-      return "text-black bg-neutral-100";
-    case "lob":
-      return "text-amber-600 bg-amber-100";
-    case "followupboss":
-      return "text-blue-600 bg-blue-100";
-    default:
-      return "text-primary bg-primary/10";
   }
 }
 
@@ -126,16 +110,13 @@ export function IntegrationsSettingsTab() {
         ) : (
           integrationsData?.integrations.map((integration) => {
             const Icon = getIntegrationIcon(integration.integration_type);
-            const colorClass = getIntegrationColor(integration.integration_type);
 
             return (
               <Card key={integration.integration_type}>
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div
-                        className={`flex size-10 items-center justify-center rounded-lg ${colorClass}`}
-                      >
+                      <div className="flex size-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
                         <Icon className="size-5" />
                       </div>
                       <div>
@@ -148,9 +129,7 @@ export function IntegrationsSettingsTab() {
                       </div>
                     </div>
                     {integration.is_connected ? (
-                      <Badge className="bg-success/10 text-success border-success/20">
-                        Connected
-                      </Badge>
+                      <StatusBadge dotClass="bg-success">Connected</StatusBadge>
                     ) : (
                       <Badge variant="outline">Not Connected</Badge>
                     )}

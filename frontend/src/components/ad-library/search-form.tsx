@@ -140,7 +140,7 @@ export function AdLibrarySearchForm({ onSubmit, isSubmitting = false }: SearchFo
           <IcpToggle
             id="icp-low-diversity"
             label="Low creative diversity"
-            description="Few distinct creatives — excludes prolific testers"
+            description="Few distinct creatives (excludes prolific testers)"
             checked={values.lowDiversity}
             onChange={(v) => update("lowDiversity", v)}
           />

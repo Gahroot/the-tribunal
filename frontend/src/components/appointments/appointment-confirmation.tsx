@@ -74,25 +74,25 @@ const STATUS_META: Record<
   scheduled: {
     title: "This appointment is scheduled",
     icon: CalendarCheck2,
-    tone: "text-success border-success/40",
+    tone: "text-success border",
     srDescription: "Scheduled appointment details.",
   },
   completed: {
     title: "This appointment is completed",
     icon: CheckCircle2,
-    tone: "text-success border-success/40",
+    tone: "text-success border",
     srDescription: "Completed appointment details.",
   },
   cancelled: {
     title: "This appointment is cancelled",
     icon: XCircle,
-    tone: "text-destructive border-destructive/40",
+    tone: "text-destructive border",
     srDescription: "Cancelled appointment details.",
   },
   no_show: {
     title: "This appointment was a no-show",
     icon: UserX,
-    tone: "text-warning border-warning/40",
+    tone: "text-warning border",
     srDescription: "No-show appointment details.",
   },
 };
@@ -341,7 +341,7 @@ export function AppointmentConfirmation({
         <div
           role="group"
           aria-labelledby={confirmHeadingId}
-          className="space-y-3 rounded-lg border border-destructive/30 p-4"
+          className="space-y-3 rounded-lg border border-destructive/50 p-4"
           aria-busy={isPending}
         >
           <div className="space-y-1">

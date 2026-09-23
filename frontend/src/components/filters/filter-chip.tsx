@@ -77,7 +77,7 @@ export function FilterChip({ rule, onRemove }: FilterChipProps) {
       <button
         type="button"
         onClick={onRemove}
-        className="ml-0.5 rounded-full p-0.5 hover:bg-foreground/10"
+        className="ml-0.5 rounded-full p-0.5 hover:bg-secondary"
       >
         <X className="h-3 w-3" />
       </button>

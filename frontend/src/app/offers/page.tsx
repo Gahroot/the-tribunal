@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -131,8 +131,6 @@ export default function OffersPage() {
   });
 
   const offers = data?.items || [];
-  const activeOffers = offers.filter((o) => o.is_active);
-
   return (
     <AppSidebar>
       <div className="p-6 space-y-6">
@@ -148,44 +146,6 @@ export default function OffersPage() {
             <Plus className="size-4 mr-2" />
             Create Offer
           </Button>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Offers
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{offers.length}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Active Offers
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-success">
-                {activeOffers.length}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                With Lead Magnets
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-info">
-                {offers.filter((o) => o.lead_magnets && o.lead_magnets.length > 0).length}
-              </p>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Offers List */}
@@ -228,7 +188,7 @@ export default function OffersPage() {
                   <CardContent className="p-6">
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-4">
-                        <div className="size-12 rounded-full bg-gradient-to-br from-success/20 to-success/5 flex items-center justify-center text-success">
+                        <div className="size-12 rounded-full flex items-center justify-center text-muted-foreground">
                           {discountTypeIcons[offer.discount_type]}
                         </div>
                         <div>
@@ -236,7 +196,6 @@ export default function OffersPage() {
                             <h3 className="font-semibold text-lg">{offer.name}</h3>
                             <Badge
                               variant="secondary"
-                              className="bg-success/10 text-success"
                             >
                               {formatDiscount(offer)}
                             </Badge>
@@ -250,7 +209,7 @@ export default function OffersPage() {
                               </Badge>
                             )}
                             {offer.lead_magnets && offer.lead_magnets.length > 0 && (
-                              <Badge variant="outline" className="gap-1 text-info border-info/20">
+                              <Badge variant="outline" className="gap-1">
                                 <Gift className="size-3" />
                                 {offer.lead_magnets.length} bonuses
                               </Badge>
@@ -267,7 +226,7 @@ export default function OffersPage() {
                             </p>
                           )}
                           {offer.total_value && offer.total_value > 0 && (
-                            <p className="text-sm text-success mt-2">
+                            <p className="text-sm text-primary mt-2">
                               Total Value: ${formatNumber(offer.total_value)}
                               {offer.offer_price && (
                                 <span className="text-muted-foreground">

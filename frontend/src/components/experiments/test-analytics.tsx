@@ -232,11 +232,11 @@ export function TestAnalytics({ testId }: TestAnalyticsProps) {
 
       {/* Winner Banner */}
       {winnerVariant && (
-        <Card className="border-success bg-success/10">
+        <Card className="border bg-background text-foreground">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-success/10 rounded-full">
+                <div className="p-2 rounded-full">
                   <Trophy className="size-6 text-success" />
                 </div>
                 <div>
@@ -259,7 +259,7 @@ export function TestAnalytics({ testId }: TestAnalyticsProps) {
 
       {/* Statistical Significance */}
       {analytics.statistical_significance && !winnerVariant && (
-        <Card className="border-info bg-info/10">
+        <Card className="border bg-background text-foreground">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <TrendingUp className="size-5 text-info" />
@@ -295,9 +295,9 @@ export function TestAnalytics({ testId }: TestAnalyticsProps) {
                 key={variant.variant_id}
                 className={`p-4 rounded-lg border ${
                   isWinner
-                    ? "border-success bg-success/10"
+                    ? "border-success bg-secondary"
                     : isBest
-                    ? "border-primary bg-primary/5"
+                    ? "border-primary bg-secondary"
                     : ""
                 }`}
               >
@@ -311,14 +311,14 @@ export function TestAnalytics({ testId }: TestAnalyticsProps) {
                       </Badge>
                     )}
                     {isWinner && (
-                      <Badge className="bg-success">
-                        <Trophy className="size-3 mr-1" />
+                      <Badge variant="secondary">
+                        <Trophy className="size-3 mr-1 text-success" />
                         Winner
                       </Badge>
                     )}
                     {isBest && !isWinner && (
-                      <Badge variant="outline" className="border-primary text-primary">
-                        <TrendingUp className="size-3 mr-1" />
+                      <Badge variant="outline">
+                        <TrendingUp className="size-3 mr-1 text-primary" />
                         Best Performing
                       </Badge>
                     )}

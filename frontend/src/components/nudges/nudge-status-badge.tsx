@@ -1,25 +1,26 @@
 // Presentational badge mapping a non-pending nudge status to a styled label.
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 
 export function NudgeStatusBadge({ status }: { status: string }) {
   switch (status) {
     case "sent":
       return (
-        <Badge variant="secondary" className="text-xs">
+        <StatusBadge dotClass="bg-muted-foreground" className="text-xs">
           Sent
-        </Badge>
+        </StatusBadge>
       );
     case "acted":
       return (
-        <Badge variant="default" className="bg-green-600 text-xs">
+        <StatusBadge dotClass="bg-success" className="text-xs">
           Acted
-        </Badge>
+        </StatusBadge>
       );
     case "dismissed":
       return (
-        <Badge variant="destructive" className="text-xs">
+        <StatusBadge dotClass="bg-destructive" className="text-xs">
           Dismissed
-        </Badge>
+        </StatusBadge>
       );
     default:
       return (

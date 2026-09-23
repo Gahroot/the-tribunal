@@ -169,7 +169,7 @@ export function ChatInput({
       <button
         onClick={onSend}
         disabled={disabled}
-        className="flex h-10 w-10 items-center justify-center rounded-full transition-all hover:scale-105 disabled:opacity-50"
+        className="flex h-10 w-10 items-center justify-center rounded-full transition-opacity hover:opacity-90 disabled:opacity-50"
         style={{ backgroundColor: primaryColor }}
       >
         {isLoading ? (

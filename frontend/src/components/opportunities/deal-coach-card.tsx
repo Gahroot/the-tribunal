@@ -20,32 +20,33 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageErrorState, PageLoadingState } from "@/components/ui/page-state";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { opportunitiesApi } from "@/lib/api/opportunities";
 import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 import type { CoachActionChannel, DealHealthStatus } from "@/types";
 
-const HEALTH_STYLES: Record<DealHealthStatus, { label: string; badge: string; bar: string }> = {
+const HEALTH_STYLES: Record<DealHealthStatus, { label: string; dot: string; bar: string }> = {
   healthy: {
     label: "Healthy",
-    badge: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-    bar: "bg-green-500",
+    dot: "bg-success",
+    bar: "bg-success",
   },
   watch: {
     label: "Watch",
-    badge: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
-    bar: "bg-yellow-500",
+    dot: "bg-info",
+    bar: "bg-info",
   },
   at_risk: {
     label: "At Risk",
-    badge: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
-    bar: "bg-orange-500",
+    dot: "bg-warning",
+    bar: "bg-warning",
   },
   critical: {
     label: "Critical",
-    badge: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-    bar: "bg-red-500",
+    dot: "bg-destructive",
+    bar: "bg-destructive",
   },
 };
 
@@ -139,7 +140,9 @@ export function DealCoachCard({ workspaceId, opportunityId }: DealCoachCardProps
           <Sparkles className="h-4 w-4 text-primary" />
           AI Deal Coach
         </CardTitle>
-        <Badge className={cn("font-medium", health.badge)}>{health.label}</Badge>
+        <StatusBadge dotClass={health.dot} className="font-medium">
+          {health.label}
+        </StatusBadge>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Health bar */}
@@ -158,8 +161,8 @@ export function DealCoachCard({ workspaceId, opportunityId }: DealCoachCardProps
         </div>
 
         {/* Top risk */}
-        <div className="flex items-start gap-2 rounded-lg border border-orange-200 bg-orange-50 p-3 dark:border-orange-900 dark:bg-orange-950/40">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-orange-600" />
+        <div className="flex items-start gap-2 rounded-lg border bg-background p-3">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
           <div className="space-y-1">
             <p className="text-sm font-medium">Top risk</p>
             <p className="text-sm text-muted-foreground">{card.top_risk}</p>
@@ -183,7 +186,7 @@ export function DealCoachCard({ workspaceId, opportunityId }: DealCoachCardProps
           <div className="rounded-md bg-muted/60 p-2.5 text-sm">
             <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
               {isSmsDraft
-                ? "Drafted SMS — sends when approved"
+                ? "Drafted SMS (sends when approved)"
                 : `Drafted ${card.drafted_action.channel} next step`}
             </p>
             <p className="whitespace-pre-wrap">{card.drafted_action.body}</p>
@@ -229,9 +232,9 @@ function SignalRow({
     <div className="flex items-center justify-between border-t pt-3 text-xs text-muted-foreground">
       <span className="flex items-center gap-1">
         {trend === "improving" ? (
-          <TrendingUp className="h-3.5 w-3.5 text-green-500" />
+          <TrendingUp className="h-3.5 w-3.5 text-success" />
         ) : trend === "declining" ? (
-          <TrendingDown className="h-3.5 w-3.5 text-red-500" />
+          <TrendingDown className="h-3.5 w-3.5 text-destructive" />
         ) : null}
         Sentiment: {trend}
       </span>

@@ -12,6 +12,7 @@ import {
   PageErrorState,
 } from "@/components/ui/page-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { contactStatusDotColors } from "@/lib/status-colors";
 import { cn } from "@/lib/utils";
 import { formatRelative } from "@/lib/utils/date";
@@ -167,7 +168,7 @@ export function ConversationList({
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   isActive
                     ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border bg-muted/40 text-muted-foreground hover:bg-accent hover:text-foreground",
+                    : "border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
                 {view.label}
@@ -189,7 +190,7 @@ export function ConversationList({
                   key={view.id}
                   className={cn(
                     "inline-flex items-center overflow-hidden rounded-full border",
-                    isActive ? "border-primary bg-primary/10" : "border-border",
+                    isActive ? "border-primary bg-secondary" : "border-border",
                   )}
                 >
                   <button
@@ -200,7 +201,7 @@ export function ConversationList({
                       "px-2.5 py-1 text-xs font-medium transition-colors",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
                       isActive
-                        ? "text-primary"
+                        ? "text-foreground"
                         : "text-muted-foreground hover:text-foreground",
                     )}
                   >
@@ -349,7 +350,7 @@ export function ConversationList({
                     className={cn(
                       "flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-                      isSelected ? "bg-primary/10" : "hover:bg-accent/50",
+                      isSelected ? "bg-secondary" : "hover:bg-muted",
                     )}
                   >
                     <span className="relative shrink-0">
@@ -411,19 +412,20 @@ export function ConversationList({
                         </span>
                         <span className="flex shrink-0 items-center gap-1">
                           {score != null && score > 0 ? (
-                            <span
-                              className={cn(
-                                "rounded px-1 py-0.5 text-[10px] font-bold",
-                                score >= 80
-                                  ? "bg-success/10 text-success"
-                                  : score >= 40
-                                    ? "bg-warning/10 text-warning"
-                                    : "bg-muted text-muted-foreground",
-                              )}
-                              title={`Lead score: ${score}`}
-                            >
-                              <span className="sr-only">Lead score </span>
-                              {score}
+                            <span title={`Lead score: ${score}`}>
+                              <StatusBadge
+                                dotClass={
+                                  score >= 80
+                                    ? "bg-success"
+                                    : score >= 40
+                                      ? "bg-warning"
+                                      : "bg-muted-foreground"
+                                }
+                                className="px-1 py-0.5 text-[10px] font-bold"
+                              >
+                                <span className="sr-only">Lead score </span>
+                                {score}
+                              </StatusBadge>
                             </span>
                           ) : null}
                           {unread > 0 ? (

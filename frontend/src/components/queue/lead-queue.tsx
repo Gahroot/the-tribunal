@@ -50,7 +50,7 @@ function QueueRow({ contact, isActive, onSelect }: QueueRowProps) {
       onClick={onSelect}
       className={cn(
         "flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors",
-        "hover:bg-accent/50 hover:border-accent",
+        "hover:bg-muted hover:border-accent",
         isActive
           ? "border-primary bg-primary/5"
           : "border-transparent bg-card",
@@ -96,7 +96,7 @@ function QueueRow({ contact, isActive, onSelect }: QueueRowProps) {
           {hasUnread && (
             <Badge
               variant="secondary"
-              className="h-4 shrink-0 bg-info/15 px-1.5 text-[10px] text-info"
+              className="h-4 shrink-0 px-1.5 text-[10px]"
             >
               {contact.unread_count}
             </Badge>

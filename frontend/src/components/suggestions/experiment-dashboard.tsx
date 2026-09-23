@@ -208,22 +208,22 @@ function AgentExperimentSection({ agentId, agentName }: { agentId: string; agent
       <CardContent className="space-y-4">
         {/* Recommendation Banner */}
         {recommended_action === "declare_winner" && winner_id && winner_probability ? (
-          <div className="flex items-center justify-between rounded-lg border border-success/20 bg-success/10 p-3">
+          <div className="flex items-center justify-between rounded-lg border bg-background p-3">
             <div className="flex items-center gap-3">
               <Trophy className="h-5 w-5 text-success" />
               <div>
                 <p className="text-sm font-medium">Winner Detected</p>
                 <p className="text-xs text-muted-foreground">
-                  Version {comparison.versions.find(v => v.version_id === winner_id)?.version_number} — {(winner_probability * 100).toFixed(1)}% probability best
+                  Version {comparison.versions.find(v => v.version_id === winner_id)?.version_number}: {(winner_probability * 100).toFixed(1)}% probability best
                 </p>
               </div>
             </div>
-            <Button size="sm" onClick={() => setDeclareWinnerVersion(winner_id)} className="bg-success hover:bg-success/90">
+            <Button size="sm" onClick={() => setDeclareWinnerVersion(winner_id)}>
               Declare Winner
             </Button>
           </div>
         ) : recommended_action === "eliminate_worst" ? (
-          <div className="flex items-center justify-between rounded-lg border border-warning/20 bg-warning/10 p-3">
+          <div className="flex items-center justify-between rounded-lg border bg-background p-3">
             <div className="flex items-center gap-3">
               <AlertCircle className="h-5 w-5 text-warning" />
               <div>
@@ -233,12 +233,12 @@ function AgentExperimentSection({ agentId, agentName }: { agentId: string; agent
                 </p>
               </div>
             </div>
-            <Button size="sm" variant="outline" onClick={() => setEliminateVersion(comparison.versions[comparison.versions.length - 1].version_id)} className="border-warning/20 text-warning hover:bg-warning/10">
+            <Button size="sm" variant="outline" onClick={() => setEliminateVersion(comparison.versions[comparison.versions.length - 1].version_id)}>
               Eliminate
             </Button>
           </div>
         ) : min_samples_needed > 0 ? (
-          <div className="flex items-center gap-3 rounded-lg border border-info/20 bg-info/10 p-3">
+          <div className="flex items-center gap-3 rounded-lg border bg-background p-3">
             <TrendingUp className="h-5 w-5 text-info" />
             <div>
               <p className="text-sm font-medium">Collecting Data</p>
@@ -271,7 +271,7 @@ function AgentExperimentSection({ agentId, agentName }: { agentId: string; agent
                 key={version.version_id}
                 className={cn(
                   "rounded-lg border p-4 space-y-3",
-                  isWinner && "border-success ring-1 ring-success",
+                  isWinner && "border-success",
                   isPaused && "opacity-60"
                 )}
               >

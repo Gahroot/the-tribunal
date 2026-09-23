@@ -44,11 +44,11 @@ export function ReviewStep({ showPhoneWarning = false }: ReviewStepProps) {
       </div>
 
       {showPhoneWarning && (
-        <Alert className="border-amber-500/50 text-amber-700 dark:text-amber-400 [&>svg]:text-amber-500">
+        <Alert className="border bg-background text-foreground [&>svg]:text-warning">
           <AlertTriangle className="size-4" />
           <AlertTitle>No SMS number yet</AlertTitle>
-          <AlertDescription className="text-muted-foreground">
-            We couldn&apos;t get you an SMS number automatically — add one to
+          <AlertDescription>
+            We couldn&apos;t get you an SMS number automatically. Add one to
             start texting. A phone number is required to launch SMS and voice
             campaigns.{" "}
             <Link
@@ -68,9 +68,9 @@ export function ReviewStep({ showPhoneWarning = false }: ReviewStepProps) {
         <CardContent className="pt-4 pb-4 divide-y divide-border">
           <div className="flex items-center gap-3 py-3">
             {fubConnected ? (
-              <CheckCircle2 className="size-5 text-green-500 shrink-0" />
+              <CheckCircle2 className="size-5 text-success shrink-0" />
             ) : (
-              <AlertCircle className="size-5 text-amber-500 shrink-0" />
+              <AlertCircle className="size-5 text-warning shrink-0" />
             )}
             <div className="min-w-0">
               <p className="text-sm font-medium">
@@ -86,9 +86,9 @@ export function ReviewStep({ showPhoneWarning = false }: ReviewStepProps) {
 
           <div className="flex items-center gap-3 py-3">
             {calcomConnected ? (
-              <CheckCircle2 className="size-5 text-green-500 shrink-0" />
+              <CheckCircle2 className="size-5 text-success shrink-0" />
             ) : (
-              <AlertCircle className="size-5 text-amber-500 shrink-0" />
+              <AlertCircle className="size-5 text-warning shrink-0" />
             )}
             <div className="min-w-0">
               <p className="text-sm font-medium">

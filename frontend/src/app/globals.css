@@ -82,14 +82,20 @@
   /* Accent */
   --accent: #7058e3;
   --accent-foreground: #ffffff;
+  /* Semantic status tokens: the single source of truth for status color.
+     App surfaces use these only as markers (dot/icon/border) or as solid
+     fills carrying neutral text. Never hardcode raw palette classes
+     (green-500/red-500/yellow-500/blue-500/...) in components. Light-theme
+     values are tuned to clear WCAG AA (>=4.5:1) on background, card, muted
+     and white in both directions. Primary is the one accent: money/action. */
   /* Destructive */
-  --destructive: #f24d4d;
-  /* Success - Mint */
-  --success: #0fa66e;
-  /* Warning - Orange */
-  --warning: #d97706;
-  /* Info - Blue */
-  --info: #3b82f6;
+  --destructive: #c92a2c;
+  /* Success */
+  --success: #0c7751;
+  /* Warning */
+  --warning: #a84c07;
+  /* Info */
+  --info: #1f57d6;
   /* Border & Input */
   --border: rgba(112, 88, 227, 0.15);
   --input: rgba(112, 88, 227, 0.1);
@@ -280,12 +286,14 @@
   background-clip: text;
 }
 
-/* ── Interactive card lift ───────────────────────────────────── */
+/* ── Interactive card feedback (no lift) ─────────────────────── */
+/* Hover feedback via shadow/background only: generic translateY/scale
+   lifts are banned by the anti-defaults pass. */
 .card-interactive {
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: box-shadow 0.2s ease, background-color 0.2s ease,
+    border-color 0.2s ease;
 }
 .card-interactive:hover {
-  transform: translateY(-1px);
   box-shadow: 0 8px 30px rgba(112, 88, 227, 0.12);
 }
 

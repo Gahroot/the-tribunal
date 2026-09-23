@@ -16,6 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { integrationsApi } from "@/lib/api/integrations";
 import { queryKeys } from "@/lib/query-keys";
 import { useWorkspace } from "@/providers/workspace-provider";
@@ -240,7 +241,7 @@ export function OpenAIChatGPTCard() {
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3">
-            <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <div className="flex size-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
               <Bot className="size-5" />
             </div>
             <div>
@@ -263,9 +264,7 @@ export function OpenAIChatGPTCard() {
               <Loader2 className="size-3 animate-spin" /> Waiting for sign-in
             </Badge>
           ) : isConnected ? (
-            <Badge className="border-success/20 bg-success/10 text-success">
-              Connected
-            </Badge>
+            <StatusBadge dotClass="bg-success">Connected</StatusBadge>
           ) : (
             <Badge variant="outline">Not Connected</Badge>
           )}

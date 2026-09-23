@@ -93,13 +93,13 @@ export function LeadsStep() {
           className={`relative overflow-hidden ${!fubConnected ? "opacity-50" : ""}`}
         >
           <CardContent className="p-5 flex flex-col items-center text-center gap-3">
-            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 text-primary">
+            <div className="flex items-center justify-center w-12 h-12 rounded-full text-muted-foreground">
               <Database className="w-6 h-6" />
             </div>
             <div>
               <p className="font-semibold text-sm">Pull from Follow Up Boss</p>
               {fubImportCount !== null && (
-                <p className="text-xs text-green-600 mt-1">
+                <p className="text-xs text-success mt-1">
                   {formatNumber(fubImportCount)} lead
                   {fubImportCount !== 1 ? "s" : ""} imported
                 </p>
@@ -129,7 +129,7 @@ export function LeadsStep() {
 
         <Card className="relative overflow-hidden">
           <CardContent className="p-5 flex flex-col items-center text-center gap-3">
-            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 text-primary">
+            <div className="flex items-center justify-center w-12 h-12 rounded-full text-muted-foreground">
               <FileSpreadsheet className="w-6 h-6" />
             </div>
             <div>
@@ -154,7 +154,7 @@ export function LeadsStep() {
       {csvFile && (
         <Card className="bg-muted/30">
           <CardContent className="py-3 px-4 flex items-center gap-3">
-            <CheckCircle2 className="size-4 text-green-500 shrink-0" />
+            <CheckCircle2 className="size-4 text-success shrink-0" />
             <div className="min-w-0">
               <p className="font-medium truncate text-sm">{csvFile.name}</p>
               {csvRowCount !== null && (

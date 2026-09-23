@@ -23,16 +23,16 @@ export const messages = {
     promptImproveFailed: "Couldn't generate a prompt suggestion. Please try again.",
     promptImproveTookAction:
       "The assistant ran a CRM action instead of rewriting. Review Approvals, then try again.",
-    promptSuggestionInserted: "Suggestion inserted — review and save your changes",
+    promptSuggestionInserted: "Suggestion inserted. Review and save your changes.",
     promptReset: "Prompt reset to the last saved version",
   },
 
   campaigns: {
     smsCreated: "Campaign created successfully!",
     smsCreateFailed: "Failed to create campaign",
-    smsSent: "Campaign sent — it is now live in your campaign list",
+    smsSent: "Campaign sent. It is now live in your campaign list.",
     startFailed: "Campaign created but it could not start sending",
-    aiDraftInserted: "AI draft inserted — review and edit before sending",
+    aiDraftInserted: "AI draft inserted. Review and edit before sending.",
     aiDraftFailed: "Failed to generate a draft. Try again.",
     voiceCreated: "Voice campaign created successfully!",
     voiceCreateFailed: "Failed to create campaign",
@@ -68,7 +68,7 @@ export const messages = {
   conversations: {
     sent: "Message sent",
     sendFailed: "Failed to send message",
-    aiDraftInserted: "AI draft inserted — review and edit before sending",
+    aiDraftInserted: "AI draft inserted. Review and edit before sending.",
     aiDraftFailed: "Failed to generate a draft. Try again.",
     assigned: "Agent assigned",
     unassigned: "Agent unassigned",

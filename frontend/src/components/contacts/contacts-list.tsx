@@ -5,16 +5,16 @@ import { motion, AnimatePresence } from "motion/react";
 import { useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageEmptyState, PageErrorState } from "@/components/ui/page-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { useContactsPaginated } from "@/hooks/useContacts";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { useContactStore } from "@/lib/contact-store";
-import { contactStatusColors } from "@/lib/status-colors";
+import { contactStatusDotColors } from "@/lib/status-colors";
 import { cn } from "@/lib/utils";
 import { getContactInitials } from "@/lib/utils/initials";
 import { formatPhoneNumber } from "@/lib/utils/phone";
@@ -59,8 +59,8 @@ function ContactItem({ contact, isSelected, onClick }: ContactItemProps) {
         onClick={onClick}
         className={cn(
           "w-full flex items-start gap-3 p-3 rounded-lg text-left transition-colors",
-          "hover:bg-accent/50",
-          isSelected && "bg-accent"
+          "hover:bg-muted",
+          isSelected && "bg-secondary"
         )}
       >
         <Avatar className="h-10 w-10 shrink-0">
@@ -77,12 +77,12 @@ function ContactItem({ contact, isSelected, onClick }: ContactItemProps) {
               {contact.lead_score != null && contact.lead_score > 0 && (
                 <span
                   className={cn(
-                    "text-[10px] font-bold px-1 py-0.5 rounded",
+                    "text-[10px] font-bold px-1 py-0.5 rounded bg-muted",
                     contact.lead_score >= 80
-                      ? "text-success bg-success/10"
+                      ? "text-success"
                       : contact.lead_score >= 40
-                        ? "text-warning bg-warning/10"
-                        : "text-muted-foreground bg-muted"
+                        ? "text-warning"
+                        : "text-muted-foreground"
                   )}
                   title={`Lead Score: ${contact.lead_score}`}
                 >
@@ -94,9 +94,9 @@ function ContactItem({ contact, isSelected, onClick }: ContactItemProps) {
                   <Sparkles className="h-3 w-3 text-primary" />
                 </span>
               )}
-              <Badge variant="secondary" className={cn("text-xs", contactStatusColors[contact.status])}>
+              <StatusBadge dotClass={contactStatusDotColors[contact.status]} className={cn("text-xs")}>
                 {contact.status}
-              </Badge>
+              </StatusBadge>
             </div>
           </div>
 

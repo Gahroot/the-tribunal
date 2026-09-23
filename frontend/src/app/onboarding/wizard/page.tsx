@@ -178,7 +178,7 @@ function OnboardingFlow() {
       if (extras.csvFile && !phoneProvisionedRef.current && !showPhoneWarning) {
         setShowPhoneWarning(true);
         toast.error(
-          "We couldn't get you an SMS number automatically — add one to start texting."
+          "We couldn't get you an SMS number automatically. Add one to start texting."
         );
         return;
       }
@@ -220,9 +220,9 @@ function OnboardingFlow() {
         .filter(Boolean)
         .join(" · ");
       if (summary.failed > 0 || summary.imported === 0) {
-        toast.warning(`Campaign launched — ${toastDetail}`);
+        toast.warning(`Campaign launched: ${toastDetail}`);
       } else {
-        toast.success(`Campaign launched — ${toastDetail}`);
+        toast.success(`Campaign launched: ${toastDetail}`);
       }
       setShowPhoneWarning(false);
       setLaunchSummary(summary);
@@ -237,7 +237,7 @@ function OnboardingFlow() {
         phoneProvisionedRef.current = false;
         setShowPhoneWarning(true);
         toast.error(
-          "We couldn't get you an SMS number automatically — add one to start texting."
+          "We couldn't get you an SMS number automatically. Add one to start texting."
         );
       } else {
         toast.error(message);

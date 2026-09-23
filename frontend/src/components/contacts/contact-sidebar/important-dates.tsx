@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, X, Loader2 } from "lucide-react";
+import { Cake, CalendarDays, Heart, Loader2, Plus, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -150,7 +150,7 @@ export function ImportantDatesSection({
       <div className="space-y-1 px-2">
         {dates?.birthday && (
           <div className="flex items-center gap-2 text-sm group">
-            <span>🎂</span>
+            <Cake aria-hidden="true" className="size-4 text-muted-foreground" />
             <div className="flex-1 min-w-0">
               <p className="text-xs text-muted-foreground">Birthday</p>
               <p className="text-sm font-medium">
@@ -171,7 +171,7 @@ export function ImportantDatesSection({
         )}
         {dates?.anniversary && (
           <div className="flex items-center gap-2 text-sm group">
-            <span>💍</span>
+            <Heart aria-hidden="true" className="size-4 text-muted-foreground" />
             <div className="flex-1 min-w-0">
               <p className="text-xs text-muted-foreground">Anniversary</p>
               <p className="text-sm font-medium">
@@ -195,7 +195,7 @@ export function ImportantDatesSection({
             key={`${item.label}-${item.date}`}
             className="flex items-center gap-2 text-sm group"
           >
-            <span>📅</span>
+            <CalendarDays aria-hidden="true" className="size-4 text-muted-foreground" />
             <div className="flex-1 min-w-0">
               <p className="text-xs text-muted-foreground">{item.label}</p>
               <p className="text-sm font-medium">{formatLocalDate(item.date)}</p>

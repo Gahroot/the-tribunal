@@ -8,7 +8,7 @@ export default function OpportunitiesRoute() {
         <div className="p-6 pb-3">
           <h1 className="text-2xl font-semibold tracking-tight">Opportunities</h1>
           <p className="text-sm text-muted-foreground">
-            Drag a deal to a new stage — or open its menu and pick a stage from
+            Drag a deal to a new stage, or open its menu and pick a stage from
             the keyboard. Totals update as you move.
           </p>
         </div>

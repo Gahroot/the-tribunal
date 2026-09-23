@@ -58,7 +58,7 @@ export default function SuggestionsPage() {
           </p>
         </div>
         {pendingCount && pendingCount.pending_count > 0 && (
-          <div className="flex items-center gap-2 rounded-lg border bg-warning/10 px-4 py-2">
+          <div className="flex items-center gap-2 rounded-lg border bg-background px-4 py-2">
             <Lightbulb className="h-5 w-5 text-warning" />
             <span className="text-sm font-medium">
               {pendingCount.pending_count} pending suggestion

@@ -47,7 +47,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -196,8 +196,6 @@ export default function LeadMagnetsPage() {
   };
 
   const leadMagnets = data?.items || [];
-  const activeLeadMagnets = leadMagnets.filter((lm) => lm.is_active);
-  const totalDownloads = leadMagnets.reduce((sum, lm) => sum + lm.download_count, 0);
 
   return (
     <AppSidebar>
@@ -216,42 +214,6 @@ export default function LeadMagnetsPage() {
               Create Lead Magnet
             </Link>
           </Button>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Lead Magnets
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{leadMagnets.length}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Active
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-success">
-                {activeLeadMagnets.length}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Downloads
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-info">{totalDownloads}</p>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Lead Magnets List */}
@@ -294,7 +256,7 @@ export default function LeadMagnetsPage() {
                   <CardContent className="p-6">
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-4">
-                        <div className="size-12 rounded-full bg-gradient-to-br from-info/20 to-primary/5 flex items-center justify-center text-info">
+                        <div className="size-12 rounded-full flex items-center justify-center text-muted-foreground">
                           {magnetTypeIcons[magnet.magnet_type]}
                         </div>
                         <div>
@@ -302,7 +264,6 @@ export default function LeadMagnetsPage() {
                             <h3 className="font-semibold">{magnet.name}</h3>
                             <Badge
                               variant="secondary"
-                              className="bg-info/10 text-info"
                             >
                               {magnetTypeLabels[magnet.magnet_type]}
                             </Badge>
@@ -323,7 +284,7 @@ export default function LeadMagnetsPage() {
                               </span>
                             </div>
                             {magnet.estimated_value && magnet.estimated_value > 0 && (
-                              <div className="flex items-center gap-1 text-success">
+                              <div className="flex items-center gap-1 text-primary">
                                 <DollarSign className="size-3" />
                                 {magnet.estimated_value} value
                               </div>

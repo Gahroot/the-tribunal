@@ -1,22 +1,15 @@
 "use client";
 
 import {
-  Phone,
   PhoneIncoming,
   PhoneOutgoing,
-  Voicemail,
-  Check,
-  X,
-  Clock,
-  PhoneMissed,
   PlayCircle,
 } from "lucide-react";
-import { type ReactNode } from "react";
 
 import { TranscriptViewer } from "@/components/calls/transcript-viewer";
 import { AudioPlayer } from "@/components/ui/audio-player";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { callStatusDotColors } from "@/lib/status-colors";
 import type { TimelineItem } from "@/types";
 
 interface CallMessageItemProps {
@@ -31,56 +24,26 @@ function formatDuration(seconds?: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-const callStatusConfig: Record<
-  string,
-  { icon: ReactNode; label: string; color: string }
-> = {
-  completed: {
-    icon: <Check className="h-3 w-3" />,
-    label: "Completed",
-    color: "text-success bg-success/10",
-  },
-  failed: {
-    icon: <X className="h-3 w-3" />,
-    label: "Failed",
-    color: "text-destructive bg-destructive/10",
-  },
-  no_answer: {
-    icon: <PhoneMissed className="h-3 w-3" />,
-    label: "No Answer",
-    color: "text-warning bg-warning/10",
-  },
-  busy: {
-    icon: <PhoneMissed className="h-3 w-3" />,
-    label: "Busy",
-    color: "text-warning bg-warning/10",
-  },
-  voicemail: {
-    icon: <Voicemail className="h-3 w-3" />,
-    label: "Voicemail",
-    color: "text-info bg-info/10",
-  },
-  in_progress: {
-    icon: <Phone className="h-3 w-3" />,
-    label: "In Progress",
-    color: "text-info bg-info/10",
-  },
-  initiated: {
-    icon: <Clock className="h-3 w-3" />,
-    label: "Initiated",
-    color: "text-muted-foreground bg-muted",
-  },
-  ringing: {
-    icon: <Phone className="h-3 w-3" />,
-    label: "Ringing",
-    color: "text-info bg-info/10",
-  },
+const callStatusLabels: Record<string, string> = {
+  completed: "Completed",
+  failed: "Failed",
+  no_answer: "No Answer",
+  busy: "Busy",
+  voicemail: "Voicemail",
+  in_progress: "In Progress",
+  initiated: "Initiated",
+  ringing: "Ringing",
 };
 
-const sentimentStyles: Record<"positive" | "neutral" | "negative", string> = {
-  positive: "bg-success/10 text-success border-success/20",
-  neutral: "bg-muted text-muted-foreground border-border",
-  negative: "bg-destructive/10 text-destructive border-destructive/20",
+const callBadgeDotColors: Record<string, string> = {
+  ...callStatusDotColors,
+  voicemail: "bg-info",
+};
+
+const sentimentDotColors: Record<"positive" | "neutral" | "negative", string> = {
+  positive: "bg-success",
+  neutral: "bg-muted-foreground",
+  negative: "bg-destructive",
 };
 
 function unavailableRecordingLabel(status?: string): string | null {
@@ -102,17 +65,16 @@ export function CallMessageItem({ item, isOutbound }: CallMessageItemProps) {
   const sentiment = item.signals?.sentiment;
   const callSummary = item.signals?.summary;
   const callStatus = item.status
-    ? callStatusConfig[item.status] ?? {
-        icon: <Phone className="h-3 w-3" />,
-        label: item.status,
-        color: "text-muted-foreground bg-muted",
-      }
+    ? callStatusLabels[item.status] ?? item.status
     : null;
+  const callStatusDot = item.status
+    ? callBadgeDotColors[item.status] ?? "bg-muted-foreground"
+    : "bg-muted-foreground";
 
   const callIcon = isOutbound ? (
-    <PhoneOutgoing className="h-4 w-4 text-success" />
+    <PhoneOutgoing className="h-4 w-4 text-muted-foreground" />
   ) : (
-    <PhoneIncoming className="h-4 w-4 text-info" />
+    <PhoneIncoming className="h-4 w-4 text-muted-foreground" />
   );
 
   const unavailableLabel = unavailableRecordingLabel(item.status);
@@ -121,12 +83,7 @@ export function CallMessageItem({ item, isOutbound }: CallMessageItemProps) {
     <div className="space-y-3">
       {/* Call header */}
       <div className="flex items-center gap-3">
-        <div
-          className={cn(
-            "h-10 w-10 rounded-full flex items-center justify-center",
-            isOutbound ? "bg-success/10" : "bg-info/10",
-          )}
-        >
+        <div className="h-10 w-10 rounded-full flex items-center justify-center">
           {callIcon}
         </div>
         <div className="flex-1">
@@ -135,28 +92,22 @@ export function CallMessageItem({ item, isOutbound }: CallMessageItemProps) {
               {isOutbound ? "Outgoing Call" : "Incoming Call"}
             </p>
             {callStatus && (
-              <Badge
-                variant="secondary"
-                className={cn(
-                  "text-[10px] px-1.5 py-0 h-4 gap-0.5",
-                  callStatus.color,
-                )}
+              <StatusBadge
+                dotClass={callStatusDot}
+                className="text-[10px] px-1.5 py-0 h-4"
               >
-                {callStatus.icon}
-                <span className="ml-0.5">{callStatus.label}</span>
-              </Badge>
+                {callStatus}
+              </StatusBadge>
             )}
             {sentiment && (
-              <Badge
-                variant="outline"
-                title={callSummary || undefined}
-                className={cn(
-                  "text-[10px] px-1.5 py-0 h-4 capitalize",
-                  sentimentStyles[sentiment],
-                )}
-              >
-                {sentiment}
-              </Badge>
+              <span title={callSummary || undefined}>
+                <StatusBadge
+                  dotClass={sentimentDotColors[sentiment]}
+                  className="text-[10px] px-1.5 py-0 h-4 capitalize"
+                >
+                  {sentiment}
+                </StatusBadge>
+              </span>
             )}
           </div>
           {callSummary && (

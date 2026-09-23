@@ -100,13 +100,13 @@ export function StaffRoutingSection({ control, workspaceId, agentId }: StaffRout
                 </FormControl>
                 <SelectContent>
                   <SelectItem value="single">
-                    Single calendar — always book the agent&apos;s event type
+                    Single calendar: always book the agent&apos;s event type
                   </SelectItem>
                   <SelectItem value="round_robin">
-                    Round-robin — distribute evenly across the staff pool
+                    Round-robin: distribute evenly across the staff pool
                   </SelectItem>
                   <SelectItem value="skill_based">
-                    Skill-based — match the requested skill, then round-robin
+                    Skill-based: match the requested skill, then round-robin
                   </SelectItem>
                 </SelectContent>
               </Select>

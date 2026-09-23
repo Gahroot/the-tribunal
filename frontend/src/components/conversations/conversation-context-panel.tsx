@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { useAgents } from "@/hooks/useAgents";
 import { useAssignContactAgent, useUpdateContact } from "@/hooks/useContacts";
 import { useAssignAgent } from "@/hooks/useConversations";
@@ -29,7 +30,7 @@ import { STATIC } from "@/lib/query-options";
 import {
   contactStatusDotColors,
   contactStatusLabels,
-  opportunityStatusColors,
+  opportunityStatusDotColors,
 } from "@/lib/status-colors";
 import { cn } from "@/lib/utils";
 import { getApiErrorMessage } from "@/lib/utils/errors";
@@ -312,15 +313,12 @@ export function ConversationContextPanel({
                           ) : null}
                         </div>
                         <div className="flex items-center gap-2">
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "text-[10px] capitalize",
-                              opportunityStatusColors[opportunity.status],
-                            )}
+                          <StatusBadge
+                            dotClass={opportunityStatusDotColors[opportunity.status]}
+                            className="text-[10px] capitalize"
                           >
                             {opportunity.status}
-                          </Badge>
+                          </StatusBadge>
                           <Select
                             value={opportunity.status}
                             onValueChange={(value) =>

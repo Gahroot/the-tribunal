@@ -70,15 +70,6 @@ const DOC_TYPES = [
   { value: "persona", label: "Persona" },
 ] as const;
 
-const DOC_TYPE_STYLES: Record<string, string> = {
-  general: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
-  faq: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  policy: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
-  script: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  product: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
-  persona: "bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200",
-};
-
 const docFormSchema = z.object({
   title: z.string().min(1, { error: "Title is required" }).max(255),
   content: z.string().min(1, { error: "Content is required" }),
@@ -209,10 +200,10 @@ export function KnowledgeBaseTab({ agentId }: KnowledgeBaseTabProps) {
               <div
                 className={`h-full rounded-full transition-all ${
                   tokenPercent > 90
-                    ? "bg-red-500"
+                    ? "bg-destructive"
                     : tokenPercent > 70
-                      ? "bg-yellow-500"
-                      : "bg-green-500"
+                      ? "bg-warning"
+                      : "bg-success"
                 }`}
                 style={{ width: `${tokenPercent}%` }}
               />
@@ -244,9 +235,7 @@ export function KnowledgeBaseTab({ agentId }: KnowledgeBaseTabProps) {
                   <div className="flex items-start justify-between gap-2">
                     <h3 className="font-medium leading-tight">{doc.title}</h3>
                     <div className="flex shrink-0 items-center gap-1.5">
-                      <Badge
-                        className={`text-xs ${DOC_TYPE_STYLES[doc.doc_type] || DOC_TYPE_STYLES.general}`}
-                      >
+                      <Badge variant="outline" className="text-xs">
                         {doc.doc_type}
                       </Badge>
                       <Badge variant="outline" className="text-xs">

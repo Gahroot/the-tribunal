@@ -5,7 +5,6 @@ import { Check, Loader2, ThumbsDown, ThumbsUp } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -14,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { callsApi, type CallOutcome } from "@/lib/api/calls";
 import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
@@ -30,15 +30,15 @@ const OUTCOME_OPTIONS = [
   { value: "failed", label: "Failed" },
 ] as const;
 
-const outcomeStyles: Record<string, string> = {
-  appointment_booked: "bg-success/10 text-success border-success/20",
-  lead_qualified: "bg-info/10 text-info border-info/20",
-  completed: "bg-primary/10 text-primary border-primary/20",
-  voicemail: "bg-warning/10 text-warning border-warning/20",
-  no_answer: "bg-muted text-muted-foreground",
-  busy: "bg-muted text-muted-foreground",
-  rejected: "bg-destructive/10 text-destructive border-destructive/20",
-  failed: "bg-destructive/10 text-destructive border-destructive/20",
+const outcomeDotColors: Record<string, string> = {
+  appointment_booked: "bg-success",
+  lead_qualified: "bg-info",
+  completed: "bg-primary",
+  voicemail: "bg-warning",
+  no_answer: "bg-muted-foreground",
+  busy: "bg-warning",
+  rejected: "bg-destructive",
+  failed: "bg-destructive",
 };
 
 function formatOutcomeLabel(outcomeType: string | null | undefined): string {
@@ -47,9 +47,9 @@ function formatOutcomeLabel(outcomeType: string | null | undefined): string {
     ?? outcomeType.replaceAll("_", " ");
 }
 
-function getOutcomeBadgeClass(outcomeType: string | null | undefined): string {
-  if (!outcomeType) return "bg-muted text-muted-foreground";
-  return outcomeStyles[outcomeType] ?? "bg-muted text-muted-foreground";
+function getOutcomeDotClass(outcomeType: string | null | undefined): string {
+  if (!outcomeType) return "bg-muted-foreground";
+  return outcomeDotColors[outcomeType] ?? "bg-muted-foreground";
 }
 
 interface CallOutcomeControlsProps {
@@ -132,20 +132,18 @@ export function CallOutcomeControls({
   const isDetail = variant === "detail";
 
   const outcomeBadge = (
-    <Badge
-      variant="outline"
-      className={cn("capitalize", getOutcomeBadgeClass(selectedOutcome))}
-      data-testid="call-outcome-badge"
-    >
-      {isOutcomePending ? (
-        <>
-          <Loader2 className="size-3 animate-spin" />
-          Loading outcome
-        </>
-      ) : (
-        <>Outcome: {formatOutcomeLabel(selectedOutcome)}</>
-      )}
-    </Badge>
+    <span data-testid="call-outcome-badge" className="inline-flex">
+      <StatusBadge dotClass={getOutcomeDotClass(selectedOutcome)} className="capitalize">
+        {isOutcomePending ? (
+          <>
+            <Loader2 className="size-3 animate-spin" />
+            Loading outcome
+          </>
+        ) : (
+          <>Outcome: {formatOutcomeLabel(selectedOutcome)}</>
+        )}
+      </StatusBadge>
+    </span>
   );
 
   const reclassifySelect = (

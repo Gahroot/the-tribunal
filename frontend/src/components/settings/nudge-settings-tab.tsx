@@ -2,7 +2,9 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Info } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
+import { getNudgeIcon } from "@/components/nudges/nudge-presentation";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Card,
@@ -19,12 +21,12 @@ import { nudgesApi } from "@/lib/api/nudges";
 import { queryKeys } from "@/lib/query-keys";
 import type { UpdateNudgeSettings, NudgeType } from "@/types/nudge";
 
-const NUDGE_TYPE_OPTIONS: { type: NudgeType; label: string; emoji: string }[] = [
-  { type: "birthday", label: "Birthdays", emoji: "🎂" },
-  { type: "anniversary", label: "Anniversaries", emoji: "💍" },
-  { type: "custom", label: "Custom Dates", emoji: "📅" },
-  { type: "cooling", label: "Relationship Cooling", emoji: "🔄" },
-  { type: "follow_up", label: "Follow-ups", emoji: "📋" },
+const NUDGE_TYPE_OPTIONS: { type: NudgeType; label: string; icon: LucideIcon }[] = [
+  { type: "birthday", label: "Birthdays", icon: getNudgeIcon("birthday") },
+  { type: "anniversary", label: "Anniversaries", icon: getNudgeIcon("anniversary") },
+  { type: "custom", label: "Custom Dates", icon: getNudgeIcon("custom") },
+  { type: "cooling", label: "Relationship Cooling", icon: getNudgeIcon("cooling") },
+  { type: "follow_up", label: "Follow-ups", icon: getNudgeIcon("follow_up") },
 ];
 
 export function NudgeSettingsTab() {
@@ -162,22 +164,26 @@ export function NudgeSettingsTab() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {NUDGE_TYPE_OPTIONS.map((opt) => (
-              <div key={opt.type} className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>
-                    {opt.emoji} {opt.label}
-                  </Label>
+            {NUDGE_TYPE_OPTIONS.map((opt) => {
+              const Icon = opt.icon;
+              return (
+                <div key={opt.type} className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label className="inline-flex items-center gap-1.5">
+                      <Icon aria-hidden className="size-4 text-muted-foreground" />
+                      {opt.label}
+                    </Label>
+                  </div>
+                  <Switch
+                    checked={settings?.nudge_types?.includes(opt.type) ?? false}
+                    onCheckedChange={(checked) =>
+                      toggleNudgeType(opt.type, checked)
+                    }
+                    disabled={mutation.isPending}
+                  />
                 </div>
-                <Switch
-                  checked={settings?.nudge_types?.includes(opt.type) ?? false}
-                  onCheckedChange={(checked) =>
-                    toggleNudgeType(opt.type, checked)
-                  }
-                  disabled={mutation.isPending}
-                />
-              </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
       )}

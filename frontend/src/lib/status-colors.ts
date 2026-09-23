@@ -1,19 +1,24 @@
 import type { ContactStatus, CampaignStatus, MessageTestStatus, OpportunityStatus } from "@/types";
 
-export const contactStatusColors: Record<ContactStatus, string> = {
-  new: "bg-blue-500/10 text-blue-500",
-  contacted: "bg-yellow-500/10 text-yellow-500",
-  qualified: "bg-green-500/10 text-green-500",
-  converted: "bg-purple-500/10 text-purple-500",
-  lost: "bg-red-500/10 text-red-500",
-};
-
+/**
+ * Single source of truth for status presentation.
+ *
+ * Badges are neutral surfaces (see `StatusBadge`): the status word is the
+ * accessible cue and semantic color appears only in the dot marker, using
+ * theme tokens from globals.css (`--success`, `--warning`, `--info`,
+ * `--destructive`, `--primary`, `--muted-foreground`). Raw palette classes
+ * (green-500/red-500/...) are banned in app surfaces.
+ *
+ * Stage/status mapping keeps the original hue families: blue -> info,
+ * amber/yellow -> warning, green -> success, red -> destructive, purple
+ * -> primary (the money/action accent), gray -> neutral marker.
+ */
 export const contactStatusDotColors: Record<ContactStatus, string> = {
-  new: "bg-blue-500",
-  contacted: "bg-yellow-500",
-  qualified: "bg-green-500",
-  converted: "bg-purple-500",
-  lost: "bg-red-500",
+  new: "bg-info",
+  contacted: "bg-warning",
+  qualified: "bg-success",
+  converted: "bg-primary",
+  lost: "bg-destructive",
 };
 
 export const contactStatusLabels: Record<ContactStatus, string> = {
@@ -24,42 +29,42 @@ export const contactStatusLabels: Record<ContactStatus, string> = {
   lost: "Lost",
 };
 
-export const campaignStatusColors: Record<CampaignStatus, string> = {
-  draft: "bg-gray-500/10 text-gray-500 border-gray-500/20",
-  scheduled: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-  running: "bg-green-500/10 text-green-500 border-green-500/20",
-  paused: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
-  completed: "bg-purple-500/10 text-purple-500 border-purple-500/20",
-  cancelled: "bg-red-500/10 text-red-500 border-red-500/20",
+export const campaignStatusDotColors: Record<CampaignStatus, string> = {
+  draft: "bg-muted-foreground",
+  scheduled: "bg-info",
+  running: "bg-success",
+  paused: "bg-warning",
+  completed: "bg-muted-foreground",
+  cancelled: "bg-destructive",
 };
 
-export const messageTestStatusColors: Record<MessageTestStatus, string> = {
-  draft: "bg-gray-500/10 text-gray-500 border-gray-500/20",
-  running: "bg-green-500/10 text-green-500 border-green-500/20",
-  paused: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
-  completed: "bg-purple-500/10 text-purple-500 border-purple-500/20",
+export const messageTestStatusDotColors: Record<MessageTestStatus, string> = {
+  draft: "bg-muted-foreground",
+  running: "bg-success",
+  paused: "bg-warning",
+  completed: "bg-muted-foreground",
 };
 
-export const appointmentStatusColors: Record<string, string> = {
-  scheduled: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-  completed: "bg-green-500/10 text-green-500 border-green-500/20",
-  cancelled: "bg-red-500/10 text-red-500 border-red-500/20",
-  no_show: "bg-gray-500/10 text-gray-500 border-gray-500/20",
+export const appointmentStatusDotColors: Record<string, string> = {
+  scheduled: "bg-info",
+  completed: "bg-success",
+  cancelled: "bg-destructive",
+  no_show: "bg-muted-foreground",
 };
 
-export const opportunityStatusColors: Record<OpportunityStatus, string> = {
-  open: "bg-blue-500/10 text-blue-600 border-blue-500/20",
-  won: "bg-green-500/10 text-green-600 border-green-500/20",
-  lost: "bg-red-500/10 text-red-600 border-red-500/20",
-  abandoned: "bg-gray-500/10 text-gray-600 border-gray-500/20",
+export const opportunityStatusDotColors: Record<OpportunityStatus, string> = {
+  open: "bg-info",
+  won: "bg-success",
+  lost: "bg-destructive",
+  abandoned: "bg-muted-foreground",
 };
 
-export const callStatusColors: Record<string, string> = {
-  completed: "bg-green-500/10 text-green-500 border-green-500/20",
-  in_progress: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-  initiated: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-  ringing: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
-  no_answer: "bg-gray-500/10 text-gray-500 border-gray-500/20",
-  busy: "bg-orange-500/10 text-orange-500 border-orange-500/20",
-  failed: "bg-red-500/10 text-red-500 border-red-500/20",
+export const callStatusDotColors: Record<string, string> = {
+  completed: "bg-success",
+  in_progress: "bg-info",
+  initiated: "bg-info",
+  ringing: "bg-warning",
+  no_answer: "bg-muted-foreground",
+  busy: "bg-warning",
+  failed: "bg-destructive",
 };

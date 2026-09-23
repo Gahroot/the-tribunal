@@ -35,7 +35,7 @@ export function InfoRow({ icon, label, value, onClick }: InfoRowProps) {
       <Button
         variant="ghost"
         onClick={onClick}
-        className="w-full justify-start h-auto py-0 px-2 -mx-2 font-normal hover:bg-accent/50"
+        className="w-full justify-start h-auto py-0 px-2 -mx-2 font-normal hover:bg-muted"
       >
         {content}
       </Button>

@@ -66,18 +66,18 @@ export function SpeedToLeadBadge({
     <div
       className={
         className ??
-        "inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-800"
+        "inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1.5 text-sm font-medium text-foreground"
       }
       role="status"
       aria-label="Speed-to-lead proof"
       data-testid="speed-to-lead-badge"
     >
       <span aria-hidden className="relative flex size-2">
-        <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-        <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+        <span className="absolute inline-flex size-full animate-ping rounded-full bg-success/40 opacity-75" />
+        <span className="relative inline-flex size-2 rounded-full bg-success" />
       </span>
       <span>{proof.headline}</span>
-      <span className="text-emerald-600/70">
+      <span className="text-muted-foreground">
         · last {proof.window_days} days
       </span>
     </div>

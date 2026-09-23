@@ -22,18 +22,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageErrorState, PageLoadingState } from "@/components/ui/page-state";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { messageTestsApi } from "@/lib/api/message-tests";
 import { queryKeys } from "@/lib/query-keys";
-import type { MessageTestStatus, TestVariant } from "@/types";
-
-const statusColors: Record<MessageTestStatus, string> = {
-  draft: "bg-muted text-muted-foreground border-border",
-  running: "bg-success/10 text-success border-success/20",
-  paused: "bg-warning/10 text-warning border-warning/20",
-  completed: "bg-primary/10 text-primary border-primary/20",
-};
+import { messageTestStatusDotColors } from "@/lib/status-colors";
+import type { TestVariant } from "@/types";
 
 interface ExperimentDetailPageProps {
   params: Promise<{ id: string }>;
@@ -144,9 +139,9 @@ export default function ExperimentDetailPage({ params }: ExperimentDetailPagePro
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-xl font-semibold">{test.name}</h1>
-              <Badge variant="outline" className={statusColors[test.status]}>
+              <StatusBadge dotClass={messageTestStatusDotColors[test.status]}>
                 {test.status}
-              </Badge>
+              </StatusBadge>
             </div>
             <p className="text-sm text-muted-foreground">
               {test.description || "No description"}

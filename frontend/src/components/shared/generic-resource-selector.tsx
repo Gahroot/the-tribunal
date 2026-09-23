@@ -186,7 +186,6 @@ export function GenericResourceSelector<T>({
               return (
                 <motion.div
                   key={String(id)}
-                  whileHover={{ scale: 1.01 }}
                   whileTap={{ scale: 0.99 }}
                   onClick={() => handleSelect(item)}
                   className={rowClass}

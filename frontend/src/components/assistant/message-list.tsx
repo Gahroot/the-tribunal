@@ -55,7 +55,7 @@ export function MessageList({
         {runtime.isStreaming ? <StreamingBubble runtime={runtime} /> : null}
 
         {runtime.error ? (
-          <div className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+          <div className="flex items-center gap-2 rounded-lg border border-destructive/50 bg-background px-3 py-2 text-sm text-destructive">
             <AlertCircle className="size-4" />
             {runtime.error}
           </div>
@@ -224,7 +224,7 @@ function ToolChips({ tools, active = false }: { tools: string[]; active?: boolea
           {active ? (
             <Loader2 className="size-3 animate-spin" />
           ) : (
-            <CheckCircle2 className="size-3 text-green-600" />
+            <CheckCircle2 className="size-3 text-success" />
           )}
           <Wrench className="size-3" />
           {tool.replaceAll("_", " ")}

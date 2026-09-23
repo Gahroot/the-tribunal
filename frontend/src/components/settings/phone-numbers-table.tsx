@@ -99,8 +99,8 @@ export function PhoneNumbersTable({ variant }: PhoneNumbersTableProps) {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-lg bg-green-500/10">
-                <Phone className="size-5 text-green-500" />
+              <div className="flex size-10 items-center justify-center rounded-lg bg-muted">
+                <Phone className="size-5 text-muted-foreground" />
               </div>
               <div>
                 <CardTitle className="text-base">Phone Numbers</CardTitle>

@@ -301,7 +301,6 @@ export function LeadMagnetSelector({
             return (
               <motion.div
                 key={magnet.id}
-                whileHover={{ scale: 1.01 }}
                 whileTap={{ scale: 0.99 }}
                 onClick={() => handleToggle(magnet.id)}
                 className={`relative p-4 rounded-lg border-2 cursor-pointer transition-colors ${
@@ -328,14 +327,14 @@ export function LeadMagnetSelector({
                     </div>
                   )}
 
-                  <div className="size-10 rounded-full bg-gradient-to-br from-info/20 to-primary/5 flex items-center justify-center text-info">
+                  <div className="size-10 rounded-full bg-muted flex items-center justify-center text-muted-foreground">
                     {magnetTypeIcons[magnet.magnet_type]}
                   </div>
 
                   <div className="flex-1 min-w-0 pr-6">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium">{magnet.name}</span>
-                      <Badge variant="secondary" className="bg-info/10 text-info">
+                      <Badge variant="secondary">
                         {magnetTypeLabels[magnet.magnet_type]}
                       </Badge>
                       {magnet.estimated_value && magnet.estimated_value > 0 && (
@@ -391,9 +390,9 @@ export function LeadMagnetSelector({
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="p-3 bg-info/10 rounded-lg border border-info/20 text-sm"
+          className="p-3 rounded-lg border bg-background text-sm"
         >
-          <p className="text-info">
+          <p className="text-foreground">
             {selectedIds.length} bonus{selectedIds.length > 1 ? "es" : ""} selected
           </p>
           <p className="text-xs text-muted-foreground mt-1">

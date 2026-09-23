@@ -16,7 +16,6 @@ import { useState, useRef, useCallback, useEffect } from "react";
 
 import { ContactFilterBuilder } from "@/components/filters/contact-filter-builder";
 import { SegmentPicker } from "@/components/segments/segment-picker";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageEmptyState, PageLoadingState } from "@/components/ui/page-state";
@@ -27,11 +26,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useInfiniteContacts } from "@/hooks/useInfiniteContacts";
 import { contactsApi } from "@/lib/api/contacts";
 import { segmentsApi } from "@/lib/api/segments";
-import { contactStatusColors } from "@/lib/status-colors";
+import { contactStatusDotColors } from "@/lib/status-colors";
 import { formatNumber } from "@/lib/utils/number";
 import type { Contact, ContactStatus, FilterDefinition } from "@/types";
 
@@ -213,7 +213,7 @@ export function VirtualContactSelector({
         }}
         className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors h-[${ROW_HEIGHT}px] ${
           isSelected
-            ? "bg-primary/10 border border-primary/30"
+            ? "bg-secondary border border-primary/40"
             : "hover:bg-muted/50"
         }`}
       >
@@ -230,12 +230,12 @@ export function VirtualContactSelector({
             <span className="font-medium truncate">
               {fullName || "Unknown"}
             </span>
-            <Badge
-              variant="secondary"
-              className={`text-xs ${contactStatusColors[contact.status]}`}
+            <StatusBadge
+              dotClass={contactStatusDotColors[contact.status]}
+              className="text-xs"
             >
               {contact.status}
-            </Badge>
+            </StatusBadge>
           </div>
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
             {contact.phone_number && (

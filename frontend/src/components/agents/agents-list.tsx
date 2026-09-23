@@ -409,15 +409,14 @@ export function AgentsList() {
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-                          <Bot className="size-5 text-primary" />
+                        <div className="flex size-10 items-center justify-center rounded-full">
+                          <Bot className="size-5 text-muted-foreground" />
                         </div>
                         <div>
                           <CardTitle className="text-lg">{agent.name}</CardTitle>
                           <div className="flex items-center gap-2 mt-1">
                             <Badge
                               variant="outline"
-                              className="bg-info/10 text-info border-info/20"
                             >
                               {agent.voice_provider}
                             </Badge>

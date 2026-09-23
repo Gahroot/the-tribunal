@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, KanbanSquare, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -12,18 +11,18 @@ import {
   PageErrorState,
   PageLoadingState,
 } from "@/components/ui/page-state";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { opportunitiesApi } from "@/lib/api/opportunities";
 import { queryKeys } from "@/lib/query-keys";
 import { POLL_60S } from "@/lib/query-options";
-import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils/number";
 import type { AtRiskDeal, DealHealthStatus } from "@/types";
 
-const HEALTH_BADGE: Record<DealHealthStatus, string> = {
-  healthy: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  watch: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
-  at_risk: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
-  critical: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+const HEALTH_DOT: Record<DealHealthStatus, string> = {
+  healthy: "bg-success",
+  watch: "bg-warning",
+  at_risk: "bg-warning",
+  critical: "bg-destructive",
 };
 
 interface AtRiskDealsListProps {
@@ -62,7 +61,7 @@ export function AtRiskDealsList({
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
-          <AlertTriangle className="h-4 w-4 text-orange-500" />
+          <AlertTriangle className="h-4 w-4 text-muted-foreground" />
           At-Risk Deals
         </CardTitle>
         {data && data.total > 0 && (
@@ -126,9 +125,9 @@ function AtRiskRow({
       <div className="min-w-0 space-y-0.5 text-left">
         <div className="flex items-center gap-2">
           <p className="truncate text-sm font-medium">{deal.name}</p>
-          <Badge className={cn("text-xs", HEALTH_BADGE[deal.deal_health])}>
+          <StatusBadge dotClass={HEALTH_DOT[deal.deal_health]} className="text-xs">
             {deal.deal_health.replace("_", " ")}
-          </Badge>
+          </StatusBadge>
         </div>
         <p className="truncate text-xs text-muted-foreground">{deal.top_risk}</p>
       </div>

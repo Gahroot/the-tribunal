@@ -190,7 +190,7 @@ export function AppSidebar({ children }: AppSidebarProps) {
     if (count <= 0) return null;
 
     return (
-      <span className="ml-auto flex size-5 items-center justify-center rounded-full bg-orange-700 text-[10px] font-medium text-white">
+      <span className="ml-auto flex size-5 items-center justify-center rounded-full bg-warning text-[10px] font-medium text-white">
         {count > 99 ? "99+" : count}
       </span>
     );

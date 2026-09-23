@@ -58,7 +58,7 @@ describe("Onboarding wizard", () => {
 
     await user.click(
       screen.getByRole("button", {
-        name: "Skip — I don't use Follow Up Boss",
+        name: "Skip (I don't use Follow Up Boss)",
       })
     );
     expect(

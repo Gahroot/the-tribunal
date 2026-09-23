@@ -15,7 +15,6 @@ import { ReminderBadges } from "@/components/appointments/appointment-actions";
 import { AppointmentConfirmation } from "@/components/appointments/appointment-confirmation";
 import { NewAppointmentDialog } from "@/components/calendar/new-appointment-dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -30,6 +29,7 @@ import {
   PageLoadingState,
 } from "@/components/ui/page-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { useAppointments } from "@/hooks/useAppointments";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import {
@@ -45,7 +45,7 @@ import {
   upcomingAppointments,
   type StatusFilter,
 } from "@/lib/calendar/calendar-derivations";
-import { appointmentStatusColors } from "@/lib/status-colors";
+import { appointmentStatusDotColors } from "@/lib/status-colors";
 import { formatDate, addDays, isSameDay } from "@/lib/utils/date";
 
 export function CalendarPage() {
@@ -224,8 +224,7 @@ export function CalendarPage() {
                             <Dialog key={apt.id} open={selectedAppointmentId === apt.id} onOpenChange={(open) => !open && setSelectedAppointmentId(null)}>
                               <DialogTrigger asChild>
                                 <motion.button
-                                  className="w-full text-left p-2 rounded-md bg-primary/10 hover:bg-primary/20 transition-colors"
-                                  whileHover={{ scale: 1.02 }}
+                                  className="w-full text-left p-2 rounded-md border border-primary bg-secondary transition-colors"
                                   whileTap={{ scale: 0.98 }}
                                   onClick={() => setSelectedAppointmentId(apt.id)}
                                 >
@@ -236,9 +235,9 @@ export function CalendarPage() {
                                     {formatDate(apt.scheduled_at, { pattern: "h:mm a" })}
                                   </p>
                                   {apt.sync_status === "pending" && (
-                                    <Badge variant="outline" className="text-warning border-warning/20 text-[10px] py-0 mt-0.5">
+                                    <StatusBadge dotClass="bg-warning" className="text-[10px] py-0 mt-0.5">
                                       pending sync
-                                    </Badge>
+                                    </StatusBadge>
                                   )}
                                 </motion.button>
                               </DialogTrigger>
@@ -316,12 +315,11 @@ export function CalendarPage() {
                         reminderSentAt={apt.reminder_sent_at}
                         remindersSent={apt.reminders_sent}
                       />
-                      <Badge
-                        variant="outline"
-                        className={appointmentStatusColors[apt.status]}
+                      <StatusBadge
+                        dotClass={appointmentStatusDotColors[apt.status]}
                       >
                         {apt.status}
-                      </Badge>
+                      </StatusBadge>
                     </div>
                   ))}
                 </div>
@@ -368,16 +366,15 @@ export function CalendarPage() {
                       </p>
                     </div>
                     {apt.sync_status === "pending" && (
-                      <Badge variant="outline" className="text-warning border-warning/20 text-[10px] py-0 shrink-0">
+                      <StatusBadge dotClass="bg-warning" className="text-[10px] py-0 shrink-0">
                         sync
-                      </Badge>
+                      </StatusBadge>
                     )}
-                    <Badge
-                      variant="outline"
-                      className={appointmentStatusColors[apt.status]}
+                    <StatusBadge
+                      dotClass={appointmentStatusDotColors[apt.status]}
                     >
                       {apt.status}
-                    </Badge>
+                    </StatusBadge>
                   </div>
                 ))}
               </div>

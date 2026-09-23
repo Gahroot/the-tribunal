@@ -147,7 +147,7 @@ export function OpportunityCreateSheet({
                   <FormLabel>Name *</FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="e.g. Acme Corp — annual plan"
+                      placeholder="e.g. Acme Corp (annual plan)"
                       data-testid="opportunity-name-input"
                       {...field}
                     />

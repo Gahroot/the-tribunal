@@ -127,7 +127,7 @@ export function EmbedCodeBlock({
 
   if (!canCopySnippets) {
     return (
-      <Alert className="border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+      <Alert>
         <LockKeyhole className="h-4 w-4" />
         <AlertTitle>Installation code locked until your domain is saved</AlertTitle>
         <AlertDescription className="space-y-2">
@@ -177,7 +177,7 @@ export function EmbedCodeBlock({
             setCopiedTab={setCopiedTab}
           />
           <p className="text-xs text-muted-foreground">
-            Add this single line before {`</body>`}. That&apos;s it — settings
+            Add this single line before {`</body>`}. That&apos;s it: settings
             are auto-loaded.
           </p>
         </TabsContent>
@@ -266,7 +266,7 @@ export function EmbedCodeBlock({
             <Label className="text-sm font-medium">Share Link</Label>
           </div>
           <p className="text-xs text-muted-foreground">
-            Share this direct link — no embedding required.
+            Share this direct link, no embedding required.
           </p>
           <div className="flex items-center gap-2">
             <Input

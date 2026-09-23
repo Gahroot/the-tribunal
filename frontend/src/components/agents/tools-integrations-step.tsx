@@ -222,7 +222,7 @@ export function ToolsIntegrationsStep({
                         key={tool.id}
                         className={cn(
                           "flex items-start gap-3 rounded-lg border bg-background p-4 transition-colors",
-                          isEnabled && "border-primary bg-primary/5"
+                          isEnabled && "border-primary bg-secondary"
                         )}
                       >
                         <Checkbox

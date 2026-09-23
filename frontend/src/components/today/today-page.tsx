@@ -114,7 +114,7 @@ export function TodayPage() {
       ) : (
         <div className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
-            {items.length === 1 ? "1 item" : `${items.length} items`} — start at the top and
+            {items.length === 1 ? "1 item" : `${items.length} items`}, start at the top and
             work down.
           </p>
           <ol className="flex flex-col gap-3">

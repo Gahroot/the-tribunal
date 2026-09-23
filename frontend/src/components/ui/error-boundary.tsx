@@ -48,7 +48,7 @@ export class ErrorBoundary extends Component<Props, State> {
       // Default fallback UI
       return (
         <div className="flex min-h-[400px] flex-col items-center justify-center gap-4 p-8">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full">
             <AlertTriangle className="h-8 w-8 text-destructive" />
           </div>
           <div className="text-center">
@@ -111,7 +111,7 @@ export class PageErrorBoundary extends Component<Props, State> {
 
       return (
         <div className="flex h-full min-h-[600px] flex-col items-center justify-center gap-6 p-8">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-destructive/10">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full">
             <AlertTriangle className="h-10 w-10 text-destructive" />
           </div>
           <div className="text-center">

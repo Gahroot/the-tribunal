@@ -199,7 +199,7 @@ export function SMSCampaignWizard({
           ctx.description ? `Context: ${ctx.description}.` : "",
           ctx.offerName ? `Offer: ${ctx.offerName}.` : "",
           ctx.currentMessage
-            ? `The operator started writing: "${ctx.currentMessage}" — continue or improve it.`
+            ? `The operator started writing: "${ctx.currentMessage}", continue or improve it.`
             : "",
           "Reply with only the message text: at most 300 characters, no",
           "quotes or labels, use {first_name} for personalization, friendly",

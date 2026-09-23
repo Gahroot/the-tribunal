@@ -44,9 +44,7 @@ export function LaunchResultView({
       <div className="flex flex-col items-center text-center gap-3">
         <div
           className={`flex items-center justify-center w-14 h-14 rounded-full ${
-            importedNone
-              ? "bg-warning/10 text-warning"
-              : "bg-success/10 text-success"
+            importedNone ? "text-warning" : "text-success"
           }`}
         >
           {importedNone ? (
@@ -73,7 +71,7 @@ export function LaunchResultView({
         <CardContent className="p-5 space-y-3">
           <div className="grid grid-cols-3 gap-3 text-center">
             <div>
-              <p className="text-2xl font-bold text-success">
+              <p className={imported > 0 ? "text-2xl font-bold text-success" : "text-2xl font-bold"}>
                 {formatNumber(imported)}
               </p>
               <p className="text-xs text-muted-foreground">Imported</p>
@@ -97,7 +95,7 @@ export function LaunchResultView({
           </div>
 
           {hasFailures && (
-            <div className="flex items-start gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+            <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-background p-3 text-sm text-destructive">
               <XCircle className="size-4 shrink-0 mt-0.5" />
               <span>
                 {formatNumber(failed)} row{failed !== 1 ? "s" : ""} could not be

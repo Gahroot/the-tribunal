@@ -275,9 +275,9 @@ export function OfferSelector({
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="p-3 bg-success/10 rounded-lg border border-success/20 text-sm"
+          className="p-3 rounded-lg border bg-background text-foreground text-sm"
         >
-          <p className="text-success">Use these placeholders in your message:</p>
+          <p>Use these placeholders in your message:</p>
           <code className="text-xs bg-muted px-1 py-0.5 rounded mt-1 inline-block">
             {"{offer_name}"} {"{offer_discount}"} {"{offer_terms}"}
           </code>
@@ -306,7 +306,7 @@ export function OfferSelector({
 
   const renderRow = (row: OfferRow, isSelected: boolean) => {
     const baseClass = `relative p-4 rounded-lg border-2 transition-colors ${
-      isSelected ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+      isSelected ? "border-primary bg-secondary" : "border-border hover:border-primary/50"
     }`;
     const checkBadge = isSelected ? (
       <div className="absolute top-3 right-3">
@@ -346,7 +346,7 @@ export function OfferSelector({
       <div className={baseClass}>
         {checkBadge}
         <div className="flex items-start gap-3">
-          <div className="size-10 rounded-full bg-gradient-to-br from-success/20 to-success/5 flex items-center justify-center text-success">
+          <div className="size-10 rounded-full bg-muted flex items-center justify-center text-success">
             {discountTypeIcons[offer.discount_type]}
           </div>
 

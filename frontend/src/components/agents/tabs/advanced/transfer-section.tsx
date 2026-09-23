@@ -89,10 +89,10 @@ export function TransferSection({ control }: TransferSectionProps) {
                 </FormControl>
                 <SelectContent>
                   <SelectItem value="warm">
-                    Warm — brief the human first, then connect
+                    Warm: brief the human first, then connect
                   </SelectItem>
                   <SelectItem value="cold">
-                    Cold — connect immediately
+                    Cold: connect immediately
                   </SelectItem>
                 </SelectContent>
               </Select>

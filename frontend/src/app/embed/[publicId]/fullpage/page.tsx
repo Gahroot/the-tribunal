@@ -181,7 +181,7 @@ function FullpageEmbedContent({ params }: FullpageEmbedProps) {
         className="flex h-screen w-screen items-center justify-center"
         style={{ backgroundColor: theme.pageBg }}
       >
-        <div className="rounded-lg bg-red-50 p-6 text-red-600 shadow-lg">
+        <div className="rounded-lg border border-destructive/50 bg-background text-destructive p-6 shadow-lg">
           <p className="text-sm">{error}</p>
         </div>
       </div>
@@ -266,7 +266,7 @@ function FullpageEmbedContent({ params }: FullpageEmbedProps) {
         className="border-t p-3"
         style={{ backgroundColor: theme.panelBg, borderColor: theme.panelBorder }}
       >
-        {error && <p className="mb-2 text-xs text-red-500">{error}</p>}
+        {error && <p className="mb-2 text-xs text-destructive">{error}</p>}
         <ChatInput
           inputRef={inputRef}
           value={inputValue}
@@ -282,7 +282,7 @@ function FullpageEmbedContent({ params }: FullpageEmbedProps) {
             <button
               onClick={toggleMic}
               disabled={voiceStatus === "connecting"}
-              className="flex h-10 w-10 items-center justify-center rounded-full transition-all hover:scale-105 disabled:opacity-50"
+              className="flex h-10 w-10 items-center justify-center rounded-full transition-opacity hover:opacity-90 disabled:opacity-50"
               style={{
                 backgroundColor: voiceIsActive
                   ? isMuted

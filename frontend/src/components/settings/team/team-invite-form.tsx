@@ -74,7 +74,7 @@ export function TeamInviteForm({ workspaceId }: TeamInviteFormProps) {
               className="flex items-center justify-between p-3 rounded-lg border"
             >
               <div className="flex items-center gap-3">
-                <div className="flex size-10 items-center justify-center rounded-full bg-yellow-500/10 text-sm font-medium text-yellow-500">
+                <div className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
                   <Mail className="size-5" />
                 </div>
                 <div>

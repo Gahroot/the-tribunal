@@ -1,11 +1,11 @@
 "use client";
 
-import { Bell, Loader2, RefreshCw } from "lucide-react";
+import { Bell, Check, Loader2, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { appointmentsApi } from "@/lib/api/appointments";
 import { offsetToLabel } from "@/lib/calendar/calendar-derivations";
 import type { Appointment } from "@/types";
@@ -30,18 +30,14 @@ export function ReminderBadges({
         {reminderOffsets.map((offset) => {
           const fired = sent.includes(offset);
           return (
-            <Badge
+            <StatusBadge
               key={offset}
-              variant="outline"
-              className={
-                fired
-                  ? "text-success border-success/20 text-[10px] py-0"
-                  : "text-muted-foreground border-muted text-[10px] py-0"
-              }
+              dotClass={fired ? "bg-success" : "bg-muted-foreground"}
+              className="text-[10px] py-0"
             >
               {offsetToLabel(offset)}
-              {fired ? " ✓" : ""}
-            </Badge>
+              {fired && <Check aria-hidden="true" className="size-2.5" />}
+            </StatusBadge>
           );
         })}
       </div>
@@ -53,13 +49,14 @@ export function ReminderBadges({
     return (
       <div className="flex flex-wrap gap-1">
         {sent.map((offset) => (
-          <Badge
+          <StatusBadge
             key={offset}
-            variant="outline"
-            className="text-success border-success/20 text-[10px] py-0"
+            dotClass="bg-success"
+            className="text-[10px] py-0"
           >
-            {offsetToLabel(offset)} ✓
-          </Badge>
+            {offsetToLabel(offset)}
+            <Check aria-hidden="true" className="size-2.5" />
+          </StatusBadge>
         ))}
       </div>
     );
@@ -68,9 +65,9 @@ export function ReminderBadges({
   // Legacy fallback: just reminder_sent_at set
   if (reminderSentAt) {
     return (
-      <Badge variant="outline" className="text-success border-success/20 text-[10px] py-0">
+      <StatusBadge dotClass="bg-success" className="text-[10px] py-0">
         Reminder sent
-      </Badge>
+      </StatusBadge>
     );
   }
 

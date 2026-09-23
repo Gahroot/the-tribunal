@@ -72,8 +72,8 @@ export const TodayOverviewCard = memo(function TodayOverviewCard({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <div className="space-y-1 cursor-default">
-                      <div className="flex items-center justify-center gap-1 text-success">
-                        <CheckCircle className="size-4" />
+                      <div className="flex items-center justify-center gap-1">
+                        <CheckCircle className="size-4 text-success" />
                         <span className="text-2xl font-bold">
                           {overview?.completed ?? 0}
                         </span>
@@ -89,8 +89,8 @@ export const TodayOverviewCard = memo(function TodayOverviewCard({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <div className="space-y-1 cursor-default">
-                      <div className="flex items-center justify-center gap-1 text-warning">
-                        <Clock className="size-4" />
+                      <div className="flex items-center justify-center gap-1">
+                        <Clock className="size-4 text-warning" />
                         <span className="text-2xl font-bold">
                           {overview?.pending ?? 0}
                         </span>
@@ -106,9 +106,13 @@ export const TodayOverviewCard = memo(function TodayOverviewCard({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <div className="space-y-1 cursor-default">
-                      <div className="flex items-center justify-center gap-1 text-destructive">
-                        <XCircle className="size-4" />
-                        <span className="text-2xl font-bold">
+                      <div className="flex items-center justify-center gap-1">
+                        <XCircle className="size-4 text-destructive" />
+                        <span
+                          className={`text-2xl font-bold${
+                            (overview?.failed ?? 0) > 0 ? " text-destructive" : ""
+                          }`}
+                        >
                           {overview?.failed ?? 0}
                         </span>
                       </div>
@@ -193,7 +197,7 @@ export const NudgesCard = memo(function NudgesCard({ workspaceId }: NudgesCardPr
         ) : pending > 0 ? (
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold text-orange-500">{pending}</span>
+              <span className="text-2xl font-bold text-warning">{pending}</span>
               <span className="text-sm text-muted-foreground">
                 nudge{pending !== 1 ? "s" : ""} pending
               </span>
@@ -206,7 +210,7 @@ export const NudgesCard = memo(function NudgesCard({ workspaceId }: NudgesCardPr
             </Button>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">No pending nudges 🎉</p>
+          <p className="text-sm text-muted-foreground">No pending nudges</p>
         )}
       </CardContent>
     </Card>

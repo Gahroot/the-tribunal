@@ -97,12 +97,7 @@ export function MessageItemShell({
           )}
         >
           {item.is_ai && (
-            <Badge
-              variant="secondary"
-              className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary shrink-0"
-            >
-              AI
-            </Badge>
+            <Badge variant="secondary">AI</Badge>
           )}
           <span className="shrink-0">{timestamp}</span>
           <span className="shrink-0">{channelIcons[item.type]}</span>

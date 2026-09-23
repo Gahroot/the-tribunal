@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -154,7 +154,7 @@ export function OutboundAutopilotCard({ workspaceId }: { workspaceId: string }) 
                 <SelectValue
                   placeholder={
                     activeOffers.length === 0
-                      ? "No active offers — create one first"
+                      ? "No active offers (create one first)"
                       : "Select an offer"
                   }
                 />
@@ -249,10 +249,13 @@ export function OutboundAutopilotCard({ workspaceId }: { workspaceId: string }) 
         </div>
 
         {mandate?.enabled && !mandate.default_offer_id && (
-          <p className="text-xs text-amber-600">
-            Autonomy is on but has no default offer — morning first-touches will be skipped until
-            you pick one.
-          </p>
+          <div className="flex items-start gap-2 rounded-lg border bg-background p-3 text-xs text-foreground">
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" />
+            <p>
+              Autonomy is on but has no default offer. Morning first-touches will be skipped
+              until you pick one.
+            </p>
+          </div>
         )}
         {mutation.isError && (
           <p className="text-xs text-destructive">

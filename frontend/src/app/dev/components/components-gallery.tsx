@@ -107,8 +107,8 @@ export function ComponentsGallery() {
           <code className="rounded bg-muted px-1 py-0.5">@/components/ui/*</code>.
           Reach for these <strong>before</strong> rolling a new loading spinner,
           empty state, or button variant. The page-state primitives at the top
-          are the canonical loading / error / empty surfaces for every page —
-          use them in <code className="rounded bg-muted px-1 py-0.5">loading.tsx</code>,{" "}
+          are the canonical loading / error / empty surfaces for every page,
+          so use them in <code className="rounded bg-muted px-1 py-0.5">loading.tsx</code>,{" "}
           <code className="rounded bg-muted px-1 py-0.5">error.tsx</code>, and
           any list view that can be empty.
         </p>

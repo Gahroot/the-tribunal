@@ -151,17 +151,14 @@ export function OfferPreview({ offer, leadMagnets = [] }: OfferPreviewProps) {
                     transition={{
                       delay: (offer.value_stack_items?.length || 0) * 0.1 + index * 0.1,
                     }}
-                    className="flex items-center justify-between p-3 bg-info/10 rounded-lg border border-info/20"
+                    className="flex items-center justify-between p-3 rounded-lg border bg-background"
                   >
                     <div className="flex items-center gap-2">
                       <Gift className="size-5 text-info" />
                       <div>
                         <div className="flex items-center gap-2">
                           <p className="font-medium">{magnet.name}</p>
-                          <Badge
-                            variant="secondary"
-                            className="bg-info/10 text-info"
-                          >
+                          <Badge variant="secondary">
                             BONUS
                           </Badge>
                         </div>
@@ -231,11 +228,11 @@ export function OfferPreview({ offer, leadMagnets = [] }: OfferPreviewProps) {
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex items-start gap-3 p-4 bg-success/10 rounded-lg border border-success/20"
+              className="flex items-start gap-3 p-4 rounded-lg border bg-background"
             >
               <Shield className="size-6 text-success mt-0.5" />
               <div>
-                <p className="font-semibold text-success">
+                <p className="font-semibold text-foreground">
                   {guaranteeLabels[offer.guarantee_type] || offer.guarantee_type}
                   {offer.guarantee_days && ` - ${offer.guarantee_days} Days`}
                 </p>
@@ -253,7 +250,7 @@ export function OfferPreview({ offer, leadMagnets = [] }: OfferPreviewProps) {
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex items-start gap-3 p-4 bg-warning/10 rounded-lg border border-warning/20"
+              className="flex items-start gap-3 p-4 rounded-lg border bg-background"
             >
               {offer.urgency_type === "limited_quantity" ? (
                 <AlertTriangle className="size-6 text-warning mt-0.5" />
@@ -261,7 +258,7 @@ export function OfferPreview({ offer, leadMagnets = [] }: OfferPreviewProps) {
                 <Clock className="size-6 text-warning mt-0.5" />
               )}
               <div>
-                <p className="font-semibold text-warning">
+                <p className="font-semibold text-foreground">
                   {offer.urgency_type
                     ? urgencyLabels[offer.urgency_type]
                     : "Limited Availability"}

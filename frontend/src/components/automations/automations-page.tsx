@@ -11,17 +11,13 @@ import { PageEmptyState, PageErrorState } from "@/components/ui/page-state";
 import { AutomationCard, AutomationCardSkeleton } from "./automation-card";
 import { containerVariants } from "./automation-config";
 import { AutomationFormDialog } from "./automation-form-dialog";
-import { AutomationStats } from "./automation-stats";
 import { useAutomationsController } from "./use-automations-controller";
 
 export function AutomationsPage() {
   const {
     searchQuery,
     setSearchQuery,
-    automations,
     filteredAutomations,
-    activeCount,
-    triggeredToday,
     isPending,
     error,
     isDialogOpen,
@@ -74,14 +70,6 @@ export function AutomationsPage() {
           onCancel={() => onDialogOpenChange(false)}
         />
       </div>
-
-      {/* Stats */}
-      <AutomationStats
-        totalCount={automations.length}
-        activeCount={activeCount}
-        triggeredToday={triggeredToday}
-        isLoading={isPending}
-      />
 
       {/* Search */}
       <div className="relative max-w-md">

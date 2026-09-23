@@ -265,7 +265,7 @@ function SpeedToLeadForm({ workspaceId, settings, textback, metrics }: FormProps
               maxLength={1000}
               rows={3}
               onChange={(e) => setTemplate(e.target.value)}
-              placeholder="Sorry we missed you — want me to book you in?"
+              placeholder="Sorry we missed you, want me to book you in?"
             />
             <p className="text-xs text-muted-foreground">
               You can use {"{first_name}"} and {"{company_name}"} placeholders.

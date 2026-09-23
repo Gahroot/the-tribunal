@@ -78,7 +78,7 @@ export function EmbedConfigForm({
                 <button
                   type="button"
                   onClick={() => onRemoveDomain(domain)}
-                  className="ml-1 rounded-full hover:bg-destructive/20"
+                  className="ml-1 rounded-full hover:bg-muted"
                 >
                   <X className="h-3 w-3" />
                 </button>

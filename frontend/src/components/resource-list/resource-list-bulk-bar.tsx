@@ -53,7 +53,7 @@ export function ResourceListBulkBar({
 
   return (
     <div className={cn("space-y-2", className)}>
-      <div className="flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+      <div className="flex items-center gap-3 rounded-lg border border-primary/60 bg-secondary p-3">
         <Checkbox
           checked={checkboxState}
           onCheckedChange={onToggleAllVisible}

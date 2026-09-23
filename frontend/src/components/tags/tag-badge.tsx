@@ -48,7 +48,7 @@ export function TagBadge({ name, color, onRemove, className }: TagBadgeProps) {
             e.stopPropagation();
             onRemove();
           }}
-          className="ml-0.5 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10"
+          className="ml-0.5 rounded-full p-0.5 hover:bg-secondary"
         >
           <X className="h-3 w-3" />
         </button>

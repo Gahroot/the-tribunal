@@ -1,7 +1,5 @@
 "use client";
 
-import { Bell } from "lucide-react";
-
 import { Button } from "@/components/ui/button";
 import { PageErrorState } from "@/components/ui/page-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -9,7 +7,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { NudgeCard } from "./nudge-card";
 import { STATUS_TABS } from "./nudge-presentation";
 import { NudgeEmptyState, NudgeListSkeleton } from "./nudge-states";
-import { NudgeStats } from "./nudge-stats";
 import { useNudgesController } from "./use-nudges-controller";
 
 // Re-exported so existing consumers/tests can keep importing the card from the
@@ -19,7 +16,6 @@ export { NudgeCard };
 export function NudgesPage() {
   const {
     stats,
-    statsLoading,
     nudgeList,
     listLoading,
     listError,
@@ -48,17 +44,17 @@ export function NudgesPage() {
             </p>
           </div>
           {stats && stats.pending > 0 && (
-            <div className="flex items-center gap-2 rounded-lg border bg-warning/10 px-4 py-2">
-              <Bell className="h-5 w-5 text-warning" />
-              <span className="text-sm font-medium">
+            <div className="flex items-center gap-2 rounded-full border bg-muted px-3 py-1">
+              <span
+                aria-hidden
+                className="size-2 rounded-full bg-warning"
+              />
+              <span className="text-sm font-medium text-muted-foreground">
                 {stats.pending} pending nudge{stats.pending !== 1 && "s"}
               </span>
             </div>
           )}
         </div>
-
-        {/* Stats Cards */}
-        <NudgeStats stats={stats} isLoading={statsLoading} />
 
         {/* Filter Tabs + List */}
         <Tabs

@@ -4,8 +4,7 @@ import { useId, useState } from "react";
 import { toast } from "sonner";
 
 import { CreateFollowupTaskDialog } from "@/components/contacts/create-followup-task-dialog";
-import { PRIORITY_STYLES, formatDueDate } from "@/components/nudges/nudge-presentation";
-import { Badge } from "@/components/ui/badge";
+import { PRIORITY_DOTS, formatDueDate } from "@/components/nudges/nudge-presentation";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar-lazy";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -17,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { type UpdateNudgeRequest, nudgesApi } from "@/lib/api/nudges";
 import { settingsApi } from "@/lib/api/settings";
 import { messages } from "@/lib/messages";
@@ -130,11 +130,12 @@ export function ContactTaskSection({ workspaceId, contactId }: ContactTaskSectio
         <div className="mx-2 space-y-2 rounded-lg border p-3">
           <div className="flex items-start justify-between gap-2">
             <p className="min-w-0 break-words text-sm font-medium">{nextTask.title}</p>
-            <Badge
-              className={cn("shrink-0 text-xs capitalize", PRIORITY_STYLES[nextTask.priority])}
+            <StatusBadge
+              dotClass={PRIORITY_DOTS[nextTask.priority]}
+              className={cn("shrink-0 text-xs capitalize")}
             >
               {nextTask.priority}
-            </Badge>
+            </StatusBadge>
           </div>
           {nextTask.message ? (
             <p className="line-clamp-2 text-xs text-muted-foreground">{nextTask.message}</p>

@@ -71,7 +71,7 @@ export default function PublicReviewPage({ params }: PublicReviewPageProps) {
           redirect_url: null,
           public_review_destination_missing: false,
           show_feedback_form: false,
-          message: "Thanks — you've already responded.",
+          message: "Thanks, you've already responded.",
         }
       : null);
 
@@ -119,7 +119,7 @@ export default function PublicReviewPage({ params }: PublicReviewPageProps) {
             <CardHeader className="text-center">
               <CardTitle>How can we do better?</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Your feedback goes straight to the {businessName} team — not a
+                Your feedback goes straight to the {businessName} team, not a
                 public page.
               </p>
             </CardHeader>

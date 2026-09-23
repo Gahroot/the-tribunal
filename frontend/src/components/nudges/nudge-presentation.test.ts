@@ -1,15 +1,16 @@
+import { Cake, Hourglass, Pin } from "lucide-react";
 import { describe, expect, it } from "vitest";
 
-import { formatDueDate, getNudgeEmoji } from "./nudge-presentation";
+import { formatDueDate, getNudgeIcon } from "./nudge-presentation";
 
-describe("getNudgeEmoji", () => {
-  it("maps known nudge types to their emoji", () => {
-    expect(getNudgeEmoji("birthday")).toBe("🎂");
-    expect(getNudgeEmoji("approvals_waiting")).toBe("⏳");
+describe("getNudgeIcon", () => {
+  it("maps known nudge types to their icon", () => {
+    expect(getNudgeIcon("birthday")).toBe(Cake);
+    expect(getNudgeIcon("approvals_waiting")).toBe(Hourglass);
   });
 
   it("falls back to a generic pin for unknown types", () => {
-    expect(getNudgeEmoji("totally_unknown")).toBe("📌");
+    expect(getNudgeIcon("totally_unknown")).toBe(Pin);
   });
 });
 

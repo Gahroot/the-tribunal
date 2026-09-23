@@ -42,7 +42,7 @@ function StatCard({ title, value, change, href, icon }: StatCardProps) {
       <Card className="card-glow card-interactive hover:bg-muted/50 transition-colors cursor-pointer">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardDescription>{title}</CardDescription>
-          <div className="rounded-lg bg-primary/10 p-2 ring-1 ring-primary/20">
+          <div className="rounded-lg p-2">
             {icon}
           </div>
         </CardHeader>
@@ -121,7 +121,7 @@ export const DashboardStatsGrid = memo(function DashboardStatsGrid({
           value={stats.total_contacts}
           change={stats.contacts_change}
           href="/contacts"
-          icon={<Users className="size-4 text-primary" />}
+          icon={<Users className="size-4 text-muted-foreground" />}
         />
       </motion.div>
       <motion.div variants={itemVariants}>
@@ -130,7 +130,7 @@ export const DashboardStatsGrid = memo(function DashboardStatsGrid({
           value={stats.active_campaigns}
           change={stats.campaigns_change}
           href="/campaigns"
-          icon={<Megaphone className="size-4 text-primary" />}
+          icon={<Megaphone className="size-4 text-muted-foreground" />}
         />
       </motion.div>
       <motion.div variants={itemVariants}>
@@ -139,7 +139,7 @@ export const DashboardStatsGrid = memo(function DashboardStatsGrid({
           value={stats.calls_today}
           change={stats.calls_change}
           href="/calls"
-          icon={<Phone className="size-4 text-primary" />}
+          icon={<Phone className="size-4 text-muted-foreground" />}
         />
       </motion.div>
       <motion.div variants={itemVariants}>
@@ -148,7 +148,7 @@ export const DashboardStatsGrid = memo(function DashboardStatsGrid({
           value={stats.messages_sent}
           change={stats.messages_change}
           href="/campaigns"
-          icon={<MessageSquare className="size-4 text-primary" />}
+          icon={<MessageSquare className="size-4 text-muted-foreground" />}
         />
       </motion.div>
     </motion.div>

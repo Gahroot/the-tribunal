@@ -358,7 +358,7 @@ export function VoiceTestDialog({
 
           {/* Error message */}
           {error && (
-            <div className="rounded-md bg-destructive/10 px-4 py-2 text-sm text-destructive">
+            <div className="rounded-md border border-destructive/50 bg-background px-4 py-2 text-sm text-destructive">
               {error}
             </div>
           )}
@@ -371,7 +371,7 @@ export function VoiceTestDialog({
               size="icon"
               className={cn(
                 "h-14 w-14 rounded-full",
-                isMuted && "bg-destructive/10 text-destructive hover:bg-destructive/20"
+                isMuted && "bg-secondary text-destructive hover:bg-muted"
               )}
               onClick={toggleMute}
               disabled={connectionStatus !== "connected"}

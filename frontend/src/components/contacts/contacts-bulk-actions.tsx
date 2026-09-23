@@ -57,7 +57,7 @@ export function ContactsBulkActions({
 }: ContactsBulkActionsProps) {
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-3 p-3 bg-primary/5 rounded-lg border border-primary/20">
+      <div className="flex items-center gap-3 p-3 rounded-lg border bg-background">
         <Checkbox
           checked={allVisibleSelected ? true : someVisibleSelected ? "indeterminate" : false}
           onCheckedChange={onSelectAllVisible}
@@ -155,8 +155,8 @@ export function ContactsBulkActions({
 
       {/* "All matching selected" banner */}
       {selectAllMatchingIds && (
-        <div className="flex items-center justify-center gap-2 py-2 px-3 bg-primary/5 rounded-lg border border-primary/20 text-sm">
-          <span className="font-medium text-primary">
+        <div className="flex items-center justify-center gap-2 py-2 px-3 rounded-lg border bg-background text-sm">
+          <span className="font-medium">
             All {selectAllMatchingIds.size} matching contacts are selected.
           </span>
           <Button

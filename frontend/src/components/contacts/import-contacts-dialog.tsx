@@ -228,11 +228,11 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
               </Button>
             </div>
 
-            <div className="flex items-start gap-2 p-3 bg-warning/10 border border-warning/20 rounded-lg text-sm text-warning">
-              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2 p-3 border bg-background text-foreground rounded-lg text-sm">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-warning" />
               <span>
                 Every contact needs a <strong>phone number</strong>. The Tribunal follows up by
-                AI voice and SMS, so email-only lists can&apos;t be imported yet — add a phone
+                AI voice and SMS, so email-only lists can&apos;t be imported yet; add a phone
                 column before uploading.
               </span>
             </div>
@@ -273,8 +273,8 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
 
                 {/* Required fields warning */}
                 {!isMappingValid() && (
-                  <div className="flex items-center gap-2 p-3 bg-warning/10 border border-warning/20 rounded-lg text-sm text-warning">
-                    <AlertCircle className="h-4 w-4 shrink-0" />
+                  <div className="flex items-center gap-2 p-3 border bg-background text-foreground rounded-lg text-sm">
+                    <AlertCircle className="h-4 w-4 shrink-0 text-warning" />
                     <span>
                       Map both <strong>First Name</strong> and <strong>Phone Number</strong> to continue.
                       A phone number is required because follow-up runs over AI voice and SMS.
@@ -427,14 +427,7 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
         {step === "results" && result && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <div
-                className={cn(
-                  "p-4 rounded-lg text-center",
-                  hasImportedContacts
-                    ? "bg-success/10"
-                    : "bg-warning/10 border border-warning/20"
-                )}
-              >
+              <div className="p-4 rounded-lg text-center bg-muted/50">
                 {hasImportedContacts ? (
                   <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-success" />
                 ) : (
@@ -457,8 +450,8 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
             </div>
 
             {!hasImportedContacts && (
-              <div className="flex items-start gap-2 rounded-lg border border-warning/20 bg-warning/10 p-3 text-sm text-warning">
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <div className="flex items-start gap-2 rounded-lg border bg-background text-foreground p-3 text-sm">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-warning" />
                 <div>
                   <p className="font-medium">No contacts imported</p>
                   <p>Check your phone column mapping, then try importing the CSV again.</p>
@@ -491,7 +484,7 @@ export function ImportContactsDialog({ open, onOpenChange }: ImportContactsDialo
                     {result.errors.map((error, idx) => (
                       <div
                         key={idx}
-                        className="text-xs p-2 bg-destructive/10 rounded flex gap-2"
+                        className="text-xs p-2 border border-destructive/50 bg-background text-destructive rounded flex gap-2"
                       >
                         <span className="font-mono text-destructive">Row {error.row}</span>
                         <span className="text-muted-foreground">{error.error}</span>

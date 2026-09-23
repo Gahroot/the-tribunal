@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { PageEmptyState, PageLoadingState } from "@/components/ui/page-state";
 import { Progress } from "@/components/ui/progress";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import {
   promptVersionsApi,
@@ -134,7 +135,7 @@ export function ABTestDashboard({ agentId }: ABTestDashboardProps) {
     if (recommended_action === "declare_winner" && winner_id && winner_probability) {
       const winnerVersion = comparison.versions.find((v) => v.version_id === winner_id);
       return (
-        <Card className="border-success bg-success/10">
+        <Card className="border bg-background text-foreground">
           <CardContent className="flex items-center justify-between p-4">
             <div className="flex items-center gap-3">
               <Trophy className="h-6 w-6 text-success" />
@@ -148,7 +149,6 @@ export function ABTestDashboard({ agentId }: ABTestDashboardProps) {
             </div>
             <Button
               onClick={() => setDeclareWinnerVersion(winner_id)}
-              className="bg-success hover:bg-success/90"
             >
               Declare Winner
             </Button>
@@ -160,7 +160,7 @@ export function ABTestDashboard({ agentId }: ABTestDashboardProps) {
     if (recommended_action === "eliminate_worst") {
       const worstVersion = comparison.versions[comparison.versions.length - 1];
       return (
-        <Card className="border-warning bg-warning/10">
+        <Card className="border bg-background text-foreground">
           <CardContent className="flex items-center justify-between p-4">
             <div className="flex items-center gap-3">
               <AlertCircle className="h-6 w-6 text-warning" />
@@ -174,7 +174,7 @@ export function ABTestDashboard({ agentId }: ABTestDashboardProps) {
             <Button
               variant="outline"
               onClick={() => setEliminateVersion(worstVersion.version_id)}
-              className="border-warning text-warning hover:bg-warning/10"
+              className="border-warning text-warning hover:bg-muted"
             >
               Eliminate
             </Button>
@@ -185,7 +185,7 @@ export function ABTestDashboard({ agentId }: ABTestDashboardProps) {
 
     if (min_samples_needed > 0) {
       return (
-        <Card className="border-info bg-info/10">
+        <Card className="border bg-background text-foreground">
           <CardContent className="flex items-center gap-3 p-4">
             <TrendingUp className="h-6 w-6 text-info" />
             <div>
@@ -307,7 +307,7 @@ function VersionCard({
   return (
     <Card
       className={cn(
-        isWinner && "border-success ring-1 ring-success",
+        isWinner && "border-success",
         isPaused && "opacity-60"
       )}
     >
@@ -321,10 +321,7 @@ function VersionCard({
               </Badge>
             )}
             {isWinner && (
-              <Badge className="bg-success text-xs">
-                <Trophy className="mr-1 h-3 w-3" />
-                Leader
-              </Badge>
+              <StatusBadge dotClass="bg-success">Leader</StatusBadge>
             )}
             {isPaused && (
               <Badge variant="secondary" className="text-xs">

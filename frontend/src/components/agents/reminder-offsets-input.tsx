@@ -113,7 +113,7 @@ export function ReminderOffsetsInput({
         </div>
       ) : (
         <p className="text-sm text-muted-foreground italic">
-          No reminders configured — add at least one
+          No reminders configured: add at least one
         </p>
       )}
 

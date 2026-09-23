@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
 import { formatRelative } from "@/lib/utils/date";
 import { formatNumber } from "@/lib/utils/number";
@@ -118,9 +119,9 @@ export function OutboundWorkflowCard({
               </Badge>
             ) : null}
             {details.launchStatus ? (
-              <Badge className={getLaunchStatusClassName(details.launchStatus)}>
+              <StatusBadge dotClass={getLaunchStatusDot(details.launchStatus)}>
                 {details.launchStatus.replaceAll("_", " ")}
-              </Badge>
+              </StatusBadge>
             ) : null}
           </div>
         </div>
@@ -135,8 +136,8 @@ export function OutboundWorkflowCard({
                 <p
                   className={cn(
                     "text-sm font-semibold",
-                    metric.tone === "success" && "text-green-600",
-                    metric.tone === "warning" && "text-amber-600",
+                    metric.tone === "success" && "text-success",
+                    metric.tone === "warning" && "text-warning",
                   )}
                 >
                   {metric.value}
@@ -198,7 +199,7 @@ export function OutboundWorkflowCard({
             description={
               action?.expires_at
                 ? action.status === "pending"
-                  ? `Auto-rejected ${formatRelative(action.expires_at)} — won't launch unless you approve`
+                  ? `Auto-rejected ${formatRelative(action.expires_at)}, won't launch unless you approve`
                   : `Expires ${formatRelative(action.expires_at)}`
                 : undefined
             }
@@ -222,9 +223,9 @@ export function OutboundWorkflowCard({
         </div>
 
         {(details.handoffTitle || details.handoffDescription) && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+          <div className="rounded-lg border bg-background p-3 text-foreground">
             <div className="flex items-start gap-2">
-              <BellRing className="mt-0.5 size-4 shrink-0" />
+              <BellRing className="mt-0.5 size-4 shrink-0 text-warning" />
               <div>
                 <p className="text-sm font-medium">{details.handoffTitle ?? "Warm-lead handoff"}</p>
                 {details.handoffDescription ? (
@@ -243,7 +244,6 @@ export function OutboundWorkflowCard({
                 size="sm"
                 onClick={onApprove}
                 disabled={isApproving || isRejecting}
-                className="bg-green-600 hover:bg-green-700"
               >
                 {isApproving ? <Clock className="mr-1 size-3.5 animate-spin" /> : <Check className="mr-1 size-3.5" />}
                 Approve launch
@@ -434,12 +434,12 @@ function hasWorkflowSignals(source: Record<string, unknown>) {
   );
 }
 
-function getLaunchStatusClassName(status: string) {
+function getLaunchStatusDot(status: string) {
   const normalized = status.toLowerCase();
-  if (["running", "launched", "active", "sent"].includes(normalized)) return "bg-green-600";
-  if (["scheduled", "queued", "pending"].includes(normalized)) return "bg-blue-600";
+  if (["running", "launched", "active", "sent"].includes(normalized)) return "bg-success";
+  if (["scheduled", "queued", "pending"].includes(normalized)) return "bg-info";
   if (["failed", "blocked"].includes(normalized)) return "bg-destructive";
-  return "bg-muted text-muted-foreground";
+  return "bg-muted-foreground";
 }
 
 function getMetricTone(value: unknown): WorkflowMetric["tone"] {

@@ -23,6 +23,6 @@ export default function DevComponentsPage() {
 }
 
 export const metadata = {
-  title: "Components — Dev Style Guide",
+  title: "Components: Dev Style Guide",
   robots: { index: false, follow: false },
 };

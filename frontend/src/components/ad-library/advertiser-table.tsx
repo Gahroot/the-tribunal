@@ -96,7 +96,7 @@ export function AdvertiserTable({
               </TableCell>
               <TableCell className="text-center">
                 {advertiser.contact_traced ? (
-                  <CheckCircle2 className="mx-auto h-4 w-4 text-emerald-500" />
+                  <CheckCircle2 className="mx-auto h-4 w-4 text-success" />
                 ) : (
                   <CircleDashed className="mx-auto h-4 w-4 text-muted-foreground" />
                 )}

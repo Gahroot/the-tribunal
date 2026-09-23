@@ -10,7 +10,6 @@ import {
 import Link from "next/link";
 import { memo } from "react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -21,11 +20,13 @@ import {
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/ui/status-badge";
 import type {
   AgentStat,
   AppointmentStats,
   CampaignStat,
 } from "@/lib/api/dashboard";
+import { campaignStatusDotColors } from "@/lib/status-colors";
 
 interface AppointmentStatsCardProps {
   appointmentStats: AppointmentStats | undefined;
@@ -185,16 +186,15 @@ export const ActiveCampaignsCard = memo(function ActiveCampaignsCard({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{campaign.name}</span>
-                    <Badge
-                      variant="outline"
-                      className={
-                        campaign.status === "running"
-                          ? "bg-success/10 text-success border-success/20"
-                          : "bg-info/10 text-info border-info/20"
+                    <StatusBadge
+                      dotClass={
+                        campaignStatusDotColors[
+                          campaign.status as keyof typeof campaignStatusDotColors
+                        ] ?? "bg-muted-foreground"
                       }
                     >
                       {campaign.status}
-                    </Badge>
+                    </StatusBadge>
                   </div>
                   <span className="text-sm text-muted-foreground">
                     {campaign.sent}/{campaign.total}
@@ -255,7 +255,7 @@ export const AgentsCard = memo(function AgentsCard({
           agents.map((agent, index) => (
             <div key={agent.id} className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="flex size-8 items-center justify-center rounded-full bg-primary/10 text-sm font-medium">
+                <div className="flex size-8 items-center justify-center rounded-full text-sm font-medium">
                   {index + 1}
                 </div>
                 <div>

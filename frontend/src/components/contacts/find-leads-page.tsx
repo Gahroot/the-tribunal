@@ -197,7 +197,7 @@ export function FindLeadsPage() {
           <div className="flex flex-col h-full p-6 gap-4">
             {/* Import Result Banner */}
             {importResult && (
-              <Card className="border-success/20 bg-success/10">
+              <Card>
                 <CardContent className="p-4">
                   <div className="flex items-center gap-4">
                     <CheckCircle2 className="h-8 w-8 text-success" />

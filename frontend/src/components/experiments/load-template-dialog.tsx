@@ -108,7 +108,7 @@ export function LoadTemplateDialog({
                   aria-pressed={selectedId === template.id}
                   className={`group relative p-3 rounded-lg border cursor-pointer transition-colors ${
                     selectedId === template.id
-                      ? "border-primary bg-primary/5"
+                      ? "border-primary bg-secondary"
                       : "hover:border-muted-foreground/50 hover:bg-muted/50"
                   }`}
                   onClick={() => setSelectedId(template.id)}

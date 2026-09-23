@@ -30,7 +30,7 @@ export function WizardStepIndicator<TStepId extends string>({
               isCurrent
                 ? "bg-primary text-primary-foreground"
                 : isCompleted
-                  ? "text-primary hover:bg-primary/10"
+                  ? "text-primary hover:bg-secondary"
                   : "text-muted-foreground hover:bg-muted"
             }`}
           >
@@ -39,12 +39,12 @@ export function WizardStepIndicator<TStepId extends string>({
                 isCurrent
                   ? "bg-primary-foreground/20"
                   : isCompleted
-                    ? "bg-primary/20"
+                    ? "bg-secondary"
                     : "bg-muted"
               }`}
             >
               {isCompleted ? (
-                <Check className="size-4" />
+                <Check className="size-4 text-primary" />
               ) : (
                 <Icon className="size-4" />
               )}

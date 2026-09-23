@@ -253,9 +253,9 @@ export function ScrapeLeadsDialog({ open, onOpenChange }: ScrapeLeadsDialogProps
         {step === "done" && importResult && (
           <div className="space-y-4 py-4">
             <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 bg-success/10 rounded-lg text-center">
+              <div className="p-4 bg-muted/50 rounded-lg text-center">
                 <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-success" />
-                <p className="text-2xl font-bold text-success">{importResult.imported}</p>
+                <p className="text-2xl font-bold text-foreground">{importResult.imported}</p>
                 <p className="text-xs text-muted-foreground">Imported</p>
               </div>
               <div className="p-4 bg-muted/50 rounded-lg text-center">
@@ -289,7 +289,7 @@ export function ScrapeLeadsDialog({ open, onOpenChange }: ScrapeLeadsDialogProps
                     {importResult.errors.map((error, idx) => (
                       <div
                         key={idx}
-                        className="text-xs p-2 bg-destructive/10 rounded text-destructive"
+                        className="text-xs p-2 border border-destructive/50 bg-background rounded text-destructive"
                       >
                         {error}
                       </div>

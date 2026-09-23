@@ -49,6 +49,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Table,
   TableBody,
@@ -62,19 +63,19 @@ import { useFilterState } from "@/hooks/useFilterState";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { callsApi } from "@/lib/api/calls";
 import { queryKeys } from "@/lib/query-keys";
-import { callStatusColors } from "@/lib/status-colors";
+import { callStatusDotColors } from "@/lib/status-colors";
 import { formatDate, formatRelative } from "@/lib/utils/date";
 import { getInitialsFromName } from "@/lib/utils/initials";
 import type { CallRecord } from "@/types";
 
-const statusConfig: Record<string, { label: string; color: string; icon: LucideIcon }> = {
-  completed: { label: "Completed", color: callStatusColors.completed, icon: Phone },
-  in_progress: { label: "In Progress", color: callStatusColors.in_progress, icon: Phone },
-  initiated: { label: "Initiated", color: callStatusColors.initiated, icon: Phone },
-  ringing: { label: "Ringing", color: callStatusColors.ringing, icon: Phone },
-  no_answer: { label: "No Answer", color: callStatusColors.no_answer, icon: PhoneMissed },
-  busy: { label: "Busy", color: callStatusColors.busy, icon: PhoneMissed },
-  failed: { label: "Failed", color: callStatusColors.failed, icon: PhoneMissed },
+const statusConfig: Record<string, { label: string; dot: string; icon: LucideIcon }> = {
+  completed: { label: "Completed", dot: callStatusDotColors.completed, icon: Phone },
+  in_progress: { label: "In Progress", dot: callStatusDotColors.in_progress, icon: Phone },
+  initiated: { label: "Initiated", dot: callStatusDotColors.initiated, icon: Phone },
+  ringing: { label: "Ringing", dot: callStatusDotColors.ringing, icon: Phone },
+  no_answer: { label: "No Answer", dot: callStatusDotColors.no_answer, icon: PhoneMissed },
+  busy: { label: "Busy", dot: callStatusDotColors.busy, icon: PhoneMissed },
+  failed: { label: "Failed", dot: callStatusDotColors.failed, icon: PhoneMissed },
 };
 
 function formatDuration(seconds: number): string {
@@ -426,30 +427,24 @@ export function CallsList() {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <DirectionIcon
-                              className={`size-4 ${
-                                call.direction === "inbound"
-                                  ? "text-info"
-                                  : "text-success"
-                              }`}
-                            />
+                            <DirectionIcon className="size-4 text-muted-foreground" />
                             <span className="capitalize">{call.direction}</span>
                           </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1.5">
-                            <Badge variant="outline" className={status.color}>
+                            <StatusBadge dotClass={status.dot}>
                               {status.label}
-                            </Badge>
+                            </StatusBadge>
                             {call.booking_outcome === "success" && (
-                              <Badge variant="outline" className="bg-success/10 text-success border-success/20">
-                                <CalendarCheck className="size-3 mr-1" />
+                              <Badge variant="outline">
+                                <CalendarCheck className="size-3 mr-1 text-success" />
                                 Booked
                               </Badge>
                             )}
                             {(call.captured_messages?.length ?? 0) > 0 && (
-                              <Badge variant="outline" className="bg-info/10 text-info border-info/20">
-                                <MessageSquare className="size-3 mr-1" />
+                              <Badge variant="outline">
+                                <MessageSquare className="size-3 mr-1 text-info" />
                                 Message
                               </Badge>
                             )}
@@ -553,7 +548,7 @@ export function CallsList() {
                                         <span className="text-muted-foreground">
                                           Booking:
                                         </span>{" "}
-                                        <Badge variant="outline" className={call.booking_outcome === "success" ? "bg-success/10 text-success border-success/20" : ""}>
+                                        <Badge variant="outline">
                                           {call.booking_outcome === "success" ? "Booked" : call.booking_outcome}
                                         </Badge>
                                       </div>
@@ -591,18 +586,17 @@ export function CallsList() {
                                             <span className="font-medium">
                                               {msg.caller_name || "Unknown caller"}
                                             </span>
-                                            <Badge
-                                              variant="outline"
-                                              className={
+                                            <StatusBadge
+                                              dotClass={
                                                 msg.urgency === "high"
-                                                  ? "bg-destructive/10 text-destructive border-destructive/20"
+                                                  ? "bg-destructive"
                                                   : msg.urgency === "low"
-                                                    ? "bg-muted text-muted-foreground"
-                                                    : "bg-warning/10 text-warning border-warning/20"
+                                                    ? "bg-muted-foreground"
+                                                    : "bg-warning"
                                               }
                                             >
                                               {msg.urgency} urgency
-                                            </Badge>
+                                            </StatusBadge>
                                           </div>
                                           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                                             {msg.callback_number && (
@@ -680,7 +674,7 @@ export function CallsList() {
       {/* Summary */}
       <div className="text-sm text-muted-foreground text-center">
         Showing {filteredCalls.length} of {totalCalls} calls
-        {hasNextPage && " — scroll down for more"}
+        {hasNextPage && ", scroll down for more"}
       </div>
     </div>
   );

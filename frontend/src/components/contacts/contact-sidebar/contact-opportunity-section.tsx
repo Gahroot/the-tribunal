@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useId } from "react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -11,11 +10,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { opportunitiesApi } from "@/lib/api/opportunities";
 import { messages } from "@/lib/messages";
 import { queryKeys } from "@/lib/query-keys";
 import { STATIC } from "@/lib/query-options";
-import { opportunityStatusColors } from "@/lib/status-colors";
+import { opportunityStatusDotColors } from "@/lib/status-colors";
 import { cn } from "@/lib/utils";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 import { formatCurrency } from "@/lib/utils/number";
@@ -123,15 +123,12 @@ export function ContactOpportunitySection({
                 ) : null}
               </div>
               <div className="flex items-center gap-2">
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "text-[10px] capitalize",
-                    opportunityStatusColors[opportunity.status],
-                  )}
+                <StatusBadge
+                  dotClass={opportunityStatusDotColors[opportunity.status]}
+                  className={cn("text-[10px] capitalize")}
                 >
                   {opportunity.status}
-                </Badge>
+                </StatusBadge>
                 <Select
                   value={opportunity.status}
                   onValueChange={(value) =>

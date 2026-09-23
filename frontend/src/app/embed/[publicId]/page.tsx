@@ -112,7 +112,7 @@ function EmbedPageContent({ params }: EmbedPageProps) {
   if (error && !config) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-transparent">
-        <div className="rounded-lg bg-red-50 p-4 text-red-600 shadow-lg">
+        <div className="rounded-lg border border-destructive/50 bg-background text-destructive p-4 shadow-lg">
           <p className="text-sm">{error}</p>
         </div>
       </div>
@@ -224,7 +224,7 @@ function EmbedPageContent({ params }: EmbedPageProps) {
             {status === "connected" && (
               <button
                 onClick={toggleMute}
-                className="rounded-full p-3 transition-all duration-200 hover:scale-105"
+                className="rounded-full p-3 transition-opacity hover:opacity-90"
                 style={{
                   backgroundColor: isMuted
                     ? "#ef4444"
@@ -240,13 +240,13 @@ function EmbedPageContent({ params }: EmbedPageProps) {
 
             <button
               onClick={handleEnd}
-              className="rounded-full bg-red-500 p-3 text-white transition-all duration-200 hover:scale-105 hover:bg-red-600"
+              className="rounded-full bg-destructive p-3 text-white transition-colors duration-200 hover:bg-destructive/90"
             >
               <X className="h-5 w-5" />
             </button>
           </div>
 
-          {error && <p className="max-w-[200px] text-center text-xs text-red-500">{error}</p>}
+          {error && <p className="max-w-[200px] text-center text-xs text-destructive">{error}</p>}
         </div>
       ) : autostart ? (
         <div className="flex flex-col items-center justify-center gap-3 p-4">
@@ -267,12 +267,12 @@ function EmbedPageContent({ params }: EmbedPageProps) {
           <p className="text-sm font-medium text-gray-300">
             {status === "connecting" ? "Connecting..." : "Starting..."}
           </p>
-          {error && <p className="max-w-[200px] text-center text-xs text-red-500">{error}</p>}
+          {error && <p className="max-w-[200px] text-center text-xs text-destructive">{error}</p>}
         </div>
       ) : (
         <button
           onClick={() => void handleStart()}
-          className="group relative flex items-center gap-3 overflow-hidden rounded-full py-3 pl-4 pr-6 shadow-lg transition-all duration-300 hover:scale-105 hover:shadow-xl active:scale-95"
+          className="group relative flex items-center gap-3 overflow-hidden rounded-full py-3 pl-4 pr-6 shadow-lg transition-all duration-300 hover:shadow-xl"
           style={{
             backgroundColor: primaryColor,
             color: "#ffffff",

@@ -142,8 +142,8 @@ export function CommandPalette({
                         onSelect={() => handleSelect(item.url)}
                         className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm transition-colors hover:bg-accent aria-selected:bg-accent"
                       >
-                        <div className="flex size-7 items-center justify-center rounded-md bg-primary/10">
-                          <Icon className="size-4 text-primary" />
+                        <div className="flex size-7 items-center justify-center rounded-md">
+                          <Icon className="size-4 text-muted-foreground" />
                         </div>
                         {item.title}
                       </Command.Item>
@@ -165,8 +165,8 @@ export function CommandPalette({
                       onSelect={() => handleSelect(`/contacts/${contact.id}`)}
                       className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm transition-colors hover:bg-accent aria-selected:bg-accent"
                     >
-                      <div className="flex size-7 items-center justify-center rounded-md bg-primary/10">
-                        <User className="size-4 text-primary" />
+                      <div className="flex size-7 items-center justify-center rounded-md">
+                        <User className="size-4 text-muted-foreground" />
                       </div>
                       <div className="flex min-w-0 flex-col">
                         <span className="truncate">{name || "Unnamed contact"}</span>
@@ -191,8 +191,8 @@ export function CommandPalette({
                     onSelect={() => handleSelect(`/campaigns/${campaign.id}`)}
                     className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm transition-colors hover:bg-accent aria-selected:bg-accent"
                   >
-                    <div className="flex size-7 items-center justify-center rounded-md bg-primary/10">
-                      <Megaphone className="size-4 text-primary" />
+                    <div className="flex size-7 items-center justify-center rounded-md">
+                      <Megaphone className="size-4 text-muted-foreground" />
                     </div>
                     <div className="flex min-w-0 flex-col">
                       <span className="truncate">{campaign.name}</span>

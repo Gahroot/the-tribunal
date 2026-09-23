@@ -19,7 +19,7 @@ interface ValueReinforcementSectionProps {
 }
 
 const VR_TEMPLATE_PLACEHOLDER =
-  "Hi {first_name}, just a reminder that your appointment is tomorrow on {appointment_date} at {appointment_time}. We're looking forward to seeing you — reply here if you have any questions!";
+  "Hi {first_name}, just a reminder that your appointment is tomorrow on {appointment_date} at {appointment_time}. We're looking forward to seeing you. Reply here if you have any questions!";
 
 export function ValueReinforcementSection({ control }: ValueReinforcementSectionProps) {
   const vrEnabled = useWatch({ control, name: "valueReinforcementEnabled" });
@@ -84,7 +84,7 @@ export function ValueReinforcementSection({ control }: ValueReinforcementSection
                   <div className="flex items-center justify-between">
                     <FormLabel>Value-Reinforcement Message</FormLabel>
                     <span
-                      className={`text-xs ${vrCharCount > 160 ? "text-amber-600 font-medium" : "text-muted-foreground"}`}
+                      className={`text-xs ${vrCharCount > 160 ? "text-warning font-medium" : "text-muted-foreground"}`}
                     >
                       {vrCharCount} / 160
                       {vrCharCount > 160 ? ` (${Math.ceil(vrCharCount / 153)} segments)` : ""}

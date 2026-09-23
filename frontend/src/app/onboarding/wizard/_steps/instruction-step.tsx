@@ -18,7 +18,7 @@ export function InstructionStep({
 }: InstructionStepProps) {
   return (
     <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
-      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary shrink-0">
+      <div className="flex items-center justify-center w-8 h-8 rounded-full text-muted-foreground shrink-0">
         <Icon className="w-4 h-4" />
       </div>
       <div>

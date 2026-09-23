@@ -132,7 +132,7 @@ export function BasicTab({ form, availableLanguages }: BasicTabProps) {
                       onClick={() => field.onChange(option.value)}
                       className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 text-center transition-colors ${
                         isSelected
-                          ? "border-primary bg-primary/5"
+                          ? "border-primary bg-secondary"
                           : "border-border hover:border-primary/50"
                       }`}
                     >

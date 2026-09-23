@@ -7,9 +7,9 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { createCheckout, createPortal, getBillingStatus, type BillingStatus } from "@/lib/api/billing";
 import { queryKeys } from "@/lib/query-keys";
 import { getApiErrorMessage } from "@/lib/utils/errors";
@@ -22,7 +22,7 @@ const PLAN_FEATURES = [
   "AI-powered SMS agent that texts your dead leads",
   "Automatic appointment booking directly on your Cal.com calendar",
   "Unlimited lead uploads via CSV",
-  "Smart follow-up sequences — 2-touch cadence, fully automated",
+  "Smart follow-up sequences (2-touch cadence, fully automated)",
   "Realtor-focused messaging templates designed to get replies",
 ];
 
@@ -31,7 +31,7 @@ const PLAN_FEATURES = [
 function PlanFeature({ text }: { text: string }) {
   return (
     <li className="flex items-start gap-3">
-      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-500" />
+      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
       <span className="text-sm text-muted-foreground">{text}</span>
     </li>
   );
@@ -78,8 +78,8 @@ function BillingContent() {
       {/* Header */}
       <div className="text-center space-y-2">
         <div className="flex justify-center">
-          <div className="rounded-full bg-primary/10 p-4">
-            <Zap className="h-8 w-8 text-primary" />
+          <div className="rounded-full p-4">
+            <Zap className="h-8 w-8 text-muted-foreground" />
           </div>
         </div>
         <h1 className="text-3xl font-bold tracking-tight">
@@ -87,7 +87,7 @@ function BillingContent() {
         </h1>
         <p className="text-muted-foreground max-w-md mx-auto">
           Let AI text your cold leads, provide value, and book appointments on your
-          calendar — automatically.
+          calendar, automatically.
         </p>
       </div>
 
@@ -96,11 +96,7 @@ function BillingContent() {
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
             <CardTitle className="text-xl">Monthly Subscription</CardTitle>
-            {subscribed && (
-              <Badge className="bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400">
-                Active
-              </Badge>
-            )}
+            {subscribed && <StatusBadge dotClass="bg-success">Active</StatusBadge>}
           </div>
           <div className="flex items-baseline gap-1 mt-1">
             <span className="text-4xl font-bold">{PLAN_PRICE.split("/")[0]}</span>

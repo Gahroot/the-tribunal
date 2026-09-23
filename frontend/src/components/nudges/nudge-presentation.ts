@@ -1,19 +1,33 @@
 // Pure presentation helpers and lookup tables for the Nudges page. Free of
 // React/JSX so the formatting + lookup rules can be unit-tested directly.
+import {
+  Cake,
+  Heart,
+  RefreshCw,
+  CalendarDays,
+  ClipboardList,
+  Target,
+  Package,
+  Hourglass,
+  Satellite,
+  Pin,
+  type LucideIcon,
+} from "lucide-react";
+
 import { formatRelative } from "@/lib/utils/date";
 import type { NudgeStatus, SuggestedAction } from "@/types/nudge";
 
-export const NUDGE_TYPE_EMOJI: Record<string, string> = {
-  birthday: "🎂",
-  anniversary: "💍",
-  cooling: "🔄",
-  custom: "📅",
-  follow_up: "📋",
-  deal_milestone: "🎯",
+export const NUDGE_TYPE_ICONS: Record<string, LucideIcon> = {
+  birthday: Cake,
+  anniversary: Heart,
+  cooling: RefreshCw,
+  custom: CalendarDays,
+  follow_up: ClipboardList,
+  deal_milestone: Target,
   // Workspace-level operator nudges
-  outbound_batch_ready: "📦",
-  approvals_waiting: "⏳",
-  monitor_idle: "🛰️",
+  outbound_batch_ready: Package,
+  approvals_waiting: Hourglass,
+  monitor_idle: Satellite,
 };
 
 export const SUGGESTED_ACTION_LABELS: Record<SuggestedAction, string> = {
@@ -23,10 +37,10 @@ export const SUGGESTED_ACTION_LABELS: Record<SuggestedAction, string> = {
   email: "Email",
 };
 
-export const PRIORITY_STYLES: Record<string, string> = {
-  high: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-  medium: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
-  low: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200",
+export const PRIORITY_DOTS: Record<string, string> = {
+  high: "bg-destructive",
+  medium: "bg-warning",
+  low: "bg-muted-foreground",
 };
 
 export const STATUS_TABS: { value: NudgeStatus; label: string }[] = [
@@ -39,9 +53,9 @@ export const STATUS_TABS: { value: NudgeStatus; label: string }[] = [
 
 export const PAGE_SIZE = 20;
 
-/** Emoji for a nudge type, falling back to a generic pin. */
-export function getNudgeEmoji(nudgeType: string): string {
-  return NUDGE_TYPE_EMOJI[nudgeType] ?? "📌";
+/** Icon for a nudge type, falling back to a generic pin. */
+export function getNudgeIcon(nudgeType: string): LucideIcon {
+  return NUDGE_TYPE_ICONS[nudgeType] ?? Pin;
 }
 
 /**

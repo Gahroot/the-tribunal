@@ -233,7 +233,7 @@ function ChatEmbedPageContent({ params }: ChatEmbedPageProps) {
   if (error && !config) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-transparent">
-        <div className="rounded-lg bg-red-50 p-4 text-red-600 shadow-lg">
+        <div className="rounded-lg border border-destructive/50 bg-background text-destructive p-4 shadow-lg">
           <p className="text-sm">{error}</p>
         </div>
       </div>
@@ -383,7 +383,7 @@ function ChatEmbedPageContent({ params }: ChatEmbedPageProps) {
             }}
           >
             {error && (
-              <p className="mb-2 text-xs text-red-500">{error}</p>
+              <p className="mb-2 text-xs text-destructive">{error}</p>
             )}
             {imageDataUrl && (
               <div className="mb-2 inline-flex items-start gap-1">
@@ -417,7 +417,7 @@ function ChatEmbedPageContent({ params }: ChatEmbedPageProps) {
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isLoading}
                 aria-label="Attach image"
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all hover:scale-105 disabled:opacity-50"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-90 disabled:opacity-50"
                 style={{
                   backgroundColor: isDark ? "#374151" : "#f3f4f6",
                   color: isDark ? "#f3f4f6" : "#1f2937",
@@ -443,7 +443,7 @@ function ChatEmbedPageContent({ params }: ChatEmbedPageProps) {
               <button
                 onClick={() => void sendMessage()}
                 disabled={(!inputValue.trim() && !imageDataUrl) || isLoading}
-                className="flex h-10 w-10 items-center justify-center rounded-full transition-all hover:scale-105 disabled:opacity-50"
+                className="flex h-10 w-10 items-center justify-center rounded-full transition-opacity hover:opacity-90 disabled:opacity-50"
                 style={{ backgroundColor: primaryColor }}
               >
                 {isLoading ? (
@@ -458,7 +458,7 @@ function ChatEmbedPageContent({ params }: ChatEmbedPageProps) {
       ) : (
         <button
           onClick={() => setIsOpen(true)}
-          className="group flex items-center gap-3 rounded-full py-3 pl-4 pr-6 shadow-lg transition-all duration-300 hover:scale-105 hover:shadow-xl"
+          className="group flex items-center gap-3 rounded-full py-3 pl-4 pr-6 shadow-lg transition-all duration-300 hover:shadow-xl"
           style={{
             backgroundColor: primaryColor,
             color: "#ffffff",

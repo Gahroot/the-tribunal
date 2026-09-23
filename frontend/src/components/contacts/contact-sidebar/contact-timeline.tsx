@@ -1,6 +1,7 @@
 import { Clock, AlertTriangle, Flame } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { appointmentStatusDotColors } from "@/lib/status-colors";
 import { formatDate, formatRelative } from "@/lib/utils/date";
 import type { Contact, TimelineItem } from "@/types";
 
@@ -10,10 +11,10 @@ function engagementTier(score: number): "hot" | "warm" | "cold" {
   return "cold";
 }
 
-const TIER_CLASSES: Record<"hot" | "warm" | "cold", string> = {
-  hot: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30",
-  warm: "bg-amber-500/15 text-amber-600 border-amber-500/30",
-  cold: "bg-muted text-muted-foreground border-border",
+const TIER_DOTS: Record<"hot" | "warm" | "cold", string> = {
+  hot: "bg-success",
+  warm: "bg-warning",
+  cold: "bg-muted-foreground",
 };
 
 type Sentiment = "positive" | "neutral" | "negative";
@@ -63,10 +64,10 @@ export function ContactTimeline({ contact, timeline }: ContactTimelineProps) {
     <div className="space-y-2">
       <div className="flex items-center justify-between px-2">
         <h3 className="text-sm font-medium text-muted-foreground">Activity</h3>
-        <Badge variant="outline" className={`${TIER_CLASSES[tier]} text-xs gap-1`}>
+        <StatusBadge dotClass={TIER_DOTS[tier]} className="text-xs gap-1">
           <Flame className="h-3 w-3" />
           Engagement {engagementScore}
-        </Badge>
+        </StatusBadge>
       </div>
       {contact.last_engaged_at && (
         <div className="flex items-center gap-2 px-2 text-xs text-muted-foreground">
@@ -119,18 +120,15 @@ export function ContactTimeline({ contact, timeline }: ContactTimelineProps) {
             </div>
           )}
           {contact.last_appointment_status && (
-            <Badge
-              variant={
-                contact.last_appointment_status === "no_show"
-                  ? "destructive"
-                  : contact.last_appointment_status === "completed"
-                    ? "default"
-                    : "secondary"
+            <StatusBadge
+              dotClass={
+                appointmentStatusDotColors[contact.last_appointment_status] ??
+                "bg-muted-foreground"
               }
               className="text-xs"
             >
               Last: {contact.last_appointment_status.replace(/_/g, " ")}
-            </Badge>
+            </StatusBadge>
           )}
         </div>
       )}

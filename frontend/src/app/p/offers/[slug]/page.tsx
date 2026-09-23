@@ -201,10 +201,10 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
 
             {/* Guarantee */}
             {offer.guarantee_type && (
-              <Card className="border-success/20 bg-success/10">
+              <Card className="border">
                 <CardContent className="pt-6">
                   <div className="flex items-start gap-4">
-                    <div className="p-3 rounded-full bg-success/10">
+                    <div className="p-3 rounded-full">
                       <Shield className="size-6 text-success" />
                     </div>
                     <div>
@@ -250,7 +250,7 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
                   </div>
                 )}
                 {offer.savings_amount && offer.savings_amount > 0 && (
-                  <Badge variant="secondary" className="text-success">
+                  <Badge variant="secondary" className="text-primary">
                     Save ${formatNumber(offer.savings_amount)}
                   </Badge>
                 )}
@@ -341,9 +341,9 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
 
             {/* Urgency Banner */}
             {offer.urgency_type && offer.urgency_text && (
-              <Alert className="border-warning/20 bg-warning/10">
+              <Alert className="border bg-background text-foreground">
                 <Clock className="size-4 text-warning" />
-                <AlertDescription className="text-warning font-medium">
+                <AlertDescription className="font-medium">
                   {offer.urgency_text}
                   {offer.scarcity_count && offer.scarcity_count > 0 && (
                     <span className="block mt-1">

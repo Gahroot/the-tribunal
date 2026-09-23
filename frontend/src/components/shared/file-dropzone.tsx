@@ -168,7 +168,7 @@ export function FileDropzone({
             ? "opacity-50 cursor-not-allowed border-border"
             : "cursor-pointer",
           !disabled && dragActive
-            ? "border-primary bg-primary/5"
+            ? "border-primary bg-secondary"
             : !disabled && !error
               ? "border-border hover:border-primary/50 hover:bg-muted/30"
               : null,

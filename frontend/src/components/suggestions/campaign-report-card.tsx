@@ -29,6 +29,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { StatusBadge } from "@/components/ui/status-badge";
 import type {
   CampaignReportResponse,
   CampaignReportFinding,
@@ -64,7 +65,7 @@ export function CampaignReportCard({ report }: CampaignReportCardProps) {
   const statusBadge = (() => {
     switch (report.status) {
       case "completed":
-        return <Badge className="bg-success">Completed</Badge>;
+        return <StatusBadge dotClass="bg-success">Completed</StatusBadge>;
       case "generating":
         return (
           <Badge variant="secondary" className="gap-1">
@@ -201,7 +202,7 @@ export function CampaignReportCard({ report }: CampaignReportCardProps) {
 
           {/* Generated Suggestions Link */}
           {report.generated_suggestion_ids && report.generated_suggestion_ids.length > 0 && (
-            <div className="flex items-center gap-2 rounded-md border border-warning/20 bg-warning/10 p-3">
+            <div className="flex items-center gap-2 rounded-md border bg-background p-3">
               <AlertTriangle className="h-4 w-4 text-warning" />
               <p className="text-sm">
                 This report spawned{" "}
@@ -218,7 +219,7 @@ export function CampaignReportCard({ report }: CampaignReportCardProps) {
 
       {report.status === "failed" && report.error_message && (
         <CardContent>
-          <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3">
+          <div className="rounded-md border border-destructive/50 bg-background p-3">
             <p className="text-sm text-destructive">{report.error_message}</p>
           </div>
         </CardContent>
@@ -271,9 +272,9 @@ function ReportSection({ title, count, isOpen, onToggle, icon, children }: Repor
 
 function FindingItem({ finding }: { finding: CampaignReportFinding }) {
   const sentimentColor = {
-    positive: "border-l-green-500",
-    negative: "border-l-red-500",
-    neutral: "border-l-gray-400",
+    positive: "border-l-success",
+    negative: "border-l-destructive",
+    neutral: "border-l-muted-foreground",
   };
 
   return (
@@ -303,7 +304,7 @@ function EvidenceItem({
     <div
       className={cn(
         "rounded-md border border-l-4 bg-muted/30 p-3",
-        variant === "positive" ? "border-l-green-500" : "border-l-red-500"
+        variant === "positive" ? "border-l-success" : "border-l-destructive"
       )}
     >
       <h4 className="text-sm font-medium">{item.title}</h4>
@@ -317,18 +318,18 @@ function EvidenceItem({
 
 function RecommendationItem({ rec }: { rec: CampaignReportRecommendation }) {
   const priorityColor = {
-    high: "bg-destructive/10 text-destructive",
-    medium: "bg-warning/10 text-warning",
-    low: "bg-info/10 text-info",
+    high: "bg-destructive",
+    medium: "bg-warning",
+    low: "bg-muted-foreground",
   };
 
   return (
     <div className="rounded-md border bg-muted/30 p-3">
       <div className="flex items-center gap-2">
         <h4 className="text-sm font-medium">{rec.title}</h4>
-        <Badge className={cn("text-xs", priorityColor[rec.priority])}>
+        <StatusBadge dotClass={priorityColor[rec.priority]} className="text-xs">
           {rec.priority}
-        </Badge>
+        </StatusBadge>
       </div>
       <p className="mt-1 text-sm text-muted-foreground">{rec.description}</p>
     </div>
