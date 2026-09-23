@@ -209,14 +209,10 @@ export default function OffersPage() {
             <CardContent className="py-4">
               <PageEmptyState
                 title="No offers yet"
-                description="Create your first irresistible offer with value stacking"
+                description="Offers you create show up here, ready to share with leads."
                 icon={<Tag className="size-12" />}
-                action={
-                  <Button onClick={() => router.push("/offers/new")}>
-                    <Plus className="size-4 mr-2" />
-                    Create Your First Offer
-                  </Button>
-                }
+                actionLabel="Create offer"
+                actionHref="/offers/new"
               />
             </CardContent>
           </Card>

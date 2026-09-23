@@ -155,6 +155,7 @@ export function ComponentsGallery() {
                 className="h-full"
                 icon={<Sparkles className="size-8" />}
                 title="No contacts found"
+                description="Try a different search term."
                 action={
                   <Button variant="link" size="sm">
                     Clear search

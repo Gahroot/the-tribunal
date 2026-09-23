@@ -38,6 +38,7 @@ export function PromptPerformanceChart({ agentId }: PromptPerformanceChartProps)
       <PageEmptyState
         icon={<TrendingUp className="size-8" />}
         title="No performance data available yet"
+        description="Call and booking metrics for each prompt version appear here."
       />
     );
   }
@@ -51,7 +52,8 @@ export function PromptPerformanceChart({ agentId }: PromptPerformanceChartProps)
     return (
       <PageEmptyState
         icon={<TrendingUp className="size-8" />}
-        title="No calls have been made with tracked prompt versions yet"
+        title="No calls yet"
+        description="Tracked prompt versions appear here once they receive calls."
       />
     );
   }

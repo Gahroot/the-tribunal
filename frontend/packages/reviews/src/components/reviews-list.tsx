@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { useReviewsAdapter, type UpdateReviewPayload } from "../adapter";
 import type { Review, ReviewSentiment } from "../types";
 
+import { SendReviewRequestDialog } from "./send-review-request-dialog";
 import { StarRating } from "./star-rating";
 
 const sentimentStyles: Record<ReviewSentiment, string> = {
@@ -185,6 +186,7 @@ export function ReviewsList({ isPublic }: { isPublic?: boolean }) {
       <PageEmptyState
         title="No reviews yet"
         description="Reviews appear here once customers respond to review requests."
+        action={<SendReviewRequestDialog />}
       />
     );
   }

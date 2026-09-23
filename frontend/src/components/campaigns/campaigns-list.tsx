@@ -147,6 +147,9 @@ export function CampaignsList() {
     return matchesSearch && matchesStatus && matchesType;
   });
 
+  const hasActiveFilters =
+    searchQuery.trim() !== "" || statusFilter !== "all" || typeFilter !== "all";
+
   const getDeliveryRate = (campaign: Campaign) => {
     if (campaign.messages_sent === 0) return 0;
     return Math.round(
@@ -255,16 +258,33 @@ export function CampaignsList() {
       }
       isEmpty={filteredCampaigns.length === 0}
       emptyState={
-        <PageEmptyState
-          icon={<MessageSquare className="size-12" />}
-          title="No campaigns yet"
-          description="Create your first campaign to start reaching your contacts"
-          action={
-            <Button asChild>
-              <Link href="/campaigns/new">Create campaign</Link>
-            </Button>
-          }
-        />
+        hasActiveFilters ? (
+          <PageEmptyState
+            icon={<MessageSquare className="size-12" />}
+            title="No matching campaigns"
+            description="Try adjusting your search or filters."
+            action={
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setSearchQuery("");
+                  setStatusFilter("all");
+                  setTypeFilter("all");
+                }}
+              >
+                Clear filters
+              </Button>
+            }
+          />
+        ) : (
+          <PageEmptyState
+            icon={<MessageSquare className="size-12" />}
+            title="No campaigns yet"
+            description="Campaigns you create appear here, ready to send to your contacts."
+            actionLabel="Create campaign"
+            actionHref="/campaigns/new"
+          />
+        )
       }
       pagination={
         <ResourceListPagination

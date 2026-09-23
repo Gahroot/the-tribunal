@@ -89,6 +89,7 @@ interface StageTotal {
 
 export function OpportunitiesBoard() {
   const workspaceId = useWorkspaceId();
+  const queryClient = useQueryClient();
 
   const {
     data: pipelines,
@@ -99,6 +100,18 @@ export function OpportunitiesBoard() {
     queryKey: queryKeys.opportunities.pipelines(workspaceId ?? ""),
     queryFn: () => opportunitiesApi.listPipelines(workspaceId!),
     enabled: !!workspaceId,
+  });
+
+  const createPipeline = useMutation({
+    mutationFn: () =>
+      opportunitiesApi.createPipeline(workspaceId!, { name: "Sales Pipeline" }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.opportunities.pipelines(workspaceId!),
+      });
+    },
+    onError: (err: unknown) =>
+      toast.error(getApiErrorMessage(err, "Failed to create pipeline")),
   });
 
   // The promotion flow uses the earliest active pipeline; mirror that here.
@@ -128,7 +141,15 @@ export function OpportunitiesBoard() {
       <PageEmptyState
         icon={<KanbanSquare className="h-10 w-10" />}
         title="No pipeline yet"
-        description="This workspace has no active pipeline. Create one to start tracking opportunities."
+        description="Pipelines track opportunities from first contact to closed deal."
+        action={
+          <Button
+            onClick={() => createPipeline.mutate()}
+            disabled={createPipeline.isPending}
+          >
+            {createPipeline.isPending ? "Creating pipeline…" : "Create pipeline"}
+          </Button>
+        }
       />
     );
   }
@@ -837,7 +858,7 @@ function OpportunitiesList({
         }
         action={
           searching ? undefined : (
-            <Button size="sm" variant="outline" onClick={onAdd}>
+            <Button onClick={onAdd}>
               <Plus className="mr-1.5 h-4 w-4" />
               Add Opportunity
             </Button>

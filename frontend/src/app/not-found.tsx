@@ -9,7 +9,7 @@ export default function NotFound() {
     <PageEmptyState
       className="min-h-screen bg-background"
       icon={<FileQuestion className="size-8" />}
-      title="404 — Page not found"
+      title="404: Page not found"
       description="The page you are looking for does not exist."
       action={
         <Link href="/dashboard" className={buttonVariants()}>

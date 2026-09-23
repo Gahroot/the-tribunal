@@ -104,7 +104,7 @@ export function TodayPage() {
       ) : items.length === 0 ? (
         <PageEmptyState
           title="All clear"
-          description="Nothing needs you right now. The machine keeps scraping overnight."
+          description="Today's queue is empty. Tasks and approvals show up here as they come in."
           action={
             <Button asChild variant="outline">
               <Link href="/assistant?briefing=1">Ask the assistant anyway</Link>

@@ -542,6 +542,7 @@ export default function NewLeadMagnetPage() {
         <PageEmptyState
           className="min-h-full"
           title="Please select a workspace"
+          description="Pick a workspace before creating a lead magnet."
         />
       </AppSidebar>
     );

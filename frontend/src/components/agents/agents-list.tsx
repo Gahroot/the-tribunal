@@ -287,16 +287,26 @@ export function AgentsList() {
       }
       isEmpty={filteredAgents.length === 0}
       emptyState={
-        <PageEmptyState
-          icon={<Bot className="size-12" />}
-          title="No agents yet"
-          description="Create your first AI agent to start handling calls and messages"
-          action={
-            <Button asChild>
-              <Link href="/agents/create">Create Agent</Link>
-            </Button>
-          }
-        />
+        searchQuery.trim() !== "" ? (
+          <PageEmptyState
+            icon={<Bot className="size-12" />}
+            title="No matching agents"
+            description="Try adjusting your search."
+            action={
+              <Button variant="outline" onClick={() => setSearchQuery("")}>
+                Clear search
+              </Button>
+            }
+          />
+        ) : (
+          <PageEmptyState
+            icon={<Bot className="size-12" />}
+            title="No agents yet"
+            description="Agents you create appear here, ready to handle calls and messages."
+            actionLabel="Create agent"
+            actionHref="/agents/create"
+          />
+        )
       }
       extras={
         <Dialog open={testCallDialogOpen} onOpenChange={setTestCallDialogOpen}>

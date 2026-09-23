@@ -331,8 +331,10 @@ function ActionEmptyState({ status }: { status: string }) {
           title={status === "pending" ? "All caught up!" : "No actions"}
           description={
             status === "pending"
-              ? "No pending actions to review. When your AI agents need approval, actions will appear here."
-              : `No ${status === "all" ? "" : status} actions found.`
+              ? "No pending actions to review. Approval requests from your AI agents appear here."
+              : status === "all"
+                ? "Approval requests from your AI agents appear here."
+                : `Actions appear here once they are ${status}.`
           }
         />
       </CardContent>

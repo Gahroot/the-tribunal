@@ -70,22 +70,53 @@ describe("PageEmptyState", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders only the title when description and action are omitted", () => {
-    render(<PageEmptyState title="No results" />);
-    expect(screen.getByText("No results")).toBeInTheDocument();
+  it("renders a primary deep-link button from actionLabel and actionHref", () => {
+    render(
+      <PageEmptyState
+        title="No campaigns yet"
+        description="Campaigns you create appear here."
+        actionLabel="Create campaign"
+        actionHref="/campaigns/new"
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: "Create campaign" });
+    expect(link).toHaveAttribute("href", "/campaigns/new");
+  });
+
+  it("renders the title and description when no action is given", () => {
+    render(
+      <PageEmptyState
+        title="All clear"
+        description="Nothing needs your attention."
+      />,
+    );
+    expect(screen.getByText("All clear")).toBeInTheDocument();
+    expect(screen.getByText("Nothing needs your attention.")).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
   it("forwards className so it can fill fixed-height containers", () => {
     const { container } = render(
-      <PageEmptyState title="No contacts found" className="h-full" />,
+      <PageEmptyState
+        title="No contacts found"
+        description="Try a different search."
+        className="h-full"
+      />,
     );
     const wrapper = container.querySelector('[data-slot="page-state"]');
     expect(wrapper).toHaveClass("h-full");
   });
 
   it("omits the action region when a conditional action resolves to undefined", () => {
-    render(<PageEmptyState title="No contacts found" action={undefined} />);
+    render(
+      <PageEmptyState
+        title="No contacts found"
+        description="Try a different search."
+        action={undefined}
+      />,
+    );
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });

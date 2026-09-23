@@ -2,6 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Layers, Megaphone, RefreshCw, Trash2, Users } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -108,8 +109,8 @@ export function SegmentsPage() {
             title="No segments yet"
             description="Build a filter on the Contacts page and choose “Save as Segment” to create one."
             action={
-              <Button variant="outline" onClick={() => router.push("/contacts")}>
-                Go to Contacts
+              <Button asChild>
+                <Link href="/contacts">Create segment</Link>
               </Button>
             }
           />

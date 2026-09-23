@@ -275,16 +275,10 @@ export default function LeadMagnetsPage() {
             <CardContent className="py-4">
               <PageEmptyState
                 title="No lead magnets yet"
-                description="Create your first lead magnet to attach as a bonus to offers"
+                description="Lead magnets you create show up here, ready to attach to offers."
                 icon={<FileText className="size-12" />}
-                action={
-                  <Button asChild>
-                    <Link href="/lead-magnets/new">
-                      <Plus className="size-4 mr-2" />
-                      Create Your First Lead Magnet
-                    </Link>
-                  </Button>
-                }
+                actionLabel="Create lead magnet"
+                actionHref="/lead-magnets/new"
               />
             </CardContent>
           </Card>

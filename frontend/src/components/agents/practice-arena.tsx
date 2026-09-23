@@ -153,6 +153,8 @@ export function PracticeArena({
         <PageEmptyState
           title="No agents yet"
           description="Create an agent first, then come back to rehearse it."
+          actionLabel="Create agent"
+          actionHref="/agents/create"
         />
       ) : (
         <Card>

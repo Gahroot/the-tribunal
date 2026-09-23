@@ -367,6 +367,11 @@ export function VirtualContactSelector({
             className="h-full"
             icon={<Users className="size-8" />}
             title="No contacts found"
+            description={
+              search
+                ? "Try a different search term."
+                : "Add contacts to your workspace to select them here."
+            }
             action={
               search ? (
                 <Button variant="link" onClick={() => setSearch("")}>

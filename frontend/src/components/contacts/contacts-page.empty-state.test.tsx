@@ -85,7 +85,9 @@ describe("ContactsPage empty state", () => {
     const user = userEvent.setup();
     renderContactsPage();
 
-    const emptyState = screen.getByText("No contacts yet").closest("div");
+    const emptyState = screen
+      .getByText("No contacts yet")
+      .closest('[data-slot="page-state"]');
     expect(emptyState).not.toBeNull();
 
     const importButton = within(emptyState as HTMLElement).getByRole("button", {

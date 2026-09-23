@@ -70,6 +70,8 @@ export function KnowledgeBasePage() {
             icon={<BookOpen className="size-8" />}
             title="No agents yet"
             description="Create an AI agent first, then add knowledge documents it can draw from."
+            actionLabel="Create agent"
+            actionHref="/agents/create"
           />
         ) : (
           <KnowledgeBaseTab agentId={activeAgentId} />

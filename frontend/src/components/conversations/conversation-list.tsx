@@ -299,12 +299,12 @@ export function ConversationList({
             title={
               hasActiveFilter
                 ? "No matching conversations"
-                : "No conversations yet"
+                : "You're all caught up"
             }
             description={
               hasActiveFilter
                 ? "No threads match this view or search."
-                : "Inbound and outbound threads will appear here."
+                : "No conversations waiting for you. New messages and threads appear here as they arrive."
             }
             action={
               hasActiveFilter ? (

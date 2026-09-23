@@ -324,15 +324,15 @@ export function SuggestionsQueue({
         <CardContent className="py-4">
           <PageEmptyState
             icon={<Lightbulb className="h-12 w-12" />}
-            title="No Suggestions"
+            title="No suggestions yet"
             description={
               statusFilter === "pending"
-                ? "Suggestions appear automatically once an agent has enough conversation data and auto-suggest is enabled. You can also review prompt improvements from an agent's A/B Testing tab."
-                : "No suggestions found with this filter."
+                ? "Suggestions appear automatically when an agent has enough conversation data and auto-suggest is enabled."
+                : "No suggestions match this filter."
             }
             action={
               statusFilter === "pending" ? (
-                <Button asChild variant="outline">
+                <Button asChild>
                   <Link href="/agents">
                     <Wand2 className="mr-2 h-4 w-4" />
                     Go to agents

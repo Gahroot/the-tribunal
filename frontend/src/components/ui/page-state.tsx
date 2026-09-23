@@ -1,4 +1,5 @@
 import { AlertCircle, Inbox, Loader2 } from "lucide-react"
+import Link from "next/link"
 import * as React from "react"
 
 import { Button } from "@/components/ui/button"
@@ -60,10 +61,27 @@ export function PageErrorState({
 }
 
 export interface PageEmptyStateProps extends PageStateWrapperProps {
+  /** Short heading: name the state (e.g. "No campaigns yet", "All clear"). */
   title: string
-  description?: string
+  /**
+   * One line explaining what lives here once items exist.
+   * Required so every empty state says what belongs on the screen.
+   */
+  description: string
+  /** Decorative icon; omitted defaults to the inbox glyph. */
   icon?: React.ReactNode
+  /**
+   * Custom action node. Wins over `actionLabel`/`actionHref` when provided
+   * (e.g. dialog triggers, "Clear filters").
+   */
   action?: React.ReactNode
+  /**
+   * Label for the single primary CTA (e.g. "Create campaign"). Pair with
+   * `actionHref` so the button deep-links to the create flow.
+   */
+  actionLabel?: string
+  /** Route the primary CTA deep-links to (e.g. "/campaigns/new"). */
+  actionHref?: string
 }
 
 export function PageEmptyState({
@@ -71,8 +89,18 @@ export function PageEmptyState({
   description,
   icon,
   action,
+  actionLabel,
+  actionHref,
   ...props
 }: PageEmptyStateProps) {
+  const cta =
+    action ??
+    (actionLabel && actionHref ? (
+      <Button asChild>
+        <Link href={actionHref}>{actionLabel}</Link>
+      </Button>
+    ) : undefined)
+
   return (
     <PageStateWrapper {...props}>
       <div className="text-muted-foreground">
@@ -80,11 +108,9 @@ export function PageEmptyState({
       </div>
       <div className="space-y-1">
         <h3 className="text-base font-medium">{title}</h3>
-        {description ? (
-          <p className="text-sm text-muted-foreground">{description}</p>
-        ) : null}
+        <p className="text-sm text-muted-foreground">{description}</p>
       </div>
-      {action}
+      {cta}
     </PageStateWrapper>
   )
 }

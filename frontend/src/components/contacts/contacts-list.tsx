@@ -186,7 +186,25 @@ export function ContactsList({ className }: ContactsListProps) {
             <PageEmptyState
               className="py-12"
               icon={<User className="h-12 w-12" />}
-              title={searchQuery ? "No contacts found" : "No contacts yet"}
+              title={
+                searchQuery ? "No contacts found" : "No contacts yet"
+              }
+              description={
+                searchQuery
+                  ? "Try a different search term."
+                  : "Import your list or add a contact to get started."
+              }
+              action={
+                searchQuery ? (
+                  <Button size="sm" onClick={() => setSearchQuery("")}>
+                    Clear search
+                  </Button>
+                ) : (
+                  <Button size="sm" onClick={() => setIsCreateDialogOpen(true)}>
+                    Add contact
+                  </Button>
+                )
+              }
             />
           ) : (
             <AnimatePresence mode="popLayout">

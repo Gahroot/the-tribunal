@@ -183,7 +183,7 @@ export function ContactlessThread({
         <PageEmptyState
           className="min-h-0 flex-1"
           title="No messages yet"
-          description="Replies will appear here — send the first message below."
+          description="Replies appear here. Send the first message below."
         />
       ) : (
         <ScrollArea ref={scrollAreaRef} className="min-h-0 flex-1">
