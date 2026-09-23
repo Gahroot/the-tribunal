@@ -16419,6 +16419,66 @@
         "title": "NudgeActRequest",
         "type": "object"
       },
+      "NudgeCreateRequest": {
+        "description": "Request to create a manual follow-up task for a contact.",
+        "properties": {
+          "assigned_to_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned To User Id"
+          },
+          "contact_id": {
+            "title": "Contact Id",
+            "type": "integer"
+          },
+          "due_date": {
+            "format": "date-time",
+            "title": "Due Date",
+            "type": "string"
+          },
+          "message": {
+            "default": "",
+            "title": "Message",
+            "type": "string"
+          },
+          "nudge_type": {
+            "default": "follow_up",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Nudge Type",
+            "type": "string"
+          },
+          "priority": {
+            "default": "medium",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Priority",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contact_id",
+          "title",
+          "due_date"
+        ],
+        "title": "NudgeCreateRequest",
+        "type": "object"
+      },
       "NudgeListResponse": {
         "description": "Paginated nudge list.",
         "properties": {
@@ -16855,6 +16915,76 @@
           }
         },
         "title": "NudgeStatsResponse",
+        "type": "object"
+      },
+      "NudgeUpdateRequest": {
+        "description": "Partial update for a nudge (inline edit of title/due date/assignee).\n\nOmit a key to leave the field unchanged. Sending ``assigned_to_user_id``\nexplicitly as ``null`` unassigns the task.",
+        "properties": {
+          "assigned_to_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned To User Id"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "NudgeUpdateRequest",
         "type": "object"
       },
       "OfferCreate": {
@@ -46533,6 +46663,22 @@
           },
           {
             "in": "query",
+            "name": "contact_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Contact Id"
+            }
+          },
+          {
+            "in": "query",
             "name": "page",
             "required": false,
             "schema": {
@@ -46586,6 +46732,63 @@
         "tags": [
           "Human Nudges"
         ]
+      },
+      "post": {
+        "description": "Create a manual follow-up task for a contact.",
+        "operationId": "create_nudge_api_v1_workspaces__workspace_id__nudges_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NudgeCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NudgeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Create Nudge",
+        "tags": [
+          "Human Nudges"
+        ]
       }
     },
     "/api/v1/workspaces/{workspace_id}/nudges/stats": {
@@ -46632,6 +46835,75 @@
           }
         ],
         "summary": "Get Nudge Stats",
+        "tags": [
+          "Human Nudges"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/nudges/{nudge_id}": {
+      "put": {
+        "description": "Partially update a nudge (inline edit of due date/assignee/title).",
+        "operationId": "update_nudge_api_v1_workspaces__workspace_id__nudges__nudge_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "nudge_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Nudge Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NudgeUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NudgeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Update Nudge",
         "tags": [
           "Human Nudges"
         ]

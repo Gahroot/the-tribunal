@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -62,6 +63,32 @@ class NudgeSnoozeRequest(BaseModel):
     """Request to snooze a nudge."""
 
     snooze_until: datetime
+
+
+class NudgeCreateRequest(BaseModel):
+    """Request to create a manual follow-up task for a contact."""
+
+    contact_id: int
+    title: str = Field(min_length=1, max_length=255)
+    message: str = ""
+    due_date: datetime
+    nudge_type: str = Field(default="follow_up", min_length=1, max_length=50)
+    priority: Literal["low", "medium", "high"] = "medium"
+    assigned_to_user_id: int | None = None
+
+
+class NudgeUpdateRequest(BaseModel):
+    """Partial update for a nudge (inline edit of title/due date/assignee).
+
+    Omit a key to leave the field unchanged. Sending ``assigned_to_user_id``
+    explicitly as ``null`` unassigns the task.
+    """
+
+    title: str | None = Field(None, min_length=1, max_length=255)
+    message: str | None = None
+    due_date: datetime | None = None
+    priority: Literal["low", "medium", "high"] | None = None
+    assigned_to_user_id: int | None = None
 
 
 class NudgeSettingsResponse(BaseModel):

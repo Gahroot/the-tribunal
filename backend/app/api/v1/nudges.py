@@ -13,15 +13,17 @@ from app.db.pagination import paginate
 from app.db.scope import apply_workspace_scope
 from app.models.contact import Contact
 from app.models.human_nudge import HumanNudge
-from app.models.workspace import WorkspaceIntegration
+from app.models.workspace import WorkspaceIntegration, WorkspaceMembership
 from app.schemas.nudge import (
     NudgeActRequest,
+    NudgeCreateRequest,
     NudgeListResponse,
     NudgeResponse,
     NudgeSettingsResponse,
     NudgeSettingsUpdate,
     NudgeSnoozeRequest,
     NudgeStatsResponse,
+    NudgeUpdateRequest,
 )
 from app.services.cards.card_service import CardService
 from app.services.cards.card_templates import render_template
@@ -58,6 +60,25 @@ def _nudge_to_response(nudge: HumanNudge) -> NudgeResponse:
     )
 
 
+async def _ensure_assignee_is_member(
+    db: DB,
+    workspace_id: uuid.UUID,
+    user_id: int,
+) -> None:
+    """Reject assignments to users outside the workspace (fail closed)."""
+    result = await db.execute(
+        select(WorkspaceMembership).where(
+            WorkspaceMembership.workspace_id == workspace_id,
+            WorkspaceMembership.user_id == user_id,
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Assigned user is not a workspace member.",
+        )
+
+
 async def _get_nudge_or_404(
     db: DB,
     nudge_id: uuid.UUID,
@@ -87,6 +108,7 @@ async def list_nudges(
     status_filter: str | None = Query(None, alias="status"),
     nudge_type: str | None = Query(None),
     priority: str | None = Query(None),
+    contact_id: int | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ) -> NudgeListResponse:
@@ -111,6 +133,9 @@ async def list_nudges(
 
     if priority:
         query = query.where(HumanNudge.priority == priority)
+
+    if contact_id is not None:
+        query = query.where(HumanNudge.contact_id == contact_id)
 
     result = await paginate(db, query, page=page, page_size=page_size, unique=True)
 
@@ -145,6 +170,71 @@ async def get_nudge_stats(
         snoozed=counts.get("snoozed", 0),
         total=sum(counts.values()),
     )
+
+
+@router.post("", response_model=NudgeResponse, status_code=status.HTTP_201_CREATED)
+async def create_nudge(
+    body: NudgeCreateRequest,
+    workspace: WorkspaceAccess,
+    db: DB,
+) -> NudgeResponse:
+    """Create a manual follow-up task for a contact."""
+    contact_result = await db.execute(
+        apply_workspace_scope(select(Contact), Contact, workspace.id).where(
+            Contact.id == body.contact_id
+        )
+    )
+    contact = contact_result.scalar_one_or_none()
+    if not contact:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contact not found",
+        )
+
+    if body.assigned_to_user_id is not None:
+        await _ensure_assignee_is_member(db, workspace.id, body.assigned_to_user_id)
+
+    nudge = HumanNudge(
+        workspace_id=workspace.id,
+        contact_id=contact.id,
+        nudge_type=body.nudge_type,
+        title=body.title,
+        message=body.message,
+        priority=body.priority,
+        due_date=body.due_date,
+        assigned_to_user_id=body.assigned_to_user_id,
+        # Keep the relationship loaded so the response builder never lazy-loads.
+        contact=contact,
+    )
+    db.add(nudge)
+    await db.commit()
+    await db.refresh(nudge)
+
+    return _nudge_to_response(nudge)
+
+
+@router.put("/{nudge_id}", response_model=NudgeResponse)
+async def update_nudge(
+    nudge_id: uuid.UUID,
+    body: NudgeUpdateRequest,
+    workspace: WorkspaceAccess,
+    db: DB,
+) -> NudgeResponse:
+    """Partially update a nudge (inline edit of due date/assignee/title)."""
+    nudge = await _get_nudge_or_404(db, nudge_id, workspace.id)
+
+    data = body.model_dump(exclude_unset=True)
+    if "assigned_to_user_id" in data and data["assigned_to_user_id"] is not None:
+        await _ensure_assignee_is_member(db, workspace.id, data["assigned_to_user_id"])
+
+    for field, value in data.items():
+        setattr(nudge, field, value)
+
+    if data:
+        await db.commit()
+        await db.refresh(nudge)
+
+    return _nudge_to_response(nudge)
 
 
 @router.put("/{nudge_id}/act", response_model=NudgeResponse)

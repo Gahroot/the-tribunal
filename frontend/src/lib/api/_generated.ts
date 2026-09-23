@@ -4372,7 +4372,11 @@ export interface paths {
          */
         get: operations["list_nudges_api_v1_workspaces__workspace_id__nudges_get"];
         put?: never;
-        post?: never;
+        /**
+         * Create Nudge
+         * @description Create a manual follow-up task for a contact.
+         */
+        post: operations["create_nudge_api_v1_workspaces__workspace_id__nudges_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4392,6 +4396,26 @@ export interface paths {
          */
         get: operations["get_nudge_stats_api_v1_workspaces__workspace_id__nudges_stats_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/nudges/{nudge_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Nudge
+         * @description Partially update a nudge (inline edit of due date/assignee/title).
+         */
+        put: operations["update_nudge_api_v1_workspaces__workspace_id__nudges__nudge_id__put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -13089,6 +13113,39 @@ export interface components {
             action_taken?: string | null;
         };
         /**
+         * NudgeCreateRequest
+         * @description Request to create a manual follow-up task for a contact.
+         */
+        NudgeCreateRequest: {
+            /** Assigned To User Id */
+            assigned_to_user_id?: number | null;
+            /** Contact Id */
+            contact_id: number;
+            /**
+             * Due Date
+             * Format: date-time
+             */
+            due_date: string;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /**
+             * Nudge Type
+             * @default follow_up
+             */
+            nudge_type: string;
+            /**
+             * Priority
+             * @default medium
+             * @enum {string}
+             */
+            priority: "low" | "medium" | "high";
+            /** Title */
+            title: string;
+        };
+        /**
          * NudgeListResponse
          * @description Paginated nudge list.
          */
@@ -13265,6 +13322,25 @@ export interface components {
              * @default 0
              */
             total: number;
+        };
+        /**
+         * NudgeUpdateRequest
+         * @description Partial update for a nudge (inline edit of title/due date/assignee).
+         *
+         *     Omit a key to leave the field unchanged. Sending ``assigned_to_user_id``
+         *     explicitly as ``null`` unassigns the task.
+         */
+        NudgeUpdateRequest: {
+            /** Assigned To User Id */
+            assigned_to_user_id?: number | null;
+            /** Due Date */
+            due_date?: string | null;
+            /** Message */
+            message?: string | null;
+            /** Priority */
+            priority?: ("low" | "medium" | "high") | null;
+            /** Title */
+            title?: string | null;
         };
         /**
          * OfferCreate
@@ -26986,6 +27062,7 @@ export interface operations {
                 status?: string | null;
                 nudge_type?: string | null;
                 priority?: string | null;
+                contact_id?: number | null;
                 page?: number;
                 page_size?: number;
             };
@@ -27017,6 +27094,41 @@ export interface operations {
             };
         };
     };
+    create_nudge_api_v1_workspaces__workspace_id__nudges_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NudgeCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NudgeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_nudge_stats_api_v1_workspaces__workspace_id__nudges_stats_get: {
         parameters: {
             query?: never;
@@ -27035,6 +27147,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NudgeStatsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_nudge_api_v1_workspaces__workspace_id__nudges__nudge_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                nudge_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NudgeUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NudgeResponse"];
                 };
             };
             /** @description Validation Error */
