@@ -67,9 +67,10 @@ export interface AppNavSection {
 }
 
 /**
- * First-run setup entry (finding RF-002). Rendered at the top of the sidebar
- * only while the workspace is unconfigured, so users who skip the auto-redirect
- * to /onboarding can always find their way back to finish setup.
+ * First-run setup entry (finding RF-002). Reused as the sidebar entry point to
+ * the persistent "Finish setup" checklist at /onboarding: rendered only while
+ * any checklist step is incomplete, so users can always find their way back to
+ * finish setup (there is no auto-redirect anymore).
  */
 export const setupNavItem: AppNavItem = {
   title: "Finish setup",

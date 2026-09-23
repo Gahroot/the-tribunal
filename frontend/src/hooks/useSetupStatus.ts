@@ -1,50 +1,32 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-
-import { agentsApi } from "@/lib/api/agents";
-import { queryKeys } from "@/lib/query-keys";
-import { STATIC } from "@/lib/query-options";
-import { useWorkspace } from "@/providers/workspace-provider";
+import { useSetupChecklist } from "@/hooks/useSetupChecklist";
 
 export interface SetupStatus {
-  /** Workspace/agent probe still resolving — callers should wait before acting. */
   isLoading: boolean;
-  /** The current workspace has no AI agent yet, i.e. onboarding never finished. */
   needsSetup: boolean;
   workspaceId: string | null;
 }
 
 /**
- * Cheap "is this workspace configured?" probe for finding RF-002.
+ * Lightweight view over {@link useSetupChecklist} for the app shell.
  *
- * The realtor onboarding wizard's final step creates the workspace's first AI
- * agent, so "zero agents" is a reliable, already-available signal that a
- * brand-new / unconfigured workspace has never completed setup. We fetch a
- * single-row page so the probe stays light.
+ * `needsSetup` is true while ANY step of the persistent setup checklist is
+ * incomplete (first agent, phone number, contacts, calendar, campaign), so the
+ * sidebar's "Finish setup" entry (`setupNavItem` → `/onboarding`) stays visible
+ * for as long as setup has work left — not just until the first agent exists.
  *
- * Errors are treated conservatively as "configured" so a transient API hiccup
- * never force-redirects an established workspace into the wizard.
+ * Conservative on errors: if any probe fails we treat the workspace as
+ * configured (`needsSetup: false`) rather than nagging on unknown state.
  */
 export function useSetupStatus(): SetupStatus {
-  const { currentWorkspaceId, isPending: workspacePending } = useWorkspace();
+  const { workspaceId, isLoading, isError, allComplete } = useSetupChecklist();
 
-  const { data, isPending, isError } = useQuery({
-    queryKey: queryKeys.agents.list(currentWorkspaceId ?? "", { page_size: 1 }),
-    queryFn: () => agentsApi.list(currentWorkspaceId!, { page: 1, page_size: 1 }),
-    enabled: !!currentWorkspaceId,
-    ...STATIC,
-  });
+  const needsSetup = !!workspaceId && !isLoading && !isError && !allComplete;
 
-  const agentsLoading = !!currentWorkspaceId && isPending;
-  const isLoading = workspacePending || agentsLoading;
-
-  const needsSetup =
-    !!currentWorkspaceId &&
-    !isLoading &&
-    !isError &&
-    data !== undefined &&
-    (data.total ?? 0) === 0;
-
-  return { isLoading, needsSetup, workspaceId: currentWorkspaceId };
+  return {
+    isLoading,
+    needsSetup,
+    workspaceId,
+  };
 }

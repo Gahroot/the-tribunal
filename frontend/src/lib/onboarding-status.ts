@@ -1,18 +1,18 @@
 /**
  * Client-side persistence for the first-run onboarding gate (finding RF-002).
  *
- * Two independent, per-workspace flags live in localStorage:
+ * One per-workspace flag lives in localStorage:
  *
- * - "auto-redirected": set once we have force-redirected a brand-new workspace
- *   to /onboarding (or the user has landed there themselves / explicitly
- *   skipped). Gating the automatic redirect on this flag means a user who skips
- *   setup is never trapped in a redirect loop — they only get sent there once.
- * - "card dismissed": set when the user dismisses the in-app setup card. The
- *   persistent "Finish setup" sidebar entry stays regardless, so onboarding
+ * - "card dismissed": set when the user dismisses the in-app setup card (the
+ *   persistent "Finish setup" checklist). The sidebar's `setupNavItem` entry
+ *   stays regardless — it opens the checklist at /onboarding — so onboarding
  *   remains discoverable after dismissal.
+ *
+ * The old "auto-redirected" flag was removed together with the force-redirect
+ * into the wizard: first-run onboarding is now the persistent checklist card,
+ * so there is no redirect left to suppress.
  */
 
-const AUTO_REDIRECT_PREFIX = "onboarding_autoredirected:";
 const CARD_DISMISSED_PREFIX = "onboarding_card_dismissed:";
 
 function readFlag(key: string): boolean {
@@ -29,17 +29,9 @@ function writeFlag(key: string): void {
   try {
     localStorage.setItem(key, "1");
   } catch {
-    // Private mode / storage disabled: degrade to redirecting every landing,
-    // which is still better than never guiding a fresh workspace to setup.
+    // Private mode / storage disabled: degrade to showing the card, which is
+    // still better than losing onboarding entirely.
   }
-}
-
-export function hasAutoRedirectedToOnboarding(workspaceId: string): boolean {
-  return readFlag(AUTO_REDIRECT_PREFIX + workspaceId);
-}
-
-export function markAutoRedirectedToOnboarding(workspaceId: string): void {
-  writeFlag(AUTO_REDIRECT_PREFIX + workspaceId);
 }
 
 export function isSetupCardDismissed(workspaceId: string): boolean {
