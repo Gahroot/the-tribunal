@@ -175,6 +175,10 @@ class Settings(BaseSettings):
     # Proactive operator reporting (morning plan / EOD recap / escalations over iMessage).
     operator_report_worker_enabled: bool = True
     operator_report_poll_interval: int = 300
+    # Instant speed-to-lead first touch (voice + "calling you now" SMS fired
+    # the moment a lead-creation hook commits a new lead).
+    speed_to_lead_worker_enabled: bool = True
+    speed_to_lead_poll_interval: int = 2
     # Max first-party pages crawled per company domain during people extraction.
     web_people_max_pages_per_domain: int = 8
     # Max people emitted per company domain in one discovery run.

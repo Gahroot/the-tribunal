@@ -36,6 +36,7 @@ from app.schemas.offer import (
     ValueStackItem,
 )
 from app.services.ai.offer_generator import generate_offer_content
+from app.services.sla.speed_to_lead import enqueue_speed_to_lead_job
 
 router = APIRouter()
 public_router = APIRouter()
@@ -473,6 +474,7 @@ async def submit_offer_optin(
 
     # Try to find or create contact
     contact: Contact | None = None
+    created_contact = False
     if optin.email:
         contact_result = await db.execute(
             apply_workspace_scope(select(Contact), Contact, offer.workspace_id).where(
@@ -507,6 +509,7 @@ async def submit_offer_optin(
         )
         db.add(contact)
         await db.flush()
+        created_contact = True
 
     # Create lead magnet lead record for each attached lead magnet
     lead_magnet_lead_id: uuid.UUID | None = None
@@ -544,6 +547,15 @@ async def submit_offer_optin(
     offer.opt_ins += 1
 
     await db.commit()
+
+    # Brand-new lead: queue the instant speed-to-lead first touch. Best-effort
+    # — the enqueue helper never raises into the response path.
+    if created_contact and contact is not None:
+        await enqueue_speed_to_lead_job(
+            workspace_id=offer.workspace_id,
+            contact_id=contact.id,
+            source="offer_optin",
+        )
 
     return OptInResponse(
         success=True,

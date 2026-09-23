@@ -21,6 +21,7 @@ from app.schemas.demo import (
     LeadSubmitRequest,
     LeadSubmitResponse,
 )
+from app.services.sla.speed_to_lead import enqueue_speed_to_lead_job
 from app.services.telephony.telnyx import TelnyxSMSService
 from app.services.telephony.telnyx_voice import TelnyxVoiceService
 from app.utils.pii import mask_phone
@@ -393,6 +394,15 @@ async def submit_lead(
 
     demo_record.status = "initiated"
     await db.commit()
+
+    # Brand-new lead and no demo trigger ran: queue the instant speed-to-lead
+    # first touch (parallel voice attempt + "calling you now" SMS). Best-effort.
+    if existing_contact is None and not demo_initiated:
+        await enqueue_speed_to_lead_job(
+            workspace_id=workspace_id,
+            contact_id=contact.id,
+            source="landing_page",
+        )
 
     message = "Thanks for your interest! We'll be in touch soon."
     if demo_initiated and lead_request.trigger_call:

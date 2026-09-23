@@ -10,6 +10,7 @@ from app.core_api import derive_outbound_key, hash_phone, settings
 from app.models.agent import Agent
 from app.models.contact import Contact
 from app.models.demo_request import DemoRequest
+from app.services.sla.speed_to_lead import enqueue_speed_to_lead_job
 
 from .access import EmbedAccessService
 from .openai import EmbedOpenAIService
@@ -216,7 +217,7 @@ class PublicEmbedService:
             )
 
         await self.access.enforce_phone_limit(client_ip=client_ip, phone_number=body.phone_number)
-        await self._upsert_contact_from_phone_request(agent, body)
+        created_contact_id = await self._upsert_contact_from_phone_request(agent, body)
         demo_record = await self._record_demo_request(
             phone_number=body.phone_number,
             request_type="embed_call",
@@ -243,6 +244,16 @@ class PublicEmbedService:
 
             demo_record.status = "initiated"
             await self.db.commit()
+            # embed_call above already placed the voice attempt for this lead;
+            # enqueue only the parallel "we're calling you now" SMS, and only
+            # when this request actually created a brand-new contact.
+            if created_contact_id is not None:
+                await enqueue_speed_to_lead_job(
+                    workspace_id=agent.workspace_id,
+                    contact_id=created_contact_id,
+                    source="widget",
+                    channels=("sms",),
+                )
             return EmbedActionResponse(
                 success=True,
                 message="Call initiated! You should receive a call within 10 seconds.",
@@ -336,10 +347,14 @@ class PublicEmbedService:
         self,
         agent: Agent,
         body: EmbedPhoneRequest,
-    ) -> None:
-        """Create or update a contact from optional public embed form fields."""
+    ) -> int | None:
+        """Create or update a contact from optional public embed form fields.
+
+        Returns the new contact's id when this request created a lead contact,
+        else None (no identifying fields supplied, or it already existed).
+        """
         if not body.caller_name and not body.notes:
-            return
+            return None
 
         contact_result = await self.db.execute(
             select(Contact).where(
@@ -348,6 +363,7 @@ class PublicEmbedService:
             )
         )
         contact = contact_result.scalar_one_or_none()
+        created_contact = False
 
         if contact is not None:
             if body.caller_name:
@@ -373,8 +389,10 @@ class PublicEmbedService:
                 source="embed_demo",
             )
             self.db.add(contact)
+            created_contact = True
 
         await self.db.flush()
+        return contact.id if created_contact else None
 
 
 def _agent_has_enabled_tool(agent: Agent, tool_name: str) -> bool:

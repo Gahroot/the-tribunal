@@ -38,6 +38,7 @@ from app.services.push_notifications import push_notification_service
 from app.services.sla.speed_to_lead import (
     MIN_LEADS_FOR_PUBLIC_BADGE,
     compute_sla_metrics,
+    enqueue_speed_to_lead_job,
     get_speed_to_lead_settings,
 )
 from app.services.telephony.telnyx import TelnyxSMSService
@@ -197,6 +198,26 @@ _ACTION_HANDLERS = {
     "auto_call": _action_auto_call,
     "enroll_campaign": _action_enroll_campaign,
 }
+
+
+async def _enqueue_speed_to_lead(lead_source: LeadSource, contact: Contact) -> None:
+    """Queue the instant first touch for a brand-new lead (never raises).
+
+    Skips channels the source's own post-capture action already covers, so a
+    configured auto_text/auto_call can never fire a duplicate first touch.
+    """
+    channels: tuple[str, ...] = ("voice", "sms")
+    if lead_source.action == "auto_call":
+        return
+    if lead_source.action == "auto_text":
+        channels = ("voice",)
+
+    await enqueue_speed_to_lead_job(
+        workspace_id=lead_source.workspace_id,
+        contact_id=contact.id,
+        source="lead_form",
+        channels=channels,
+    )
 
 
 async def _execute_action(
@@ -495,6 +516,11 @@ async def submit_lead(
 
     demo_record.status = "initiated"
     await db.commit()
+
+    # Brand-new lead committed: queue the instant speed-to-lead first touch
+    # (parallel voice attempt + "calling you now" SMS). Best-effort.
+    if is_new_lead:
+        await _enqueue_speed_to_lead(lead_source, contact)
 
     # Build response with CORS header
     origin = request.headers.get("origin", "")

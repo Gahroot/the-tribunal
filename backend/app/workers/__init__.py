@@ -51,6 +51,7 @@ from app.workers.prospect_promotion_worker import (
     _registry as prospect_promotion_registry,
 )
 from app.workers.reminder_worker import _registry as reminder_registry
+from app.workers.speed_to_lead_worker import _registry as speed_to_lead_registry
 from app.workers.transcript_analysis_worker import _registry as transcript_analysis_registry
 from app.workers.voice_campaign_worker import _registry as voice_campaign_registry
 from app.workers.web_people_discovery_worker import (
@@ -317,6 +318,15 @@ WORKER_SPECS: tuple[WorkerSpec, ...] = (
         dependencies=("postgres", "text_message_provider"),
         enabled=lambda s: s.operator_report_worker_enabled,
         enabled_setting="operator_report_worker_enabled",
+    ),
+    # Instant speed-to-lead first touch (parallel voice attempt + "calling you
+    # now" SMS) queued by the lead-creation hooks; cheap when the queue is dry.
+    WorkerSpec(
+        name="speed_to_lead_worker",
+        registry=speed_to_lead_registry,
+        dependencies=("postgres", "redis", "telnyx_voice", "text_message_provider"),
+        enabled=lambda s: s.speed_to_lead_worker_enabled,
+        enabled_setting="speed_to_lead_worker_enabled",
     ),
 )
 

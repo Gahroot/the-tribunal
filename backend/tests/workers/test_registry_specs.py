@@ -45,6 +45,7 @@ def test_worker_specs_preserve_existing_startup_order() -> None:
         "web_people_discovery_worker",
         "outbound_auto_draft_worker",
         "operator_report_worker",
+        "speed_to_lead_worker",
     ]
     assert [spec.registry for spec in WORKER_SPECS] == ALL_REGISTRIES
 
