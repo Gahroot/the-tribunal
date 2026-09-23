@@ -21,6 +21,9 @@ describe("ContactsEmptyState", () => {
     expect(screen.getByRole("button", { name: /add contact/i })).toBeInTheDocument();
     const importButton = screen.getByRole("button", { name: /import csv/i });
     expect(importButton).toBeInTheDocument();
+    expect(
+      screen.getByText("Import your list or add a contact to get started."),
+    ).toBeInTheDocument();
 
     await user.click(importButton);
 
@@ -33,5 +36,9 @@ describe("ContactsEmptyState", () => {
 
     expect(screen.queryByRole("button", { name: /import csv/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /add contact/i })).not.toBeInTheDocument();
+    expect(screen.getByText("No contacts found")).toBeInTheDocument();
+    expect(
+      screen.getByText("Try adjusting your search or filters."),
+    ).toBeInTheDocument();
   });
 });

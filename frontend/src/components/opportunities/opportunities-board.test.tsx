@@ -230,3 +230,26 @@ describe("OpportunitiesBoard search", () => {
     );
   });
 });
+
+describe("OpportunitiesBoard empty state", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    listPipelinesMock.mockResolvedValue([]);
+    listMock.mockResolvedValue(listResponse([]));
+    updateMock.mockResolvedValue(undefined);
+  });
+
+  it("explains what a pipeline is and offers a Create pipeline action", async () => {
+    renderBoard();
+
+    expect(await screen.findByText("No pipeline yet")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Pipelines track opportunities from first contact to closed deal.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Create pipeline" }),
+    ).toBeInTheDocument();
+  });
+});
