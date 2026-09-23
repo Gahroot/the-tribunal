@@ -223,7 +223,7 @@ async def handle_call_answered(payload: dict[Any, Any], log: Any) -> None:  # no
     # for a warm handoff (not a normal AI call). Speak the briefing here; the
     # bridge into the caller leg happens on call.speak.ended. Short-circuit so
     # we don't start AI audio streaming on the closer leg.
-    if await _handle_transfer_leg_answered(call_control_id, log):
+    if await _handle_transfer_leg_answered(payload, log):
         return
 
     async with AsyncSessionLocal() as db:
@@ -376,6 +376,14 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:  # noqa
         hangup_source=hangup_source,
     )
     log.info("call_hangup")
+    from app.services.telephony.call_transfer import (
+        pop_pending_transfer,
+        transfer_key_from_client_state,
+    )
+
+    transfer_key = transfer_key_from_client_state(payload.get("client_state"))
+    if transfer_key:
+        await pop_pending_transfer(transfer_key)
 
     async with AsyncSessionLocal() as db:
         from app.models.conversation import Message, MessageStatus
@@ -560,18 +568,28 @@ async def handle_call_hangup(payload: dict[Any, Any], log: Any) -> None:  # noqa
                     log.exception("missed_call_textback_failed", error=str(e))
 
 
-async def _handle_transfer_leg_answered(call_control_id: str, log: Any) -> bool:
-    """Speak the warm-transfer briefing when the human closer's leg answers.
+async def _handle_transfer_leg_answered(payload: dict[Any, Any], log: Any) -> bool:
+    """Speak the warm-transfer briefing when the configured closer's leg answers.
 
     Returns True when this leg is a pending warm-transfer closer leg (handled
     here), so the caller flow knows to short-circuit normal AI streaming.
     """
-    from app.services.telephony.call_transfer import peek_pending_transfer
+    from app.services.telephony.call_transfer import (
+        claim_transfer_briefing,
+        peek_pending_transfer,
+        transfer_key_from_client_state,
+    )
     from app.services.telephony.telnyx_voice import TelnyxVoiceService
 
-    pending = await peek_pending_transfer(call_control_id)
+    call_control_id = payload.get("call_control_id", "")
+    key = transfer_key_from_client_state(payload.get("client_state"))
+    if not key:
+        return False
+    pending = await peek_pending_transfer(key)
     if pending is None:
         return False
+    if not await claim_transfer_briefing(key):
+        return True
 
     log.info("transfer_closer_leg_answered", closer_call_control_id=call_control_id)
     if not settings.telnyx_api_key:
@@ -580,70 +598,106 @@ async def _handle_transfer_leg_answered(call_control_id: str, log: Any) -> bool:
 
     voice_service = TelnyxVoiceService(settings.telnyx_api_key)
     try:
-        # Speak the briefing on the closer leg. The bridge happens once the
-        # spoken briefing completes (call.speak.ended -> handle_speak_ended).
+        # Brief the closer first; keypad confirmation happens after speech ends.
         spoke = await voice_service.speak_text(
             call_control_id=call_control_id,
-            text=pending.briefing,
+            text=pending.briefing + " To accept this caller, press 1 now.",
             language=pending.language,
         )
         if not spoke:
             # Never cold-dump the caller if the human did not hear the briefing.
             from app.services.telephony.call_transfer import pop_pending_transfer
 
-            await pop_pending_transfer(call_control_id)
+            await pop_pending_transfer(key)
             log.warning("transfer_briefing_failed_no_bridge")
             await voice_service.hangup_call(call_control_id)
     except Exception as e:
         from app.services.telephony.call_transfer import pop_pending_transfer
 
-        await pop_pending_transfer(call_control_id)
+        await pop_pending_transfer(key)
         log.exception("transfer_leg_answered_error", error=str(e))
+        await voice_service.hangup_call(call_control_id)
     finally:
         await voice_service.close()
     return True
 
 
 async def handle_speak_ended(payload: dict[Any, Any], log: Any) -> None:
-    """Bridge the caller into the closer leg after the warm-transfer briefing.
+    """After briefing, wait for the human to accept with keypad 1."""
+    from dataclasses import replace
 
-    Fires on ``call.speak.ended``. For warm transfers, the closer leg has just
-    finished hearing the briefing, so we bridge it to the original caller leg
-    to complete the handoff. Non-transfer speak events are ignored.
-    """
-    from app.services.telephony.call_transfer import pop_pending_transfer
+    from app.services.telephony.call_transfer import (
+        peek_pending_transfer,
+        store_pending_transfer,
+        transfer_key_from_client_state,
+    )
+
+    key = transfer_key_from_client_state(payload.get("client_state"))
+    if not key:
+        return
+    pending = await peek_pending_transfer(key)
+    if pending and not pending.briefing_completed:
+        stored = await store_pending_transfer(replace(pending, briefing_completed=True))
+        if not stored:
+            from app.services.telephony.call_transfer import pop_pending_transfer
+            from app.services.telephony.telnyx_voice import TelnyxVoiceService
+
+            await pop_pending_transfer(key)
+            log.error("transfer_confirmation_state_failed")
+            if settings.telnyx_api_key:
+                voice = TelnyxVoiceService(settings.telnyx_api_key)
+                try:
+                    await voice.hangup_call(payload.get("call_control_id", ""))
+                finally:
+                    await voice.close()
+
+
+async def handle_transfer_dtmf(payload: dict[Any, Any], log: Any) -> None:
+    """Only a confirmed human closer can be bridged to the caller."""
+    from app.services.telephony.call_transfer import (
+        peek_pending_transfer,
+        pop_pending_transfer,
+        transfer_key_from_client_state,
+    )
     from app.services.telephony.telnyx_voice import TelnyxVoiceService
 
-    call_control_id = payload.get("call_control_id", "")
-    log = log.bind(call_control_id=call_control_id)
-
-    pending = await pop_pending_transfer(call_control_id)
-    if pending is None:
-        # Not a warm-transfer closer leg (e.g. an ordinary speak). Nothing to do.
+    key = transfer_key_from_client_state(payload.get("client_state"))
+    closer_id = payload.get("call_control_id")
+    if not key or not isinstance(closer_id, str) or not closer_id or payload.get("digit") != "1":
         return
-
-    log.info(
-        "transfer_briefing_ended_bridging",
-        caller_call_control_id=pending.caller_call_control_id,
-    )
-    if not settings.telnyx_api_key:
-        log.error("no_telnyx_api_key_for_transfer_bridge")
+    pending = await peek_pending_transfer(key)
+    if not pending or not pending.briefing_completed or not settings.telnyx_api_key:
         return
-
+    # Pop atomically so duplicate DTMF webhooks cannot bridge twice.
+    pending = await pop_pending_transfer(key)
+    if not pending or not pending.briefing_completed:
+        return
     voice_service = TelnyxVoiceService(settings.telnyx_api_key)
     try:
-        bridged = await voice_service.bridge_calls(
-            call_control_id=call_control_id,
-            other_call_control_id=pending.caller_call_control_id,
-        )
-        if bridged:
-            # Detach the AI audio stream; the caller now speaks only to the closer.
-            await voice_service.stop_streaming(pending.caller_call_control_id)
-            log.info("warm_transfer_bridged")
-        else:
+        if not await voice_service.stop_streaming(pending.caller_call_control_id):
+            log.error("transfer_ai_stream_stop_failed_no_bridge")
+            await voice_service.hangup_call(closer_id)
+            return
+        try:
+            bridged = await voice_service.bridge_calls(
+                call_control_id=closer_id,
+                other_call_control_id=pending.caller_call_control_id,
+            )
+        except Exception:
+            log.exception("warm_transfer_bridge_failed")
+            bridged = False
+        if not bridged:
             log.error("warm_transfer_bridge_failed")
-    except Exception as e:
-        log.exception("transfer_bridge_error", error=str(e))
+            await voice_service.hangup_call(closer_id)
+            restored = await voice_service.start_audio_streaming(
+                call_control_id=pending.caller_call_control_id,
+                api_base_url=settings.api_base_url or "https://example.com",
+                is_outbound=pending.is_outbound,
+            )
+            if not restored:
+                log.error("warm_transfer_caller_stream_restore_failed")
+            return
+        log.info("warm_transfer_bridged")
     finally:
         await voice_service.close()
 

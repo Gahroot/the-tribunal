@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -19,7 +20,9 @@ from app.services.ai.voice_tools import get_tools_from_agent_config, is_transfer
 from app.services.telephony.call_transfer import (
     PendingTransfer,
     build_briefing,
+    make_transfer_leg_client_state,
     resolve_transfer_config,
+    transfer_key_from_client_state,
 )
 
 _real_build_briefing = VoiceToolExecutor._build_transfer_briefing
@@ -243,6 +246,7 @@ async def test_cold_config_still_dials_warm_leg_after_consent() -> None:
             agent=agent,
             contact_info={"name": "Jane Doe"},
             call_control_id="caller-ccid-1",
+            caller_consent_check=lambda quote: quote.startswith("Yes"),
         ).execute(
             "transfer_call",
             {
@@ -260,7 +264,7 @@ async def test_cold_config_still_dials_warm_leg_after_consent() -> None:
     assert kwargs["to_number"] == "+15551234567"
     assert kwargs["from_number"] == "+15550001111"
     audit.assert_awaited()
-    assert audit.await_args.kwargs["decision"] == "executed"
+    assert audit.await_args.kwargs["decision"] == "dialed"
     voice_service.close.assert_awaited_once()
 
 
@@ -314,7 +318,15 @@ async def test_warm_transfer_dials_closer_and_stores_pending_state() -> None:
     voice_service.get_call_control_application_id = AsyncMock(return_value="conn-1")
     voice_service.close = AsyncMock()
 
-    store_pending = AsyncMock()
+    store_pending = AsyncMock(return_value=True)
+
+    async def dial_after_pending(**kwargs: Any) -> str:
+        assert store_pending.await_count == 1
+        token = store_pending.await_args.args[0].closer_call_control_id
+        assert kwargs["client_state"] == make_transfer_leg_client_state(token)
+        return "closer-ccid-9"
+
+    voice_service.dial_transfer_leg.side_effect = dial_after_pending
 
     with (
         patch.object(
@@ -336,6 +348,7 @@ async def test_warm_transfer_dials_closer_and_stores_pending_state() -> None:
             agent=agent,
             contact_info={"name": "Jane Doe"},
             call_control_id="caller-ccid-1",
+            caller_consent_check=lambda quote: quote.startswith("Yes"),
         ).execute(
             "transfer_call",
             {
@@ -349,6 +362,8 @@ async def test_warm_transfer_dials_closer_and_stores_pending_state() -> None:
 
     assert result["success"] is True
     assert result["mode"] == "warm"
+    assert result["transferred"] is False
+    assert result["handoff_pending"] is True
     voice_service.dial_transfer_leg.assert_awaited_once()
     dial_kwargs = voice_service.dial_transfer_leg.await_args.kwargs
     assert dial_kwargs["to_number"] == "+15551234567"
@@ -358,7 +373,15 @@ async def test_warm_transfer_dials_closer_and_stores_pending_state() -> None:
     store_pending.assert_awaited_once()
     pending = store_pending.await_args.args[0]
     assert pending.caller_call_control_id == "caller-ccid-1"
-    assert pending.closer_call_control_id == "closer-ccid-9"
+    assert uuid.UUID(pending.closer_call_control_id)
+    assert store_pending.await_args.args[0].closer_call_control_id == pending.closer_call_control_id
+    assert dial_kwargs["client_state"] == make_transfer_leg_client_state(
+        pending.closer_call_control_id
+    )
+    assert (
+        transfer_key_from_client_state(dial_kwargs["client_state"])
+        == pending.closer_call_control_id
+    )
     assert pending.briefing == "Lead brief"
 
 
@@ -383,7 +406,11 @@ async def test_warm_transfer_fails_gracefully_when_dial_fails() -> None:
             "app.services.telephony.telnyx_voice.TelnyxVoiceService",
             return_value=voice_service,
         ),
-        patch("app.services.telephony.call_transfer.store_pending_transfer", AsyncMock()),
+        patch(
+            "app.services.telephony.call_transfer.store_pending_transfer",
+            AsyncMock(return_value=True),
+        ),
+        patch("app.services.telephony.call_transfer.pop_pending_transfer", AsyncMock()),
         patch("app.services.telephony.call_transfer.log_transfer_audit", AsyncMock()),
         patch("app.core.config.settings.telnyx_api_key", "key-123"),
         patch("app.core.config.settings.telnyx_connection_id", "conn-1"),
@@ -392,6 +419,7 @@ async def test_warm_transfer_fails_gracefully_when_dial_fails() -> None:
         result = await VoiceToolExecutor(
             agent=agent,
             call_control_id="caller-ccid-1",
+            caller_consent_check=lambda quote: quote == "Yes, connect me",
         ).execute(
             "transfer_call",
             {"reason": "hot lead", "caller_consented": True, "consent_quote": "Yes, connect me"},
@@ -417,7 +445,11 @@ async def test_consent_requires_a_quote() -> None:
         patch("app.services.telephony.call_transfer.log_transfer_audit", AsyncMock()),
         patch("app.core.config.settings.telnyx_api_key", "key-123"),
     ):
-        result = await VoiceToolExecutor(agent=agent, call_control_id="caller-ccid-1").execute(
+        result = await VoiceToolExecutor(
+            agent=agent,
+            call_control_id="caller-ccid-1",
+            caller_consent_check=lambda quote: quote.startswith("Yes"),
+        ).execute(
             "transfer_call",
             {"reason": "high intent", "caller_consented": True, "consent_quote": "  "},
         )
@@ -454,6 +486,7 @@ async def test_briefing_contains_workspace_contact_bant_objections_and_calendar(
             resolve_transfer_config(agent, {}),
             "ready to buy",
             "Asked about homes",
+            {"budget": "My budget is $10k", "objections": "Concerned about fees"},
         )
     for fact in (
         "inbound_call",
@@ -465,6 +498,8 @@ async def test_briefing_contains_workspace_contact_bant_objections_and_calendar(
         "House search",
         "scheduled",
         "ready to buy",
+        "My budget is $10k",
+        "Concerned about fees",
     ):
         assert fact in briefing
 
@@ -490,7 +525,11 @@ async def test_failed_pending_state_never_hands_caller_to_human() -> None:
         ),
         patch("app.core.config.settings.telnyx_api_key", "key-123"),
     ):
-        result = await VoiceToolExecutor(agent=agent, call_control_id="caller-ccid-1").execute(
+        result = await VoiceToolExecutor(
+            agent=agent,
+            call_control_id="caller-ccid-1",
+            caller_consent_check=lambda quote: quote.startswith("Yes"),
+        ).execute(
             "transfer_call",
             {
                 "reason": "hot lead",
@@ -499,7 +538,7 @@ async def test_failed_pending_state_never_hands_caller_to_human() -> None:
             },
         )
     assert result["success"] is False
-    voice_service.hangup_call.assert_awaited_once_with("closer-leg")
+    voice_service.dial_transfer_leg.assert_not_awaited()
     voice_service.bridge_calls.assert_not_awaited()
 
 
@@ -542,6 +581,131 @@ async def test_sms_briefing_is_direct_and_does_not_write_customer_conversation()
         == "Live lead briefing: Lead brief"
     )
     provider.close.assert_awaited_once()
+
+
+def test_transfer_consent_quote_must_match_latest_caller_utterance() -> None:
+    from app.services.ai.voice_agent_base import VoiceAgentBase
+
+    session = SimpleNamespace(
+        _transcript_entries=[
+            {"role": "user", "text": "Yes, that sounds good"},
+            {"role": "assistant", "text": "Would you like the closer?"},
+            {"role": "user", "text": "No, not now"},
+        ]
+    )
+    assert not VoiceAgentBase.has_caller_consent(session, "Yes, that sounds good")
+    assert not VoiceAgentBase.has_caller_consent(session, "No, not now")
+    session._transcript_entries.append({"role": "user", "text": "Yes, connect me please"})
+    assert VoiceAgentBase.has_caller_consent(session, "Yes, connect me please!")
+    assert not VoiceAgentBase.has_caller_consent(session, "yes, connect another person")
+    assert not VoiceAgentBase.has_caller_consent(session, "connect me yesterday")
+
+
+@pytest.mark.asyncio
+async def test_live_speech_triggers_once_on_high_intent_or_complete_bant() -> None:
+    from app.services.ai.voice_agent_base import VoiceAgentBase
+
+    callback = AsyncMock()
+    session = SimpleNamespace(
+        _hot_lead_callback=callback,
+        _hot_lead_notified=False,
+        _hot_lead_signals={},
+        _sentiment_tasks=set(),
+        logger=MagicMock(),
+    )
+    session._run_hot_lead_callback = lambda text: VoiceAgentBase._run_hot_lead_callback(
+        session, text
+    )
+    for turn in (
+        "My budget is $5000",
+        "I am the buyer",
+        "I need a home",
+        "This month",
+        "I'm ready to buy",
+    ):
+        VoiceAgentBase._check_live_hot_lead(session, turn)
+    await asyncio.gather(*session._sentiment_tasks)
+    callback.assert_awaited_once_with(
+        "This month",
+        {
+            "budget": "My budget is $5000",
+            "authority": "I am the buyer",
+            "need": "I need a home",
+            "timeline": "This month",
+        },
+    )
+
+    session._hot_lead_notified = False
+    session._hot_lead_signals.clear()
+    callback.return_value = False
+    VoiceAgentBase._check_live_hot_lead(session, "I am ready to buy")
+    await asyncio.gather(*session._sentiment_tasks)
+    assert session._hot_lead_notified is False  # failed SMS can retry next turn
+
+    second = SimpleNamespace(
+        _hot_lead_callback=AsyncMock(),
+        _hot_lead_notified=False,
+        _hot_lead_signals={},
+        _sentiment_tasks=set(),
+        logger=MagicMock(),
+    )
+    second._run_hot_lead_callback = lambda text: VoiceAgentBase._run_hot_lead_callback(second, text)
+    VoiceAgentBase._check_live_hot_lead(second, "I am ready to buy")
+    await asyncio.gather(*second._sentiment_tasks)
+    second._hot_lead_callback.assert_awaited_once()
+
+    third = SimpleNamespace(
+        _hot_lead_callback=AsyncMock(),
+        _hot_lead_notified=False,
+        _hot_lead_signals={},
+        _sentiment_tasks=set(),
+        logger=MagicMock(),
+    )
+    third._run_hot_lead_callback = lambda text: VoiceAgentBase._run_hot_lead_callback(third, text)
+    VoiceAgentBase._check_live_hot_lead(third, "I want to buy")
+    await asyncio.gather(*third._sentiment_tasks)
+    third._hot_lead_callback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_live_voice_session_briefs_without_model_tool_call() -> None:
+    from app.websockets.voice_bridge import _enable_hot_lead_briefing
+
+    session = SimpleNamespace(set_hot_lead_callback=MagicMock())
+    agent = _make_agent()
+    with patch.object(
+        VoiceToolExecutor, "execute", AsyncMock(return_value={"success": True})
+    ) as execute:
+        _enable_hot_lead_briefing(
+            session,
+            agent,
+            {"name": "Jane"},
+            "America/New_York",
+            "caller-ccid-1",
+            agent.workspace_id,
+            MagicMock(),
+        )
+        callback = session.set_hot_lead_callback.call_args.args[0]
+        await callback("I am ready to buy", {"budget": "My budget is $5000"})
+    execute.assert_awaited_once()
+    arguments = execute.await_args.args[1]
+    assert arguments["caller_consented"] is False
+    assert arguments["summary"] == "I am ready to buy"
+    assert arguments["qualification"]["budget"] == "My budget is $5000"
+
+
+@pytest.mark.asyncio
+async def test_updated_briefing_uses_new_sms_idempotency_key() -> None:
+    agent = _make_agent()
+    provider = AsyncMock()
+    provider.send_internal_notification = AsyncMock(return_value=True)
+    ctx = {"workspace_phone": "+15550001111"}
+    with patch("app.services.telephony.telnyx.TelnyxSMSService", return_value=provider):
+        executor = VoiceToolExecutor(agent=agent, call_control_id="caller-ccid-1")
+        await _real_push_briefing(executor, ctx, "+15551234567", "Budget $5k")
+        await _real_push_briefing(executor, ctx, "+15551234567", "Budget $10k")
+    sends = provider.send_internal_notification.await_args_list
+    assert sends[0].kwargs["idempotency_key"] != sends[1].kwargs["idempotency_key"]
 
 
 # --------------------------------------------------------------------------- #

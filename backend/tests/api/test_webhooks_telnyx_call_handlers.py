@@ -22,6 +22,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import call as expected_call
 
 import pytest
 
@@ -900,9 +901,11 @@ async def test_call_answered_transfer_leg_speaks_briefing_and_short_circuits(
     from app.services.telephony import call_transfer as ct_module
     from app.services.telephony import telnyx_voice as voice_module
 
+    token = str(uuid.uuid4())
+    call_answered["client_state"] = ct_module.make_transfer_leg_client_state(token)
     pending = ct_module.PendingTransfer(
         caller_call_control_id="caller-leg",
-        closer_call_control_id="v3:call-control-id-initiated-001",
+        closer_call_control_id=token,
         workspace_id=str(uuid.uuid4()),
         agent_id=str(uuid.uuid4()),
         mode="warm",
@@ -911,6 +914,7 @@ async def test_call_answered_transfer_leg_speaks_briefing_and_short_circuits(
         created_at="2026-06-05T00:00:00+00:00",
     )
     monkeypatch.setattr(ct_module, "peek_pending_transfer", AsyncMock(return_value=pending))
+    monkeypatch.setattr(ct_module, "claim_transfer_briefing", AsyncMock(side_effect=[True, False]))
     monkeypatch.setattr(app_settings, "telnyx_api_key", "test-key")
 
     voice_service = MagicMock()
@@ -926,12 +930,13 @@ async def test_call_answered_transfer_leg_speaks_briefing_and_short_circuits(
     monkeypatch.setattr(handlers, "AsyncSessionLocal", _boom)
 
     await handlers.handle_call_answered(call_answered, _make_log())
+    await handlers.handle_call_answered(call_answered, _make_log())  # retried webhook
 
     voice_service.speak_text.assert_awaited_once()
     speak_kwargs = voice_service.speak_text.await_args.kwargs
     assert speak_kwargs["call_control_id"] == "v3:call-control-id-initiated-001"
     assert "Jane Doe" in speak_kwargs["text"]
-    # Bridge happens later (on speak.ended), not here.
+    assert "press 1" in speak_kwargs["text"]
     voice_service.bridge_calls.assert_not_awaited()
 
 
@@ -943,9 +948,11 @@ async def test_call_answered_transfer_leg_does_not_bridge_if_speak_fails(
     from app.services.telephony import call_transfer as ct_module
     from app.services.telephony import telnyx_voice as voice_module
 
+    token = str(uuid.uuid4())
+    call_answered["client_state"] = ct_module.make_transfer_leg_client_state(token)
     pending = ct_module.PendingTransfer(
         caller_call_control_id="caller-leg",
-        closer_call_control_id="v3:call-control-id-initiated-001",
+        closer_call_control_id=token,
         workspace_id=str(uuid.uuid4()),
         agent_id=None,
         mode="warm",
@@ -954,6 +961,7 @@ async def test_call_answered_transfer_leg_does_not_bridge_if_speak_fails(
         created_at="2026-06-05T00:00:00+00:00",
     )
     monkeypatch.setattr(ct_module, "peek_pending_transfer", AsyncMock(return_value=pending))
+    monkeypatch.setattr(ct_module, "claim_transfer_briefing", AsyncMock(return_value=True))
     pop = AsyncMock(return_value=pending)
     monkeypatch.setattr(ct_module, "pop_pending_transfer", pop)
     monkeypatch.setattr(app_settings, "telnyx_api_key", "test-key")
@@ -972,16 +980,17 @@ async def test_call_answered_transfer_leg_does_not_bridge_if_speak_fails(
     pop.assert_awaited_once()
 
 
-async def test_speak_ended_bridges_warm_transfer(
+async def test_speak_ended_waits_for_human_confirmation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """call.speak.ended on a pending closer leg bridges it into the caller."""
+    """A completed briefing alone is not proof that a human answered."""
     from app.services.telephony import call_transfer as ct_module
     from app.services.telephony import telnyx_voice as voice_module
 
+    token = str(uuid.uuid4())
     pending = ct_module.PendingTransfer(
         caller_call_control_id="caller-leg",
-        closer_call_control_id="closer-leg",
+        closer_call_control_id=token,
         workspace_id=str(uuid.uuid4()),
         agent_id=None,
         mode="warm",
@@ -989,7 +998,9 @@ async def test_speak_ended_bridges_warm_transfer(
         language="en-US",
         created_at="2026-06-05T00:00:00+00:00",
     )
-    monkeypatch.setattr(ct_module, "pop_pending_transfer", AsyncMock(return_value=pending))
+    monkeypatch.setattr(ct_module, "peek_pending_transfer", AsyncMock(return_value=pending))
+    store = AsyncMock(return_value=True)
+    monkeypatch.setattr(ct_module, "store_pending_transfer", store)
     monkeypatch.setattr(app_settings, "telnyx_api_key", "test-key")
 
     voice_service = MagicMock()
@@ -998,14 +1009,147 @@ async def test_speak_ended_bridges_warm_transfer(
     voice_service.close = AsyncMock(return_value=None)
     monkeypatch.setattr(voice_module, "TelnyxVoiceService", lambda *a, **kw: voice_service)
 
-    payload = {"call_control_id": "closer-leg", "status": "completed"}
+    payload = {
+        "call_control_id": "closer-leg",
+        "status": "completed",
+        "client_state": ct_module.make_transfer_leg_client_state(token),
+    }
     await handlers.handle_speak_ended(payload, _make_log())
 
-    voice_service.bridge_calls.assert_awaited_once_with(
+    updated = store.await_args.args[0]
+    assert updated.briefing_completed is True
+    voice_service.bridge_calls.assert_not_awaited()
+    voice_service.stop_streaming.assert_not_awaited()
+
+
+async def test_closer_must_press_one_after_briefing_before_bridge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services.telephony import call_transfer as ct
+    from app.services.telephony import telnyx_voice as voice_module
+
+    token = str(uuid.uuid4())
+    pending = ct.PendingTransfer(
+        caller_call_control_id="caller-leg",
+        closer_call_control_id=token,
+        workspace_id=str(uuid.uuid4()),
+        agent_id=None,
+        mode="warm",
+        briefing="brief",
+        language="en-US",
+        created_at="now",
+        briefing_completed=True,
+    )
+    peek = AsyncMock(return_value=pending)
+    pop = AsyncMock(return_value=pending)
+    monkeypatch.setattr(ct, "peek_pending_transfer", peek)
+    monkeypatch.setattr(ct, "pop_pending_transfer", pop)
+    monkeypatch.setattr(app_settings, "telnyx_api_key", "test-key")
+    voice = MagicMock()
+    voice.stop_streaming = AsyncMock(return_value=True)
+    voice.bridge_calls = AsyncMock(return_value=True)
+    voice.close = AsyncMock()
+    monkeypatch.setattr(voice_module, "TelnyxVoiceService", lambda *a, **kw: voice)
+    payload = {
+        "call_control_id": "closer-leg",
+        "client_state": ct.make_transfer_leg_client_state(token),
+    }
+
+    await handlers.handle_transfer_dtmf({**payload, "digit": "2"}, _make_log())
+    pop.assert_not_awaited()
+    await handlers.handle_transfer_dtmf({**payload, "digit": "1"}, _make_log())
+    pop.assert_awaited_once_with(token)
+    voice.stop_streaming.assert_awaited_once_with("caller-leg")
+    voice.bridge_calls.assert_awaited_once_with(
         call_control_id="closer-leg",
         other_call_control_id="caller-leg",
     )
-    voice_service.stop_streaming.assert_awaited_once_with("caller-leg")
+    stop_index = voice.mock_calls.index(expected_call.stop_streaming("caller-leg"))
+    bridge_index = voice.mock_calls.index(
+        expected_call.bridge_calls(call_control_id="closer-leg", other_call_control_id="caller-leg")
+    )
+    assert stop_index < bridge_index
+
+
+async def test_failed_stream_stop_never_bridges(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services.telephony import call_transfer as ct
+    from app.services.telephony import telnyx_voice as voice_module
+
+    token = str(uuid.uuid4())
+    pending = ct.PendingTransfer(
+        caller_call_control_id="caller-leg",
+        closer_call_control_id=token,
+        workspace_id=str(uuid.uuid4()),
+        agent_id=None,
+        mode="warm",
+        briefing="brief",
+        language="en-US",
+        created_at="now",
+        briefing_completed=True,
+    )
+    monkeypatch.setattr(ct, "peek_pending_transfer", AsyncMock(return_value=pending))
+    monkeypatch.setattr(ct, "pop_pending_transfer", AsyncMock(return_value=pending))
+    monkeypatch.setattr(app_settings, "telnyx_api_key", "test-key")
+    voice = MagicMock()
+    voice.stop_streaming = AsyncMock(return_value=False)
+    voice.hangup_call = AsyncMock(return_value=True)
+    voice.bridge_calls = AsyncMock()
+    voice.close = AsyncMock()
+    monkeypatch.setattr(voice_module, "TelnyxVoiceService", lambda *a, **kw: voice)
+    await handlers.handle_transfer_dtmf(
+        {
+            "digit": "1",
+            "call_control_id": "closer-leg",
+            "client_state": ct.make_transfer_leg_client_state(token),
+        },
+        _make_log(),
+    )
+    voice.bridge_calls.assert_not_awaited()
+    voice.hangup_call.assert_awaited_once_with("closer-leg")
+
+
+async def test_bridge_failure_restores_caller_ai_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services.telephony import call_transfer as ct
+    from app.services.telephony import telnyx_voice as voice_module
+
+    token = str(uuid.uuid4())
+    pending = ct.PendingTransfer(
+        caller_call_control_id="caller-leg",
+        closer_call_control_id=token,
+        workspace_id=str(uuid.uuid4()),
+        agent_id=None,
+        mode="warm",
+        briefing="brief",
+        language="en-US",
+        created_at="now",
+        briefing_completed=True,
+        is_outbound=True,
+    )
+    monkeypatch.setattr(ct, "peek_pending_transfer", AsyncMock(return_value=pending))
+    monkeypatch.setattr(ct, "pop_pending_transfer", AsyncMock(return_value=pending))
+    monkeypatch.setattr(app_settings, "telnyx_api_key", "test-key")
+    voice = MagicMock()
+    voice.stop_streaming = AsyncMock(return_value=True)
+    voice.bridge_calls = AsyncMock(return_value=False)
+    voice.hangup_call = AsyncMock(return_value=True)
+    voice.start_audio_streaming = AsyncMock(return_value=True)
+    voice.close = AsyncMock()
+    monkeypatch.setattr(voice_module, "TelnyxVoiceService", lambda *a, **kw: voice)
+    await handlers.handle_transfer_dtmf(
+        {
+            "digit": "1",
+            "call_control_id": "closer-leg",
+            "client_state": ct.make_transfer_leg_client_state(token),
+        },
+        _make_log(),
+    )
+    voice.hangup_call.assert_awaited_once_with("closer-leg")
+    voice.start_audio_streaming.assert_awaited_once()
+    assert voice.start_audio_streaming.await_args.kwargs["is_outbound"] is True
 
 
 async def test_speak_ended_ignores_non_transfer_speak(

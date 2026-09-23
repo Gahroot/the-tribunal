@@ -78,7 +78,8 @@ TRANSFER_CALL_TOOL: dict[str, Any] = {
         "caller_consented true ONLY after an explicit yes or direct request to "
         "speak to the human. Otherwise this only briefs the closer and the AI "
         "stays on the call. Never infer consent from intent or frustration. "
-        "After a successful handoff, tell the caller and stop talking."
+        "While the human hears the briefing and confirms availability, keep "
+        "assisting the caller. The AI audio stops automatically when the human accepts."
     ),
     "parameters": {
         "type": "object",

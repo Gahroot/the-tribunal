@@ -13,6 +13,7 @@ Usage:
 """
 
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -90,8 +91,10 @@ class VoiceToolExecutor(BaseToolExecutor):
         timezone: str = "America/New_York",
         call_control_id: str | None = None,
         workspace_id: uuid.UUID | None = None,
+        caller_consent_check: Callable[[str], bool] | None = None,
     ) -> None:
         super().__init__(agent=agent, timezone=timezone)
+        self.caller_consent_check = caller_consent_check
         self.contact_info = contact_info
         self.call_control_id = call_control_id
         self.workspace_id = workspace_id
@@ -1304,7 +1307,13 @@ class VoiceToolExecutor(BaseToolExecutor):
         )
         # Notify the configured human even when the caller has not agreed to a live handoff.
         notified = await self._push_transfer_briefing(ctx, resolution.destination_number, briefing)
-        if not caller_consented or not isinstance(consent_quote, str) or not consent_quote.strip():
+        if (
+            not caller_consented
+            or not isinstance(consent_quote, str)
+            or not consent_quote.strip()
+            or not self.caller_consent_check
+            or not self.caller_consent_check(consent_quote)
+        ):
             await self._audit_transfer(
                 ctx,
                 "briefed" if notified else "blocked",
@@ -1444,7 +1453,7 @@ class VoiceToolExecutor(BaseToolExecutor):
         live_facts = []
         if isinstance(qualification, dict):
             live_facts = [
-                f"{key.title()}: {qualification[key][:150]}"
+                f"{key.title()}: {qualification[key][:65]}"
                 for key in ("budget", "authority", "need", "timeline", "objections")
                 if isinstance(qualification.get(key), str) and qualification[key].strip()
             ]
@@ -1458,6 +1467,8 @@ class VoiceToolExecutor(BaseToolExecutor):
         briefing: str,
     ) -> bool:
         """Text the configured closer, not the caller; dedupe by call leg."""
+        import hashlib
+
         from app.services.idempotency import derive_outbound_key
         from app.services.telephony.telnyx import TelnyxSMSService
 
@@ -1467,7 +1478,11 @@ class VoiceToolExecutor(BaseToolExecutor):
                 to_number=destination,
                 from_number=ctx["workspace_phone"],
                 body="Live lead briefing: " + briefing,
-                idempotency_key=derive_outbound_key("closer_brief", self.call_control_id),
+                idempotency_key=derive_outbound_key(
+                    "closer_brief",
+                    self.call_control_id,
+                    hashlib.sha256(briefing.encode("utf-8")).hexdigest(),
+                ),
             )
         except Exception:
             self.log.exception("closer_briefing_sms_failed")
@@ -1509,6 +1524,7 @@ class VoiceToolExecutor(BaseToolExecutor):
                 "contact_id": conversation.contact_id,
                 "message_id": call_message.id,
                 "campaign_id": call_message.campaign_id,
+                "is_outbound": call_message.direction == "outbound",
             }
 
     async def _reject_transfer_no_destination(
@@ -1560,6 +1576,7 @@ class VoiceToolExecutor(BaseToolExecutor):
             PendingTransfer,
             log_transfer_audit,
             make_transfer_leg_client_state,
+            pop_pending_transfer,
             store_pending_transfer,
         )
 
@@ -1569,7 +1586,28 @@ class VoiceToolExecutor(BaseToolExecutor):
         connection_id = settings.telnyx_connection_id
         if not connection_id:
             connection_id = await voice_service.get_call_control_application_id(webhook_url)
-        client_state = make_transfer_leg_client_state(self.call_control_id)
+        # Store before dialing: Telnyx can answer before the dial response returns.
+        transfer_token = str(uuid.uuid4())
+        client_state = make_transfer_leg_client_state(transfer_token)
+        agent_id = getattr(self.agent, "id", None)
+        stored = await store_pending_transfer(
+            PendingTransfer(
+                caller_call_control_id=self.call_control_id,
+                closer_call_control_id=transfer_token,
+                workspace_id=str(ctx["workspace_id"]),
+                agent_id=str(agent_id) if agent_id else None,
+                mode="warm",
+                briefing=briefing,
+                language=getattr(self.agent, "language", None) or "en-US",
+                created_at=datetime.now(UTC).isoformat(),
+                is_outbound=ctx["is_outbound"],
+            )
+        )
+        if not stored:
+            return {
+                "success": False,
+                "error": "Could not prepare the human briefing. Keep assisting the caller.",
+            }
         closer_ccid = await voice_service.dial_transfer_leg(
             to_number=resolution.destination_number,
             from_number=ctx["workspace_phone"],
@@ -1577,8 +1615,8 @@ class VoiceToolExecutor(BaseToolExecutor):
             webhook_url=webhook_url,
             client_state=client_state,
         )
-        agent_id = getattr(self.agent, "id", None)
         if not closer_ccid:
+            await pop_pending_transfer(transfer_token)
             await log_transfer_audit(
                 workspace_id=ctx["workspace_id"],
                 agent_id=agent_id,
@@ -1598,32 +1636,13 @@ class VoiceToolExecutor(BaseToolExecutor):
                 "error": "Could not reach a team member right now. Keep assisting the caller.",
             }
 
-        language = getattr(self.agent, "language", None) or "en-US"
-        stored = await store_pending_transfer(
-            PendingTransfer(
-                caller_call_control_id=self.call_control_id,
-                closer_call_control_id=closer_ccid,
-                workspace_id=str(ctx["workspace_id"]),
-                agent_id=str(agent_id) if agent_id else None,
-                mode="warm",
-                briefing=briefing,
-                language=language,
-                created_at=datetime.now(UTC).isoformat(),
-            )
-        )
-        if stored is False:
-            await voice_service.hangup_call(closer_ccid)
-            return {
-                "success": False,
-                "error": "Could not prepare the human briefing. Keep assisting the caller.",
-            }
         await log_transfer_audit(
             workspace_id=ctx["workspace_id"],
             agent_id=agent_id,
             message_id=ctx["message_id"],
             contact_id=ctx["contact_id"],
             campaign_id=ctx["campaign_id"],
-            decision="executed",
+            decision="dialed",
             reason=reason or "warm_transfer",
             payload={
                 "mode": "warm",
@@ -1637,11 +1656,12 @@ class VoiceToolExecutor(BaseToolExecutor):
         log.info("warm_transfer_dialing", closer_call_control_id=closer_ccid)
         return {
             "success": True,
-            "transferred": True,
+            "transferred": False,
+            "handoff_pending": True,
             "mode": "warm",
             "message": (
-                "Reaching a team member and briefing them now. "
-                "Tell the caller you're connecting them, then stop speaking."
+                "A team member is being briefed. Keep assisting the caller while "
+                "they confirm availability; the AI audio will stop if the human accepts."
             ),
         }
 
@@ -1748,6 +1768,7 @@ def create_tool_callback(
     call_control_id: str | None,
     log: Any,
     workspace_id: uuid.UUID | None = None,
+    caller_consent_check: Callable[[str], bool] | None = None,
 ) -> Any:
     """Create a tool callback function for voice sessions.
 
@@ -1771,6 +1792,7 @@ def create_tool_callback(
         timezone=timezone,
         call_control_id=call_control_id,
         workspace_id=workspace_id,
+        caller_consent_check=caller_consent_check,
     )
 
     async def tool_callback(
@@ -1782,7 +1804,11 @@ def create_tool_callback(
             "tool_callback_invoked",
             call_id=call_id,
             function_name=function_name,
-            arguments=arguments,
+            arguments=(
+                {"caller_consented": arguments.get("caller_consented") is True}
+                if function_name == "transfer_call"
+                else arguments
+            ),
         )
 
         # Read-only tools (e.g. knowledge lookups) skip the approval gate so a
@@ -1804,7 +1830,11 @@ def create_tool_callback(
             workspace_id=agent.workspace_id,
             action_type=function_name,
             action_payload=arguments,
-            description=f"{function_name}: {arguments}",
+            description=(
+                "transfer_call: human briefing requested"
+                if function_name == "transfer_call"
+                else f"{function_name}: {arguments}"
+            ),
             context={"source": "voice_call", "call_id": call_id},
         )
 

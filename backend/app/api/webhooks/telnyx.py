@@ -18,6 +18,7 @@ from app.api.webhooks.telnyx_call_handlers import (
     handle_machine_detection,
     handle_recording_saved,
     handle_speak_ended,
+    handle_transfer_dtmf,
 )
 from app.api.webhooks.telnyx_message_handlers import (
     handle_delivery_status,
@@ -47,8 +48,9 @@ _VOICE_HANDLERS: dict[str, EventHandler] = {
     "call.machine.detection.ended": handle_machine_detection,
     # Transcribe saved recordings and run the AI voicemail pipeline.
     "call.recording.saved": handle_recording_saved,
-    # Completes warm transfers: bridge caller -> closer after the briefing.
+    # Briefing completion enables keypad confirmation; it does not bridge by itself.
     "call.speak.ended": handle_speak_ended,
+    "call.dtmf.received": handle_transfer_dtmf,
 }
 
 

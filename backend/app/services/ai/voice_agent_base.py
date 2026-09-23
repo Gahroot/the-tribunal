@@ -18,6 +18,7 @@ By inheriting from this class, voice agents automatically get:
 import asyncio
 import base64
 import json
+import re
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
@@ -102,6 +103,9 @@ class VoiceAgentBase(ABC):
         self._sentiment_callback: Callable[[SentimentUpdate], Awaitable[None]] | None = None
         self._sentiment_tasks: set[asyncio.Task[None]] = set()
         self._last_sentiment: SentimentUpdate | None = None
+        self._hot_lead_callback: Callable[[str, dict[str, str]], Awaitable[bool]] | None = None
+        self._hot_lead_signals: dict[str, str] = {}
+        self._hot_lead_notified = False
 
     # -------------------------------------------------------------------------
     # VoiceAgentProtocol implementations (shared logic)
@@ -165,6 +169,81 @@ class VoiceAgentBase(ABC):
             )
             self.logger.info("user_transcript_completed", user_said=text)
             self._score_live_sentiment(text)
+            self._check_live_hot_lead(text)
+
+    def has_caller_consent(self, quote: str) -> bool:
+        """Require affirmative consent words in the caller's last utterance."""
+        normalized = " ".join(re.findall(r"\w+", quote.casefold()))
+        if len(normalized) < 2 or re.search(r"\b(?:no|not|never|dont)\b", normalized):
+            return False
+        if not re.search(
+            r"\b(?:yes|yeah|sure|please|connect|human|person|agent|closer|"
+            r"representative|speak|talk)\b",
+            normalized,
+        ):
+            return False
+        latest_caller = next(
+            (entry for entry in reversed(self._transcript_entries) if entry.get("role") == "user"),
+            None,
+        )
+        actual = (
+            " ".join(re.findall(r"\w+", str(latest_caller.get("text", "")).casefold()))
+            if latest_caller
+            else ""
+        )
+        return bool(re.search(r"(?<!\w)" + re.escape(normalized) + r"(?!\w)", actual))
+
+    def set_hot_lead_callback(
+        self, callback: Callable[[str, dict[str, str]], Awaitable[bool]]
+    ) -> None:
+        """Notify the closer from caller speech, even if the model never calls a tool."""
+        self._hot_lead_callback = callback
+
+    def _check_live_hot_lead(self, text: str) -> None:
+        if self._hot_lead_callback is None or self._hot_lead_notified:
+            return
+        speech = text.lower()
+        patterns = {
+            "budget": r"\b(?:budget|afford|pre.approved|\$\s*\d)",
+            "authority": r"\b(?:decision.maker|my decision|i(?:'m| am) (?:the )?(?:owner|buyer))\b",
+            "need": r"\b(?:i need|looking for|we need|i want to (?:buy|sell))\b",
+            "timeline": (
+                r"\b(?:this (?:week|month)|next (?:week|month)|"
+                r"as soon as possible|by \w+day)\b"
+            ),
+        }
+        self._hot_lead_signals.update(
+            {key: text[:150] for key, pattern in patterns.items() if re.search(pattern, speech)}
+        )
+        if re.search(r"\b(?:too expensive|concerned about|my concern is|not sure about)\b", speech):
+            self._hot_lead_signals["objections"] = text[:150]
+        high_intent = bool(
+            re.search(
+                r"\b(?:ready to (?:buy|sell|book|sign|move forward)|"
+                r"(?:i|we) (?:want|would like) to (?:buy|sell)|"
+                r"(?:make|put in) an offer|let'?s (?:book|schedule|move forward)|"
+                r"want to (?:book|schedule) (?:a |the )?"
+                r"(?:call|appointment|meeting|tour|showing))\b",
+                speech,
+            )
+        )
+        if not high_intent and not all(key in self._hot_lead_signals for key in patterns):
+            return
+        self._hot_lead_notified = True
+        task = asyncio.create_task(self._run_hot_lead_callback(text))
+        self._sentiment_tasks.add(task)
+        task.add_done_callback(self._sentiment_tasks.discard)
+
+    async def _run_hot_lead_callback(self, text: str) -> None:
+        callback = self._hot_lead_callback
+        if callback is None:
+            return
+        try:
+            if not await callback(text, dict(self._hot_lead_signals)):
+                self._hot_lead_notified = False
+        except Exception:
+            self._hot_lead_notified = False
+            self.logger.exception("live_hot_lead_briefing_failed")
 
     def _add_agent_transcript(self, text: str) -> None:
         """Add agent speech to transcript.

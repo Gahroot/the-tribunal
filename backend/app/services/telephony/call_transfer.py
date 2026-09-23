@@ -17,6 +17,8 @@ shows up alongside the rest of the outbound action history.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import uuid
 from dataclasses import dataclass
@@ -29,14 +31,9 @@ from app.services.idempotency import encode_client_state
 
 logger = structlog.get_logger()
 
-# Redis key prefix for warm-transfer pending state keyed by the *new closer leg*
-# call_control_id. The voice webhook handler reads this on call.speak.ended to
-# know which caller leg to bridge into.
+# Pending transfer state lives long enough for ringing, briefing, and confirmation.
 _PENDING_TRANSFER_PREFIX = "voice:transfer:pending:"
-_PENDING_TRANSFER_TTL_SECONDS = 600  # 10 minutes; a transfer should resolve fast
-
-# client_state marker so transfer-leg webhooks are recognizable.
-TRANSFER_LEG_CLIENT_STATE_PREFIX = "transfer_leg"
+_PENDING_TRANSFER_TTL_SECONDS = 180
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,10 +49,8 @@ class TransferResolution:
 class PendingTransfer:
     """Warm-transfer state bridging the dial -> brief -> bridge handshake.
 
-    Stored in Redis keyed by the *closer* leg's call_control_id. The voice
-    webhook handler reads it twice: on ``call.answered`` (to speak ``briefing``
-    on the closer leg) and on ``call.speak.ended`` (to bridge ``closer`` into
-    ``caller_call_control_id``).
+    Stored before dialing, keyed by the per-attempt token in Telnyx client_state.
+    The closer confirms readiness with DTMF 1 after hearing the briefing.
     """
 
     caller_call_control_id: str
@@ -66,6 +61,8 @@ class PendingTransfer:
     briefing: str
     language: str
     created_at: str
+    briefing_completed: bool = False
+    is_outbound: bool = False
 
     def to_json(self) -> str:
         return json.dumps(
@@ -78,6 +75,8 @@ class PendingTransfer:
                 "briefing": self.briefing,
                 "language": self.language,
                 "created_at": self.created_at,
+                "briefing_completed": self.briefing_completed,
+                "is_outbound": self.is_outbound,
             }
         )
 
@@ -93,6 +92,8 @@ class PendingTransfer:
             briefing=data.get("briefing", ""),
             language=data.get("language", "en-US"),
             created_at=data.get("created_at", ""),
+            briefing_completed=data.get("briefing_completed", False),
+            is_outbound=data.get("is_outbound", False),
         )
 
 
@@ -166,13 +167,41 @@ def build_briefing(
 
 
 def make_transfer_leg_client_state(token: str) -> str:
-    """Return base64 client_state marking a dialed leg as a transfer leg."""
-    raw = f"{TRANSFER_LEG_CLIENT_STATE_PREFIX}:{token}"
-    return encode_client_state(uuid.uuid5(uuid.NAMESPACE_DNS, raw))
+    """Encode an unpredictable, per-attempt UUID for closer-leg webhooks."""
+    return encode_client_state(uuid.UUID(token))
+
+
+def transfer_key_from_client_state(state: str | None) -> str | None:
+    """Decode the transfer key echoed by Telnyx; reject malformed state."""
+    if not isinstance(state, str) or len(state) > 100:
+        return None
+    try:
+        decoded = base64.b64decode(state, validate=True).decode("ascii")
+        value = uuid.UUID(decoded)
+        return str(value) if decoded == str(value) else None
+    except (ValueError, UnicodeDecodeError, binascii.Error):
+        return None
+
+
+async def claim_transfer_briefing(token: str) -> bool:
+    """Speak the briefing at most once even if Telnyx retries call.answered."""
+    try:
+        client = await get_redis()
+        return bool(
+            await client.set(
+                _PENDING_TRANSFER_PREFIX + "briefing:" + token,
+                "1",
+                nx=True,
+                ex=_PENDING_TRANSFER_TTL_SECONDS,
+            )
+        )
+    except Exception:
+        logger.exception("claim_transfer_briefing_failed")
+        return False
 
 
 async def store_pending_transfer(pending: PendingTransfer) -> bool:
-    """Persist warm-transfer pending state keyed by the closer leg id."""
+    """Persist pending state before dialing, keyed by its transfer token."""
     try:
         client = await get_redis()
         await client.set(

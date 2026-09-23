@@ -126,6 +126,54 @@ async def _stamp_prompt_version_on_message(call_id: str, prompt_version_id: str,
         log.exception("failed_to_stamp_prompt_version", error=str(e), call_id=call_id)
 
 
+def _enable_hot_lead_briefing(
+    voice_session: Any,
+    agent: Any,
+    contact_info: dict[str, Any] | None,
+    timezone: str,
+    call_control_id: str | None,
+    workspace_id: uuid.UUID | None,
+    log: Any,
+) -> None:
+    if (
+        not agent
+        or not call_control_id
+        or not workspace_id
+        or not hasattr(voice_session, "set_hot_lead_callback")
+    ):
+        return
+    from app.services.ai.tool_executor import VoiceToolExecutor
+
+    async def brief_hot_lead(caller_words: str, qualification: dict[str, str]) -> bool:
+        try:
+            executor = VoiceToolExecutor(
+                agent=agent,
+                contact_info=contact_info,
+                timezone=timezone,
+                call_control_id=call_control_id,
+                workspace_id=workspace_id,
+            )
+            result = await executor.execute(
+                "transfer_call",
+                {
+                    "reason": "high_intent_or_bant",
+                    "intent": "high_intent",
+                    "summary": caller_words[:300],
+                    "qualification": qualification,
+                    "caller_consented": False,
+                },
+            )
+            if not result.get("success"):
+                log.warning("live_hot_lead_briefing_failed", error=result.get("error"))
+                return False
+            return True
+        except Exception:
+            log.exception("live_hot_lead_briefing_failed")
+            return False
+
+    voice_session.set_hot_lead_callback(brief_hot_lead)
+
+
 async def _setup_voice_session(
     voice_session: VoiceSessionType,
     agent: Any,
@@ -165,10 +213,15 @@ async def _setup_voice_session(
             call_control_id=call_control_id,
             log=log,
             workspace_id=workspace_id,
+            caller_consent_check=voice_session.has_caller_consent,
         )
 
         voice_session.set_tool_callback(callback)
         log.info("tool_callback_configured", session_type=type(voice_session).__name__)
+
+        _enable_hot_lead_briefing(
+            voice_session, agent, contact_info, timezone, call_control_id, workspace_id, log
+        )
 
         # Enable IVR detection for outbound Grok calls ONLY if agent has it enabled
         # Skip if Phase 1 gate already handled IVR navigation
