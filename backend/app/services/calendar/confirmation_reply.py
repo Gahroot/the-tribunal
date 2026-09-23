@@ -102,25 +102,33 @@ async def handle_confirmation_reply(
                     idempotency_parts=(appt.id, appt.scheduled_at),
                 )
             return True
-        if reply == "R":
-            if contact and agent and agent.calcom_event_type_id and settings.calcom_api_key:
-                url = CalComService(settings.calcom_api_key).generate_booking_url(
-                    event_type_id=agent.calcom_event_type_id,
-                    contact_email=contact.email or "",
-                    contact_name=" ".join(filter(None, [contact.first_name, contact.last_name]))
-                    or "there",
-                    contact_phone=contact.phone_number,
-                )
-                await send_lifecycle_sms(
-                    db=db,
-                    workspace_id=appt.workspace_id,
-                    contact=contact,
-                    agent=agent,
-                    body_text=f"To reschedule your appointment, choose a new time: {url}",
-                    idempotency_scope="appointment_reschedule_reply",
-                    idempotency_parts=(appt.id,),
-                )
-                return True
-            # Let the normal AI and operator notification handle bookings without a link.
-            return False
+        return await _send_reschedule_link(db, appt, contact, agent)
     return False
+
+
+async def _send_reschedule_link(
+    db: AsyncSession, appt: Appointment, contact: Contact | None, agent: Agent | None
+) -> bool:
+    """Fall through to the existing AI/operator path if a link cannot be sent."""
+    if not (contact and agent and agent.calcom_event_type_id and settings.calcom_api_key):
+        return False
+    try:
+        url = CalComService(settings.calcom_api_key).generate_booking_url(
+            event_type_id=agent.calcom_event_type_id,
+            contact_email=contact.email or "",
+            contact_name=" ".join(filter(None, [contact.first_name, contact.last_name])) or "there",
+            contact_phone=contact.phone_number,
+        )
+    except Exception:
+        return False
+    from app.api.webhooks.calcom_events import send_lifecycle_sms
+
+    return await send_lifecycle_sms(
+        db=db,
+        workspace_id=appt.workspace_id,
+        contact=contact,
+        agent=agent,
+        body_text=f"To reschedule your appointment, choose a new time: {url}",
+        idempotency_scope="appointment_reschedule_reply",
+        idempotency_parts=(appt.id, appt.scheduled_at),
+    )

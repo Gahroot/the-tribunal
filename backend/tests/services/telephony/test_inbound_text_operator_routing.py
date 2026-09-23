@@ -53,9 +53,7 @@ async def test_operator_imessage_routes_to_assistant_on_same_channel() -> None:
     ingest = AsyncMock()
     process_assistant = AsyncMock(return_value=None)
 
-    with patch(
-        "app.services.ai.crm_assistant.process_assistant_message", process_assistant
-    ):
+    with patch("app.services.ai.crm_assistant.process_assistant_message", process_assistant):
         result = await process_inbound_text_event(
             db=db,
             event=event,
@@ -85,9 +83,7 @@ async def test_yes_no_fast_path_wins_over_assistant() -> None:
     ingest = AsyncMock()
     process_assistant = AsyncMock()
 
-    with patch(
-        "app.services.ai.crm_assistant.process_assistant_message", process_assistant
-    ):
+    with patch("app.services.ai.crm_assistant.process_assistant_message", process_assistant):
         result = await process_inbound_text_event(
             db=MagicMock(),
             event=event,
@@ -113,9 +109,10 @@ async def test_prospect_message_falls_through_to_contact_pipeline() -> None:
     process_assistant = AsyncMock()
     side_effects = AsyncMock()
 
-    with patch(
-        "app.services.ai.crm_assistant.process_assistant_message", process_assistant
-    ), patch.object(inbound_text, "run_inbound_text_side_effects", side_effects):
+    with (
+        patch("app.services.ai.crm_assistant.process_assistant_message", process_assistant),
+        patch.object(inbound_text, "run_inbound_text_side_effects", side_effects),
+    ):
         result = await process_inbound_text_event(
             db=MagicMock(),
             event=event,
@@ -129,3 +126,42 @@ async def test_prospect_message_falls_through_to_contact_pipeline() -> None:
     process_assistant.assert_not_awaited()
     ingest.assert_awaited_once()
     side_effects.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_confirmation_reply_skips_ai_but_not_operator_notification() -> None:
+    event = InboundTextEvent(
+        provider_message_id="reply-1",
+        from_number="+14155550100",
+        to_number="+12125550101",
+        body="R",
+        workspace_id=uuid.uuid4(),
+        channel=MessageChannel.SMS,
+    )
+    message = MagicMock(conversation_id=uuid.uuid4())
+    conversation = MagicMock()
+    ai = AsyncMock()
+    push = AsyncMock()
+    pause = AsyncMock()
+    campaign = AsyncMock()
+    with (
+        patch.object(inbound_text, "_load_conversation", AsyncMock(return_value=conversation)),
+        patch(
+            "app.services.calendar.confirmation_reply.handle_confirmation_reply",
+            AsyncMock(return_value=True),
+        ),
+        patch.object(inbound_text, "_send_push_notification", push),
+        patch.object(inbound_text, "_pause_drip_enrollments", pause),
+        patch.object(inbound_text, "_handle_campaign_reply", campaign),
+    ):
+        await inbound_text.run_inbound_text_side_effects(
+            db=MagicMock(),
+            message=message,
+            event=event,
+            log=_make_log(),
+            schedule_ai_response_fn=ai,
+        )
+    ai.assert_not_awaited()
+    pause.assert_awaited_once()
+    campaign.assert_awaited_once()
+    push.assert_awaited_once()

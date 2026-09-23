@@ -182,19 +182,20 @@ async def run_inbound_text_side_effects(
     if conversation is not None:
         from app.services.calendar.confirmation_reply import handle_confirmation_reply
 
-        if event.channel == MessageChannel.SMS and await handle_confirmation_reply(
-            db, message, conversation, event.body
-        ):
-            return
-        await _schedule_ai_if_enabled(
-            db=db,
-            conversation=conversation,
-            message=message,
-            event=event,
-            log=log,
-            conversation_syncer=conversation_syncer,
-            schedule_ai_response_fn=schedule_ai_response_fn,
+        handled_confirmation = (
+            event.channel == MessageChannel.SMS
+            and await handle_confirmation_reply(db, message, conversation, event.body)
         )
+        if not handled_confirmation:
+            await _schedule_ai_if_enabled(
+                db=db,
+                conversation=conversation,
+                message=message,
+                event=event,
+                log=log,
+                conversation_syncer=conversation_syncer,
+                schedule_ai_response_fn=schedule_ai_response_fn,
+            )
         await _pause_drip_enrollments(
             db=db,
             conversation=conversation,

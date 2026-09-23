@@ -25,7 +25,7 @@ from app.models.agent import Agent
 from app.models.appointment import Appointment
 from app.models.campaign import Campaign, CampaignContact
 from app.models.contact import Contact
-from app.models.conversation import Conversation, Message
+from app.models.conversation import Conversation, Message, MessageStatus
 from app.models.phone_number import PhoneNumber
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMembership
@@ -303,7 +303,7 @@ async def send_lifecycle_sms(
     body_text: str,
     idempotency_scope: str | None = None,
     idempotency_parts: tuple[object, ...] = (),
-) -> None:
+) -> bool:
     """Send a lifecycle SMS (confirmation, cancellation, etc.) to a contact.
 
     This is a shared helper used by all lifecycle SMS touch-points. It:
@@ -312,7 +312,7 @@ async def send_lifecycle_sms(
     - Checks TCPA opt-out compliance before sending
     - Sends via :class:`TelnyxSMSService`
     - Logs success/failure at appropriate levels
-    - Is entirely wrapped in try/except — never raises, caller always gets ``None``
+    - Is entirely wrapped in try/except — never raises; returns False if not sent
 
     Args:
         db: Active database session (must be open; this helper may commit).
@@ -327,12 +327,12 @@ async def send_lifecycle_sms(
         telnyx_key = settings.telnyx_api_key
         if not telnyx_key:
             logger.warning("lifecycle_sms_no_telnyx_key", contact_id=contact.id)
-            return
+            return False
 
         contact_phone = contact.phone_number
         if not contact_phone:
             logger.debug("lifecycle_sms_skipped_no_phone", contact_id=contact.id)
-            return
+            return False
 
         agent_id = agent.id if agent is not None else None
 
@@ -345,7 +345,7 @@ async def send_lifecycle_sms(
                 contact_id=contact.id,
                 phone=contact_phone,
             )
-            return
+            return False
 
         from_number = await resolve_sms_from_number(db, contact.id, workspace_id, agent_id)
         if not from_number:
@@ -354,7 +354,7 @@ async def send_lifecycle_sms(
                 contact_id=contact.id,
                 workspace_id=str(workspace_id),
             )
-            return
+            return False
 
         idempotency_key = None
         if idempotency_scope is not None:
@@ -376,6 +376,7 @@ async def send_lifecycle_sms(
                 contact_id=contact.id,
                 message_id=str(message.id),
             )
+            return message.status != MessageStatus.FAILED
         finally:
             await sms_service.close()
 
@@ -385,3 +386,4 @@ async def send_lifecycle_sms(
             contact_id=contact.id,
             error=str(e),
         )
+        return False

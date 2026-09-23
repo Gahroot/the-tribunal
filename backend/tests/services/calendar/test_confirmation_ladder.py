@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.api.webhooks.calcom_events import DEFAULT_CONFIRMATION_BODY, build_logistics_body
+from app.models.conversation import MessageStatus
 from app.services.calendar.confirmation_reply import handle_confirmation_reply
 from app.workers.reminder_worker import ReminderWorker
 
@@ -110,7 +111,7 @@ async def test_reply_without_invitation_is_not_consumed() -> None:
 
 
 @pytest.mark.asyncio
-async def test_reconfirm_call_is_idempotent_and_uses_appointment_purpose() -> None:
+async def test_failed_reconfirm_attempt_is_logged_and_not_redialed() -> None:
     worker = ReminderWorker()
     worker.opt_out_manager.check_opt_out = AsyncMock(return_value=False)
     worker._mark_offset_sent = AsyncMock()
@@ -126,7 +127,7 @@ async def test_reconfirm_call_is_idempotent_and_uses_appointment_purpose() -> No
     db = AsyncMock()
     db.scalar.return_value = "+15557654321"
     voice = MagicMock()
-    voice.initiate_call = AsyncMock()
+    voice.initiate_call = AsyncMock(return_value=SimpleNamespace(status=MessageStatus.FAILED))
     voice.close = AsyncMock()
     with (
         patch("app.workers.reminder_worker.datetime") as clock,
@@ -180,3 +181,53 @@ async def test_reply_targets_most_recent_invitation_not_first_appointment() -> N
         )
     assert earlier.confirmed_at is None
     assert later.confirmed_at is not None
+
+
+@pytest.mark.asyncio
+async def test_reschedule_reply_falls_through_when_link_sms_fails() -> None:
+    now = datetime.now(UTC)
+    appt = SimpleNamespace(
+        id=9,
+        workspace_id="ws",
+        contact_id=17,
+        agent_id=3,
+        created_at=now - timedelta(days=1),
+        scheduled_at=now + timedelta(days=1),
+        reminders_sent=[],
+        confirmed_at=None,
+        reschedule_requested_at=None,
+    )
+    db = AsyncMock()
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [appt]
+    db.execute.return_value = result
+    db.scalar.return_value = now - timedelta(minutes=1)
+    db.get.side_effect = [
+        SimpleNamespace(id=3, calcom_event_type_id=12),
+        SimpleNamespace(
+            phone_number="+15551234567", email="a@example.com", first_name="A", last_name="B"
+        ),
+    ]
+    conversation = SimpleNamespace(
+        id=5, contact_id=17, workspace_id="ws", workspace_phone="+15551234567"
+    )
+    with (
+        patch(
+            "app.services.calendar.confirmation_reply.resolve_from_number",
+            new_callable=AsyncMock,
+            return_value="+15551234567",
+        ),
+        patch("app.services.calendar.confirmation_reply.settings.calcom_api_key", "test-key"),
+        patch("app.services.calendar.confirmation_reply.CalComService") as calcom,
+        patch(
+            "app.api.webhooks.calcom_events.send_lifecycle_sms",
+            new_callable=AsyncMock,
+            return_value=False,
+        ) as sender,
+    ):
+        calcom.return_value.generate_booking_url.return_value = "https://example.com/book"
+        assert not await handle_confirmation_reply(
+            db, SimpleNamespace(created_at=now), conversation, "R"
+        )
+    assert appt.reschedule_requested_at is not None
+    sender.assert_awaited_once()

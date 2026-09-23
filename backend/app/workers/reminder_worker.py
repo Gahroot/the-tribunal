@@ -29,7 +29,7 @@ from app.db.session import AsyncSessionLocal
 from app.models.agent import Agent
 from app.models.appointment import Appointment
 from app.models.contact import Contact
-from app.models.conversation import Conversation
+from app.models.conversation import Conversation, MessageStatus
 from app.models.phone_number import PhoneNumber
 from app.models.workspace import Workspace
 from app.services.calendar.reminder_service import resolve_from_number
@@ -91,7 +91,6 @@ class ReminderWorker(RetryableWorker, BaseWorker):
                         Appointment.status == "scheduled",
                         Appointment.reschedule_requested_at.is_(None),
                         Appointment.scheduled_at > now,
-
                         Appointment.scheduled_at <= now + timedelta(minutes=lookahead_minutes),
                         Appointment.contact_id.is_not(None),
                     )
@@ -210,7 +209,7 @@ class ReminderWorker(RetryableWorker, BaseWorker):
             return
         voice = TelnyxVoiceService(settings.telnyx_api_key)
         try:
-            await voice.initiate_call(
+            call_message = await voice.initiate_call(
                 to_number=contact.phone_number,
                 from_number=phone,
                 connection_id=settings.telnyx_connection_id,
@@ -224,6 +223,10 @@ class ReminderWorker(RetryableWorker, BaseWorker):
                 ),
                 call_purpose=f"appointment_reconfirm:{appt.id}",
             )
+            if call_message.status == MessageStatus.FAILED:
+                self.logger.warning("Appointment reconfirm call failed", appointment_id=appt.id)
+            # Telnyx persists failed attempts under this idempotency key too;
+            # do not re-dial every minute if the provider rejected the request.
             await self._mark_offset_sent(appt, RECONFIRM_CALL_SENTINEL, db)
             await db.commit()
         except Exception:
