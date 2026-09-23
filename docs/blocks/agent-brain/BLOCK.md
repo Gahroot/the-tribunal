@@ -109,6 +109,16 @@ Core: `app.api.deps`, `app.db.scope`, `app.db.pagination`, `app.db.session.Async
 6. Port the seven tables and their creating revisions; `bandit_decisions`/`prompt_versions`/`prompt_version_stats`/`message_tests` carry the experimentation state — port them together so the learning loop stays intact.
 7. Register the four workers in the new runner gated on `RUN_BACKGROUND_WORKERS`.
 
+## Outbound voice conversation design
+
+`VoicePromptBuilder.get_effective_prompt` layers the outbound playbook over an agent's configured system prompt at call construction time **only when** `OUTBOUND_CONVERSATION_PLAYBOOK=true` is explicitly set (default off). The opener is gated by the same switch. It does **not** write a new prompt version or activate an experiment. Inbound calls and SMS retain their existing prompts. The outbound opener, including custom `Opening the Call` instructions, uses acknowledge → redirect → one question within the first eight seconds; keep later turns short and listen.
+
+Each outbound call carries a **private conversational goal** of `book`, `qualify`, or `rehash`; this is not a persisted CRM tag. Four early objections have separate paths: clarify vague disinterest but respect a final refusal; treat “send me an email” as a polite exit, ask one discovery question and only trade up to a 15-minute meeting with consent; discover any gap with an incumbent vendor; ask for a specific callback date and channel on “not now.” A callback is only scheduled/re-entered into cadence if an existing workflow confirms the record. Never claim otherwise. Opt-outs end outreach regardless of goal.
+
+For qualified, willing prospects, offer only real available slots. After successful booking, confirm date/time/timezone and stop talking. A sent link or suggested time is not a confirmed slot. If a booking cannot be confirmed, get an explicit next attempt and record it through the available workflow; do not fabricate a callback or override refusal.
+
+**Activation gate:** `backend/app/workers/roleplay_worker.py` is not present in this checkout. The existing rehearsal implementation is `backend/app/services/ai/roleplay/roleplay_service.py`, which runs text-agent rehearsals and does not execute live booking tools. Run outbound voice roleplays against the assembled voice prompt for each objection, opener, booking, callback, and opt-out; review transcripts for turn length and confirmed tool outcomes before promoting any prompt version or enabling automatic activation. Unit tests alone do not establish actual conversion or scheduling behavior.
+
 ## Risks
 
 - **Center-of-graph entanglement:** agent-brain both imports and is imported by voice, contacts, hitl, and knowledge — extracting it alone leaves dangling imports in either direction; define the seams before cutting.

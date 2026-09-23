@@ -145,9 +145,7 @@ class TestVoicePromptBuilder:
         """Test context section for outbound calls."""
         builder = VoicePromptBuilder()
         contact_info = {"name": "Jane Smith"}
-        context = builder.build_context_section(
-            contact_info=contact_info, is_outbound=True
-        )
+        context = builder.build_context_section(contact_info=contact_info, is_outbound=True)
 
         assert "OUTBOUND CALL" in context
         assert "Customer You Are Calling" in context
@@ -156,9 +154,7 @@ class TestVoicePromptBuilder:
         """Test context section for inbound calls."""
         builder = VoicePromptBuilder()
         contact_info = {"name": "Jane Smith"}
-        context = builder.build_context_section(
-            contact_info=contact_info, is_outbound=False
-        )
+        context = builder.build_context_section(contact_info=contact_info, is_outbound=False)
 
         assert "INBOUND CALL" in context
         assert "Customer Information" in context
@@ -203,27 +199,61 @@ class TestVoicePromptBuilder:
         # Should use default prompt
         assert "helpful AI voice assistant" in prompt
 
-    def test_get_outbound_opener_prompt(self, mock_agent: MagicMock) -> None:
+    def test_get_outbound_opener_prompt(
+        self, mock_agent: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test outbound opener prompt generation."""
+        monkeypatch.setenv("OUTBOUND_CONVERSATION_PLAYBOOK", "true")
         builder = VoicePromptBuilder(agent=mock_agent)
         prompt = builder.get_outbound_opener_prompt()
 
-        assert "pattern interrupt" in prompt.lower()
-        assert "sales call" in prompt.lower()
-        assert "hang up" in prompt.lower()
+        assert "Acknowledge" in prompt
+        assert "one relevant question" in prompt
+        assert "hang up" not in prompt.lower()
+
+    def test_outbound_guidance_only_on_outbound_calls(
+        self, mock_agent: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("OUTBOUND_CONVERSATION_PLAYBOOK", raising=False)
+        builder = VoicePromptBuilder(agent=mock_agent)
+        assert "private goal tag" not in builder.build_full_prompt(is_outbound=True)
+        monkeypatch.setenv("OUTBOUND_CONVERSATION_PLAYBOOK", "true")
+        outbound = builder.build_full_prompt(is_outbound=True, include_booking=True)
+        inbound = builder.build_full_prompt(is_outbound=False, include_booking=True)
+
+        assert "helpful sales assistant" in outbound
+        assert "private goal tag" in outbound
+        for phrase in (
+            '"Not interested"',
+            '"Send me an email"',
+            '"We already have a vendor"',
+            '"Not now"',
+            "15-minute meeting",
+            "tool-confirmed booking",
+            "STOP TALKING",
+            "specific date",
+        ):
+            assert phrase in outbound
+        assert "private goal tag" not in inbound
+        assert builder.get_effective_prompt(mock_agent.system_prompt) == mock_agent.system_prompt
+
+    def test_custom_outbound_opener_keeps_short_turn(
+        self, mock_agent: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("OUTBOUND_CONVERSATION_PLAYBOOK", "true")
+        mock_agent.system_prompt = "# Opening the Call\nMention their inquiry."
+        prompt = VoicePromptBuilder(agent=mock_agent).get_outbound_opener_prompt()
+        assert "Opening the Call" in prompt
+        assert "first 8 seconds" in prompt
 
     def test_get_inbound_greeting_prompt_with_greeting(self) -> None:
         """Test inbound greeting prompt with specific greeting."""
         builder = VoicePromptBuilder()
-        prompt = builder.get_inbound_greeting_prompt(
-            greeting="Welcome to Acme Corp!"
-        )
+        prompt = builder.get_inbound_greeting_prompt(greeting="Welcome to Acme Corp!")
 
         assert "Welcome to Acme Corp!" in prompt
 
-    def test_get_inbound_greeting_prompt_default(
-        self, mock_agent: MagicMock
-    ) -> None:
+    def test_get_inbound_greeting_prompt_default(self, mock_agent: MagicMock) -> None:
         """Test inbound greeting prompt with default."""
         builder = VoicePromptBuilder(agent=mock_agent)
         prompt = builder.get_inbound_greeting_prompt()
