@@ -156,7 +156,7 @@ async def _attach_returning_caller_context(
         log.warning("returning_caller_detection_failed", error=str(e))
 
 
-async def lookup_call_context(
+async def lookup_call_context(  # noqa: PLR0915 - loads all call context in one scoped session
     call_id: str,
     log: Any = None,
 ) -> CallContext:
@@ -202,6 +202,7 @@ async def lookup_call_context(
         conversation = message.conversation
         context.conversation_id = str(conversation.id)
         context.workspace_id = str(conversation.workspace_id)
+        context.is_outbound = message.direction == "outbound"
 
         # Get workspace timezone
         workspace_result = await db.execute(
@@ -249,19 +250,22 @@ async def lookup_call_context(
                     "status": contact.status,
                     "notes": contact.notes,
                 }
+                if context.is_outbound and message.outbound_brief:
+                    context.contact_info["outbound_brief"] = message.outbound_brief
                 log.info("found_contact_for_call", contact_id=str(contact.id))
 
                 # Returning-caller recognition: detect prior calls / stored
                 # caller memories for this contact and inject a recap so the
                 # agent greets them as a returning caller instead of cold.
-                await _attach_returning_caller_context(
-                    db=db,
-                    context=context,
-                    workspace_id=conversation.workspace_id,
-                    contact_id=conversation.contact_id,
-                    current_message_id=message.id,
-                    log=log,
-                )
+                if not context.is_outbound:
+                    await _attach_returning_caller_context(
+                        db=db,
+                        context=context,
+                        workspace_id=conversation.workspace_id,
+                        contact_id=conversation.contact_id,
+                        current_message_id=message.id,
+                        log=log,
+                    )
 
         # Look up offer info from campaign if applicable
         campaign_contact_result = await db.execute(

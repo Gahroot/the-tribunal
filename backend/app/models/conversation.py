@@ -359,6 +359,7 @@ class Message(Base):
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     recording_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
+    outbound_brief: Mapped[str | None] = mapped_column(Text, nullable=True)
     booking_outcome: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     # === Inbound spam screening & reason-based routing ===

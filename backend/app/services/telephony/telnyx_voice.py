@@ -293,6 +293,42 @@ class TelnyxVoiceService:
             db.add(message)
             await db.flush()
 
+        # Build once for this dial attempt, before the provider receives the call.
+        # Retries keep the same brief on the existing message rather than looking
+        # up a newer (possibly contradictory) hook.
+        if agent_id and conversation.contact_id and not message.outbound_brief:
+            from app.core.config import settings
+            from app.models.agent import Agent
+            from app.models.workspace import Workspace
+            from app.services.ai.outbound_brief import build_outbound_brief
+
+            agent = (
+                await db.execute(
+                    select(Agent).where(
+                        Agent.id == agent_id,
+                        Agent.workspace_id == workspace_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            workspace = (
+                await db.execute(
+                    select(Workspace).where(
+                        Workspace.id == workspace_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if agent:
+                message.outbound_brief = await build_outbound_brief(
+                    db,
+                    workspace_id=workspace_id,
+                    contact_id=conversation.contact_id,
+                    timezone=(workspace.settings or {}).get("timezone", "America/New_York")
+                    if workspace
+                    else "America/New_York",
+                    web_search_enabled="web_search" in (agent.enabled_tools or []),
+                    xai_api_key=settings.xai_api_key,
+                )
+
         # Initiate call via Telnyx
         try:
             # ``client_state`` round-trips through every Telnyx webhook for
