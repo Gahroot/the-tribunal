@@ -355,6 +355,30 @@ async def stripe_webhook(request: Request, db: DB) -> dict[str, str]:
 
     if event_type == "checkout.session.completed":
         await _handle_checkout_completed(event_data, db)
+    elif event_type in ("refund.updated", "refund.failed") and event_data.get("status") in (
+        "succeeded",
+        "failed",
+    ):
+        from sqlalchemy import select
+
+        from app.models.appointment import Appointment
+
+        payment_intent = event_data.get("payment_intent")
+        if payment_intent:
+            appt = (
+                await db.execute(
+                    select(Appointment)
+                    .where(
+                        Appointment.deposit_payment_intent_id == payment_intent,
+                        Appointment.deposit_refund_id == event_data.get("id"),
+                        Appointment.deposit_status == "refund_pending",
+                    )
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            if appt:
+                appt.deposit_status = "refunded" if event_data["status"] == "succeeded" else "paid"
+                await db.commit()
     elif event_type == "customer.subscription.deleted":
         await _handle_subscription_deleted(event_data, db)
 
@@ -375,6 +399,11 @@ async def _handle_checkout_completed(session: dict[str, Any], db: DB) -> None:
     subscription path so they mark a :class:`CallPayment` paid + notify operators.
     """
     metadata = session.get("metadata") or {}
+    if metadata.get("kind") == "booking_deposit":
+        from app.services.payments.booking_deposit import reconcile_checkout
+
+        await reconcile_checkout(session, db)
+        return
     if session.get("mode") == "payment" or metadata.get("call_payment_id"):
         from app.services.payments import call_payment_service
 

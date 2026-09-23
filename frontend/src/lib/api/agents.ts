@@ -35,6 +35,7 @@ export interface CreateAgentRequest {
   text_max_context_messages?: number;
   calcom_event_type_id?: number;
   assignment_strategy?: string;
+  booking_deposit_mode?: "off" | "card" | "20" | "50" | "experiment";
   enabled_tools?: string[];
   tool_settings?: Record<string, string[]>;
   // IVR navigation settings
@@ -71,6 +72,7 @@ export interface UpdateAgentRequest {
   text_max_context_messages?: number;
   calcom_event_type_id?: number;
   assignment_strategy?: string;
+  booking_deposit_mode?: "off" | "card" | "20" | "50" | "experiment";
   is_active?: boolean;
   enabled_tools?: string[];
   tool_settings?: Record<string, string[]>;

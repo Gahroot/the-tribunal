@@ -1810,6 +1810,18 @@
             "title": "Auto Evaluate",
             "type": "boolean"
           },
+          "booking_deposit_mode": {
+            "default": "off",
+            "enum": [
+              "off",
+              "card",
+              "20",
+              "50",
+              "experiment"
+            ],
+            "title": "Booking Deposit Mode",
+            "type": "string"
+          },
           "calcom_event_type_id": {
             "anyOf": [
               {
@@ -2144,6 +2156,18 @@
           "auto_evaluate": {
             "title": "Auto Evaluate",
             "type": "boolean"
+          },
+          "booking_deposit_mode": {
+            "default": "off",
+            "enum": [
+              "off",
+              "card",
+              "20",
+              "50",
+              "experiment"
+            ],
+            "title": "Booking Deposit Mode",
+            "type": "string"
           },
           "calcom_event_type_id": {
             "anyOf": [
@@ -2555,6 +2579,24 @@
               }
             ],
             "title": "Auto Evaluate"
+          },
+          "booking_deposit_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "off",
+                  "card",
+                  "20",
+                  "50",
+                  "experiment"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booking Deposit Mode"
           },
           "calcom_event_type_id": {
             "anyOf": [
@@ -3314,6 +3356,39 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "deposit_amount_cents": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deposit Amount Cents"
+          },
+          "deposit_checkout_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deposit Checkout Url"
+          },
+          "deposit_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deposit Status"
           },
           "duration_minutes": {
             "default": 30,
@@ -36969,6 +37044,77 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/appointments/deposit-experiment": {
+      "get": {
+        "description": "Intent-to-treat show rate by assigned arm, excluding unresolved bookings.\n\nPaid and unpaid bookings remain in their original arm; no revenue or\nconversion metrics are used to judge the experiment.",
+        "operationId": "deposit_experiment_api_v1_workspaces__workspace_id__appointments_deposit_experiment_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Deposit Experiment Api V1 Workspaces  Workspace Id  Appointments Deposit Experiment Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Deposit Experiment",
+        "tags": [
+          "Appointments"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/appointments/stats": {
       "get": {
         "description": "Return show-up rate analytics for the workspace.\n\nComputes overall appointment counts by status and derived show-up rate,\nthen breaks the same metrics down by agent and by campaign.\n\nshow_up_rate = completed / (completed + no_show) * 100, else 0.",
@@ -37186,6 +37332,68 @@
           }
         ],
         "summary": "Update Appointment",
+        "tags": [
+          "Appointments"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/appointments/{appointment_id}/refund-deposit": {
+      "post": {
+        "description": "Refund a paid booking deposit; only workspace owners/admins can do this.",
+        "operationId": "refund_deposit_api_v1_workspaces__workspace_id__appointments__appointment_id__refund_deposit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "appointment_id",
+            "required": true,
+            "schema": {
+              "title": "Appointment Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Refund Deposit Api V1 Workspaces  Workspace Id  Appointments  Appointment Id  Refund Deposit Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Refund Deposit",
         "tags": [
           "Appointments"
         ]

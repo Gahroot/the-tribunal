@@ -124,6 +124,10 @@ class AppointmentService:
             agent_id=uuid.UUID(appointment_in.agent_id) if appointment_in.agent_id else None,
             **appointment_in.model_dump(exclude={"agent_id"}),
         )
+        if agent is not None:
+            from app.services.payments.booking_deposit import assign_deposit
+
+            assign_deposit(appointment, agent.booking_deposit_mode)
         self.db.add(appointment)
         await self.db.commit()
         await self.db.refresh(appointment)
@@ -141,6 +145,10 @@ class AppointmentService:
                 event_type_id=agent.calcom_event_type_id,
             )
 
+        if appointment.deposit_status == "pending" and appointment.sync_status == "synced":
+            from app.services.payments.booking_deposit import offer_deposit_checkout
+
+            await offer_deposit_checkout(self.db, appointment, contact.email)
         return appointment
 
     async def get_appointment(

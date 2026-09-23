@@ -98,6 +98,10 @@ class Agent(Base):
 
     # Cal.com integration
     calcom_event_type_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # off | card | 20 | 50 | experiment (equal $0/$20/$50 arms).
+    booking_deposit_mode: Mapped[str] = mapped_column(
+        String(20), default="off", server_default="off", nullable=False
+    )
     # How the booking tool picks which Cal.com event type / staff member to book.
     #   "single"       -> always use calcom_event_type_id (legacy default)
     #   "round_robin"  -> distribute across the agent's active bookable_staff pool

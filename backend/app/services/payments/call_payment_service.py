@@ -99,6 +99,9 @@ async def create_payment_checkout_session(
     product_name: str,
     metadata: dict[str, str],
     customer_email: str | None = None,
+    idempotency_key: str | None = None,
+    save_card: bool = False,
+    card_only: bool = False,
 ) -> CheckoutSessionResult:
     """Create a Stripe Checkout Session (``payment`` mode) for an in-call payment.
 
@@ -118,15 +121,30 @@ async def create_payment_checkout_session(
                 "quantity": 1,
             }
         ],
-        "success_url": f"{settings.frontend_url}/payment-complete",
-        "cancel_url": f"{settings.frontend_url}/payment-cancelled",
+        "success_url": f"{settings.frontend_url}/p/payment-complete",
+        "cancel_url": f"{settings.frontend_url}/p/payment-cancelled",
         "metadata": metadata,
         "payment_intent_data": {"metadata": metadata},
     }
     if customer_email:
         params["customer_email"] = customer_email
+    if card_only:
+        params["payment_method_types"] = ["card"]
 
-    session = client.checkout.sessions.create(params=params)  # type: ignore[arg-type]
+    if save_card:
+        params = {
+            "mode": "setup",
+            "payment_method_types": ["card"],
+            "success_url": params["success_url"],
+            "cancel_url": params["cancel_url"],
+            "metadata": metadata,
+        }
+        if customer_email:
+            params["customer_email"] = customer_email
+    session = client.checkout.sessions.create(
+        params=params,  # type: ignore[arg-type]
+        options={"idempotency_key": idempotency_key} if idempotency_key else None,
+    )
     payment_intent = getattr(session, "payment_intent", None)
     payment_intent_id = payment_intent if isinstance(payment_intent, str) else None
     return CheckoutSessionResult(

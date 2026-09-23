@@ -157,6 +157,15 @@ describe("AppointmentConfirmation", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows the current deposit state on the appointment", () => {
+    const { rerender } = renderConfirmation(
+      makeAppointment({ deposit_status: "pending", deposit_amount_cents: 2000 }),
+    );
+    expect(screen.getByText("Optional $20 deposit pending")).toBeInTheDocument();
+    rerender(makeAppointment({ deposit_status: "paid", deposit_amount_cents: 2000 }));
+    expect(screen.getByText("Refundable $20 received")).toBeInTheDocument();
+  });
+
   it("disables reschedule and hides join details until Cal.com sync", () => {
     renderConfirmation(
       makeAppointment({ calcom_booking_uid: undefined, sync_status: "pending" }),

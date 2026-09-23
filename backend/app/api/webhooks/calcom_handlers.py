@@ -186,6 +186,10 @@ async def handle_booking_created(data: dict[str, Any], log: Any) -> None:  # noq
                 sync_error=None,
             )
             db.add(appointment)
+            if agent is not None:
+                from app.services.payments.booking_deposit import assign_deposit
+
+                assign_deposit(appointment, agent.booking_deposit_mode)
 
         await db.commit()
         await db.refresh(appointment)
@@ -195,6 +199,11 @@ async def handle_booking_created(data: dict[str, Any], log: Any) -> None:  # noq
             appointment_id=appointment.id,
             sync_status="synced",
         )
+
+        if appointment.deposit_status == "pending" and not appointment.deposit_checkout_session_id:
+            from app.services.payments.booking_deposit import offer_deposit_checkout
+
+            await offer_deposit_checkout(db, appointment, contact.email)
 
         # Send confirmation SMS immediately for new bookings only.
         # Wrapped in send_lifecycle_sms which never raises — webhook always
@@ -210,6 +219,9 @@ async def handle_booking_created(data: dict[str, Any], log: Any) -> None:  # noq
                 workspace=workspace,
                 agent=agent,
             )
+            from app.services.payments.booking_deposit import deposit_message
+
+            confirmation_body += deposit_message(appointment)
             log.info(
                 "sending_booking_confirmation_sms",
                 contact_id=contact.id,

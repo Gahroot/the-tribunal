@@ -120,6 +120,35 @@ export function StaffRoutingSection({ control, workspaceId, agentId }: StaffRout
           )}
         />
 
+        <FormField
+          control={control}
+          name="bookingDepositMode"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Optional booking deposit</FormLabel>
+              <Select onValueChange={field.onChange} value={field.value}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="off">Off</SelectItem>
+                  <SelectItem value="card">Save card, no charge</SelectItem>
+                  <SelectItem value="20">Refundable $20 deposit</SelectItem>
+                  <SelectItem value="50">Refundable $50 deposit</SelectItem>
+                  <SelectItem value="experiment">Test $0 vs $20 vs $50 by show rate</SelectItem>
+                </SelectContent>
+              </Select>
+              <FormDescription>
+                Booking is confirmed whether or not the guest pays. Refunds are issued by a
+                workspace admin.
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
         {poolEnabled && (
           <div className="space-y-3">
             <div className="flex items-center justify-between">

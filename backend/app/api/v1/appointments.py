@@ -6,9 +6,11 @@ from typing import Annotated, Any
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import case, func, select
 
 from app.api.deps import DB, CurrentUser, get_workspace
-from app.models.workspace import Workspace
+from app.models.appointment import Appointment
+from app.models.workspace import Workspace, WorkspaceMembership
 from app.schemas.appointment import (
     AppointmentCreate,
     AppointmentResponse,
@@ -120,6 +122,108 @@ async def get_appointment_stats(
     """
     service = AppointmentService(db)
     return await service.get_stats(workspace_id)
+
+
+@router.get("/deposit-experiment")
+async def deposit_experiment(
+    workspace_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+    agent_id: uuid.UUID | None = None,
+) -> list[dict[str, Any]]:
+    """Intent-to-treat show rate by assigned arm, excluding unresolved bookings.
+
+    Paid and unpaid bookings remain in their original arm; no revenue or
+    conversion metrics are used to judge the experiment.
+    """
+    query = (
+        select(
+            Appointment.deposit_amount_cents,
+            func.count().label("resolved"),
+            func.sum(case((Appointment.status == "completed", 1), else_=0)).label("shows"),
+        )
+        .where(
+            Appointment.workspace_id == workspace_id,
+            Appointment.deposit_experiment.is_(True),
+            Appointment.status.in_(["completed", "no_show"]),
+        )
+        .group_by(Appointment.deposit_amount_cents)
+        .order_by(Appointment.deposit_amount_cents)
+    )
+    if agent_id:
+        query = query.where(Appointment.agent_id == agent_id)
+    rows = (await db.execute(query)).all()
+    return [
+        {
+            "amount_cents": row.deposit_amount_cents,
+            "shows": row.shows,
+            "resolved": row.resolved,
+            "show_rate": row.shows / row.resolved,
+        }
+        for row in rows
+    ]
+
+
+@router.post("/{appointment_id}/refund-deposit")
+async def refund_deposit(
+    workspace_id: uuid.UUID,
+    appointment_id: int,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> dict[str, str]:
+    """Refund a paid booking deposit; only workspace owners/admins can do this."""
+    import stripe
+
+    from app.core.config import settings
+
+    membership = (
+        await db.execute(
+            select(WorkspaceMembership).where(
+                WorkspaceMembership.workspace_id == workspace_id,
+                WorkspaceMembership.user_id == current_user.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not membership or membership.role not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    appointment = (
+        await db.execute(
+            select(Appointment)
+            .where(Appointment.id == appointment_id, Appointment.workspace_id == workspace_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    if appointment.deposit_status == "refunded":
+        return {"status": "refunded"}
+    if appointment.deposit_status != "paid" or not appointment.deposit_payment_intent_id:
+        raise HTTPException(status_code=409, detail="No refundable deposit recorded")
+    if not settings.stripe_secret_key:
+        raise HTTPException(status_code=503, detail="Payment provider unavailable")
+    previous_refund = appointment.deposit_refund_id or "first"
+    refund_key = f"booking-deposit-refund-{appointment.id}-{previous_refund}"
+    try:
+        refund = stripe.StripeClient(settings.stripe_secret_key).refunds.create(
+            params={"payment_intent": appointment.deposit_payment_intent_id},
+            options={"idempotency_key": refund_key},
+        )
+    except stripe.StripeError as exc:
+        raise HTTPException(status_code=502, detail="Refund could not be requested") from exc
+    if not refund.id:
+        raise HTTPException(status_code=502, detail="Refund was not accepted")
+    if refund.status == "failed":
+        appointment.deposit_refund_id = refund.id
+        await db.commit()
+        raise HTTPException(status_code=502, detail="Refund failed; retry is available")
+    if refund.status not in ("pending", "succeeded"):
+        raise HTTPException(status_code=502, detail="Refund was not accepted")
+    appointment.deposit_refund_id = refund.id
+    appointment.deposit_status = "refunded" if refund.status == "succeeded" else "refund_pending"
+    await db.commit()
+    return {"status": appointment.deposit_status}
 
 
 @router.get("/{appointment_id}", response_model=AppointmentResponse)

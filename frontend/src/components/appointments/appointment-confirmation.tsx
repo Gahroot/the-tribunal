@@ -257,6 +257,17 @@ export function AppointmentConfirmation({
   const contactSecondary = [contact?.email, contact?.phone_number]
     .filter(Boolean)
     .join(" · ");
+  const depositAmount = `$${(appointment.deposit_amount_cents ?? 0) / 100}`;
+  const depositLabel = {
+    pending: appointment.deposit_amount_cents
+      ? `Optional ${depositAmount} deposit pending`
+      : "Optional card setup pending",
+    paid: `Refundable ${depositAmount} received`,
+    card_saved: "Card saved, no charge",
+    refund_pending: "Refund in progress",
+    refunded: "Refunded",
+    none: "",
+  }[appointment.deposit_status ?? "none"];
 
   return (
     <>
@@ -457,6 +468,13 @@ export function AppointmentConfirmation({
             </div>
           </div>
         </dd>
+
+        {depositLabel && (
+          <>
+            <dt className={ROW_LABEL_CLASS}>Deposit</dt>
+            <dd>{depositLabel}</dd>
+          </>
+        )}
 
         <dt className={ROW_LABEL_CLASS}>Join</dt>
         <dd>

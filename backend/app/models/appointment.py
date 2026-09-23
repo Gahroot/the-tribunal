@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     ForeignKey,
     Index,
@@ -120,6 +121,21 @@ class Appointment(Base):
     sync_status: Mapped[str] = mapped_column(String(50), default="pending", nullable=False)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sync_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Snapshot assignment at booking; never reassign on reschedule or payment retry.
+    deposit_experiment: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
+    deposit_amount_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    deposit_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    deposit_checkout_session_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, unique=True
+    )
+    deposit_payment_intent_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    deposit_setup_intent_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    deposit_stripe_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    deposit_refund_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    deposit_checkout_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Reminder tracking
     reminder_sent_at: Mapped[datetime | None] = mapped_column(

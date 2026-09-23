@@ -21,6 +21,9 @@ export interface Appointment {
   sync_status?: string;
   last_synced_at?: string;
   sync_error?: string;
+  deposit_amount_cents?: number | null;
+  deposit_status?: "none" | "pending" | "paid" | "card_saved" | "refund_pending" | "refunded" | null;
+  deposit_checkout_url?: string | null;
   created_at: string;
   updated_at: string;
   reminder_sent_at?: string;

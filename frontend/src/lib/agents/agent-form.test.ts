@@ -44,6 +44,7 @@ function makeAgent(overrides: Partial<Agent> = {}): Agent {
     text_max_context_messages: 12,
     calcom_event_type_id: 42,
     assignment_strategy: "single",
+    booking_deposit_mode: "off",
     enabled_tools: ["calendar"],
     tool_settings: { calendar: ["book"] },
     is_active: false,
@@ -118,11 +119,16 @@ describe("createAgentFormSchema + defaults", () => {
 
   it("rejects short names and prompts", () => {
     expect(
-      createAgentFormSchema.safeParse({ ...CREATE_AGENT_FORM_DEFAULTS, name: "a" }).success,
+      createAgentFormSchema.safeParse({
+        ...CREATE_AGENT_FORM_DEFAULTS,
+        name: "a",
+      }).success,
     ).toBe(false);
     expect(
-      createAgentFormSchema.safeParse({ ...CREATE_AGENT_FORM_DEFAULTS, systemPrompt: "short" })
-        .success,
+      createAgentFormSchema.safeParse({
+        ...CREATE_AGENT_FORM_DEFAULTS,
+        systemPrompt: "short",
+      }).success,
     ).toBe(false);
   });
 });
@@ -177,7 +183,10 @@ describe("buildCreateAgentRequest", () => {
   });
 
   it("always sends the default text response delay regardless of tier", () => {
-    const budget = buildCreateAgentRequest({ ...CREATE_AGENT_FORM_DEFAULTS, pricingTier: "budget" });
+    const budget = buildCreateAgentRequest({
+      ...CREATE_AGENT_FORM_DEFAULTS,
+      pricingTier: "budget",
+    });
     expect(budget.text_response_delay_ms).toBe(TEXT_RESPONSE_DEFAULT_DELAY_MS);
   });
 });
@@ -273,6 +282,15 @@ describe("agentToEditFormValues round-trips through buildUpdateAgentRequest", ()
     expect(req.assignment_strategy).toBe("skill_based");
   });
 
+  it("round-trips the booking deposit setting without changing it on edit", () => {
+    const values = agentToEditFormValues(makeAgent({ booking_deposit_mode: "experiment" }));
+    expect(values.bookingDepositMode).toBe("experiment");
+    expect(buildUpdateAgentRequest(values).booking_deposit_mode).toBe("experiment");
+    expect(
+      agentToEditFormValues(makeAgent({ booking_deposit_mode: "off" })).bookingDepositMode,
+    ).toBe("off");
+  });
+
   it("defaults an unknown assignment strategy to single on load", () => {
     const agent = makeAgent({ assignment_strategy: "" as unknown as string });
     const values = agentToEditFormValues(agent);
@@ -296,7 +314,10 @@ describe("agentToEditFormValues round-trips through buildUpdateAgentRequest", ()
 
   it("clamps an out-of-range text response delay when building the update request", () => {
     const values = agentToEditFormValues(makeAgent());
-    const req = buildUpdateAgentRequest({ ...values, textResponseDelayMs: 5_000_000 });
+    const req = buildUpdateAgentRequest({
+      ...values,
+      textResponseDelayMs: 5_000_000,
+    });
     expect(req.text_response_delay_ms).toBe(TEXT_RESPONSE_MAX_DELAY_MS);
   });
 

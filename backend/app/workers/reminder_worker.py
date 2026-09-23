@@ -549,12 +549,14 @@ class ReminderWorker(RetryableWorker, BaseWorker):
 
         first_name = contact.first_name or "there"
 
-        # No custom template — return the original hardcoded message unchanged
+        from app.services.payments.booking_deposit import deposit_message
+
+        # No custom template — include the current deposit state
         if not template:
             return (
                 f"Hi {first_name}, just a reminder about your upcoming appointment "
                 f"at {time_str}. Check your email for the video call link. "
-                f"Reply here if you need to reschedule."
+                f"Reply here if you need to reschedule." + deposit_message(appointment)
             )
 
         # Build reschedule link if agent has a Cal.com event type configured
@@ -600,7 +602,7 @@ class ReminderWorker(RetryableWorker, BaseWorker):
                     appointment_id=appointment.id,
                 )
 
-        return message
+        return message + deposit_message(appointment)
 
     def _render_value_reinforcement_body(
         self,

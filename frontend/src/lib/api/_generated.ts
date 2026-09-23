@@ -1895,6 +1895,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/appointments/deposit-experiment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Deposit Experiment
+         * @description Intent-to-treat show rate by assigned arm, excluding unresolved bookings.
+         *
+         *     Paid and unpaid bookings remain in their original arm; no revenue or
+         *     conversion metrics are used to judge the experiment.
+         */
+        get: operations["deposit_experiment_api_v1_workspaces__workspace_id__appointments_deposit_experiment_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/appointments/stats": {
         parameters: {
             query?: never;
@@ -1943,6 +1966,26 @@ export interface paths {
          * @description Delete/cancel an appointment.
          */
         delete: operations["delete_appointment_api_v1_workspaces__workspace_id__appointments__appointment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/appointments/{appointment_id}/refund-deposit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refund Deposit
+         * @description Refund a paid booking deposit; only workspace owners/admins can do this.
+         */
+        post: operations["refund_deposit_api_v1_workspaces__workspace_id__appointments__appointment_id__refund_deposit_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -7503,6 +7546,12 @@ export interface components {
              * @default false
              */
             auto_evaluate: boolean;
+            /**
+             * Booking Deposit Mode
+             * @default off
+             * @enum {string}
+             */
+            booking_deposit_mode: "off" | "card" | "20" | "50" | "experiment";
             /** Calcom Event Type Id */
             calcom_event_type_id?: number | null;
             /**
@@ -7689,6 +7738,12 @@ export interface components {
             assignment_strategy: string;
             /** Auto Evaluate */
             auto_evaluate: boolean;
+            /**
+             * Booking Deposit Mode
+             * @default off
+             * @enum {string}
+             */
+            booking_deposit_mode: "off" | "card" | "20" | "50" | "experiment";
             /** Calcom Event Type Id */
             calcom_event_type_id: number | null;
             /** Channel Mode */
@@ -7852,6 +7907,8 @@ export interface components {
             assignment_strategy?: string | null;
             /** Auto Evaluate */
             auto_evaluate?: boolean | null;
+            /** Booking Deposit Mode */
+            booking_deposit_mode?: ("off" | "card" | "20" | "50" | "experiment") | null;
             /** Calcom Event Type Id */
             calcom_event_type_id?: number | null;
             /** Channel Mode */
@@ -8044,6 +8101,12 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Deposit Amount Cents */
+            deposit_amount_cents?: number | null;
+            /** Deposit Checkout Url */
+            deposit_checkout_url?: string | null;
+            /** Deposit Status */
+            deposit_status?: string | null;
             /**
              * Duration Minutes
              * @default 30
@@ -22057,6 +22120,41 @@ export interface operations {
             };
         };
     };
+    deposit_experiment_api_v1_workspaces__workspace_id__appointments_deposit_experiment_get: {
+        parameters: {
+            query?: {
+                agent_id?: string | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_appointment_stats_api_v1_workspaces__workspace_id__appointments_stats_get: {
         parameters: {
             query?: never;
@@ -22174,6 +22272,40 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refund_deposit_api_v1_workspaces__workspace_id__appointments__appointment_id__refund_deposit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                appointment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
             };
             /** @description Validation Error */
             422: {
