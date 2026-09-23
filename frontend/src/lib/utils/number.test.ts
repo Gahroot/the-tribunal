@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { formatCurrency, formatNumber, formatPercent } from "./number";
+import {
+  formatCompactCurrency,
+  formatCurrency,
+  formatNumber,
+  formatPercent,
+} from "./number";
 
 describe("number utils", () => {
   describe("formatNumber", () => {
@@ -39,6 +44,24 @@ describe("number utils", () => {
 
     it("returns an em-dash for non-finite values", () => {
       expect(formatCurrency(Number.NaN)).toBe("—");
+    });
+  });
+
+  describe("formatCompactCurrency", () => {
+    it("abbreviates thousands with one decimal", () => {
+      expect(formatCompactCurrency(3500)).toBe("$3.5K");
+    });
+
+    it("renders zero without decimals", () => {
+      expect(formatCompactCurrency(0)).toBe("$0");
+    });
+
+    it("respects an explicit currency", () => {
+      expect(formatCompactCurrency(20000, "EUR")).toBe("€20K");
+    });
+
+    it("returns an em-dash for non-finite values", () => {
+      expect(formatCompactCurrency(Number.NaN)).toBe("—");
     });
   });
 

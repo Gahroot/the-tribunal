@@ -18,6 +18,21 @@ export function formatCurrency(value: number, currency: string = "USD"): string 
   }).format(value);
 }
 
+/** Compact currency for tight spaces, e.g. 3500 -> "$3.5K". Defaults to USD. */
+export function formatCompactCurrency(
+  value: number,
+  currency: string = "USD",
+): string {
+  if (!Number.isFinite(value)) return "—";
+  return new Intl.NumberFormat(DEFAULT_LOCALE, {
+    style: "currency",
+    currency,
+    notation: "compact",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
 /**
  * Percent of a 0..1 fraction, e.g. 0.1234 -> "12.34%". Pass already-multiplied
  * values divided by 100 if your source is whole-number percents.
