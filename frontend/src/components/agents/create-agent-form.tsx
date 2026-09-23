@@ -7,10 +7,11 @@ import {
   ArrowRight,
   Bot,
   Check,
+  ClipboardCheck,
   Loader2,
   MessageSquare,
+  Mic,
   Play,
-  Settings,
   Sparkles,
   Wrench,
 } from "lucide-react";
@@ -40,18 +41,25 @@ import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 
-import { BasicInfoStep } from "./basic-info-step";
-import { PricingTierStep } from "./pricing-tier-step";
+import { JobStep } from "./job-step";
+import { LimitsNotice } from "./limits-notice";
 import { SettingsReviewStep } from "./settings-review-step";
+import { StartingPointStep } from "./starting-point-step";
 import { SystemPromptStep } from "./system-prompt-step";
 import { ToolsIntegrationsStep } from "./tools-integrations-step";
+import { VoiceLanguageStep } from "./voice-language-step";
 
+/**
+ * Wizard steps, in order. `label` is the compact progress-chip text;
+ * `title` is the fuller question shown in the header line.
+ */
 const WIZARD_STEPS = [
-  { id: 1, label: "Pricing", icon: Sparkles },
-  { id: 2, label: "Basics", icon: Bot },
-  { id: 3, label: "Prompt", icon: MessageSquare },
-  { id: 4, label: "Tools", icon: Wrench },
-  { id: 5, label: "Settings", icon: Settings },
+  { id: 1, label: "Job", title: "What does this agent do?", icon: Bot },
+  { id: 2, label: "Start", title: "Pick a starting point", icon: Sparkles },
+  { id: 3, label: "Voice", title: "Voice & language", icon: Mic },
+  { id: 4, label: "Prompt", title: "Prompt", icon: MessageSquare },
+  { id: 5, label: "Tools", title: "Tools", icon: Wrench },
+  { id: 6, label: "Review", title: "Review & create", icon: ClipboardCheck },
 ] as const;
 
 export type AgentFormValues = CreateAgentFormValues;
@@ -63,6 +71,8 @@ export function CreateAgentForm() {
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdAgent, setCreatedAgent] = useState<Agent | null>(null);
+  const [startingPointId, setStartingPointId] = useState("scratch");
+  const [limitsDismissed, setLimitsDismissed] = useState(false);
 
   const createAgentMutation = useMutation({
     mutationFn: (data: CreateAgentRequest) => {
@@ -91,6 +101,7 @@ export function CreateAgentForm() {
   const enabledTools = useWatch({ control: form.control, name: "enabledTools" });
   const enabledToolIds = useWatch({ control: form.control, name: "enabledToolIds" });
   const agentName = useWatch({ control: form.control, name: "name" });
+  const agentDescription = useWatch({ control: form.control, name: "description" });
   const systemPrompt = useWatch({ control: form.control, name: "systemPrompt" });
   const currentLanguage = useWatch({ control: form.control, name: "language" });
 
@@ -122,20 +133,27 @@ export function CreateAgentForm() {
     }
   }, [pricingTier, form]);
 
+  // Zod/React Hook Form rules, mapped to the new step order. The full schema
+  // still runs on submit via form.handleSubmit.
   const validateStep = async (currentStep: number): Promise<boolean> => {
     switch (currentStep) {
-      case 1: {
-        const selectedTierId = form.getValues("pricingTier");
-        const tier = PRICING_TIERS.find((t) => t.id === selectedTierId);
-        return !tier?.underConstruction;
-      }
+      case 1:
+        // Job: name + one-sentence purpose.
+        return form.trigger(["name", "description"]);
       case 2:
-        return form.trigger(["name"]);
-      case 3:
-        return form.trigger("systemPrompt");
-      case 4:
+        // Starting point: "scratch" is preselected, nothing required.
         return true;
+      case 3:
+        // Voice & language.
+        return form.trigger(["language", "voice", "channelMode"]);
+      case 4:
+        // Prompt.
+        return form.trigger(["systemPrompt", "initialGreeting"]);
       case 5:
+        // Tools: nothing required.
+        return true;
+      case 6:
+        // Review: full-schema validation runs on Create.
         return true;
       default:
         return true;
@@ -144,7 +162,7 @@ export function CreateAgentForm() {
 
   const handleNext = async () => {
     const isValid = await validateStep(step);
-    if (isValid && step < 5) {
+    if (isValid && step < WIZARD_STEPS.length) {
       setStep(step + 1);
     }
   };
@@ -169,15 +187,15 @@ export function CreateAgentForm() {
     return (
       <div className="min-h-screen">
         <div className="mx-auto max-w-xl p-6 pt-16 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-            <Check className="h-7 w-7 text-primary" />
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full">
+            <Check className="h-7 w-7 text-success" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight">
             {createdAgent.name} is ready
           </h1>
           <p className="mt-2 text-muted-foreground">
             Rehearse it against built-in prospect personas in the Practice Arena
-            before it talks to real leads — no live sends, just a scored report.
+            before it talks to real leads: no live sends, just a scored report.
           </p>
           <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
             <Button asChild>
@@ -202,13 +220,22 @@ export function CreateAgentForm() {
         <div className="mb-6">
           <h1 className="text-2xl font-bold tracking-tight">Create Voice Agent</h1>
           <p className="text-muted-foreground">
-            Step {step} of 5 &middot; {WIZARD_STEPS[step - 1]?.label ?? ""}
+            Step {step} of {WIZARD_STEPS.length} &middot;{" "}
+            {WIZARD_STEPS[step - 1]?.title ?? ""}
           </p>
         </div>
 
+        {/* Dismissible limits/upgrade notice — pricing lives here, not in a wizard step */}
+        {!limitsDismissed && selectedTier && (
+          <LimitsNotice
+            tier={selectedTier}
+            onDismiss={() => setLimitsDismissed(true)}
+          />
+        )}
+
         {/* Progress Bar */}
         <div className="mb-6">
-          <div className="grid grid-cols-[1fr_1rem_1fr_1rem_1fr_1rem_1fr_1rem_1fr] items-center">
+          <div className="grid grid-cols-[1fr_1rem_1fr_1rem_1fr_1rem_1fr_1rem_1fr_1rem_1fr] items-center">
             {WIZARD_STEPS.map((s, idx) => {
               const Icon = s.icon;
               const isActive = s.id === step;
@@ -222,8 +249,8 @@ export function CreateAgentForm() {
                     disabled={s.id > step}
                     className={cn(
                       "relative z-10 flex items-center gap-2 rounded-lg border p-2 transition-all duration-300",
-                      isActive && "border-primary bg-primary/10 ring-1 ring-primary",
-                      isCompleted && "cursor-pointer border-primary bg-primary/5 hover:bg-primary/10",
+                      isActive && "border-primary bg-secondary",
+                      isCompleted && "cursor-pointer border-primary bg-secondary hover:bg-muted",
                       !isActive && !isCompleted && "cursor-not-allowed border-border bg-muted/30"
                     )}
                   >
@@ -270,11 +297,34 @@ export function CreateAgentForm() {
         {/* Form Content */}
         <Form {...form}>
           <form onSubmit={(e) => e.preventDefault()} className="space-y-6">
-            {step === 1 && <PricingTierStep form={form} pricingTier={pricingTier} />}
-            {step === 2 && <BasicInfoStep form={form} pricingTier={pricingTier} availableLanguages={availableLanguages} />}
-            {step === 3 && <SystemPromptStep form={form} />}
-            {step === 4 && <ToolsIntegrationsStep form={form} pricingTier={pricingTier} enabledToolIds={enabledToolIds} />}
-            {step === 5 && <SettingsReviewStep form={form} pricingTier={pricingTier} agentName={agentName} systemPrompt={systemPrompt} enabledTools={enabledTools} selectedTier={selectedTier} />}
+            {step === 1 && <JobStep form={form} />}
+            {step === 2 && (
+              <StartingPointStep
+                form={form}
+                selectedId={startingPointId}
+                onSelect={setStartingPointId}
+              />
+            )}
+            {step === 3 && (
+              <VoiceLanguageStep
+                form={form}
+                pricingTier={pricingTier}
+                availableLanguages={availableLanguages}
+              />
+            )}
+            {step === 4 && <SystemPromptStep form={form} />}
+            {step === 5 && <ToolsIntegrationsStep form={form} pricingTier={pricingTier} enabledToolIds={enabledToolIds} />}
+            {step === 6 && (
+              <SettingsReviewStep
+                form={form}
+                pricingTier={pricingTier}
+                agentName={agentName}
+                agentDescription={agentDescription}
+                systemPrompt={systemPrompt}
+                enabledTools={enabledTools}
+                selectedTier={selectedTier}
+              />
+            )}
 
             {/* Navigation */}
             <div className="flex items-center justify-between border-t pt-6">
@@ -287,7 +337,7 @@ export function CreateAgentForm() {
                 {step === 1 ? "Cancel" : "Back"}
               </Button>
 
-              {step < 5 ? (
+              {step < WIZARD_STEPS.length ? (
                 <Button type="button" onClick={() => void handleNext()}>
                   Next
                   <ArrowRight className="ml-2 h-4 w-4" />

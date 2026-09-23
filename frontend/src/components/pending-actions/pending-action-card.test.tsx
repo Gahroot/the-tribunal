@@ -99,4 +99,37 @@ describe("PendingActionCard payload details", () => {
     expect(screen.getByText("+14155550125")).toBeInTheDocument();
     expect(screen.getByText("hot lead")).toBeInTheDocument();
   });
+
+  it("explains why the action is queued and offers inline triage controls", () => {
+    renderCard({
+      ...baseAction,
+      context: { source: "crm_assistant", risk_level: "high" },
+      action_payload: { to: "+14155550126", text: "Following up on your inquiry." },
+    });
+
+    expect(screen.getByText("Following up on your inquiry.")).toBeInTheDocument();
+    expect(screen.getByText("Requested by the CRM assistant (risk: high)")).toBeInTheDocument();
+    expect(screen.getByText("High urgency")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: `Approve: ${baseAction.description}` }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: `Reject: ${baseAction.description}` }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: `Snooze: ${baseAction.description}` }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("normalizes prefixed assistant action types into a readable label", () => {
+    renderCard({
+      ...baseAction,
+      action_type: "crm_assistant.apply_tag",
+      action_payload: { contact_name: "Dana Fox", tag: "vip" },
+    });
+
+    expect(screen.getByText("Apply Tag")).toBeInTheDocument();
+    expect(screen.getByText("Dana Fox")).toBeInTheDocument();
+    expect(screen.getByText("vip")).toBeInTheDocument();
+  });
 });

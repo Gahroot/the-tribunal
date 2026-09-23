@@ -4,7 +4,6 @@
 import { Phone, ChevronDown } from "lucide-react";
 import type { UseFormReturn } from "react-hook-form";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -32,6 +31,7 @@ interface SettingsReviewStepProps {
   form: UseFormReturn<AgentFormValues>;
   pricingTier: string;
   agentName: string;
+  agentDescription: string | undefined;
   systemPrompt: string;
   enabledTools: string[];
   selectedTier: (typeof PRICING_TIERS)[number] | undefined;
@@ -41,6 +41,7 @@ export function SettingsReviewStep({
   form,
   pricingTier,
   agentName,
+  agentDescription,
   systemPrompt,
   enabledTools,
   selectedTier,
@@ -415,7 +416,7 @@ export function SettingsReviewStep({
       </Card>
 
       {/* Summary Card */}
-      <Card className="border-primary/30 bg-primary/5">
+      <Card className="border-primary/30 bg-secondary">
         <CardContent className="p-6">
           <h2 className="mb-4 text-lg font-medium">Review Your Agent</h2>
 
@@ -426,13 +427,10 @@ export function SettingsReviewStep({
                 <p className="font-medium">{agentName || "Not set"}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Pricing Tier</p>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">{selectedTier?.name}</span>
-                  <Badge variant="outline" className="text-[10px]">
-                    ${selectedTier?.costPerHour.toFixed(2)}/hr
-                  </Badge>
-                </div>
+                <p className="text-xs text-muted-foreground">Purpose</p>
+                <p className="text-sm">
+                  {agentDescription || "Not set"}
+                </p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">AI Model</p>
