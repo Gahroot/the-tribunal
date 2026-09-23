@@ -8,10 +8,13 @@ import { toast } from "sonner";
 import { FollowupSection } from "@/components/actions/followup-section";
 import { ContactFormDialog } from "@/components/contacts/contact-form-dialog";
 import { ContactActions } from "@/components/contacts/contact-sidebar/contact-actions";
+import { ContactActivityTimeline } from "@/components/contacts/contact-sidebar/contact-activity-timeline";
 import { ContactAppointments } from "@/components/contacts/contact-sidebar/contact-appointments";
 import { ContactHeader } from "@/components/contacts/contact-sidebar/contact-header";
 import { ContactInfoSection } from "@/components/contacts/contact-sidebar/contact-info-section";
 import { ContactNotesMeta } from "@/components/contacts/contact-sidebar/contact-notes-meta";
+import { ContactOpportunitySection } from "@/components/contacts/contact-sidebar/contact-opportunity-section";
+import { ContactTaskSection } from "@/components/contacts/contact-sidebar/contact-task-section";
 import { ContactTimeline } from "@/components/contacts/contact-sidebar/contact-timeline";
 import { DeleteContactDialog } from "@/components/contacts/contact-sidebar/delete-contact-dialog";
 import { EngagementSummary } from "@/components/contacts/contact-sidebar/engagement-summary";
@@ -46,9 +49,7 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
     if (!onClose) return;
 
     previousActiveElement.current =
-      typeof document !== "undefined"
-        ? (document.activeElement as HTMLElement | null)
-        : null;
+      typeof document !== "undefined" ? (document.activeElement as HTMLElement | null) : null;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -118,9 +119,7 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
         },
         onError: (error) => {
           setAiEnabled(!newState);
-          toast.error(
-            getApiErrorMessage(error, messages.contacts.aiToggleFailed),
-          );
+          toast.error(getApiErrorMessage(error, messages.contacts.aiToggleFailed));
         },
       },
     );
@@ -137,21 +136,14 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
         router.push("/contacts");
       },
       onError: (error) => {
-        toast.error(
-          getApiErrorMessage(error, messages.contacts.deleteFailed),
-        );
+        toast.error(getApiErrorMessage(error, messages.contacts.deleteFailed));
       },
     });
   };
 
   if (!selectedContact) {
     return (
-      <div
-        className={cn(
-          "flex flex-col h-full items-center justify-center p-8",
-          className,
-        )}
-      >
+      <div className={cn("flex flex-col h-full items-center justify-center p-8", className)}>
         <p className="text-sm text-muted-foreground text-center">
           Select a contact to view details
         </p>
@@ -194,22 +186,28 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
           <ContactInfoSection contact={selectedContact} />
 
           <Separator />
-          <ImportantDatesSection
-            contact={selectedContact}
-            workspaceId={workspaceId}
-          />
+          <ImportantDatesSection contact={selectedContact} workspaceId={workspaceId} />
 
           <Separator />
-          <EngagementSummary
+          <ContactTaskSection workspaceId={workspaceId ?? ""} contactId={selectedContact.id} />
+
+          <Separator />
+          <ContactOpportunitySection
             workspaceId={workspaceId ?? ""}
             contactId={selectedContact.id}
           />
+
+          <Separator />
+          <EngagementSummary workspaceId={workspaceId ?? ""} contactId={selectedContact.id} />
 
           <Separator />
           <FollowupSection />
 
           <Separator />
           <ContactTimeline contact={selectedContact} timeline={timeline} />
+
+          <Separator />
+          <ContactActivityTimeline timeline={timeline} />
 
           <Separator />
           <ContactAppointments

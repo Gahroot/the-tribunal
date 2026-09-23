@@ -56,6 +56,15 @@ export const messages = {
     aiToggleFailed: "Failed to toggle AI engagement. Please try again.",
   },
 
+  nudges: {
+    taskCreated: "Follow-up task added",
+    taskCreateFailed: "Could not add the task. Please try again.",
+    taskDueUpdated: "Due date updated",
+    taskDueUpdateFailed: "Could not update the due date. Please try again.",
+    taskAssigned: "Task assignment updated",
+    taskAssignFailed: "Could not assign the task. Please try again.",
+  },
+
   conversations: {
     sent: "Message sent",
     sendFailed: "Failed to send message",

@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import { BulkTagDialog } from "@/components/contacts/bulk-tag-dialog";
 import { ContactCard, ContactCardSkeleton } from "@/components/contacts/contact-card";
+import { ContactDetailPanel } from "@/components/contacts/contact-detail-panel";
 import { ContactFormDialog } from "@/components/contacts/contact-form-dialog";
 import { ContactsBulkActions } from "@/components/contacts/contacts-bulk-actions";
 import { ContactsEmptyState } from "@/components/contacts/contacts-empty-state";
@@ -30,7 +31,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageErrorState } from "@/components/ui/page-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useBulkDeleteContacts, useBulkUpdateStatus, useContactIds, useContactsPaginated } from "@/hooks/useContacts";
+import {
+  useBulkDeleteContacts,
+  useBulkUpdateStatus,
+  useContactIds,
+  useContactsPaginated,
+} from "@/hooks/useContacts";
 import { useRowSelection } from "@/hooks/useRowSelection";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import type { ContactIdsParams, ContactsListParams } from "@/lib/api/contacts";
@@ -41,6 +47,20 @@ import type { Contact, ContactStatus } from "@/types";
 export function ContactsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+
+  // Master-detail selection: ?contact=<id> reflows the detail panel in place —
+  // the list column never unmounts, so scroll, filters, and sort survive.
+  const activeContactParam = searchParams.get("contact");
+  const parsedActiveId = activeContactParam ? Number.parseInt(activeContactParam, 10) : Number.NaN;
+  const activeContactId = Number.isFinite(parsedActiveId) ? parsedActiveId : null;
+
+  const closeDetailPanel = () => {
+    const urlParams = new URLSearchParams(searchParams.toString());
+    urlParams.delete("contact");
+    const newUrl = urlParams.size > 0 ? `/contacts?${urlParams.toString()}` : "/contacts";
+    router.replace(newUrl, { scroll: false });
+  };
+
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isScrapeDialogOpen, setIsScrapeDialogOpen] = useState(false);
 
@@ -82,6 +102,7 @@ export function ContactsPage() {
     contactsPage,
     contactsPageSize,
     setContactsPage,
+    setSelectedContact,
   } = useContactStore();
 
   // Pre-apply a segment's filter definition when navigated here with
@@ -107,14 +128,17 @@ export function ContactsPage() {
   const [inputValue, setInputValue] = useState(searchQuery);
 
   // Build query params from store filter/sort/pagination state
-  const contactsListParams = useMemo<ContactsListParams>(() => ({
-    page: contactsPage,
-    page_size: contactsPageSize,
-    sort_by: sortBy,
-    ...(searchQuery.trim() && { search: searchQuery.trim() }),
-    ...(statusFilter && { status: statusFilter as ContactStatus }),
-    ...(filters && { filters: JSON.stringify(filters) }),
-  }), [contactsPage, contactsPageSize, sortBy, searchQuery, statusFilter, filters]);
+  const contactsListParams = useMemo<ContactsListParams>(
+    () => ({
+      page: contactsPage,
+      page_size: contactsPageSize,
+      sort_by: sortBy,
+      ...(searchQuery.trim() && { search: searchQuery.trim() }),
+      ...(statusFilter && { status: statusFilter as ContactStatus }),
+      ...(filters && { filters: JSON.stringify(filters) }),
+    }),
+    [contactsPage, contactsPageSize, sortBy, searchQuery, statusFilter, filters],
+  );
 
   // Fetch contacts via React Query
   const {
@@ -122,10 +146,7 @@ export function ContactsPage() {
     isPending: isLoadingContacts,
     isError: isContactsError,
     refetch: refetchContacts,
-  } = useContactsPaginated(
-    workspaceId ?? "",
-    contactsListParams,
-  );
+  } = useContactsPaginated(workspaceId ?? "", contactsListParams);
   const contacts = useMemo(() => contactsData?.items ?? [], [contactsData?.items]);
   const contactsTotal = contactsData?.total ?? 0;
   const contactsTotalPages = contactsData?.pages ?? 1;
@@ -205,7 +226,7 @@ export function ContactsPage() {
       setSelectAllMatchingIds(new Set(data.ids));
       selection.clear();
       setFetchAllIds(false);
-    }
+    },
   );
 
   const handleSelectAllMatching = () => {
@@ -240,142 +261,170 @@ export function ContactsPage() {
     try {
       const result = await bulkUpdateStatusMutation.mutateAsync({ ids: selectedArray, status });
       void queryClient.invalidateQueries({ queryKey: queryKeys.contacts.all(workspaceId ?? "") });
-      toast.success(`Updated ${result.updated} contact${result.updated !== 1 ? "s" : ""} to ${status}`);
+      toast.success(
+        `Updated ${result.updated} contact${result.updated !== 1 ? "s" : ""} to ${status}`,
+      );
     } catch {
       toast.error("Failed to update status");
     }
   };
 
-  const allVisibleSelected = contacts.length > 0 && contacts.every((c: Contact) => effectiveSelectedIds.has(c.id));
+  const allVisibleSelected =
+    contacts.length > 0 && contacts.every((c: Contact) => effectiveSelectedIds.has(c.id));
   const someVisibleSelected = contacts.some((c: Contact) => effectiveSelectedIds.has(c.id));
   const hasActiveFilters = !!(searchQuery.trim() || statusFilter || filters);
-  const showSelectAllMatching = allVisibleSelected && !selectAllMatchingIds && contactsTotal > contacts.length;
+  const showSelectAllMatching =
+    allVisibleSelected && !selectAllMatchingIds && contactsTotal > contacts.length;
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Header */}
-      <div className="shrink-0 p-6 border-b space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Users className="h-6 w-6 text-primary" />
-            <h1 className="text-2xl font-bold">Contacts</h1>
-            <Badge variant="secondary" className="text-sm">
-              {contactsTotal}
-            </Badge>
-          </div>
-          <div className="flex items-center gap-2">
-            {!isSelectionMode && (
-              <>
-                <Button variant="outline" className="gap-2" onClick={() => setIsImportDialogOpen(true)}>
-                  <Upload className="h-4 w-4" />
-                  Import CSV
+    <div className="relative flex h-full overflow-hidden">
+      {/* List column — stays mounted while a contact is open so scroll
+          position and filters are never lost when the selection changes. */}
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        {/* Header */}
+        <div className="shrink-0 p-6 border-b space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Users className="h-6 w-6 text-primary" />
+              <h1 className="text-2xl font-bold">Contacts</h1>
+              <Badge variant="secondary" className="text-sm">
+                {contactsTotal}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-2">
+              {!isSelectionMode && (
+                <>
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() => setIsImportDialogOpen(true)}
+                  >
+                    <Upload className="h-4 w-4" />
+                    Import CSV
+                  </Button>
+                  <Button className="gap-2" onClick={() => setIsCreateDialogOpen(true)}>
+                    <Plus className="h-4 w-4" />
+                    Add Contact
+                  </Button>
+                </>
+              )}
+              {contacts.length > 0 && (
+                <Button
+                  variant={isSelectionMode ? "default" : "outline"}
+                  className="gap-2"
+                  onClick={handleToggleSelectionMode}
+                >
+                  {isSelectionMode ? (
+                    <X className="h-4 w-4" />
+                  ) : (
+                    <CheckSquare className="h-4 w-4" />
+                  )}
+                  {isSelectionMode ? "Done" : "Select"}
                 </Button>
-                <Button className="gap-2" onClick={() => setIsCreateDialogOpen(true)}>
-                  <Plus className="h-4 w-4" />
-                  Add Contact
-                </Button>
-              </>
-            )}
-            {contacts.length > 0 && (
-              <Button
-                variant={isSelectionMode ? "default" : "outline"}
-                className="gap-2"
-                onClick={handleToggleSelectionMode}
-              >
-                {isSelectionMode ? <X className="h-4 w-4" /> : <CheckSquare className="h-4 w-4" />}
-                {isSelectionMode ? "Done" : "Select"}
-              </Button>
-            )}
+              )}
+            </div>
           </div>
+
+          {/* Bulk Actions Bar */}
+          {isSelectionMode && (
+            <ContactsBulkActions
+              selectedCount={selectedCount}
+              selectAllMatchingIds={selectAllMatchingIds}
+              allVisibleSelected={allVisibleSelected}
+              someVisibleSelected={someVisibleSelected}
+              showSelectAllMatching={showSelectAllMatching}
+              hasActiveFilters={hasActiveFilters}
+              contactsTotal={contactsTotal}
+              visibleCount={contacts.length}
+              isFetchingAllIds={isFetchingAllIds}
+              isBulkUpdatePending={bulkUpdateStatusMutation.isPending}
+              isBulkDeletePending={bulkDeleteMutation.isPending}
+              onSelectAllVisible={handleSelectAllVisible}
+              onClearSelection={handleClearSelection}
+              onSelectAllMatching={handleSelectAllMatching}
+              onBulkStatusChange={handleBulkStatusChange}
+              onOpenTagDialog={() => setIsBulkTagDialogOpen(true)}
+              onOpenDeleteDialog={() => setIsDeleteDialogOpen(true)}
+            />
+          )}
+
+          <ContactsToolbar
+            inputValue={inputValue}
+            onInputChange={setInputValue}
+            sortBy={sortBy}
+            onSortByChange={setSortBy}
+            workspaceId={workspaceId}
+            filters={filters}
+            onFiltersChange={setFilters}
+            statusFilter={statusFilter}
+            onStatusChange={setStatusFilter as (status: ContactStatus | null) => void}
+            statusCounts={statusCounts}
+          />
         </div>
 
-        {/* Bulk Actions Bar */}
-        {isSelectionMode && (
-          <ContactsBulkActions
-            selectedCount={selectedCount}
-            selectAllMatchingIds={selectAllMatchingIds}
-            allVisibleSelected={allVisibleSelected}
-            someVisibleSelected={someVisibleSelected}
-            showSelectAllMatching={showSelectAllMatching}
-            hasActiveFilters={hasActiveFilters}
-            contactsTotal={contactsTotal}
-            visibleCount={contacts.length}
-            isFetchingAllIds={isFetchingAllIds}
-            isBulkUpdatePending={bulkUpdateStatusMutation.isPending}
-            isBulkDeletePending={bulkDeleteMutation.isPending}
-            onSelectAllVisible={handleSelectAllVisible}
-            onClearSelection={handleClearSelection}
-            onSelectAllMatching={handleSelectAllMatching}
-            onBulkStatusChange={handleBulkStatusChange}
-            onOpenTagDialog={() => setIsBulkTagDialogOpen(true)}
-            onOpenDeleteDialog={() => setIsDeleteDialogOpen(true)}
-          />
-        )}
-
-        <ContactsToolbar
-          inputValue={inputValue}
-          onInputChange={setInputValue}
-          sortBy={sortBy}
-          onSortByChange={setSortBy}
-          workspaceId={workspaceId}
-          filters={filters}
-          onFiltersChange={setFilters}
-          statusFilter={statusFilter}
-          onStatusChange={setStatusFilter as (status: ContactStatus | null) => void}
-          statusCounts={statusCounts}
-        />
-      </div>
-
-      {/* Contacts Grid */}
-      <ScrollArea className="flex-1 min-h-0">
-        <div className="p-6">
-          {isLoadingContacts ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <ContactCardSkeleton key={i} />
-              ))}
-            </div>
-          ) : isContactsError ? (
-            <PageErrorState
-              message="We couldn't load your contacts. Please try again."
-              onRetry={() => refetchContacts()}
-            />
-          ) : contacts.length === 0 ? (
-            <ContactsEmptyState
-              hasFilters={hasActiveFilters}
-              onAddContact={() => setIsCreateDialogOpen(true)}
-              onImportContacts={() => setIsImportDialogOpen(true)}
-            />
-          ) : (
-            <AnimatePresence mode="popLayout">
+        {/* Contacts Grid */}
+        <ScrollArea className="flex-1 min-h-0">
+          <div className="p-6">
+            {isLoadingContacts ? (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {contacts.map((contact: Contact) => (
-                  <ContactCard
-                    key={contact.id}
-                    contact={contact}
-                    isSelected={effectiveSelectedIds.has(contact.id)}
-                    onSelectChange={(checked, shiftKey) => handleSelectContact(contact.id, checked, shiftKey)}
-                    isSelectionMode={isSelectionMode}
-                  />
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <ContactCardSkeleton key={i} />
                 ))}
               </div>
-            </AnimatePresence>
-          )}
-
-          {contactsTotalPages > 1 && (
-            <div className="mt-6">
-              <ResourceListPagination
-                filteredCount={contacts.length}
-                totalCount={contactsTotal}
-                resourceName="contacts"
-                page={contactsPage}
-                totalPages={contactsTotalPages}
-                onPageChange={setContactsPage}
+            ) : isContactsError ? (
+              <PageErrorState
+                message="We couldn't load your contacts. Please try again."
+                onRetry={() => refetchContacts()}
               />
-            </div>
-          )}
-        </div>
-      </ScrollArea>
+            ) : contacts.length === 0 ? (
+              <ContactsEmptyState
+                hasFilters={hasActiveFilters}
+                onAddContact={() => setIsCreateDialogOpen(true)}
+                onImportContacts={() => setIsImportDialogOpen(true)}
+              />
+            ) : (
+              <AnimatePresence mode="popLayout">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {contacts.map((contact: Contact) => (
+                    <ContactCard
+                      key={contact.id}
+                      contact={contact}
+                      isSelected={effectiveSelectedIds.has(contact.id)}
+                      onSelectChange={(checked, shiftKey) =>
+                        handleSelectContact(contact.id, checked, shiftKey)
+                      }
+                      isSelectionMode={isSelectionMode}
+                      isActive={activeContactId === contact.id}
+                      onOpen={setSelectedContact}
+                    />
+                  ))}
+                </div>
+              </AnimatePresence>
+            )}
+
+            {contactsTotalPages > 1 && (
+              <div className="mt-6">
+                <ResourceListPagination
+                  filteredCount={contacts.length}
+                  totalCount={contactsTotal}
+                  resourceName="contacts"
+                  page={contactsPage}
+                  totalPages={contactsTotalPages}
+                  onPageChange={setContactsPage}
+                />
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+      </div>
+
+      {activeContactId !== null && (
+        <ContactDetailPanel
+          contactId={activeContactId}
+          onClose={closeDetailPanel}
+          className="absolute inset-0 z-40 shadow-xl lg:static lg:z-auto lg:w-[440px] lg:shrink-0 lg:shadow-none xl:w-[480px]"
+        />
+      )}
 
       <ContactFormDialog
         mode="create"
@@ -383,15 +432,9 @@ export function ContactsPage() {
         onOpenChange={setIsCreateDialogOpen}
       />
 
-      <ImportContactsDialog
-        open={isImportDialogOpen}
-        onOpenChange={setIsImportDialogOpen}
-      />
+      <ImportContactsDialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen} />
 
-      <ScrapeLeadsDialog
-        open={isScrapeDialogOpen}
-        onOpenChange={setIsScrapeDialogOpen}
-      />
+      <ScrapeLeadsDialog open={isScrapeDialogOpen} onOpenChange={setIsScrapeDialogOpen} />
 
       {workspaceId && (
         <BulkTagDialog
@@ -405,9 +448,12 @@ export function ContactsPage() {
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {selectedCount} contact{selectedCount !== 1 ? "s" : ""}?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Delete {selectedCount} contact{selectedCount !== 1 ? "s" : ""}?
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the selected contact{selectedCount !== 1 ? "s" : ""} and all associated data.
+              This action cannot be undone. This will permanently delete the selected contact
+              {selectedCount !== 1 ? "s" : ""} and all associated data.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

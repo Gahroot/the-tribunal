@@ -39,10 +39,22 @@ export interface ContactCardProps {
   isSelected: boolean;
   onSelectChange: (checked: boolean, shiftKey: boolean) => void;
   isSelectionMode: boolean;
+  /** Currently-open contact in the master-detail detail panel. */
+  isActive?: boolean;
+  /** Called before navigation so the detail panel can paint instantly. */
+  onOpen?: (contact: Contact) => void;
 }
 
-export function ContactCard({ contact, isSelected, onSelectChange, isSelectionMode }: ContactCardProps) {
-  const displayName = [contact.first_name, contact.last_name].filter(Boolean).join(" ") || "Unknown";
+export function ContactCard({
+  contact,
+  isSelected,
+  onSelectChange,
+  isSelectionMode,
+  isActive = false,
+  onOpen,
+}: ContactCardProps) {
+  const displayName =
+    [contact.first_name, contact.last_name].filter(Boolean).join(" ") || "Unknown";
   const hasUnread = (contact.unread_count ?? 0) > 0;
 
   const handleCheckboxClick = (e: MouseEvent) => {
@@ -63,7 +75,8 @@ export function ContactCard({ contact, isSelected, onSelectChange, isSelectionMo
         "hover:bg-accent/50 hover:border-accent transition-all cursor-pointer",
         "group",
         isSelected && "ring-2 ring-primary border-primary bg-primary/5",
-        hasUnread && !isSelected && "border-l-4 border-l-info"
+        isActive && !isSelected && "border-primary ring-1 ring-primary/40",
+        hasUnread && !isSelected && "border-l-4 border-l-info",
       )}
     >
       <div className="flex items-start gap-3">
@@ -95,20 +108,23 @@ export function ContactCard({ contact, isSelected, onSelectChange, isSelectionMo
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">
-            <span className={cn(
-              "font-semibold truncate group-hover:text-primary transition-colors",
-              hasUnread && "text-info"
-            )}>
+            <span
+              className={cn(
+                "font-semibold truncate group-hover:text-primary transition-colors",
+                hasUnread && "text-info",
+              )}
+            >
               {displayName}
             </span>
-            <Badge variant="secondary" className={cn("text-xs shrink-0", contactStatusColors[contact.status])}>
+            <Badge
+              variant="secondary"
+              className={cn("text-xs shrink-0", contactStatusColors[contact.status])}
+            >
               {contactStatusLabels[contact.status]}
             </Badge>
           </div>
           {contact.company_name && (
-            <p className="text-sm text-muted-foreground truncate mt-0.5">
-              {contact.company_name}
-            </p>
+            <p className="text-sm text-muted-foreground truncate mt-0.5">{contact.company_name}</p>
           )}
         </div>
       </div>
@@ -148,7 +164,10 @@ export function ContactCard({ contact, isSelected, onSelectChange, isSelectionMo
           const tagsArray = Array.isArray(contact.tags)
             ? contact.tags
             : typeof contact.tags === "string"
-              ? contact.tags.split(",").map((t) => t.trim()).filter(Boolean)
+              ? contact.tags
+                  .split(",")
+                  .map((t) => t.trim())
+                  .filter(Boolean)
               : [];
           if (tagsArray.length > 0) {
             return (
@@ -191,5 +210,14 @@ export function ContactCard({ contact, isSelected, onSelectChange, isSelectionMo
     );
   }
 
-  return <Link href={`/contacts/${contact.id}`}>{cardContent}</Link>;
+  return (
+    <Link
+      href={`/contacts?contact=${contact.id}`}
+      scroll={false}
+      aria-current={isActive ? "true" : undefined}
+      onClick={() => onOpen?.(contact)}
+    >
+      {cardContent}
+    </Link>
+  );
 }
