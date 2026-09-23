@@ -65,10 +65,9 @@ DTMF_TOOL: dict[str, Any] = {
 }
 
 # Live transfer / handoff tool.
-# Lets the AI hand the active call to a human closer when the caller asks for a
-# human or qualifies as a hot lead. The execution layer resolves warm vs cold
-# mode and the destination number from agent/workspace config, so the model
-# only needs to declare *why* it's transferring (intent + short context).
+# Briefs a configured human closer on high intent. A live handoff additionally
+# requires the caller's explicit consent and the closer's keypad acceptance.
+# The execution layer always uses warm mode and resolves the destination.
 TRANSFER_CALL_TOOL: dict[str, Any] = {
     "type": "function",
     "name": "transfer_call",

@@ -110,7 +110,8 @@ async def telnyx_voice_webhook(request: Request) -> dict[str, str]:
     - call.hangup: Call ended
     - call.machine.detection.ended: Voicemail/human detection result
     - call.recording.saved: Recording stored (drives AI voicemail handling)
-    - call.speak.ended: Spoken audio finished (used to bridge warm transfers)
+    - call.speak.ended: Human briefing completed; await keypad acceptance
+    - call.dtmf.received: Confirmed closer accepts the warm transfer
     """
     log = logger.bind(endpoint="telnyx_voice_webhook")
 

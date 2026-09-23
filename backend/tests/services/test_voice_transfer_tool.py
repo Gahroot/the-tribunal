@@ -21,6 +21,7 @@ from app.services.telephony.call_transfer import (
     PendingTransfer,
     build_briefing,
     make_transfer_leg_client_state,
+    pop_pending_transfer,
     resolve_transfer_config,
     transfer_key_from_client_state,
 )
@@ -110,6 +111,28 @@ class _SequencedSession:
 
     async def __aexit__(self, *_args: object) -> bool:
         return False
+
+
+@pytest.mark.asyncio
+async def test_pending_transfer_claim_is_atomic_across_webhook_workers() -> None:
+    pending = PendingTransfer(
+        caller_call_control_id="caller",
+        closer_call_control_id=str(uuid.uuid4()),
+        workspace_id=str(uuid.uuid4()),
+        agent_id=None,
+        mode="warm",
+        briefing="facts",
+        language="en-US",
+        created_at="now",
+    )
+    redis = AsyncMock()
+    redis.getdel.return_value = pending.to_json()
+    with patch("app.services.telephony.call_transfer.get_redis", AsyncMock(return_value=redis)):
+        claimed = await pop_pending_transfer(pending.closer_call_control_id)
+    assert claimed == pending
+    redis.getdel.assert_awaited_once()
+    redis.get.assert_not_awaited()
+    redis.delete.assert_not_awaited()
 
 
 # --------------------------------------------------------------------------- #

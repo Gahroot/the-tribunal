@@ -1,18 +1,10 @@
-"""Live warm/cold call transfer (AI -> human closer) orchestration.
+"""Consent-gated warm call transfer (AI -> human closer) orchestration.
 
-When an AI voice agent decides to hand an active call to a human, the
-``transfer_call`` tool delegates here. Two modes are supported:
-
-- **cold**: issue the native Telnyx ``transfer`` command immediately. Telnyx
-  dials the closer and bridges them to the caller; the AI stops talking.
-- **warm**: dial a *new* outbound leg to the closer, speak a 1-2 sentence
-  briefing on that leg, then bridge it to the caller leg once the briefing
-  finishes. The bridge half of the handshake is completed by the Telnyx voice
-  webhook handler (``call.speak.ended``) using pending state we stash in Redis.
-
-The destination number and mode resolve from the agent first, then workspace
-``settings``. Every handoff is recorded in ``OutboundActionAuditLog`` so it
-shows up alongside the rest of the outbound action history.
+The closer receives a briefing on a separate leg, then presses 1 to accept.
+Only then does the webhook stop AI streaming and bridge the caller. Pending
+state is stored in Redis before dialing so an early answer is not missed.
+The destination resolves from agent or workspace settings; cold mode is never
+allowed, even when configured. Transfer attempts are audited.
 """
 
 from __future__ import annotations
@@ -41,7 +33,7 @@ class TransferResolution:
     """Resolved transfer configuration for an agent's active call."""
 
     destination_number: str
-    mode: str  # "warm" | "cold"
+    mode: str  # always "warm"; retained for existing configuration consumers
     briefing_template: str | None
 
 
@@ -216,11 +208,7 @@ async def store_pending_transfer(pending: PendingTransfer) -> bool:
 
 
 async def peek_pending_transfer(closer_call_control_id: str) -> PendingTransfer | None:
-    """Read warm-transfer pending state without deleting it.
-
-    Used on ``call.answered`` for the closer leg so we can speak the briefing
-    while leaving the state in place for the later bridge step.
-    """
+    """Read pending state without deleting it before briefing or confirmation."""
     try:
         client = await get_redis()
         raw = await client.get(_PENDING_TRANSFER_PREFIX + closer_call_control_id)
@@ -231,14 +219,12 @@ async def peek_pending_transfer(closer_call_control_id: str) -> PendingTransfer 
 
 
 async def pop_pending_transfer(closer_call_control_id: str) -> PendingTransfer | None:
-    """Fetch and delete warm-transfer pending state for a closer leg id."""
+    """Atomically claim pending state by its per-attempt token."""
     try:
         client = await get_redis()
-        raw = await client.get(_PENDING_TRANSFER_PREFIX + closer_call_control_id)
-        if raw is None:
-            return None
-        await client.delete(_PENDING_TRANSFER_PREFIX + closer_call_control_id)
-        return PendingTransfer.from_json(raw)
+        # GETDEL claims the handoff atomically across webhook workers/replicas.
+        raw = await client.getdel(_PENDING_TRANSFER_PREFIX + closer_call_control_id)
+        return PendingTransfer.from_json(raw) if raw is not None else None
     except Exception as exc:  # pragma: no cover - Redis best-effort
         logger.warning("pop_pending_transfer_failed", error=str(exc))
         return None
