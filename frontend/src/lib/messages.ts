@@ -56,6 +56,22 @@ export const messages = {
     aiToggleFailed: "Failed to toggle AI engagement. Please try again.",
   },
 
+  conversations: {
+    sent: "Message sent",
+    sendFailed: "Failed to send message",
+    aiDraftInserted: "AI draft inserted — review and edit before sending",
+    aiDraftFailed: "Failed to generate a draft. Try again.",
+    assigned: "Agent assigned",
+    unassigned: "Agent unassigned",
+    assignFailed: "Failed to assign agent. Please try again.",
+    viewSaved: "View saved",
+  },
+
+  opportunities: {
+    statusUpdated: "Opportunity updated",
+    statusUpdateFailed: "Failed to update opportunity. Please try again.",
+  },
+
   phoneNumbers: {
     noneVoiceEnabled: "No voice-enabled phone numbers available",
   },

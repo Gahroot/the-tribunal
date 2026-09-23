@@ -20,12 +20,13 @@ import { usePhoneNumbers } from "@/hooks/usePhoneNumbers";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { conversationsApi } from "@/lib/api/conversations";
 import { useContactStore } from "@/lib/contact-store";
+import { messages } from "@/lib/messages";
 import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 import { isSameDay } from "@/lib/utils/date";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 import { normalizePhoneForComparison } from "@/lib/utils/phone";
-import type { Conversation } from "@/types";
+import type { Contact, Conversation } from "@/types";
 
 import { ChatHeader } from "./chat-header";
 import { DateSeparator } from "./date-separator";
@@ -34,6 +35,14 @@ import { MessageItem } from "./message-item";
 
 interface ConversationFeedProps {
   className?: string;
+  /**
+   * Contact to render. Overrides the zustand store selection so the inbox can
+   * drive thread switching with plain React state (reflow, not reload).
+   * Omit to keep the store-driven behavior used by other pages.
+   */
+  contact?: Contact | null;
+  /** Show the AI-draft control in the composer (generate → fill → review → send). */
+  enableAIDraft?: boolean;
 }
 
 function LoadingSkeleton() {
@@ -57,8 +66,13 @@ function LoadingSkeleton() {
   );
 }
 
-export function ConversationFeed({ className }: ConversationFeedProps) {
-  const { selectedContact } = useContactStore();
+export function ConversationFeed({
+  className,
+  contact,
+  enableAIDraft,
+}: ConversationFeedProps) {
+  const { selectedContact: storeSelectedContact } = useContactStore();
+  const selectedContact = contact ?? storeSelectedContact;
   const workspaceId = useWorkspaceId();
   const queryClient = useQueryClient();
 
@@ -171,6 +185,28 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
     return groups;
   }, [timeline]);
 
+  // Fernand-style AI draft: generate → fill the composer → human review → send.
+  const [isDrafting, setIsDrafting] = useState(false);
+
+  const handleGenerateDraft = async () => {
+    if (!workspaceId || !contactConversation || isDrafting) return;
+    setIsDrafting(true);
+    try {
+      const result = await conversationsApi.generateFollowup(
+        workspaceId,
+        contactConversation.id,
+      );
+      setMessage(result.message);
+      toast.success(messages.conversations.aiDraftInserted);
+    } catch (error) {
+      toast.error(
+        getApiErrorMessage(error, messages.conversations.aiDraftFailed),
+      );
+    } finally {
+      setIsDrafting(false);
+    }
+  };
+
   const handleSendMessage = async () => {
     if (!message.trim() || !selectedContact || !workspaceId || isSending) return;
 
@@ -193,7 +229,11 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
           selectedContact.id,
         ),
       });
-      toast.success("Message sent");
+      // Refresh the inbox list too: preview + counts update in place.
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.conversations.all(workspaceId),
+      });
+      toast.success(messages.conversations.sent);
     } catch (error) {
       // Restore the message if sending failed
       setMessage(messageBody);
@@ -343,6 +383,9 @@ export function ConversationFeed({ className }: ConversationFeedProps) {
         phoneNumbers={phoneNumbers}
         selectedFromNumber={activeFromNumber}
         onFromNumberChange={setSelectedFromNumber}
+        onGenerateDraft={enableAIDraft ? handleGenerateDraft : undefined}
+        isGeneratingDraft={isDrafting}
+        draftDisabled={!contactConversation}
       />
     </div>
   );

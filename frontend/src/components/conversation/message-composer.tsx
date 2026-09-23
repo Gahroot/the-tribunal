@@ -1,6 +1,6 @@
 "use client";
 
-import { Send, Paperclip, Mic, PhoneOutgoing, Loader2 } from "lucide-react";
+import { Send, Paperclip, Mic, PhoneOutgoing, Loader2, Sparkles } from "lucide-react";
 import { useRef, type KeyboardEvent } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,11 @@ interface MessageComposerProps {
   phoneNumbers: PhoneNumber[];
   selectedFromNumber: string | undefined;
   onFromNumberChange: (value: string) => void;
+  /** Optional AI-draft control: generate → fill composer → human review → send. */
+  onGenerateDraft?: () => void;
+  isGeneratingDraft?: boolean;
+  /** Disable draft generation (e.g. no conversation exists yet). */
+  draftDisabled?: boolean;
 }
 
 export function MessageComposer({
@@ -32,6 +37,9 @@ export function MessageComposer({
   phoneNumbers,
   selectedFromNumber,
   onFromNumberChange,
+  onGenerateDraft,
+  isGeneratingDraft,
+  draftDisabled,
 }: MessageComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -94,6 +102,23 @@ export function MessageComposer({
             <Mic className="h-4 w-4" />
           </Button>
         </div>
+        {onGenerateDraft ? (
+          <Button
+            size="icon"
+            variant="outline"
+            className="h-9 w-9 shrink-0"
+            onClick={onGenerateDraft}
+            disabled={isGeneratingDraft || draftDisabled || isSending}
+            aria-label="Generate AI draft reply"
+            title="Generate AI draft"
+          >
+            {isGeneratingDraft ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4" />
+            )}
+          </Button>
+        ) : null}
         <Button
           size="icon"
           className="h-9 w-9 shrink-0"

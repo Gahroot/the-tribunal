@@ -56,6 +56,8 @@ const BLOCK_CROSS_DEPENDENCIES = {
   ],
   // contacts → agent-brain, voice
   contacts: ["agents", "experiments", "calls"],
+  // conversations → thread composer/feed, contact context panel
+  conversations: ["conversation", "contacts"],
   segments: ["agents", "experiments", "calls"],
   tags: ["agents", "experiments", "calls"],
   filters: ["agents", "experiments", "calls"],

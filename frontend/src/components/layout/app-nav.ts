@@ -20,6 +20,7 @@ import {
   Magnet,
   MapPin,
   Megaphone,
+  MessageSquare,
   Phone,
   PhoneCall,
   Rocket,
@@ -34,10 +35,11 @@ import {
 /**
  * Central navigation metadata for the app shell (sidebar + command palette).
  *
- * IA: ~9 primary destinations — Today, Inbox, Approvals, Campaigns, Pipeline,
- * Contacts, AI Agents, Insights (Dashboard/Scorecard/Deal Coach/AI
- * Suggestions), Settings — plus one Find Leads entry. Every other route stays
- * reachable through the collapsed "More" section or the command palette.
+ * IA: ~10 primary destinations — Today, Inbox, Conversations, Approvals,
+ * Campaigns, Pipeline, Contacts, AI Agents, Insights (Dashboard/Scorecard/Deal
+ * Coach/AI Suggestions), Settings — plus one Find Leads entry. Every other
+ * route stays reachable through the collapsed "More" section or the command
+ * palette.
  *
  * Flags control where each item renders: `sidebar` shows it in the app nav,
  * `commandPalette` keeps it searchable via ⌘K. Badge counts (nudges,
@@ -93,6 +95,13 @@ export const workspaceNavItems: AppNavItem[] = [
     sidebar: true,
     commandPalette: true,
     badgeKey: "nudges",
+  },
+  {
+    title: "Conversations",
+    url: "/conversations",
+    icon: MessageSquare,
+    sidebar: true,
+    commandPalette: true,
   },
   {
     title: "Approvals",
@@ -342,6 +351,7 @@ export const commandPaletteNavItems = appNavSections.flatMap((section) =>
 
 export const breadcrumbLabels: Record<string, string> = {
   nudges: "Inbox",
+  conversations: "Conversations",
   contacts: "Contacts",
   contact: "Contact",
   campaigns: "Campaigns",
