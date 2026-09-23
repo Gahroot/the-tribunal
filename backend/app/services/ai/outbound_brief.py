@@ -3,7 +3,8 @@
 import asyncio
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
@@ -21,20 +22,34 @@ def _line(value: str | None, limit: int = 220) -> str:
     return re.sub(r"\s+", " ", value or "").strip()[:limit]
 
 
-def _callback_hook(memory: str, timezone: str) -> str | None:
-    """Only assert 'today' for an explicitly requested weekday."""
+def _callback_hook(memory: str, timezone: str, occurred_at: datetime | None) -> str | None:
+    """Mention today's callback only for a recent, explicit request from the caller."""
+    if occurred_at is None or occurred_at.tzinfo is None:
+        return None
     try:
-        today = datetime.now(ZoneInfo(timezone)).strftime("%A")
+        tz = ZoneInfo(timezone)
     except (ZoneInfoNotFoundError, ValueError):
-        today = datetime.now(ZoneInfo("America/New_York")).strftime("%A")
+        tz = ZoneInfo("America/New_York")
+    now = datetime.now(tz)
+    age = now - occurred_at.astimezone(tz)
+    # A weekday in an old recap might refer to a long-past Tuesday. If the
+    # previous call itself was today, "Tuesday" may also refer to another week.
+    if (
+        not timedelta(0) < age < timedelta(days=7)
+        or occurred_at.astimezone(tz).date() == now.date()
+    ):
+        return None
+    day = now.strftime("%A")
     pattern = (
-        rf"\b(?:call (?:(?:me|us) )?back|callback|follow up|reach (?:me|us))"
-        rf"\s+(?:on\s+)?{today}\b"
+        rf"\b(?:the (?:contact|customer|caller)|they|(?:she|he))\s+"
+        rf"(?:asked|requested|wanted)(?:\s+us)?\s+(?:to\s+)?"
+        rf"(?:call (?:(?:them|her|him|me) )?back|(?:a\s+)?callback|follow up)"
+        rf"\s+(?:on\s+)?{day}\b"
     )
-    if re.search(pattern, memory, re.I):
-        return (
-            f"They requested a callback on {today}; today is {today}. Confirm the timing naturally."
-        )
+    if re.search(pattern, memory, re.I) and not re.search(
+        rf"\b(?:last|past) {day}\b", memory, re.I
+    ):
+        return f"The contact requested a callback on {day}; today is {day}."
     return None
 
 
@@ -76,7 +91,6 @@ async def build_outbound_brief(
     workspace_id: uuid.UUID,
     contact_id: int,
     timezone: str = "America/New_York",
-    web_search_enabled: bool = False,
     xai_api_key: str = "",
 ) -> str | None:
     """Compose at most three short lines, scoped to the dialed contact's workspace."""
@@ -107,18 +121,28 @@ async def build_outbound_brief(
     if memories:
         summary = _line(memories[0].summary)
         if summary:
-            callback = _callback_hook(summary, timezone)
+            callback = _callback_hook(summary, timezone, memories[0].occurred_at)
             lines.append(f"Previous call: {summary}" + (f" {callback}" if callback else ""))
     if len(lines) == 1:
         lines.append("Previous call: No stored call recap; do not imply a prior conversation.")
 
-    # Search is explicitly opt-in per agent. Only a public company name leaves
-    # the database; do not transmit the person's name, phone, notes, or history.
-    if web_search_enabled and xai_api_key and contact.company_name and len(lines) < 3:
+    # The server-side research does not depend on the live agent's tool grants.
+    # Only a public business name or website host leaves the database; never
+    # send the person's identity, notes, phone, or private address to search.
+    public_subject = contact.company_name
+    if not public_subject and contact.website_url:
         try:
-            hook = await _public_hook(contact.company_name, xai_api_key)
+            parsed = urlsplit(contact.website_url)
+            host = parsed.hostname
+            if parsed.scheme in {"http", "https"} and host and "." in host:
+                public_subject = host
+        except ValueError:
+            pass  # Invalid URLs are not sent to a third party.
+    if xai_api_key and public_subject and len(lines) < 3:
+        try:
+            hook = await _public_hook(public_subject, xai_api_key)
             if hook:
-                lines.append(f"Public company hook (verify before saying): {hook}")
+                lines.append(f"Public business hook (verify before saying): {hook}")
         except Exception as exc:  # noqa: BLE001 - a search outage must not block dialing
             logger.warning("outbound_brief_search_failed", error_type=type(exc).__name__)
 

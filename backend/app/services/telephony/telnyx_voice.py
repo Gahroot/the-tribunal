@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 import structlog
 from sqlalchemy import select
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.encryption import hash_phone
@@ -191,6 +192,55 @@ class TelnyxVoiceService:
         """
         return await self._get_call_control_application_id(webhook_url)
 
+    async def _attach_outbound_brief(
+        self,
+        db: AsyncSession,
+        message: Message,
+        workspace_id: uuid.UUID,
+        contact_id: int,
+        agent_id: uuid.UUID,
+        log: Any,
+    ) -> None:
+        """Best-effort research isolated from the queued call's transaction."""
+        from app.core.config import settings
+        from app.models.agent import Agent
+        from app.models.workspace import Workspace
+        from app.services.ai.outbound_brief import build_outbound_brief
+
+        try:
+            # A failed research query rolls back only its savepoint, not the
+            # queued message/idempotency key needed for the dial and retry.
+            async with db.begin_nested():
+                agent = (
+                    await db.execute(
+                        select(Agent).where(
+                            Agent.id == agent_id,
+                            Agent.workspace_id == workspace_id,
+                        )
+                    )
+                ).scalar_one_or_none()
+                workspace = (
+                    await db.execute(select(Workspace).where(Workspace.id == workspace_id))
+                ).scalar_one_or_none()
+                if agent:
+                    message.outbound_brief = await build_outbound_brief(
+                        db,
+                        workspace_id=workspace_id,
+                        contact_id=contact_id,
+                        timezone=(workspace.settings or {}).get("timezone", "America/New_York")
+                        if workspace
+                        else "America/New_York",
+                        xai_api_key=settings.xai_api_key,
+                    )
+        except DBAPIError as exc:
+            if exc.connection_invalidated:
+                raise  # Cannot safely persist the dial/idempotency key.
+            log.warning("outbound_brief_unavailable", error_type=type(exc).__name__)
+            message.outbound_brief = None
+        except Exception as exc:  # noqa: BLE001 - optional research must not block dial
+            log.warning("outbound_brief_unavailable", error_type=type(exc).__name__)
+            message.outbound_brief = None
+
     async def initiate_call(  # noqa: PLR0915
         self,
         to_number: str,
@@ -293,41 +343,11 @@ class TelnyxVoiceService:
             db.add(message)
             await db.flush()
 
-        # Build once for this dial attempt, before the provider receives the call.
-        # Retries keep the same brief on the existing message rather than looking
-        # up a newer (possibly contradictory) hook.
+        # Reuse a saved brief on retry; research is optional for the dial.
         if agent_id and conversation.contact_id and not message.outbound_brief:
-            from app.core.config import settings
-            from app.models.agent import Agent
-            from app.models.workspace import Workspace
-            from app.services.ai.outbound_brief import build_outbound_brief
-
-            agent = (
-                await db.execute(
-                    select(Agent).where(
-                        Agent.id == agent_id,
-                        Agent.workspace_id == workspace_id,
-                    )
-                )
-            ).scalar_one_or_none()
-            workspace = (
-                await db.execute(
-                    select(Workspace).where(
-                        Workspace.id == workspace_id,
-                    )
-                )
-            ).scalar_one_or_none()
-            if agent:
-                message.outbound_brief = await build_outbound_brief(
-                    db,
-                    workspace_id=workspace_id,
-                    contact_id=conversation.contact_id,
-                    timezone=(workspace.settings or {}).get("timezone", "America/New_York")
-                    if workspace
-                    else "America/New_York",
-                    web_search_enabled="web_search" in (agent.enabled_tools or []),
-                    xai_api_key=settings.xai_api_key,
-                )
+            await self._attach_outbound_brief(
+                db, message, workspace_id, conversation.contact_id, agent_id, log
+            )
 
         # Initiate call via Telnyx
         try:
