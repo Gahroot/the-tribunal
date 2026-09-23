@@ -284,6 +284,7 @@ class VoiceCampaignWorker(BaseCampaignWorker):
 
                 # Update campaign contact
                 campaign_contact.status = CampaignContactStatus.CALLING
+                campaign_contact.last_call_status = None
                 campaign_contact.call_attempts += 1
                 campaign_contact.last_call_at = datetime.now(UTC)
                 campaign_contact.first_sent_at = (
@@ -417,11 +418,12 @@ class VoiceCampaignWorker(BaseCampaignWorker):
 
         best_hour = await approved_best_hour(db, campaign.workspace_id)
         for contact in stuck_contacts:
-            contact.last_call_status = "no_answer"
+            outcome = "voicemail" if contact.last_call_status == "voicemail" else "no_answer"
+            contact.last_call_status = outcome
             route_call_outcome(
                 campaign,
                 contact,
-                "no_answer",
+                outcome,
                 datetime.now(UTC),
                 best_hour=contact_best_hour(campaign, contact.contact, best_hour),
             )

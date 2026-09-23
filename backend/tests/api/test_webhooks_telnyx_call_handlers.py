@@ -686,6 +686,26 @@ async def test_voicemail_detection_routes_long_machine_call_to_retry(
     )
 
 
+async def test_previous_attempt_voicemail_does_not_override_new_live_call(
+    monkeypatch: pytest.MonkeyPatch,
+    hangup_normal: dict[str, Any],
+    _stub_hangup_side_effects: dict[str, MagicMock],
+) -> None:
+    message = _make_hangup_message()
+    db = _make_db(execute_returns=[_Result(scalar=message), _Result(), _Result()])
+    db.scalar.return_value = "voicemail"  # A stale outcome on the campaign contact.
+    _patch_session_local(monkeypatch, db)
+
+    await handlers.handle_call_hangup(hangup_normal, _make_log())
+
+    assert message.status == MessageStatus.COMPLETED
+    assert (
+        _stub_hangup_side_effects["update_campaign_call_stats"].await_args.kwargs["call_outcome"]
+        is None
+    )
+    db.scalar.assert_not_awaited()
+
+
 async def test_call_hangup_captures_recording_url(
     monkeypatch: pytest.MonkeyPatch,
     hangup_with_recording: dict[str, Any],

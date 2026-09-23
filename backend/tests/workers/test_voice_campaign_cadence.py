@@ -79,6 +79,65 @@ async def test_worker_sends_due_sms_then_defers_next_call(
 
 
 @pytest.mark.asyncio
+async def test_new_voice_attempt_clears_previous_voicemail_outcome(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    campaign = _campaign()
+    campaign.sms_fallback_enabled = False
+    campaign.calls_per_minute = 10
+    campaign.voice_connection_id = None
+    campaign.from_phone_number = "+12025550199"
+    campaign.voice_agent_id = None
+    campaign.enable_machine_detection = True
+    campaign.calls_attempted = 1
+    entry = _entry(now)
+    entry.first_sent_at = now - timedelta(days=2)
+    entry.last_call_status = "voicemail"
+    entry.contact.id = 123
+    entry.contact.phone_number = "+12025550123"
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [entry]
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=result)
+    voice = MagicMock()
+    voice.initiate_call = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
+    monkeypatch.setattr(module, "approved_best_hour", AsyncMock(return_value=None))
+
+    await module.VoiceCampaignWorker()._process_pending_calls(campaign, voice, db, MagicMock())
+
+    voice.initiate_call.assert_awaited_once()
+    assert entry.status == CampaignContactStatus.CALLING
+    assert entry.call_attempts == 2
+    assert entry.last_call_status is None
+
+
+@pytest.mark.asyncio
+async def test_missing_hangup_preserves_detected_voicemail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    campaign = _campaign()
+    campaign.calls_no_answer = 0
+    entry = _entry(now)
+    entry.status = CampaignContactStatus.CALLING
+    entry.last_call_status = "voicemail"
+    entry.first_sent_at = now - timedelta(minutes=6)
+    entry.last_call_at = entry.first_sent_at
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [entry]
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=result)
+    monkeypatch.setattr(module, "approved_best_hour", AsyncMock(return_value=None))
+
+    await module.VoiceCampaignWorker()._cleanup_stuck_calls(campaign, db, MagicMock())
+
+    assert entry.last_call_status == "voicemail"
+    assert entry.status == CampaignContactStatus.PENDING
+    assert entry.next_follow_up_at >= now + timedelta(days=2)
+
+
+@pytest.mark.asyncio
 async def test_worker_does_not_send_before_scheduled_slot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
