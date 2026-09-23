@@ -90,7 +90,7 @@ export function OfferPreview({ offer, leadMagnets = [] }: OfferPreviewProps) {
     <Card className="overflow-hidden">
       <CardContent className="p-0">
         {/* Header with headline */}
-        <div className="bg-gradient-to-r from-primary/10 to-primary/5 p-6 text-center">
+        <div className="bg-muted p-6 text-center">
           {offer.headline ? (
             <h2 className="text-2xl font-bold">{offer.headline}</h2>
           ) : (
@@ -107,7 +107,7 @@ export function OfferPreview({ offer, leadMagnets = [] }: OfferPreviewProps) {
             leadMagnets.length > 0) && (
             <div className="space-y-3">
               <h3 className="font-semibold flex items-center gap-2">
-                <Sparkles className="size-4 text-warning" />
+                <Sparkles className="size-4 text-primary" />
                 Here&apos;s Everything You Get:
               </h3>
 

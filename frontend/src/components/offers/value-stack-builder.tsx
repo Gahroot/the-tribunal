@@ -202,11 +202,11 @@ export function ValueStackBuilder({ items, onChange }: ValueStackBuilderProps) {
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="p-4 bg-gradient-to-r from-success/10 to-success/5 rounded-lg border border-success/20"
+          className="p-4 rounded-lg border bg-background"
         >
           <div className="flex items-center justify-between">
             <div>
-              <p className="font-medium text-success">
+              <p className="font-medium text-foreground">
                 Total Stack Value
               </p>
               <p className="text-sm text-muted-foreground">

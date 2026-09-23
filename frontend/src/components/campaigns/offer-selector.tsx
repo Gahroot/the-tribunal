@@ -346,7 +346,7 @@ export function OfferSelector({
       <div className={baseClass}>
         {checkBadge}
         <div className="flex items-start gap-3">
-          <div className="size-10 rounded-full bg-muted flex items-center justify-center text-success">
+          <div className="size-10 rounded-full bg-muted flex items-center justify-center text-muted-foreground">
             {discountTypeIcons[offer.discount_type]}
           </div>
 
@@ -357,7 +357,7 @@ export function OfferSelector({
                 {formatDiscount(offer)}
               </Badge>
               {totalValue > 0 && (
-                <Badge variant="outline" className="text-success border-success/20">
+                <Badge variant="outline" className="text-primary">
                   <DollarSign className="size-3 mr-0.5" />
                   {formatNumber(totalValue)} value
                 </Badge>
@@ -369,7 +369,7 @@ export function OfferSelector({
                 </Badge>
               )}
               {leadMagnets.length > 0 && (
-                <Badge variant="outline" className="gap-1 text-info border-info/20">
+                <Badge variant="outline" className="gap-1">
                   <FileText className="size-3" />
                   {leadMagnets.length} bonus{leadMagnets.length > 1 ? "es" : ""}
                 </Badge>
