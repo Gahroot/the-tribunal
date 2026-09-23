@@ -156,7 +156,7 @@ async def _attach_returning_caller_context(
         log.warning("returning_caller_detection_failed", error=str(e))
 
 
-async def lookup_call_context(  # noqa: PLR0915 - loads all call context in one scoped session
+async def lookup_call_context(
     call_id: str,
     log: Any = None,
 ) -> CallContext:
@@ -200,9 +200,11 @@ async def lookup_call_context(  # noqa: PLR0915 - loads all call context in one 
             return context
 
         conversation = message.conversation
-        context.conversation_id = str(conversation.id)
-        context.workspace_id = str(conversation.workspace_id)
-        context.is_outbound = message.direction == "outbound"
+        context.conversation_id, context.workspace_id, context.is_outbound = (
+            str(conversation.id),
+            str(conversation.workspace_id),
+            message.direction == "outbound",
+        )
 
         # Get workspace timezone
         workspace_result = await db.execute(
