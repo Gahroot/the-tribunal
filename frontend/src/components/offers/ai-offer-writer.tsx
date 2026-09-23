@@ -348,7 +348,7 @@ export function AIOfferWriter({ workspaceId, onApply }: AIOfferWriterProps) {
                     </p>
                   )}
                   {"value" in option && (
-                    <p className="text-sm font-medium text-success mt-1">
+                    <p className="text-sm font-medium text-primary mt-1">
                       ${formatNumber((option as unknown as GeneratedValueStackItem).value)} value
                     </p>
                   )}
@@ -409,7 +409,7 @@ export function AIOfferWriter({ workspaceId, onApply }: AIOfferWriterProps) {
               {selectedValueItems.map((item, i) => (
                 <li key={i} className="text-sm flex justify-between">
                   <span>{item.name}</span>
-                  <span className="text-success">${formatNumber(item.value)}</span>
+                  <span className="text-primary">${formatNumber(item.value)}</span>
                 </li>
               ))}
             </ul>

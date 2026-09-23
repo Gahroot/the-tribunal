@@ -207,7 +207,7 @@ export function OfferPreview({ offer, leadMagnets = [] }: OfferPreviewProps) {
             <div className="py-2">
               <p className="text-sm text-muted-foreground">Your Price Today</p>
               <div className="flex items-center justify-center gap-3">
-                <p className="text-4xl font-bold text-success">
+                <p className="text-4xl font-bold text-primary">
                   {offer.offer_price !== undefined && offer.offer_price !== null
                     ? `$${formatNumber(offer.offer_price)}`
                     : offer.discount_type === "free_service"
@@ -215,7 +215,7 @@ export function OfferPreview({ offer, leadMagnets = [] }: OfferPreviewProps) {
                     : formatDiscount() || "Contact Us"}
                 </p>
                 {savings > 0 && (
-                  <Badge className="bg-destructive text-white">
+                  <Badge>
                     Save ${formatNumber(savings)}
                   </Badge>
                 )}

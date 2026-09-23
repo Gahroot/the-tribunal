@@ -76,7 +76,7 @@ export function ValueStackBuilder({ items, onChange }: ValueStackBuilderProps) {
         </div>
         <div className="text-right">
           <p className="text-sm text-muted-foreground">Total Value</p>
-          <p className="text-2xl font-bold text-success">
+          <p className="text-2xl font-bold text-primary">
             ${formatNumber(totalValue)}
           </p>
         </div>
@@ -215,7 +215,7 @@ export function ValueStackBuilder({ items, onChange }: ValueStackBuilderProps) {
               </p>
             </div>
             <div className="text-right">
-              <p className="text-3xl font-bold text-success">
+              <p className="text-3xl font-bold text-primary">
                 ${formatNumber(totalValue)}
               </p>
               <p className="text-xs text-muted-foreground">perceived value</p>
