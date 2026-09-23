@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime, time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -157,6 +157,24 @@ def test_as_int_swallows_junk() -> None:
     assert stlw._as_int("3") == 3
 
 
+def test_apply_contact_consent_drops_only_sms_when_opted_out() -> None:
+    """An SMS opt-out is channel-scoped: voice must survive the contact gate."""
+    remaining, dropped = stlw.apply_contact_consent(("voice", "sms"), "opted_out")
+    assert remaining == ("voice",)
+    assert dropped is True
+
+    remaining, dropped = stlw.apply_contact_consent(("sms",), "opted_out")
+    assert remaining == ()
+    assert dropped is True
+
+
+def test_apply_contact_consent_leaves_other_statuses_alone() -> None:
+    for status in (None, "", "unknown", "opted_in"):
+        remaining, dropped = stlw.apply_contact_consent(("voice", "sms"), status)
+        assert remaining == ("voice", "sms")
+        assert dropped is False
+
+
 @pytest.mark.asyncio
 async def test_enqueue_job_pushes_json_onto_queue() -> None:
     redis = MagicMock()
@@ -230,3 +248,82 @@ async def test_promote_delayed_jobs_skips_payloads_still_waiting() -> None:
     with patch.object(stlw, "get_redis", new=AsyncMock(return_value=redis)):
         await worker._promote_delayed_jobs()
     redis.rpush.assert_not_awaited()
+
+
+def _executable_worker() -> tuple[SpeedToLeadWorker, Contact]:
+    """Worker with resolvers/senders stubbed and a contact carrying an id."""
+    worker = SpeedToLeadWorker()
+    contact = _contact()
+    contact.id = 7
+    return worker, contact
+
+
+@pytest.mark.asyncio
+async def test_execute_channels_fires_voice_and_sms_in_parallel() -> None:
+    worker, contact = _executable_worker()
+    voice_id, sms_id = uuid.uuid4(), uuid.uuid4()
+    with (
+        patch.object(worker, "_resolve_agent_id", AsyncMock(return_value=None)),
+        patch.object(
+            worker,
+            "_resolve_from_number",
+            AsyncMock(side_effect=["+15550002222", "+15550003333"]),
+        ),
+        patch.object(worker, "_dial_first_touch", AsyncMock(return_value=voice_id)) as dial,
+        patch.object(worker, "_send_first_touch_sms", AsyncMock(return_value=sms_id)) as text,
+    ):
+        attempted = await worker._execute_channels(
+            AsyncMock(),
+            workspace_id=uuid.uuid4(),
+            contact=contact,
+            channels=("voice", "sms"),
+        )
+    assert attempted == {"voice": voice_id, "sms": sms_id}
+    dial.assert_awaited_once()
+    text.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_execute_channels_never_texts_without_the_companion_dial() -> None:
+    """Voice requested but unplaceable → no "calling you now" text either."""
+    worker, contact = _executable_worker()
+    with (
+        patch.object(worker, "_resolve_agent_id", AsyncMock(return_value=None)),
+        patch.object(worker, "_resolve_from_number", AsyncMock(return_value=None)),
+        patch.object(worker, "_dial_first_touch", AsyncMock()) as dial,
+        patch.object(worker, "_send_first_touch_sms", AsyncMock()) as text,
+    ):
+        attempted = await worker._execute_channels(
+            AsyncMock(),
+            workspace_id=uuid.uuid4(),
+            contact=contact,
+            channels=("voice", "sms"),
+        )
+    assert attempted == {}
+    dial.assert_not_awaited()
+    text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_execute_channels_sms_only_job_skips_voice_resolution() -> None:
+    """The embed widget's SMS-only job still texts without consulting voice."""
+    worker, contact = _executable_worker()
+    sms_id = uuid.uuid4()
+    with (
+        patch.object(worker, "_resolve_agent_id", AsyncMock(return_value=None)),
+        patch.object(
+            worker, "_resolve_from_number", AsyncMock(return_value="+15550003333")
+        ) as resolve,
+        patch.object(worker, "_dial_first_touch", AsyncMock()) as dial,
+        patch.object(worker, "_send_first_touch_sms", AsyncMock(return_value=sms_id)) as text,
+    ):
+        attempted = await worker._execute_channels(
+            AsyncMock(),
+            workspace_id=uuid.uuid4(),
+            contact=contact,
+            channels=("sms",),
+        )
+    assert attempted == {"sms": sms_id}
+    dial.assert_not_awaited()
+    text.assert_awaited_once()
+    resolve.assert_awaited_once_with(ANY, 7, ANY, voice=False)

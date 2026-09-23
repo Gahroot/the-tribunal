@@ -14,10 +14,11 @@ Both channels run through the shared outbound compliance gates in
 ``app.services.compliance.outbound_compliance`` — global opt-out, consent
 policy, and quiet hours — before anything is dialled or sent. Quiet-hours
 blocks are rescheduled to the next quiet-hours end (up to ``MAX_DEFERRALS``)
-instead of dropped; contact-level opt-outs are audited and dropped. Every
-gate decision writes an ``OutboundActionAuditLog`` row, and both sends are
-idempotent per (workspace, contact) so replays and retries never double-dial
-or double-text.
+instead of dropped; contact-level SMS opt-outs are audited and drop only the
+text channel (voice still clears the shared gate's global opt-out check).
+Every gate decision writes an ``OutboundActionAuditLog`` row, and both sends
+are idempotent per (workspace, contact) so replays and retries never
+double-dial or double-text.
 """
 
 from __future__ import annotations
@@ -225,7 +226,8 @@ class SpeedToLeadWorker(RetryableWorker, BaseWorker):
                 )
                 return
 
-            if (contact.sms_consent_status or "") == "opted_out":
+            channels, sms_opted_out = apply_contact_consent(channels, contact.sms_consent_status)
+            if sms_opted_out:
                 await self._audit(
                     db,
                     workspace_id=workspace_id,
@@ -236,6 +238,7 @@ class SpeedToLeadWorker(RetryableWorker, BaseWorker):
                     payload=_audit_payload(job),
                 )
                 await db.commit()
+            if not channels:
                 return
 
             quiet = quiet_hours_config(workspace)
@@ -383,6 +386,7 @@ class SpeedToLeadWorker(RetryableWorker, BaseWorker):
         """
         agent_id = await self._resolve_agent_id(db, workspace_id)
         coroutines: dict[str, Awaitable[uuid.UUID | None]] = {}
+        voice_from: str | None = None
         if CHANNEL_VOICE in channels:
             voice_from = await self._resolve_from_number(db, contact.id, workspace_id, voice=True)
             if voice_from is None:
@@ -396,16 +400,29 @@ class SpeedToLeadWorker(RetryableWorker, BaseWorker):
                     from_number=voice_from,
                 )
         if CHANNEL_SMS in channels:
-            sms_from = await self._resolve_from_number(db, contact.id, workspace_id, voice=False)
-            if sms_from is None:
-                self.logger.warning("speed_to_lead_no_sms_number", workspace_id=str(workspace_id))
-            else:
-                coroutines[CHANNEL_SMS] = self._send_first_touch_sms(
-                    workspace_id=workspace_id,
-                    contact_id=contact.id,
-                    agent_id=agent_id,
-                    from_number=sms_from,
+            if CHANNEL_VOICE in channels and voice_from is None:
+                # The first-touch SMS promises "we're calling you now" — never
+                # send it without the companion dial (SMS-only jobs carry their
+                # own in-flight call, e.g. the embed widget's click-to-call).
+                self.logger.warning(
+                    "speed_to_lead_sms_skipped_no_dial",
+                    workspace_id=str(workspace_id),
                 )
+            else:
+                sms_from = await self._resolve_from_number(
+                    db, contact.id, workspace_id, voice=False
+                )
+                if sms_from is None:
+                    self.logger.warning(
+                        "speed_to_lead_no_sms_number", workspace_id=str(workspace_id)
+                    )
+                else:
+                    coroutines[CHANNEL_SMS] = self._send_first_touch_sms(
+                        workspace_id=workspace_id,
+                        contact_id=contact.id,
+                        agent_id=agent_id,
+                        from_number=sms_from,
+                    )
         if not coroutines:
             return {}
         names = list(coroutines)
@@ -626,6 +643,21 @@ def config_gate(workspace: Workspace, contact: Contact) -> str | None:
     if not settings.telnyx_api_key:
         return "telnyx_not_configured"
     return None
+
+
+def apply_contact_consent(
+    channels: tuple[str, ...], sms_consent_status: str | None
+) -> tuple[tuple[str, ...], bool]:
+    """Drop the SMS channel for an SMS-opted-out contact.
+
+    ``sms_consent_status`` is channel-scoped (a STOP revokes texting only), so
+    voice keeps flowing through the shared compliance gate, which enforces the
+    global opt-out / do-not-call list for every channel. Returns the remaining
+    channels and whether SMS was dropped.
+    """
+    if (sms_consent_status or "") == "opted_out" and CHANNEL_SMS in channels:
+        return tuple(name for name in channels if name != CHANNEL_SMS), True
+    return channels, False
 
 
 def quiet_hours_config(workspace: Workspace) -> dict[str, Any]:
