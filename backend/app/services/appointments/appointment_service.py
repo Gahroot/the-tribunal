@@ -146,9 +146,20 @@ class AppointmentService:
             )
 
         if appointment.deposit_status == "pending" and appointment.sync_status == "synced":
-            from app.services.payments.booking_deposit import offer_deposit_checkout
+            from app.services.payments.booking_deposit import (
+                deliver_deposit_link,
+                offer_deposit_checkout,
+            )
 
+            had_checkout = bool(appointment.deposit_checkout_session_id)
             await offer_deposit_checkout(self.db, appointment, contact.email)
+            await deliver_deposit_link(
+                self.db,
+                appointment,
+                contact,
+                agent,
+                newly_created=not had_checkout and bool(appointment.deposit_checkout_session_id),
+            )
         return appointment
 
     async def get_appointment(
@@ -334,6 +345,12 @@ class AppointmentService:
                 detail="Contact not found",
             )
 
+        # A synced booking may need only a Checkout retry. Never create another
+        # Cal.com booking just to recover its missing deposit link.
+        already_synced = appointment.sync_status == "synced" and bool(
+            appointment.calcom_booking_uid
+        )
+
         # Resolve event_type_id: prefer appointment's own stored value, fall back to agent
         event_type_id: int | None = appointment.calcom_event_type_id
         if event_type_id is None and appointment.agent_id is not None:
@@ -355,19 +372,45 @@ class AppointmentService:
 
         contact_name = f"{contact.first_name} {contact.last_name or ''}".strip()
 
-        # Reset sync_status to pending before retry
-        appointment.sync_status = "pending"
-        appointment.sync_error = None
+        if not already_synced:
+            # Reset sync_status to pending before retry
+            appointment.sync_status = "pending"
+            appointment.sync_error = None
 
-        await self._try_calcom_sync(
-            appointment=appointment,
-            contact_email=contact.email,
-            contact_name=contact_name,
-            contact_phone=contact.phone_number,
-            event_type_id=event_type_id,
-        )
+            await self._try_calcom_sync(
+                appointment=appointment,
+                contact_email=contact.email,
+                contact_name=contact_name,
+                contact_phone=contact.phone_number,
+                event_type_id=event_type_id,
+            )
 
         if appointment.sync_status == "synced":
+            if appointment.deposit_status == "pending":
+                from app.services.payments.booking_deposit import (
+                    deliver_deposit_link,
+                    offer_deposit_checkout,
+                )
+
+                had_checkout = bool(appointment.deposit_checkout_session_id)
+                await offer_deposit_checkout(self.db, appointment, contact.email)
+                agent = None
+                if appointment.agent_id is not None:
+                    agent_result = await self.db.execute(
+                        select(Agent).where(
+                            Agent.id == appointment.agent_id,
+                            Agent.workspace_id == workspace_id,
+                        )
+                    )
+                    agent = agent_result.scalar_one_or_none()
+                await deliver_deposit_link(
+                    self.db,
+                    appointment,
+                    contact,
+                    agent,
+                    newly_created=not had_checkout
+                    and bool(appointment.deposit_checkout_session_id),
+                )
             return {
                 "status": "synced",
                 "calcom_booking_uid": appointment.calcom_booking_uid,

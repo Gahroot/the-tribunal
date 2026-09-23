@@ -201,9 +201,14 @@ async def handle_booking_created(data: dict[str, Any], log: Any) -> None:  # noq
         )
 
         if appointment.deposit_status == "pending" and not appointment.deposit_checkout_session_id:
-            from app.services.payments.booking_deposit import offer_deposit_checkout
+            from app.services.payments.booking_deposit import (
+                deliver_deposit_link,
+                offer_deposit_checkout,
+            )
 
             await offer_deposit_checkout(db, appointment, contact.email)
+            if not is_new_booking and appointment.deposit_checkout_session_id:
+                await deliver_deposit_link(db, appointment, contact, agent, newly_created=True)
 
         # Send confirmation SMS immediately for new bookings only.
         # Wrapped in send_lifecycle_sms which never raises — webhook always

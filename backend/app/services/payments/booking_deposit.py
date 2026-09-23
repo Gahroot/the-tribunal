@@ -14,7 +14,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.models.agent import Agent
 from app.models.appointment import Appointment
+from app.models.contact import Contact
 from app.services.payments.call_payment_service import create_payment_checkout_session
 
 logger = structlog.get_logger()
@@ -74,14 +76,43 @@ async def offer_deposit_checkout(
     await db.commit()
 
 
-def deposit_message(appointment: Appointment) -> str:
+async def deliver_deposit_link(
+    db: AsyncSession,
+    appointment: Appointment,
+    contact: Contact,
+    agent: Agent | None,
+    *,
+    newly_created: bool = False,
+) -> bool:
+    """Send a Checkout link once per session, honoring SMS opt-outs."""
+    message = deposit_message(appointment, newly_created=newly_created)
+    if not message or not appointment.deposit_checkout_session_id:
+        return False
+
+    from app.api.webhooks.calcom_events import send_lifecycle_sms
+
+    return await send_lifecycle_sms(
+        db,
+        appointment.workspace_id,
+        contact,
+        agent,
+        message,
+        idempotency_scope="booking_deposit_checkout_link",
+        idempotency_parts=(appointment.id, appointment.deposit_checkout_session_id),
+    )
+
+
+def deposit_message(appointment: Appointment, *, newly_created: bool = False) -> str:
     """Truthful, optional payment text for booking confirmation and reminders."""
     # Checkout links expire after 24 hours by default. Never send a stale link
     # in a reminder; the booking itself is unaffected.
     created_at = appointment.created_at
-    link_is_fresh = not created_at or datetime.now(UTC) - created_at.replace(
-        tzinfo=created_at.tzinfo or UTC
-    ).astimezone(UTC) < timedelta(hours=23)
+    link_is_fresh = (
+        newly_created
+        or not created_at
+        or datetime.now(UTC) - created_at.replace(tzinfo=created_at.tzinfo or UTC).astimezone(UTC)
+        < timedelta(hours=23)
+    )
     if (
         appointment.deposit_status == "pending"
         and appointment.deposit_checkout_url

@@ -10,6 +10,7 @@ from fastapi import HTTPException
 
 from app.api.v1.appointments import refund_deposit
 from app.models.appointment import Appointment
+from app.services.appointments.appointment_service import AppointmentService
 from app.services.payments import booking_deposit
 
 
@@ -32,6 +33,32 @@ def test_assignment_stays_in_original_arm() -> None:
     assert (appt.deposit_experiment, appt.deposit_amount_cents, appt.deposit_status) == assigned
 
 
+@pytest.mark.asyncio
+async def test_recovered_checkout_link_uses_session_scoped_sms_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api.webhooks import calcom_events
+
+    appt = appointment()
+    appt.deposit_status = "pending"
+    appt.deposit_amount_cents = 2000
+    appt.deposit_checkout_url = "https://checkout.stripe.com/test"
+    appt.deposit_checkout_session_id = "cs_123"
+    appt.created_at = datetime.now(UTC) - timedelta(days=2)
+    send = AsyncMock(return_value=True)
+    monkeypatch.setattr(calcom_events, "send_lifecycle_sms", send)
+    db = MagicMock()
+    contact = SimpleNamespace(id=appt.contact_id, phone_number="+15551234567")
+
+    assert not await booking_deposit.deliver_deposit_link(db, appt, contact, None)
+    assert await booking_deposit.deliver_deposit_link(db, appt, contact, None, newly_created=True)
+    assert appt.deposit_checkout_url in send.await_args.args[4]
+    assert send.await_args.kwargs == {
+        "idempotency_scope": "booking_deposit_checkout_link",
+        "idempotency_parts": (appt.id, "cs_123"),
+    }
+
+
 def test_reminder_never_sends_expired_checkout_link() -> None:
     appt = appointment()
     appt.deposit_status = "pending"
@@ -41,6 +68,63 @@ def test_reminder_never_sends_expired_checkout_link() -> None:
     assert booking_deposit.deposit_message(appt) == ""
     appt.created_at = datetime.now(UTC)
     assert appt.deposit_checkout_url in booking_deposit.deposit_message(appt)
+
+
+@pytest.mark.asyncio
+async def test_sync_retry_offers_and_delivers_missing_checkout_link(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_id = uuid.uuid4()
+    appt = appointment()
+    appt.workspace_id = workspace_id
+    appt.deposit_status = "pending"
+    appt.sync_status = "pending"
+    appt.calcom_event_type_id = 14
+    contact = SimpleNamespace(
+        id=appt.contact_id,
+        first_name="Guest",
+        last_name="Example",
+        email="guest@example.com",
+        phone_number="+15551234567",
+    )
+    agent = SimpleNamespace(id=appt.agent_id)
+    db = MagicMock()
+    db.execute = AsyncMock(
+        side_effect=[
+            SimpleNamespace(scalar_one_or_none=lambda: contact),
+            SimpleNamespace(scalar_one_or_none=lambda: agent),
+            SimpleNamespace(scalar_one_or_none=lambda: contact),
+            SimpleNamespace(scalar_one_or_none=lambda: agent),
+        ]
+    )
+    service = AppointmentService(db)
+    service.get_appointment = AsyncMock(return_value=appt)
+
+    async def sync_success(**kwargs: object) -> None:
+        appt.sync_status = "synced"
+        appt.calcom_booking_uid = "booking_123"
+
+    service._try_calcom_sync = AsyncMock(side_effect=sync_success)
+
+    async def create_checkout(*args: object) -> None:
+        appt.deposit_checkout_session_id = "cs_recovered"
+
+    appt.created_at = datetime.now(UTC) - timedelta(days=2)
+    offer = AsyncMock(side_effect=create_checkout)
+    deliver = AsyncMock()
+    monkeypatch.setattr(booking_deposit, "offer_deposit_checkout", offer)
+    monkeypatch.setattr(booking_deposit, "deliver_deposit_link", deliver)
+
+    result = await service.sync_to_calcom(workspace_id, appt.id)
+    assert result == {"status": "synced", "calcom_booking_uid": "booking_123"}
+    offer.assert_awaited_once_with(db, appt, contact.email)
+    deliver.assert_awaited_once_with(db, appt, contact, agent, newly_created=True)
+
+    # A subsequent retry can recover Checkout without making a second booking.
+    await service.sync_to_calcom(workspace_id, appt.id)
+    service._try_calcom_sync.assert_awaited_once()
+    assert offer.await_count == 2
+    assert deliver.await_args.kwargs == {"newly_created": False}
 
 
 @pytest.mark.asyncio

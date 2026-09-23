@@ -348,6 +348,45 @@ async def test_booking_created_new_appointment_full_flow(
     stubs["push"].send_to_workspace_members.assert_awaited()
 
 
+async def test_existing_booking_delivers_link_when_checkout_recovers(
+    monkeypatch: pytest.MonkeyPatch,
+    booking_created: dict[str, Any],
+) -> None:
+    from app.services.payments import booking_deposit
+
+    stubs = _stub_side_effects(monkeypatch)
+    workspace_id = uuid.uuid4()
+    contact = _make_contact(workspace_id=workspace_id)
+    appointment = _make_appointment(workspace_id=workspace_id, contact_id=contact.id)
+    appointment.deposit_status = "pending"
+    appointment.deposit_checkout_session_id = None
+    monkeypatch.setattr(handlers, "find_contact_by_attendee", AsyncMock(return_value=contact))
+    db = _make_db(
+        execute_returns=[
+            _Result(scalar=None),  # Agent
+            _Result(scalars_list=[]),  # BookableStaff
+            _Result(scalar=appointment),  # Existing appointment
+            _Result(scalars_list=[]),  # Other scheduled appointments
+        ]
+    )
+    _patch_session_local(monkeypatch, db)
+
+    async def create_link(*args: Any) -> None:
+        appointment.deposit_checkout_session_id = "cs_recovered"
+        appointment.deposit_checkout_url = "https://checkout.stripe.com/recovered"
+
+    offer = AsyncMock(side_effect=create_link)
+    deliver = AsyncMock(return_value=True)
+    monkeypatch.setattr(booking_deposit, "offer_deposit_checkout", offer)
+    monkeypatch.setattr(booking_deposit, "deliver_deposit_link", deliver)
+
+    await handlers.handle_booking_created(booking_created, _make_log())
+
+    offer.assert_awaited_once_with(db, appointment, contact.email)
+    deliver.assert_awaited_once_with(db, appointment, contact, None, newly_created=True)
+    stubs["send_lifecycle_sms"].assert_not_awaited()  # No duplicate confirmation.
+
+
 async def test_booking_created_existing_appointment_does_not_send_sms(
     monkeypatch: pytest.MonkeyPatch,
     booking_created: dict[str, Any],
