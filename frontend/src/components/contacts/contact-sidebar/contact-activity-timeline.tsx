@@ -9,6 +9,7 @@ import {
   StickyNote,
   type LucideIcon,
 } from "lucide-react";
+import { useId } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -53,11 +54,14 @@ interface ContactActivityTimelineProps {
  * outcome. The sidebar timeline arrives oldest-first; newest renders on top.
  */
 export function ContactActivityTimeline({ timeline, className }: ContactActivityTimelineProps) {
+  // Unique per instance: ConversationLayout can mount the sidebar twice
+  // (inline desktop + mobile sheet), so a static id would duplicate.
+  const headingId = useId();
   const items = [...timeline].reverse();
 
   return (
-    <section aria-labelledby="contact-activity-timeline" className={cn("space-y-2", className)}>
-      <h3 id="contact-activity-timeline" className="px-2 text-sm font-medium text-muted-foreground">
+    <section aria-labelledby={headingId} className={cn("space-y-2", className)}>
+      <h3 id={headingId} className="px-2 text-sm font-medium text-muted-foreground">
         Activity timeline
       </h3>
       {items.length === 0 ? (
