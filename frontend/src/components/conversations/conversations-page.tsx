@@ -239,6 +239,24 @@ export function ConversationsPage() {
   });
   const activeContact = contactFromMap ?? fetchedContact ?? null;
 
+  // Opening a thread (tap, click, or desktop auto-select) marks it read
+  // server-side, then refreshes the list so view counts update in place.
+  const activeConversationId = activeRow?.conversation.id ?? null;
+  const activeUnread = activeRow?.conversation.unread_count ?? 0;
+  useEffect(() => {
+    if (!workspaceId || !activeConversationId || activeUnread <= 0) return;
+    void conversationsApi
+      .get(workspaceId, activeConversationId)
+      .then(() =>
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.conversations.all(workspaceId),
+        }),
+      )
+      .catch(() => {
+        // Keep the badge; switching threads retries the mark-read.
+      });
+  }, [workspaceId, activeConversationId, activeUnread, queryClient]);
+
   // All hooks above. Narrow workspaceId before the render helpers so every
   // child component receives a definite string.
   if (!workspaceId) {
@@ -247,18 +265,6 @@ export function ConversationsPage() {
 
   const handleSelect = (conversation: Conversation) => {
     setSelectedId(conversation.id);
-    if (!workspaceId || conversation.unread_count <= 0) return;
-    // Opening a thread marks it read server-side; then refresh counts in place.
-    void conversationsApi
-      .get(workspaceId, conversation.id)
-      .then(() =>
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.conversations.all(workspaceId),
-        }),
-      )
-      .catch(() => {
-        // Keep the badge; reselecting the thread retries the mark-read.
-      });
   };
 
   const persistSavedViews = (views: SavedView[]) => {
