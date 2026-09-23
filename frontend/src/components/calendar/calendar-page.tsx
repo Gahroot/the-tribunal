@@ -5,20 +5,14 @@ import {
   ChevronRight,
   Plus,
   Calendar as CalendarIcon,
-  Clock,
   Settings,
-  Trash2,
 } from "lucide-react";
 import { motion } from "motion/react";
 import Link from "next/link";
 import { useState, useMemo } from "react";
-import { toast } from "sonner";
 
-import {
-  ReminderBadges,
-  SendReminderButton,
-  SyncButton,
-} from "@/components/calendar/appointment-actions";
+import { ReminderBadges } from "@/components/appointments/appointment-actions";
+import { AppointmentConfirmation } from "@/components/appointments/appointment-confirmation";
 import { NewAppointmentDialog } from "@/components/calendar/new-appointment-dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -30,20 +24,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import {
   PageErrorState,
   PageLoadingState,
 } from "@/components/ui/page-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useAppointments, useDeleteAppointment } from "@/hooks/useAppointments";
+import { useAppointments } from "@/hooks/useAppointments";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import {
   STATUS_OPTIONS,
@@ -83,7 +70,6 @@ export function CalendarPage() {
     workspaceId ?? "",
     queryParams
   );
-  const deleteAppointmentMutation = useDeleteAppointment(workspaceId ?? "");
 
   const appointmentsList = useMemo(
     () => appointmentsData?.items || [],
@@ -101,18 +87,6 @@ export function CalendarPage() {
     () => upcomingAppointments(appointmentsList),
     [appointmentsList]
   );
-
-  const handleDeleteAppointment = async (appointmentId: number) => {
-    deleteAppointmentMutation.mutate(appointmentId, {
-      onSuccess: () => {
-        toast.success("Appointment cancelled");
-        setSelectedAppointmentId(null);
-      },
-      onError: () => {
-        toast.error("Failed to cancel appointment");
-      },
-    });
-  };
 
   if (isPending) {
     return <PageLoadingState className="h-96" message="Loading appointments…" />;
@@ -268,100 +242,16 @@ export function CalendarPage() {
                                   )}
                                 </motion.button>
                               </DialogTrigger>
-                              <DialogContent>
-                                <DialogHeader>
-                                  <DialogTitle>{apt.service_type || "Appointment"}</DialogTitle>
-                                  <DialogDescription>
-                                    {formatDate(apt.scheduled_at, {
-                                      pattern: "EEEE, MMMM d, yyyy 'at' h:mm a",
-                                    })}
-                                  </DialogDescription>
-                                </DialogHeader>
-                                <div className="space-y-4 py-4">
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div className="flex items-center gap-3">
-                                      <Avatar className="size-10">
-                                        <AvatarFallback>
-                                          {getInitials(apt.contact?.first_name || "", apt.contact?.last_name)}
-                                        </AvatarFallback>
-                                      </Avatar>
-                                      <div>
-                                        <p className="font-medium">
-                                          {getContactName(apt.contact)}
-                                        </p>
-                                        <Badge
-                                          variant="outline"
-                                          className={appointmentStatusColors[apt.status]}
-                                        >
-                                          {apt.status}
-                                        </Badge>
-                                        <ReminderBadges
-                                          reminderSentAt={apt.reminder_sent_at}
-                                          remindersSent={apt.reminders_sent}
-                                        />
-                                        {apt.reminder_sent_at && (
-                                          <p className="text-xs text-muted-foreground">
-                                            Last reminder: {formatDate(apt.reminder_sent_at, { pattern: "MMM d, h:mm a" })}
-                                          </p>
-                                        )}
-                                      </div>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      {workspaceId && (
-                                        <SyncButton
-                                          appointment={apt}
-                                          workspaceId={workspaceId}
-                                          onSynced={() => void refetch()}
-                                        />
-                                      )}
-                                      {workspaceId && apt.status === "scheduled" && (
-                                        <SendReminderButton
-                                          appointment={apt}
-                                          workspaceId={workspaceId}
-                                          onSent={() => void refetch()}
-                                        />
-                                      )}
-                                      {apt.status === "scheduled" && (
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          onClick={() => handleDeleteAppointment(apt.id)}
-                                          disabled={deleteAppointmentMutation.isPending}
-                                          className="text-destructive hover:text-destructive"
-                                          aria-label="Delete appointment"
-                                        >
-                                          <Trash2 className="size-4" />
-                                        </Button>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <div className="grid gap-2 text-sm">
-                                    <div className="flex items-center gap-2">
-                                      <Clock className="size-4 text-muted-foreground" />
-                                      <span>{apt.duration_minutes} minutes</span>
-                                    </div>
-                                    {apt.sync_status === "pending" && (
-                                      <div className="flex items-center gap-2 text-warning">
-                                        <span className="text-xs">Not synced to Cal.com</span>
-                                      </div>
-                                    )}
-                                    {apt.sync_status === "synced" && apt.calcom_booking_uid && (
-                                      <div className="text-xs text-muted-foreground">
-                                        Cal.com UID: {apt.calcom_booking_uid}
-                                      </div>
-                                    )}
-                                    {apt.sync_error && (
-                                      <div className="text-xs text-destructive">
-                                        Sync error: {apt.sync_error}
-                                      </div>
-                                    )}
-                                    {apt.notes && (
-                                      <div className="text-sm text-muted-foreground">
-                                        {apt.notes}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
+                              <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
+                                <AppointmentConfirmation
+                                  appointment={apt}
+                                  workspaceId={workspaceId ?? ""}
+                                  onRefresh={() => void refetch()}
+                                  onRebook={() => {
+                                    setSelectedAppointmentId(null);
+                                    setIsScheduleOpen(true);
+                                  }}
+                                />
                               </DialogContent>
                             </Dialog>
                           ))}

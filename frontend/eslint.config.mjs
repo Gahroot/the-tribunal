@@ -53,6 +53,7 @@ const BLOCK_CROSS_DEPENDENCIES = {
     "campaigns",
     "calls",
     "reviews",
+    "appointments",
   ],
   // contacts → agent-brain, voice
   contacts: ["agents", "experiments", "calls"],
