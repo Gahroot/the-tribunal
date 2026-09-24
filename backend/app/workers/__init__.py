@@ -43,6 +43,7 @@ from app.workers.outbound_improvement_suggestion_worker import (
     _registry as outbound_improvement_suggestion_registry,
 )
 from app.workers.prompt_improvement_worker import _registry as prompt_improvement_registry
+from app.workers.prompt_replay_worker import _registry as prompt_replay_registry
 from app.workers.prompt_stats_worker import _registry as prompt_stats_registry
 from app.workers.prospect_enrichment_worker import (
     _registry as prospect_enrichment_registry,
@@ -211,6 +212,11 @@ WORKER_SPECS: tuple[WorkerSpec, ...] = (
     WorkerSpec(
         name="prompt_improvement",
         registry=prompt_improvement_registry,
+        dependencies=("postgres", "openai"),
+    ),
+    WorkerSpec(
+        name="prompt_replay",
+        registry=prompt_replay_registry,
         dependencies=("postgres", "openai"),
     ),
     WorkerSpec(

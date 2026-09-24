@@ -1,0 +1,7 @@
+# Prompt CI snapshots
+
+Place each proposed voice prompt version in a JSON file here with `system_prompt` and optional `initial_greeting` string fields. Do not put customer transcripts, credentials, or personal information in snapshots. The CI workflow runs all eight simulated callers against every snapshot and blocks a score below 0.80, a scenario-specific failure, an uncertain judgment, or any judge error.
+
+Database-only prompt edits cannot be inspected by GitHub CI. The runtime auto-approval path evaluates the candidate text before it creates or activates a version; human approvals remain manual. Historical replay runs weekly for active versions using up to 50 calls total from the last seven days across a random sample of active versions; it logs only counts and average score. Replayed history measures prior performance, **not** how a proposed prompt would have answered. The simulation is text-only and cannot verify actual audio, accent comprehension, voicemail detection, or tool side effects.
+
+The live CI gate needs `OPENAI_API_KEY` configured as a GitHub Actions repository secret. Without it, the job fails closed. Pull requests from forks cannot access the secret and also fail closed; run trusted prompt changes from branches within the repository. Live model calls incur API usage. Existing prompt versions stored only in the database must be exported as snapshots for a CI prompt-change gate; do not export real transcripts.

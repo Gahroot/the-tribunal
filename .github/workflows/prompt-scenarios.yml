@@ -1,0 +1,33 @@
+name: Prompt scenario gate
+
+on:
+  pull_request:
+    paths:
+      - 'backend/prompts/**.json'
+  push:
+    paths:
+      - 'backend/prompts/**.json'
+
+jobs:
+  scenarios:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --frozen
+      - name: Gate checked-in prompt snapshots
+        working-directory: backend
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then echo 'OPENAI_API_KEY required for live prompt gate' >&2; exit 1; fi
+          uv run --frozen python - <<'PY'
+          import asyncio
+          from pathlib import Path
+          from scripts.dev.prompt_scenario_gate import main
+
+          paths = sorted(str(p) for p in Path('prompts').glob('*.json'))
+          raise SystemExit(asyncio.run(main(paths)))
+          PY

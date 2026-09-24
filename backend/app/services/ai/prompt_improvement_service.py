@@ -350,6 +350,20 @@ Return JSON with:
         if suggestion.status != "pending":
             raise ValueError(f"Suggestion is {suggestion.status}, not pending")
 
+        # System approvals must pass the caller suite before any new version is created.
+        # A human approval is an explicit decision, not an automatic promotion.
+        if activate and user_id is None:
+            from types import SimpleNamespace
+
+            from app.services.ai.prompt_scenario_suite import require_scenario_pass
+
+            await require_scenario_pass(
+                SimpleNamespace(
+                    system_prompt=suggestion.suggested_prompt,
+                    initial_greeting=suggestion.suggested_greeting,
+                )
+            )
+
         # Create new prompt version
         new_version = await self._prompt_service.create_version(
             db=db,
