@@ -14,8 +14,8 @@ Python port of noledge's ``src/lib/ingest/ingest.ts``. Given a persisted
 
 Re-ingest is idempotent: each chunk stores a SHA-256 hash of its content in the
 purpose-built ``knowledge_chunks.content_hash`` column. On re-ingest the freshly
-computed chunk hashes are compared against the document's stored chunk hashes; if
-they are identical the run is a **no-op** — no embedding spend, no writes. Any
+computed chunk hashes and offsets are compared against stored chunks; if they
+are identical the run is a **no-op** — no embedding spend, no writes. Any
 failure (embedding error, DB error) raises and leaves the caller's transaction to
 roll back, so a document never ends up half-indexed.
 """
@@ -114,26 +114,29 @@ class KnowledgeIngestionService:
             overlap_tokens=self._overlap_tokens,
         )
         new_hashes = [chunk_content_hash(chunk.content) for chunk in chunks]
+        new_state = [
+            (content_hash, chunk.char_start, chunk.char_end)
+            for content_hash, chunk in zip(new_hashes, chunks, strict=True)
+        ]
 
-        # Dedup against the purpose-built ``content_hash`` column: if the new
-        # chunk hashes match what is already stored (same chunks, same order),
-        # the document is already current and we skip the embedding spend.
-        existing_hashes = await self._existing_chunk_hashes(db, document.id)
-        if not force and existing_hashes == new_hashes:
+        # Offsets matter as well as hashes: leading whitespace can shift every
+        # child without changing its text, invalidating parent expansion.
+        existing_state = await self._existing_chunk_state(db, document.id)
+        if not force and existing_state == new_state:
             logger.info(
                 "knowledge_ingest_skipped",
                 document_id=str(document.id),
                 reason="content_unchanged",
-                chunk_count=len(existing_hashes),
+                chunk_count=len(existing_state),
             )
             return IngestionResult(
                 document_id=document.id,
-                chunk_count=len(existing_hashes),
+                chunk_count=len(existing_state),
                 skipped=True,
             )
 
         # Replace any prior chunks so re-ingest never leaves stale slices behind.
-        if existing_hashes:
+        if existing_state:
             await db.execute(
                 delete(KnowledgeChunk).where(KnowledgeChunk.document_id == document.id)
             )
@@ -179,15 +182,17 @@ class KnowledgeIngestionService:
             return await self.reindex_document(db, document, embedder=embedder, force=force)
 
     # ── internals ────────────────────────────────────────────────────────────
-    async def _existing_chunk_hashes(self, db: AsyncSession, document_id: uuid.UUID) -> list[str]:
-        """Stored chunk content hashes for ``document_id``, ordered by ordinal."""
+    async def _existing_chunk_state(
+        self, db: AsyncSession, document_id: uuid.UUID
+    ) -> list[tuple[str, int, int]]:
+        """Hashes and offsets must all match before skipping a re-index."""
         stmt = (
-            select(KnowledgeChunk.content_hash)
+            select(KnowledgeChunk.content_hash, KnowledgeChunk.char_start, KnowledgeChunk.char_end)
             .where(KnowledgeChunk.document_id == document_id)
             .order_by(KnowledgeChunk.ordinal.asc())
         )
         result = await db.execute(stmt)
-        return list(result.scalars().all())
+        return [tuple(row) for row in result.all()]
 
     async def _embed_chunks(self, embed: Embedder, texts: list[str]) -> list[list[float]]:
         """Embed ``texts`` in bounded batches, preserving order."""

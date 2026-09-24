@@ -293,6 +293,8 @@ def parent_context(document: str, chunk: RetrievedChunk) -> str:
     """
     if not (0 <= chunk.char_start < chunk.char_end <= len(document)):
         return chunk.content
+    if document[chunk.char_start : chunk.char_end] != chunk.content:
+        return chunk.content
     if chunk.char_end - chunk.char_start >= MAX_PARENT_CHARS:
         return chunk.content
     headings = list(_HEADING.finditer(document))
@@ -336,9 +338,13 @@ def _build_vector_stmt(
             KnowledgeChunk.char_end,
             distance,
         )
+        .join(KnowledgeDocument, KnowledgeDocument.id == KnowledgeChunk.document_id)
         .where(
             KnowledgeChunk.workspace_id == workspace_id,
             KnowledgeChunk.agent_id == agent_id,
+            KnowledgeDocument.workspace_id == workspace_id,
+            KnowledgeDocument.agent_id == agent_id,
+            KnowledgeDocument.is_active.is_(True),
         )
         .order_by(distance.asc())
         .limit(limit)
@@ -364,9 +370,13 @@ def _build_keyword_stmt(
             KnowledgeChunk.char_end,
             rank,
         )
+        .join(KnowledgeDocument, KnowledgeDocument.id == KnowledgeChunk.document_id)
         .where(
             KnowledgeChunk.workspace_id == workspace_id,
             KnowledgeChunk.agent_id == agent_id,
+            KnowledgeDocument.workspace_id == workspace_id,
+            KnowledgeDocument.agent_id == agent_id,
+            KnowledgeDocument.is_active.is_(True),
             KnowledgeChunk.search_vector.op("@@")(ts_query),
         )
         .order_by(rank.desc())
@@ -537,6 +547,7 @@ class KnowledgeRetrievalService:
                     KnowledgeDocument.id.in_(document_ids),
                     KnowledgeDocument.workspace_id == workspace_id,
                     KnowledgeDocument.agent_id == agent_id,
+                    KnowledgeDocument.is_active.is_(True),
                 )
             )
         ).all()
@@ -545,16 +556,13 @@ class KnowledgeRetrievalService:
         return [
             RetrievedPassage(
                 document_id=chunk.document_id,
-                title=documents[chunk.document_id].title
-                if chunk.document_id in documents
-                else "Untitled",
-                content=parent_context(documents[chunk.document_id].content, chunk)
-                if chunk.document_id in documents
-                else chunk.content,
+                title=documents[chunk.document_id].title,
+                content=parent_context(documents[chunk.document_id].content, chunk),
                 score=chunk.score,
                 ordinal=chunk.ordinal,
             )
             for chunk in chunks
+            if chunk.document_id in documents
         ]
 
 

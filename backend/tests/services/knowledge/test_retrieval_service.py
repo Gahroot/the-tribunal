@@ -1,11 +1,8 @@
 """Tests for the hybrid knowledge retrieval service.
 
-Covers the three behaviours that lock the noledge port in place:
-
-* **Fusion** — min-max normalization + weighted fusion + minScore floor.
-* **MMR** — token-Jaccard diversity rerank suppresses near-duplicate chunks.
-* **Workspace scoping** — every arm's SQL filters by ``workspace_id`` AND
-  ``agent_id`` so one tenant can never read another's knowledge base.
+Covers RRF fusion, MMR diversity, active-document and workspace scoping,
+keyword fallback, and parent-section expansion. Legacy normalization helpers
+retain their own compatibility tests.
 """
 
 from __future__ import annotations
@@ -197,6 +194,11 @@ def test_parent_context_keeps_policy_with_heading_not_neighbor_section() -> None
         )
         == "fallback"
     )
+    # A document edit before re-indexing must never expand an old hit to new text.
+    stale = RetrievedChunk(
+        uuid.uuid4(), uuid.uuid4(), "Original policy", 1, start, start + 15, 0.1, 0.9
+    )
+    assert parent_context(document, stale) == "Original policy"
 
 
 # ── Workspace + agent scoping (compiled SQL) ────────────────────────────────
@@ -218,6 +220,10 @@ class TestScoping:
         sql = self._sql(stmt).lower()
         assert "knowledge_chunks.workspace_id =" in sql
         assert "knowledge_chunks.agent_id =" in sql
+        assert "join knowledge_documents" in sql
+        assert "knowledge_documents.is_active is true" in sql
+        assert "knowledge_documents.workspace_id =" in sql
+        assert "knowledge_documents.agent_id =" in sql
         # Cosine KNN ordering + over-fetch limit present.
         assert "order by" in sql and "limit" in sql
 
@@ -228,6 +234,10 @@ class TestScoping:
         sql = self._sql(stmt).lower()
         assert "knowledge_chunks.workspace_id =" in sql
         assert "knowledge_chunks.agent_id =" in sql
+        assert "join knowledge_documents" in sql
+        assert "knowledge_documents.is_active is true" in sql
+        assert "knowledge_documents.workspace_id =" in sql
+        assert "knowledge_documents.agent_id =" in sql
         # Keyword arm uses tsvector match + ts_rank.
         assert "ts_rank" in sql
         assert "@@" in sql
@@ -339,7 +349,7 @@ class TestRetrievePassages:
         service = KnowledgeRetrievalService()
         service.retrieve = AsyncMock(return_value=chunks)  # type: ignore[method-assign]
 
-        # Only doc_a has a title row; doc_b falls back to "Untitled".
+        # Only doc_a is active/visible; doc_b must be discarded, not surfaced.
         title_row = type(
             "Row", (), {"id": doc_a, "title": "Pricing", "content": "plans start at $49"}
         )()
@@ -356,7 +366,10 @@ class TestRetrievePassages:
         )
         assert [(p.title, p.content, p.score) for p in out] == [
             ("Pricing", "plans start at $49", 0.9),
-            ("Untitled", "unknown doc chunk", 0.6),
         ]
+        from sqlalchemy.dialects import postgresql
+
+        sql = str(db.execute.await_args.args[0].compile(dialect=postgresql.dialect())).lower()
+        assert "knowledge_documents.is_active is true" in sql
         # top_k override is threaded into the underlying retrieve() options.
         assert service.retrieve.await_args.kwargs["options"].top_k == 3

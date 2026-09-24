@@ -23,7 +23,7 @@ from sqlalchemy.sql.dml import Delete
 
 from app.models.knowledge_document import KnowledgeDocument
 from app.services.ai.embeddings import EmbeddingResult
-from app.services.knowledge.chunking import chunk_sections, chunk_text
+from app.services.knowledge.chunking import chunk_sections
 from app.services.knowledge.ingestion_service import (
     IngestionError,
     KnowledgeIngestionService,
@@ -31,27 +31,19 @@ from app.services.knowledge.ingestion_service import (
 )
 
 
-class _FakeScalars:
-    def __init__(self, values: list[str]) -> None:
-        self._values = values
-
-    def all(self) -> list[str]:
-        return self._values
-
-
 class _FakeResult:
-    def __init__(self, values: list[str]) -> None:
+    def __init__(self, values: list[tuple[str, int, int]]) -> None:
         self._values = values
 
-    def scalars(self) -> _FakeScalars:
-        return _FakeScalars(self._values)
+    def all(self) -> list[tuple[str, int, int]]:
+        return self._values
 
 
 class _FakeSession:
     """Minimal async-session stand-in tracking the service's mutations."""
 
-    def __init__(self, *, existing_hashes: list[str] | None = None) -> None:
-        self.existing_hashes = list(existing_hashes or [])
+    def __init__(self, *, existing_state: list[tuple[str, int, int]] | None = None) -> None:
+        self.existing_state = list(existing_state or [])
         self.added: list[object] = []
         self.deletes = 0
         self.flushes = 0
@@ -62,10 +54,10 @@ class _FakeSession:
     async def execute(self, stmt: object) -> _FakeResult:
         if isinstance(stmt, Delete):
             self.deletes += 1
-            self.existing_hashes = []
+            self.existing_state = []
             return _FakeResult([])
-        # The only other statement is the existing-hash SELECT.
-        return _FakeResult(self.existing_hashes)
+        # The only other statement is the existing-state SELECT.
+        return _FakeResult(self.existing_state)
 
     def add_all(self, objs: list[object]) -> None:
         self.added.extend(objs)
@@ -100,10 +92,11 @@ def _document(content: str) -> KnowledgeDocument:
     )
 
 
-def _hashes_for(content: str, *, target_tokens: int = 400, overlap_tokens: int = 80) -> list[str]:
-    """The chunk content hashes the service would produce for ``content``."""
-    chunks = chunk_text(content, target_tokens=target_tokens, overlap_tokens=overlap_tokens)
-    return [chunk_content_hash(chunk.content) for chunk in chunks]
+def _state_for(content: str) -> list[tuple[str, int, int]]:
+    chunks = chunk_sections(content)
+    return [
+        (chunk_content_hash(chunk.content), chunk.char_start, chunk.char_end) for chunk in chunks
+    ]
 
 
 def _ok_embedder(dim: int = 4):
@@ -133,22 +126,40 @@ class TestDedup:
         text = "Some knowledge about pricing and refunds.\n\nMore detail here."
         doc = _document(text)
         # Existing chunks already match what re-chunking this content produces.
-        session = _FakeSession(existing_hashes=_hashes_for(text))
+        session = _FakeSession(existing_state=_state_for(text))
         service = KnowledgeIngestionService()
 
         result = await service.reindex_document(session, doc, embedder=_exploding_embedder())
 
         assert result.skipped is True
-        assert result.chunk_count == len(session.existing_hashes)
+        assert result.chunk_count == len(session.existing_state)
         assert session.added == []
         assert session.deletes == 0
         assert session.flushes == 0
 
     @pytest.mark.asyncio
+    async def test_shifted_offsets_reindex_even_when_child_text_is_identical(self) -> None:
+        original = "# Pricing\nPlan costs $49."
+        updated = "  \n" + original
+        assert [row[0] for row in _state_for(original)] == [row[0] for row in _state_for(updated)]
+        session = _FakeSession(existing_state=_state_for(original))
+        doc = _document(updated)
+
+        result = await KnowledgeIngestionService().reindex_document(
+            session, doc, embedder=_ok_embedder()
+        )
+
+        assert result.skipped is False
+        assert session.deletes == 1
+        assert [(chunk.char_start, chunk.char_end) for chunk in session.added] == [
+            (start, end) for _, start, end in _state_for(updated)
+        ]
+
+    @pytest.mark.asyncio
     async def test_changed_content_reindexes(self) -> None:
         doc = _document("brand new content that was never indexed before")
         # Stored hashes belong to the OLD content, so they will not match.
-        session = _FakeSession(existing_hashes=["stale-hash"])
+        session = _FakeSession(existing_state=[("stale-hash", 0, 1)])
         service = KnowledgeIngestionService()
 
         result = await service.reindex_document(session, doc, embedder=_ok_embedder())
@@ -162,7 +173,7 @@ class TestDedup:
     async def test_force_reindexes_even_when_hashes_match(self) -> None:
         text = "unchanged body of knowledge"
         doc = _document(text)
-        session = _FakeSession(existing_hashes=_hashes_for(text))
+        session = _FakeSession(existing_state=_state_for(text))
         service = KnowledgeIngestionService()
 
         result = await service.reindex_document(session, doc, embedder=_ok_embedder(), force=True)
