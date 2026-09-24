@@ -1,0 +1,35 @@
+{
+  "customer_alias": "SYNTHETIC EXAMPLE — not a customer",
+  "problem": "Illustrative connection and attendance bottleneck; no observed customer result.",
+  "interventions": ["Demo only: faster response and appointment reconfirmation; not attributed to completed tasks"],
+  "qualification_definition": "Illustration: booked meeting with service fit, decision-maker and confirmed slot.",
+  "cost_basis": "Invented USD totals for arithmetic testing only; real exports need acquisition, AI, human labor, software and overhead on the same basis.",
+  "limitations": "All counts and costs are invented. Not a case study, benchmark source or evidence of system performance.",
+  "permission_reference": "SYNTHETIC: no publication permission",
+  "before": {
+    "label": "Synthetic human-only baseline",
+    "source": "synthetic-before-not-evidence",
+    "starts_at": "2026-01-01",
+    "ends_at": "2026-02-01",
+    "attempts": 100,
+    "connected": 40,
+    "qualified": 20,
+    "booked": 15,
+    "qualified_meetings": 10,
+    "shown": 9,
+    "total_cost_usd": "4870"
+  },
+  "after": {
+    "label": "Synthetic hybrid comparison",
+    "source": "synthetic-after-not-evidence",
+    "starts_at": "2026-02-01",
+    "ends_at": "2026-03-01",
+    "attempts": 100,
+    "connected": 50,
+    "qualified": 25,
+    "booked": 20,
+    "qualified_meetings": 12,
+    "shown": 16,
+    "total_cost_usd": "2688"
+  }
+}

@@ -9,7 +9,11 @@ from dataclasses import dataclass
 from tribunal_lead_capture.schemas import DeliveryMethod, LeadMagnetCreate, LeadMagnetType
 from tribunal_offers.schemas import OfferCreate
 
-from app.services.offers.vertical_kits import get_vertical_campaign_copy, get_vertical_kit
+from app.services.offers.vertical_kits import (
+    SHARED_RULES,
+    get_vertical_campaign_copy,
+    get_vertical_kit,
+)
 
 
 @dataclass(frozen=True)
@@ -34,7 +38,10 @@ def build_vertical_drafts(vertical: str) -> VerticalDrafts:
             "Opening: " + kit.voice_script,
             "Common questions:",
             *(f"{question} — {reply}" for question, reply in kit.objections),
-            "Operating rules: " + " ".join(kit.compliance_addendum),
+            "Operating rules: " + " ".join((*SHARED_RULES, *kit.compliance_addendum)),
+            "Proof collection checklist (not measured outcomes):",
+            *kit.evidence_to_collect,
+            "Engineering guidance, not legal advice. Review before activation.",
         ]
     )
     return VerticalDrafts(

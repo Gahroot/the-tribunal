@@ -14,6 +14,37 @@ Every kit includes an opening voice script, two campaign-compatible SMS messages
 
 From `backend/`, run `uv run python -m scripts.ops.export_vertical_drafts real_estate` (or `roofing` / `hvac`). Review the JSON, then use its `lead_magnet` and `offer` objects with the existing authenticated lead-magnet and offer creation flows; attach the magnet to the offer with the existing association flow. Both objects are inactive by default. Copy `campaign_copy` into the guided campaign composer only after consent, branding, sending rules and agent/phone settings have been reviewed. The export does not persist anything, publish an offer, start a campaign or send a message. Do not use an inbound-inquiry script for cold leads.
 
+### Sell the system, not an unverified outcome
+
+The exporter now includes `sales_proof`: a buyer-specific system pitch, pilot deliverables, qualification checklist, proof assets, shared/vertical operating addenda and review gates. The existing `offer` is the operator's consumer-facing offer; `sales_proof.system_pitch` is the B2B pitch to sell The Tribunal to that operator. Do not confuse the two audiences. Commercial price, pilot duration and any service-level promise must be separately agreed; no guarantees or invented pricing are supplied.
+
+- **Real estate:** sell inquiry response and agent handoff. Demonstrate a buyer/seller qualification conversation and the representation objection; review source-to-connection and qualified agent meetings.
+- **Roofing:** sell estimate-request follow-up and inspection coordination. Demonstrate the insurance objection without promising coverage; review qualified inspections and attendance.
+- **HVAC:** sell service-request follow-up and technician coordination. Demonstrate symptom collection without diagnosis, including immediate emergency escalation; review qualified visits and attendance.
+
+The playbook lead magnet now includes the shared operating rules and the vertical proof-collection checklist, not just scripts. All exported assets remain inactive/internal drafts. No database, network, campaign or publication side effects occur.
+
+### Generate a case-study draft from aggregates
+
+From `backend/`:
+
+```sh
+# Full vertical kit, with no invented customer story
+uv run python -m scripts.ops.export_vertical_drafts real_estate
+
+# Arithmetic demo ONLY — every number in this fixture is invented
+uv run python -m scripts.ops.export_vertical_drafts roofing \
+  --evidence ../docs/strategy/proof-example.synthetic.json
+
+# Actual privately held aggregate evidence, after reconciliation
+uv run python -m scripts.ops.export_vertical_drafts hvac \
+  --evidence /private/path/reconciled-evidence.json
+```
+
+Use the synthetic JSON as the input shape, never as customer evidence. Replace every narrative, source reference and numeric value with reconciled records. Input is limited to 64 KiB; extra fields, invalid counts, non-finite costs, missing narrative fields, duplicate sources and overlapping windows are rejected. Use ISO dates and half-open windows (start included, end excluded). USD amounts and computed decimals serialize as strings to avoid floating-point rounding. Undefined rates remain `null`.
+
+The output `sales_proof.case_study` includes the customer alias, problem, actual interventions, qualification and cost definitions, limitations, permission reference, dated sources, baseline/comparison sample sizes, costs, rates and percentage-point changes. Record exact tasks 01–12 and deployment dates in `interventions` only after matching them to deployment evidence. A permission reference is not verification: **`publishable` remains false even when evidence is supplied**. Keep source files and exports private, out of git and `backend/static/`; use anonymized aggregates, not contact-level data. Review before copying any prose into a deck.
+
 ### Supplied product-capability evidence (not customer outcome proof)
 
 - **Response-to-connection:** the implemented speed-to-lead trigger (commits `97f77dd`, `d195d44`) and bounded call/SMS retry cadence (`7a91d5a`, `d7601d4`) show *how* the system can follow up. The voice campaign attempt funnel (`d64bdc7`, `backend/app/services/campaigns/attempt_funnel.py`) reports actual calls and connections when data is available. No lift is established by these commits.

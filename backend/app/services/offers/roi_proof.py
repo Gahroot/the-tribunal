@@ -25,7 +25,9 @@ class FunnelPeriod:
     total_cost_usd: Decimal
 
     def __post_init__(self) -> None:
-        if not all((self.label, self.source, self.starts_at, self.ends_at)):
+        if not all(
+            value.strip() for value in (self.label, self.source, self.starts_at, self.ends_at)
+        ):
             raise ValueError("Label, evidence source, and period dates are required")
         try:
             start = date.fromisoformat(self.starts_at)
@@ -42,8 +44,8 @@ class FunnelPeriod:
             self.qualified_meetings,
             self.shown,
         )
-        if any(n < 0 for n in counts):
-            raise ValueError("Counts cannot be negative")
+        if any(type(n) is not int or n < 0 for n in counts):
+            raise ValueError("Counts must be nonnegative integers")
         if (
             self.connected > self.attempts
             or self.qualified > self.attempts
@@ -89,13 +91,15 @@ def build_proof_pack(before: FunnelPeriod, after: FunnelPeriod) -> dict[str, Any
     Both windows need independent source references; operator must verify cohort,
     attribution, costs and permission before publishing any result.
     """
-    if before.source == after.source:
+    if before.source.strip() == after.source.strip():
         raise ValueError("Each period needs its own evidence source")
-    if before.ends_at > after.starts_at:
+    if date.fromisoformat(before.ends_at) > date.fromisoformat(after.starts_at):
         raise ValueError("Comparison windows must not overlap")
 
     def metrics(period: FunnelPeriod) -> dict[str, Any]:
         return {
+            "label": period.label,
+            "total_cost_usd": period.total_cost_usd,
             "attempts": period.attempts,
             "connected": period.connected,
             "qualified": period.qualified,
