@@ -27,6 +27,7 @@ def test_worker_specs_preserve_existing_startup_order() -> None:
         "enrichment_worker",
         "prompt_stats",
         "prompt_improvement",
+        "prompt_replay",
         "outbound_improvement_suggestions",
         "experiment_evaluation",
         "automation_worker",
