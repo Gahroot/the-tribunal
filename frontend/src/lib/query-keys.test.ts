@@ -174,6 +174,15 @@ describe("queryKeys factory composition", () => {
     expect(stats.slice(0, all.length)).toEqual([...all]);
   });
 
+  it("separates attempt funnels by workspace and reporting window", () => {
+    const all = queryKeys.campaignReports.all("ws_1");
+    const sevenDays = queryKeys.campaignReports.attemptFunnel("ws_1", 7);
+    expect(sevenDays).toEqual([...all, "attempt-funnel", 7]);
+    expect(sevenDays.slice(0, all.length)).toEqual([...all]);
+    expect(queryKeys.campaignReports.attemptFunnel("ws_1", 30)).not.toEqual(sevenDays);
+    expect(queryKeys.campaignReports.attemptFunnel("ws_2", 7)).not.toEqual(sevenDays);
+  });
+
   it("derives contact filtered lists from `all` so cache invalidation cascades", () => {
     const all = queryKeys.appointments.all("ws_1");
     const byContact = queryKeys.appointments.byContact("ws_1", 5);
