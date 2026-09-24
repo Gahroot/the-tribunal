@@ -733,6 +733,12 @@ async def _voice_stream_bridge_body(  # noqa: PLR0912, PLR0915
         registry = get_live_call_registry()
         if workspace_id:
             registry.register(live_call)
+            if hasattr(voice_session, "set_supervisor_alert_callback"):
+                def flag_operator_request() -> None:
+                    live_call.needs_operator = True
+                    log.info("qualified_caller_requested_operator", call_id=call_id)
+
+                voice_session.set_supervisor_alert_callback(flag_operator_request)
 
         # Start bidirectional audio relay
         log.info(

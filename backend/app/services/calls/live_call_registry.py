@@ -67,6 +67,8 @@ class LiveCallInfo:
     started_at: float
     supervisor_count: int
     barged: bool
+    needs_operator: bool
+    whisper_supported: bool
 
     def as_dict(self) -> dict[str, Any]:
         """Render for the JSON roster response."""
@@ -83,6 +85,8 @@ class LiveCallInfo:
             "duration_seconds": max(0, int(time.time() - self.started_at)),
             "supervisor_count": self.supervisor_count,
             "barged": self.barged,
+            "needs_operator": self.needs_operator,
+            "whisper_supported": self.whisper_supported,
         }
 
 
@@ -128,6 +132,7 @@ class LiveCall:
         # the operator drives the call instead.
         self.ai_muted: bool = False
         self.barged_by: int | None = None
+        self.needs_operator = False
 
     # ------------------------------------------------------------------
     # Telnyx writes (serialized)
@@ -217,8 +222,10 @@ class LiveCall:
         self._log.info("operator_whisper", chars=len(text))
         return True
 
-    async def start_barge(self, operator_user_id: int) -> None:
-        """Take over the call: mute the AI and stop any in-flight AI response."""
+    async def start_barge(self, operator_user_id: int) -> bool:
+        """Take over only when no other operator holds the call."""
+        if self.ai_muted:
+            return False
         self.ai_muted = True
         self.barged_by = operator_user_id
         # Stop the AI mid-utterance so the caller hears the operator promptly.
@@ -229,21 +236,23 @@ class LiveCall:
             except Exception as exc:
                 self._log.warning("barge_cancel_response_failed", error=str(exc))
         self._log.info("operator_barge_start", operator_user_id=operator_user_id)
+        return True
 
-    async def stop_barge(self) -> None:
-        """Hand control back to the AI."""
-        if not self.ai_muted:
-            return
+    async def stop_barge(self, operator_user_id: int) -> bool:
+        """Hand control back only from the operator who took over."""
+        if not self.ai_muted or self.barged_by != operator_user_id:
+            return False
         self.ai_muted = False
         self.barged_by = None
         self._log.info("operator_barge_stop")
+        return True
 
-    async def send_barge_audio_pcm16(self, pcm16_16k: bytes) -> None:
+    async def send_barge_audio_pcm16(self, pcm16_16k: bytes, operator_user_id: int) -> None:
         """Forward operator microphone audio (PCM16 16kHz) to the caller.
 
         No-op unless the operator currently holds the call via :meth:`start_barge`.
         """
-        if not self.ai_muted or not pcm16_16k:
+        if self.barged_by != operator_user_id or not self.ai_muted or not pcm16_16k:
             return
         # PCM16 16kHz -> 8kHz, then encode µ-law for Telnyx.
         pcm_8k, _ = audioop.ratecv(pcm16_16k, 2, 1, 16000, 8000, None)
@@ -265,6 +274,10 @@ class LiveCall:
             started_at=self.started_at,
             supervisor_count=self.supervisor_count,
             barged=self.ai_muted,
+            needs_operator=self.needs_operator,
+            whisper_supported=callable(
+                getattr(self._voice_session, "inject_operator_guidance", None)
+            ),
         )
 
 

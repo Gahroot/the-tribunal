@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import status
 
+from app.services.ai.voice_agent_base import VoiceAgentBase
 from app.services.calls.live_call_registry import (
     LiveCall,
     LiveCallRegistry,
@@ -110,6 +111,34 @@ class TestRegistryScoping:
         ws1 = registry.list_for_workspace("ws-1")
         assert {info.call_id for info in ws1} == {"a", "b"}
 
+    async def test_qualified_caller_request_is_rostered_without_transcript(self) -> None:
+        from types import SimpleNamespace
+
+        call = _make_live_call()
+        session = SimpleNamespace(
+            _user_transcript="", _transcript_entries=[], logger=MagicMock(),
+            _hot_lead_callback=AsyncMock(return_value=True),
+            _hot_lead_notified=False, _hot_lead_signals={}, _sentiment_tasks=set(),
+            _supervisor_alert_callback=lambda: setattr(call, "needs_operator", True),
+        )
+        session._score_live_sentiment = lambda text: None
+        session._check_live_hot_lead = lambda text: VoiceAgentBase._check_live_hot_lead(
+            session, text
+        )
+        session._run_hot_lead_callback = lambda text: VoiceAgentBase._run_hot_lead_callback(
+            session, text
+        )
+        VoiceAgentBase._add_user_transcript(session, "Can I speak to a person?")
+        assert call.info().needs_operator is False
+        VoiceAgentBase._add_user_transcript(
+            session, "I'm ready to buy but don't want to speak to a person"
+        )
+        assert call.info().needs_operator is False
+        VoiceAgentBase._add_user_transcript(session, "I'm ready to buy, can I speak to a person?")
+        assert call.info().as_dict()["needs_operator"] is True
+        assert "ready to buy" not in str(call.info().as_dict())
+        await asyncio.gather(*session._sentiment_tasks)
+
     def test_info_snapshot_serializes(self) -> None:
         call = _make_live_call()
         data = call.info().as_dict()
@@ -119,6 +148,14 @@ class TestRegistryScoping:
         assert data["supervisor_count"] == 0
         assert data["barged"] is False
         assert isinstance(data["duration_seconds"], int)
+        from app.schemas.call import LiveCallResponse
+
+        assert LiveCallResponse.model_validate(data).needs_operator is False
+        assert LiveCallResponse.model_validate(data).whisper_supported is True
+
+    def test_unsupported_whisper_is_reported_to_console(self) -> None:
+        call = _make_live_call(session=_make_voice_session(supports_whisper=False))
+        assert call.info().as_dict()["whisper_supported"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -198,20 +235,30 @@ class TestOperatorControls:
     async def test_stop_barge_unmutes(self) -> None:
         call = _make_live_call()
         await call.start_barge(1)
-        await call.stop_barge()
+        await call.stop_barge(1)
         assert call.ai_muted is False
         assert call.barged_by is None
 
+    async def test_other_operator_cannot_take_or_release_call(self) -> None:
+        call = _make_live_call()
+        assert await call.start_barge(1) is True
+        assert await call.start_barge(2) is False
+        assert await call.stop_barge(2) is False
+        await call.send_barge_audio_pcm16(b"\x00\x00" * 320, 2)
+        call._telnyx_ws.send_text.assert_not_awaited()
+        assert call.barged_by == 1
+        assert await call.stop_barge(1) is True
+
     async def test_barge_audio_noop_when_not_barged(self) -> None:
         call = _make_live_call()
-        await call.send_barge_audio_pcm16(b"\x00\x00" * 320)
+        await call.send_barge_audio_pcm16(b"\x00\x00" * 320, 1)
         call._telnyx_ws.send_text.assert_not_awaited()
 
     async def test_barge_audio_written_to_telnyx_when_barged(self) -> None:
         call = _make_live_call()
         await call.start_barge(1)
         # 320 PCM16 samples @16k -> resample 8k -> µ-law, then base64 framed.
-        await call.send_barge_audio_pcm16(b"\x00\x00" * 320)
+        await call.send_barge_audio_pcm16(b"\x00\x00" * 320, 1)
         call._telnyx_ws.send_text.assert_awaited_once()
         msg = json.loads(call._telnyx_ws.send_text.await_args.args[0])
         assert msg["event"] == "media"
@@ -313,6 +360,21 @@ class TestControlMessageDispatch:
             log=MagicMock(),
         )
         call._telnyx_ws.send_text.assert_awaited_once()
+
+    async def test_other_socket_cannot_forward_audio_or_unbarge(self) -> None:
+        call = _make_live_call()
+        await call.start_barge(1)
+        ws = _make_supervisor_ws()
+        await cs._handle_control_message(
+            ws, call, {"type": "unbarge"}, operator_user_id=2,
+            monitoring=True, log=MagicMock(),
+        )
+        await cs._handle_control_message(
+            ws, call, {"type": "barge_audio", "data": base64.b64encode(b"\x00" * 640).decode()},
+            operator_user_id=2, monitoring=True, log=MagicMock(),
+        )
+        assert call.barged_by == 1
+        call._telnyx_ws.send_text.assert_not_awaited()
 
     async def test_unknown_message_returns_error(self) -> None:
         call = _make_live_call()

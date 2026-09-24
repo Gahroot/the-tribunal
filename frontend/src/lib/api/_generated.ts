@@ -12836,10 +12836,20 @@ export interface components {
             direction: string;
             /** Duration Seconds */
             duration_seconds: number;
+            /**
+             * Needs Operator
+             * @default false
+             */
+            needs_operator: boolean;
             /** Started At */
             started_at: string;
             /** Supervisor Count */
             supervisor_count: number;
+            /**
+             * Whisper Supported
+             * @default false
+             */
+            whisper_supported: boolean;
             /** Workspace Id */
             workspace_id: string;
         };

@@ -50,6 +50,8 @@ export interface LiveCall {
   duration_seconds: number;
   supervisor_count: number;
   barged: boolean;
+  needs_operator: boolean;
+  whisper_supported: boolean;
 }
 
 export interface LiveCallsResponse {

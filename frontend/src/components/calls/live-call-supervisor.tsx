@@ -1,7 +1,7 @@
 "use client";
 
 import { Ear, Mic, MicOff, Send, X, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,9 +38,15 @@ export function LiveCallSupervisor({
   call,
 }: LiveCallSupervisorProps) {
   const callId = call?.call_id ?? null;
-  const { status, error, isBarging, connect, disconnect, whisper, startBarge, stopBarge } =
-    useCallSupervisor({ workspaceId, callId });
+  const {
+    status, error, isBarging, whisperPending, whisperAcknowledged,
+    connect, disconnect, whisper, startBarge, stopBarge,
+  } = useCallSupervisor({ workspaceId, callId });
   const [whisperText, setWhisperText] = useState("");
+
+  useEffect(() => {
+    if (whisperAcknowledged > 0) setWhisperText("");
+  }, [whisperAcknowledged]);
 
   const handleOpenChange = (next: boolean) => {
     if (!next) {
@@ -53,7 +59,6 @@ export function LiveCallSupervisor({
   const handleSendWhisper = () => {
     if (!whisperText.trim()) return;
     whisper(whisperText);
-    setWhisperText("");
   };
 
   const connected = status === "listening";
@@ -66,7 +71,7 @@ export function LiveCallSupervisor({
           <DialogTitle className="flex items-center gap-2">
             Supervise call
             <Badge variant={isBarging ? "destructive" : "secondary"}>
-              {isBarging ? "You have the call" : "AI handling"}
+              {isBarging ? "You have the call" : call?.barged ? "Operator handling" : "AI handling"}
             </Badge>
           </DialogTitle>
           <DialogDescription>
@@ -78,7 +83,7 @@ export function LiveCallSupervisor({
 
         <div className="flex flex-col gap-5 py-2">
           {/* Connection status */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" role="status" aria-live="polite">
             <span
               className={cn(
                 "h-2.5 w-2.5 rounded-full",
@@ -92,7 +97,10 @@ export function LiveCallSupervisor({
           </div>
 
           {error && (
-            <div className="rounded-md border border-destructive/50 bg-background px-3 py-2 text-sm text-destructive">
+            <div
+              role="alert"
+              className="rounded-md border border-destructive/50 bg-background px-3 py-2 text-sm text-destructive"
+            >
               {error}
             </div>
           )}
@@ -120,7 +128,9 @@ export function LiveCallSupervisor({
               Whisper to the AI
             </label>
             <p className="text-xs text-muted-foreground">
-              Private guidance for the AI&apos;s next turn. The caller never hears it.
+              {call?.whisper_supported
+                ? "Private guidance for the AI's next turn. The caller never hears it."
+                : "Whisper is unavailable for this call's voice provider."}
             </p>
             <div className="flex gap-2">
               <Textarea
@@ -129,7 +139,8 @@ export function LiveCallSupervisor({
                 onChange={(e) => setWhisperText(e.target.value)}
                 placeholder="e.g. Offer the 10% discount and ask about timing"
                 className="min-h-[60px]"
-                disabled={!connected}
+                disabled={!connected || whisperPending || !call?.whisper_supported}
+                maxLength={1000}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                     e.preventDefault();
@@ -141,7 +152,7 @@ export function LiveCallSupervisor({
                 variant="outline"
                 size="icon"
                 className="h-auto"
-                disabled={!connected || !whisperText.trim()}
+                disabled={!connected || whisperPending || !call?.whisper_supported || !whisperText.trim()}
                 onClick={handleSendWhisper}
                 aria-label="Send whisper"
               >

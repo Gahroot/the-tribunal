@@ -15488,6 +15488,11 @@
             "title": "Duration Seconds",
             "type": "integer"
           },
+          "needs_operator": {
+            "default": false,
+            "title": "Needs Operator",
+            "type": "boolean"
+          },
           "started_at": {
             "title": "Started At",
             "type": "string"
@@ -15495,6 +15500,11 @@
           "supervisor_count": {
             "title": "Supervisor Count",
             "type": "integer"
+          },
+          "whisper_supported": {
+            "default": false,
+            "title": "Whisper Supported",
+            "type": "boolean"
           },
           "workspace_id": {
             "title": "Workspace Id",

@@ -106,6 +106,7 @@ class VoiceAgentBase(ABC):
         self._hot_lead_callback: Callable[[str, dict[str, str]], Awaitable[bool]] | None = None
         self._hot_lead_signals: dict[str, str] = {}
         self._hot_lead_notified = False
+        self._supervisor_alert_callback: Callable[[], None] | None = None
 
     # -------------------------------------------------------------------------
     # VoiceAgentProtocol implementations (shared logic)
@@ -170,6 +171,26 @@ class VoiceAgentBase(ABC):
             self.logger.info("user_transcript_completed", user_said=text)
             self._score_live_sentiment(text)
             self._check_live_hot_lead(text)
+            # Surface an operator request only for a qualified lead. Never
+            # automatically open a microphone or interrupt the caller.
+            if (
+                self._hot_lead_notified
+                and self._supervisor_alert_callback is not None
+                and not re.search(
+                    r"\b(?:don't|do not|not|never|no)\s+"
+                    r"(?:(?:want|wish|need)\s+to\s+)?(?:speak|talk|connect)\b",
+                    text,
+                    re.IGNORECASE,
+                )
+                and re.search(
+                    r"\b(?:speak|talk|connect me|put me through)\s+"
+                    r"(?:to|with)?\s*(?:a|the)?\s*"
+                    r"(?:human|person|representative|agent|closer)\b",
+                    text,
+                    re.IGNORECASE,
+                )
+            ):
+                self._supervisor_alert_callback()
 
     def has_caller_consent(self, quote: str) -> bool:
         """Require affirmative consent words in the caller's last utterance."""
@@ -192,6 +213,10 @@ class VoiceAgentBase(ABC):
             else ""
         )
         return bool(re.search(r"(?<!\w)" + re.escape(normalized) + r"(?!\w)", actual))
+
+    def set_supervisor_alert_callback(self, callback: Callable[[], None]) -> None:
+        """Flag qualified callers asking for a person in the live roster."""
+        self._supervisor_alert_callback = callback
 
     def set_hot_lead_callback(
         self, callback: Callable[[str, dict[str, str]], Awaitable[bool]]

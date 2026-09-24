@@ -69,26 +69,6 @@ def _mulaw_to_pcm16_24k(mulaw: bytes) -> bytes:
     return pcm_24k
 
 
-async def _resolve_operator_user_id(websocket: WebSocket) -> int | None:
-    """Best-effort extraction of the operator's user id from the ws ticket.
-
-    Used only to attribute a barge-in in logs/roster. Auth itself is already
-    enforced by ``_authenticate_websocket`` before this is called.
-    """
-    from app.core.security import decode_access_token
-
-    token = websocket.query_params.get("token") or websocket.cookies.get("access_token")
-    if not token:
-        return None
-    payload = decode_access_token(token)
-    if payload is None:
-        return None
-    try:
-        return int(payload["sub"])
-    except (KeyError, ValueError, TypeError):
-        return None
-
-
 async def _pump_audio_to_operator(
     websocket: WebSocket,
     queue: asyncio.Queue[dict[str, Any]],
@@ -112,7 +92,7 @@ async def _pump_audio_to_operator(
         log.info("supervisor_audio_pump_stopped", error=str(exc))
 
 
-async def _handle_control_message(  # noqa: PLR0911
+async def _handle_control_message(  # noqa: PLR0911, PLR0912
     websocket: WebSocket,
     live_call: LiveCall,
     message: dict[str, Any],
@@ -147,27 +127,37 @@ async def _handle_control_message(  # noqa: PLR0911
         return monitoring, audio_task
 
     if msg_type == "whisper":
-        ok = await live_call.whisper(str(message.get("text", "")))
+        text = message.get("text")
+        if not isinstance(text, str) or not 0 < len(text.strip()) <= 1000:
+            await websocket.send_json(
+                {"type": "error", "message": "Whisper must be 1-1000 characters"}
+            )
+            return monitoring, audio_task
+        ok = await live_call.whisper(text)
         await websocket.send_json(
             {"type": "whispered"} if ok else {"type": "error", "message": "Whisper failed"}
         )
         return monitoring, audio_task
 
     if msg_type == "barge":
-        await live_call.start_barge(operator_user_id or 0)
-        await websocket.send_json({"type": "barge_started"})
+        if await live_call.start_barge(operator_user_id or 0):
+            await websocket.send_json({"type": "barge_started"})
+        else:
+            await websocket.send_json({"type": "error", "message": "Another operator has the call"})
         return monitoring, audio_task
 
     if msg_type == "barge_audio":
         data = message.get("data", "")
-        if data:
+        if isinstance(data, str) and len(data) <= 32768:
             with contextlib.suppress(Exception):
-                await live_call.send_barge_audio_pcm16(base64.b64decode(data))
+                pcm = base64.b64decode(data, validate=True)
+                if len(pcm) % 2 == 0:
+                    await live_call.send_barge_audio_pcm16(pcm, operator_user_id or 0)
         return monitoring, audio_task
 
     if msg_type == "unbarge":
-        await live_call.stop_barge()
-        await websocket.send_json({"type": "barge_stopped"})
+        if await live_call.stop_barge(operator_user_id or 0):
+            await websocket.send_json({"type": "barge_stopped"})
         return monitoring, audio_task
 
     if msg_type == "pong":
@@ -190,14 +180,24 @@ async def _supervise(
     audio_task: asyncio.Task[None] | None = None
     try:
         while True:
-            raw = await websocket.receive_text()
+            try:
+                raw = await asyncio.wait_for(websocket.receive_text(), timeout=2)
+            except TimeoutError:
+                active = get_live_call_registry().get(live_call.call_id, live_call.workspace_id)
+                if active is not live_call:
+                    await websocket.send_json({"type": "call_ended"})
+                    break
+                continue
             heartbeat.mark_activity()
             try:
                 message = json.loads(raw)
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, TypeError):
                 await websocket.send_json({"type": "error", "message": "Invalid JSON"})
                 continue
 
+            if not isinstance(message, dict):
+                await websocket.send_json({"type": "error", "message": "Invalid message"})
+                continue
             monitoring, new_task = await _handle_control_message(
                 websocket,
                 live_call,
@@ -221,7 +221,7 @@ async def _supervise(
         # Releasing the operator must not leave the AI muted if they bargeed in
         # and then dropped — hand control back so the call keeps working.
         with contextlib.suppress(Exception):
-            await live_call.stop_barge()
+            await live_call.stop_barge(operator_user_id or 0)
 
 
 @router.websocket("/voice/supervise/{workspace_id}/{call_id}")
@@ -257,7 +257,9 @@ async def call_supervisor_endpoint(
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    operator_user_id = await _resolve_operator_user_id(websocket)
+    # Unique per socket: another tab belonging to the same user cannot seize
+    # or release this operator's microphone stream.
+    operator_user_id = id(websocket)
 
     await websocket.accept()
     await websocket.send_json({"type": "attached", "call": live_call.info().as_dict()})
@@ -283,7 +285,7 @@ async def call_supervisor_endpoint(
     except Exception as exc:
         log.exception("call_supervisor_error", error=str(exc))
         with contextlib.suppress(Exception):
-            await websocket.send_json({"type": "error", "message": str(exc)})
+            await websocket.send_json({"type": "error", "message": "Supervision connection failed"})
     finally:
         await heartbeat.stop()
         duration_task.cancel()

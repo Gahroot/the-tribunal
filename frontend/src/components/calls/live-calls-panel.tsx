@@ -28,7 +28,7 @@ export function LiveCallsPanel() {
   const workspaceId = useWorkspaceId();
   const [activeCall, setActiveCall] = useState<LiveCall | null>(null);
 
-  const { data } = useQuery({
+  const { data, isError, refetch } = useQuery({
     queryKey: queryKeys.calls.live(workspaceId ?? ""),
     queryFn: () => {
       if (!workspaceId) throw new Error("Workspace not loaded");
@@ -40,6 +40,13 @@ export function LiveCallsPanel() {
   });
 
   const liveCalls = data?.items ?? [];
+
+  if (isError) {
+    return <div role="alert" className="flex items-center gap-3 text-sm">
+      Live calls could not be loaded.
+      <Button variant="outline" size="sm" onClick={() => void refetch()}>Retry</Button>
+    </div>;
+  }
 
   if (liveCalls.length === 0) {
     return null;
@@ -58,15 +65,16 @@ export function LiveCallsPanel() {
         {liveCalls.map((call) => (
           <div
             key={call.call_id}
-            className="flex items-center justify-between gap-3 rounded-md border p-3"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3"
           >
             <div className="flex items-center gap-3 min-w-0">
               <div className="flex-shrink-0 size-9 rounded-full flex items-center justify-center">
                 <PhoneCall className="size-4 text-primary" />
               </div>
               <div className="min-w-0">
-                <div className="truncate text-sm font-medium">
-                  {call.contact_name || call.contact_phone || "Unknown contact"}
+                <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                  <span className="truncate">{call.contact_name || call.contact_phone || "Unknown contact"}</span>
+                  {call.needs_operator && <Badge variant="destructive">Operator requested</Badge>}
                 </div>
                 <div className="truncate text-xs text-muted-foreground">
                   {call.direction}
@@ -84,7 +92,7 @@ export function LiveCallsPanel() {
               onClick={() => setActiveCall(call)}
             >
               <Headphones className="h-4 w-4" />
-              Supervise
+              {call.needs_operator ? "Respond to request" : "Supervise"}
             </Button>
           </div>
         ))}

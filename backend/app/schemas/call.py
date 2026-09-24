@@ -70,6 +70,8 @@ class LiveCallResponse(BaseModel):
     duration_seconds: int
     supervisor_count: int
     barged: bool
+    needs_operator: bool = False
+    whisper_supported: bool = False
 
 
 class LiveCallsResponse(BaseModel):
