@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal
 
@@ -23,6 +23,7 @@ from app.models.campaign_report import CampaignReport
 from app.models.pending_action import PendingAction
 from app.services.ai.openai_credentials import create_openai_client
 from app.services.approval.approval_gate_service import ApprovalGateService
+from app.services.campaigns.attempt_funnel import get_attempt_funnel
 
 logger = structlog.get_logger()
 
@@ -328,6 +329,27 @@ def extract_best_timing(evidence: list[CampaignEvidence]) -> dict[str, Any] | No
     return max(candidates, key=lambda item: (item["score"], item["timing"]))
 
 
+def measured_best_timing(funnel: dict[str, Any], campaign_id: uuid.UUID) -> dict[str, Any] | None:
+    """Only recommend a UTC hour supported by at least ten source-campaign calls."""
+    hours = [row for row in funnel["hour_utc"] if row["calls"] >= 10]
+    if not hours:
+        return None
+    best = max(
+        hours,
+        key=lambda row: (row["shown_rate"], row["booked_rate"], row["connect_rate"], row["calls"]),
+    )
+    return {
+        "timing": f"{best['value']:02d}:00 UTC",
+        "score": best["shown_rate"],
+        "calls": best["calls"],
+        "booked": best["booked"],
+        "shown": best["shown"],
+        "connect_rate": best["connect_rate"],
+        "source_campaign_id": str(campaign_id),
+        "window": "90 days ending at report period",
+    }
+
+
 def extract_best_prompt(evidence: list[CampaignEvidence]) -> dict[str, Any] | None:
     """Infer best prompt version from report prompt_performance fields."""
     candidates: list[dict[str, Any]] = []
@@ -551,7 +573,24 @@ class OutboundImprovementSuggestionService:
             )
             return []
 
-        summary = summarize_best_performers(evidence)
+        summary = replace(summarize_best_performers(evidence), best_timing=None)
+        # Time recommendations require measured attempts from a voice campaign;
+        # report prose or SMS response timing alone cannot establish a best call hour.
+        voice_sources = [item for item in evidence if item.campaign_type == "voice_sms_fallback"]
+        if voice_sources:
+            source_campaign = max(
+                voice_sources,
+                key=lambda item: (campaign_performance_score(item.metrics), str(item.campaign_id)),
+            )
+            source_campaign_id = source_campaign.campaign_id
+            funnel = await get_attempt_funnel(
+                db,
+                workspace_id,
+                starts_at=window.ends_at - timedelta(days=90),
+                ends_at=window.ends_at,
+                campaign_id=source_campaign_id,
+            )
+            summary = replace(summary, best_timing=measured_best_timing(funnel, source_campaign_id))
         recommendation = await self.synthesize_recommendation(evidence, summary)
         payload = build_pending_action_payload(window, evidence, summary, recommendation)
         context = {
@@ -746,7 +785,6 @@ class OutboundImprovementSuggestionService:
                     "metrics": item.metrics,
                     "recommendations": item.recommendations[:5],
                     "segment_analysis": item.segment_analysis[:5],
-                    "timing_analysis": item.timing_analysis,
                     "prompt_performance": item.prompt_performance[:5],
                     "what_worked": item.what_worked[:5],
                     "initial_message": item.initial_message,
@@ -761,6 +799,7 @@ class OutboundImprovementSuggestionService:
         return (
             "Return JSON with keys: title, rationale, target_segment, angle, message, "
             "responder_agent_id, confidence (0-1), expected_outcome. Base the recommendation "
-            "only on this evidence and keep it human-reviewable. Evidence:\n"
+            "only on this evidence and keep it human-reviewable. Do not recommend a "
+            "calling hour without measured best_performers.best_timing. Evidence:\n"
             f"{json.dumps(source, sort_keys=True, default=str)}"
         )

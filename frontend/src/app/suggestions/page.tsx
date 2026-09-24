@@ -5,6 +5,7 @@ import { Wand2, Lightbulb, Check, X, Clock, BarChart3, FlaskConical } from "luci
 import { useState } from "react";
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
+import { AttemptFunnelPanel } from "@/components/suggestions/attempt-funnel";
 import { CampaignReportsList } from "@/components/suggestions/campaign-reports-list";
 import { ExperimentDashboard } from "@/components/suggestions/experiment-dashboard";
 import { SuggestionsQueue } from "@/components/suggestions/suggestions-queue";
@@ -183,7 +184,8 @@ export default function SuggestionsPage() {
         </TabsContent>
 
         {/* Campaign Intelligence tab */}
-        <TabsContent value="intelligence" className="mt-6">
+        <TabsContent value="intelligence" className="mt-6 space-y-4">
+          <AttemptFunnelPanel />
           <CampaignReportsList />
         </TabsContent>
 

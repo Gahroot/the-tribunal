@@ -2480,6 +2480,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/campaign-reports/attempt-funnel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Attempt Funnel
+         * @description Voice attempts and outcomes for a rolling UTC window, scoped to this workspace.
+         */
+        get: operations["attempt_funnel_api_v1_workspaces__workspace_id__campaign_reports_attempt_funnel_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/campaign-reports/campaign/{campaign_id}": {
         parameters: {
             query?: never;
@@ -6786,7 +6806,8 @@ export interface paths {
          *     - call.hangup: Call ended
          *     - call.machine.detection.ended: Voicemail/human detection result
          *     - call.recording.saved: Recording stored (drives AI voicemail handling)
-         *     - call.speak.ended: Spoken audio finished (used to bridge warm transfers)
+         *     - call.speak.ended: Human briefing completed; await keypad acceptance
+         *     - call.dtmf.received: Confirmed closer accepts the warm transfer
          */
         post: operations["telnyx_voice_webhook_webhooks_telnyx_voice_post"];
         delete?: never;
@@ -8377,6 +8398,69 @@ export interface components {
              */
             total_amount_at_risk: number;
         };
+        /** AttemptBucket */
+        AttemptBucket: {
+            /** Booked */
+            booked: number;
+            /** Booked Rate */
+            booked_rate: number;
+            /** Calls */
+            calls: number;
+            /** Connect Rate */
+            connect_rate: number;
+            /** Connected */
+            connected: number;
+            /** Conversation Rate */
+            conversation_rate: number;
+            /** Conversations */
+            conversations: number;
+            /** Estimated Cost Per Booked Usd */
+            estimated_cost_per_booked_usd: number | null;
+            /** Estimated Cost Per Call Usd */
+            estimated_cost_per_call_usd: number;
+            /** Estimated Cost Per Shown Usd */
+            estimated_cost_per_shown_usd: number | null;
+            /** Estimated Cost Usd */
+            estimated_cost_usd: number;
+            /** Qualified */
+            qualified: number;
+            /** Qualified Rate */
+            qualified_rate: number;
+            /** Show Rate Of Booked */
+            show_rate_of_booked: number | null;
+            /** Shown */
+            shown: number;
+            /** Shown Rate */
+            shown_rate: number;
+            /** Value */
+            value: number;
+        };
+        /** AttemptFunnelResponse */
+        AttemptFunnelResponse: {
+            /** Attempt */
+            attempt: components["schemas"]["AttemptBucket"][];
+            /** Campaign */
+            campaign: components["schemas"]["CampaignBucket"][];
+            /** Cost Basis */
+            cost_basis: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /** Hour Timezone */
+            hour_timezone: string;
+            /** Hour Utc */
+            hour_utc: components["schemas"]["HourBucket"][];
+            /** Lead Source */
+            lead_source: components["schemas"]["SourceBucket"][];
+            overall: components["schemas"]["FunnelMetrics"];
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+        };
         /**
          * AutomationActionSchema
          * @description Schema for automation action.
@@ -9491,6 +9575,48 @@ export interface components {
             reply_rate: number;
             /** Total Contacts */
             total_contacts: number;
+        };
+        /** CampaignBucket */
+        CampaignBucket: {
+            /** Booked */
+            booked: number;
+            /** Booked Rate */
+            booked_rate: number;
+            /** Calls */
+            calls: number;
+            /** Campaign Name */
+            campaign_name: string;
+            /** Connect Rate */
+            connect_rate: number;
+            /** Connected */
+            connected: number;
+            /** Conversation Rate */
+            conversation_rate: number;
+            /** Conversations */
+            conversations: number;
+            /** Estimated Cost Per Booked Usd */
+            estimated_cost_per_booked_usd: number | null;
+            /** Estimated Cost Per Call Usd */
+            estimated_cost_per_call_usd: number;
+            /** Estimated Cost Per Shown Usd */
+            estimated_cost_per_shown_usd: number | null;
+            /** Estimated Cost Usd */
+            estimated_cost_usd: number;
+            /** Qualified */
+            qualified: number;
+            /** Qualified Rate */
+            qualified_rate: number;
+            /** Show Rate Of Booked */
+            show_rate_of_booked: number | null;
+            /** Shown */
+            shown: number;
+            /** Shown Rate */
+            shown_rate: number;
+            /**
+             * Value
+             * Format: uuid
+             */
+            value: string;
         };
         /**
          * CampaignContactAdd
@@ -11246,6 +11372,41 @@ export interface components {
             /** Max Count */
             max_count?: number | null;
         };
+        /** FunnelMetrics */
+        FunnelMetrics: {
+            /** Booked */
+            booked: number;
+            /** Booked Rate */
+            booked_rate: number;
+            /** Calls */
+            calls: number;
+            /** Connect Rate */
+            connect_rate: number;
+            /** Connected */
+            connected: number;
+            /** Conversation Rate */
+            conversation_rate: number;
+            /** Conversations */
+            conversations: number;
+            /** Estimated Cost Per Booked Usd */
+            estimated_cost_per_booked_usd: number | null;
+            /** Estimated Cost Per Call Usd */
+            estimated_cost_per_call_usd: number;
+            /** Estimated Cost Per Shown Usd */
+            estimated_cost_per_shown_usd: number | null;
+            /** Estimated Cost Usd */
+            estimated_cost_usd: number;
+            /** Qualified */
+            qualified: number;
+            /** Qualified Rate */
+            qualified_rate: number;
+            /** Show Rate Of Booked */
+            show_rate_of_booked: number | null;
+            /** Shown */
+            shown: number;
+            /** Shown Rate */
+            shown_rate: number;
+        };
         /**
          * GenerateSuggestionsRequest
          * @description Schema for generating suggestions.
@@ -11480,6 +11641,43 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HourBucket */
+        HourBucket: {
+            /** Booked */
+            booked: number;
+            /** Booked Rate */
+            booked_rate: number;
+            /** Calls */
+            calls: number;
+            /** Connect Rate */
+            connect_rate: number;
+            /** Connected */
+            connected: number;
+            /** Conversation Rate */
+            conversation_rate: number;
+            /** Conversations */
+            conversations: number;
+            /** Estimated Cost Per Booked Usd */
+            estimated_cost_per_booked_usd: number | null;
+            /** Estimated Cost Per Call Usd */
+            estimated_cost_per_call_usd: number;
+            /** Estimated Cost Per Shown Usd */
+            estimated_cost_per_shown_usd: number | null;
+            /** Estimated Cost Usd */
+            estimated_cost_usd: number;
+            /** Qualified */
+            qualified: number;
+            /** Qualified Rate */
+            qualified_rate: number;
+            /** Show Rate Of Booked */
+            show_rate_of_booked: number | null;
+            /** Shown */
+            shown: number;
+            /** Shown Rate */
+            shown_rate: number;
+            /** Value */
+            value: number;
         };
         /**
          * HumanProfileCreate
@@ -17014,6 +17212,43 @@ export interface components {
          * @enum {string}
          */
         SequenceEnrollmentStatus: "active" | "paused" | "completed" | "replied" | "opted_out" | "converted" | "failed" | "cancelled";
+        /** SourceBucket */
+        SourceBucket: {
+            /** Booked */
+            booked: number;
+            /** Booked Rate */
+            booked_rate: number;
+            /** Calls */
+            calls: number;
+            /** Connect Rate */
+            connect_rate: number;
+            /** Connected */
+            connected: number;
+            /** Conversation Rate */
+            conversation_rate: number;
+            /** Conversations */
+            conversations: number;
+            /** Estimated Cost Per Booked Usd */
+            estimated_cost_per_booked_usd: number | null;
+            /** Estimated Cost Per Call Usd */
+            estimated_cost_per_call_usd: number;
+            /** Estimated Cost Per Shown Usd */
+            estimated_cost_per_shown_usd: number | null;
+            /** Estimated Cost Usd */
+            estimated_cost_usd: number;
+            /** Qualified */
+            qualified: number;
+            /** Qualified Rate */
+            qualified_rate: number;
+            /** Show Rate Of Booked */
+            show_rate_of_booked: number | null;
+            /** Shown */
+            shown: number;
+            /** Shown Rate */
+            shown_rate: number;
+            /** Value */
+            value: string;
+        };
         /**
          * SpeedToLeadMetrics
          * @description First-response SLA rollup over the recent window (operator-facing).
@@ -23236,6 +23471,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CampaignReportListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    attempt_funnel_api_v1_workspaces__workspace_id__campaign_reports_attempt_funnel_get: {
+        parameters: {
+            query?: {
+                days?: number;
+                campaign_id?: string | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttemptFunnelResponse"];
                 };
             };
             /** @description Validation Error */

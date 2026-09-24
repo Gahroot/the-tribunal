@@ -1,6 +1,7 @@
 """Campaign post-mortem intelligence report endpoints."""
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -12,12 +13,14 @@ from app.db.scope import apply_workspace_scope
 from app.models.campaign import Campaign
 from app.models.campaign_report import CampaignReport
 from app.models.workspace import Workspace
+from app.schemas.attempt_funnel import AttemptFunnelResponse
 from app.schemas.campaign_report import (
     CampaignReportListResponse,
     CampaignReportResponse,
     CampaignReportSummary,
 )
 from app.services.ai.campaign_report_service import CampaignReportService
+from app.services.campaigns.attempt_funnel import get_attempt_funnel
 
 router = APIRouter()
 
@@ -92,6 +95,28 @@ async def get_report_count(
     )
     count = result.scalar() or 0
     return {"report_count": count}
+
+
+@router.get("/attempt-funnel", response_model=AttemptFunnelResponse)
+async def attempt_funnel(
+    workspace_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+    days: int = Query(30, ge=1, le=90),
+    campaign_id: uuid.UUID | None = None,
+) -> AttemptFunnelResponse:
+    """Voice attempts and outcomes for a rolling UTC window, scoped to this workspace."""
+    end = datetime.now(UTC)
+    return AttemptFunnelResponse.model_validate(
+        await get_attempt_funnel(
+            db,
+            workspace_id,
+            starts_at=end - timedelta(days=days),
+            ends_at=end,
+            campaign_id=campaign_id,
+        )
+    )
 
 
 @router.get("/campaign/{campaign_id}", response_model=CampaignReportResponse)

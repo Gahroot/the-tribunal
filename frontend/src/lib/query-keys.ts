@@ -200,6 +200,8 @@ export const queryKeys = {
     byCampaign: (workspaceId: string, campaignId: string) =>
       [...campaignReports.all(workspaceId), "campaign", campaignId] as const,
     count: (workspaceId: string) => [...campaignReports.all(workspaceId), "count"] as const,
+    attemptFunnel: (workspaceId: string, days: number) =>
+      [...campaignReports.all(workspaceId), "attempt-funnel", days] as const,
   },
   campaigns: {
     ...campaigns,

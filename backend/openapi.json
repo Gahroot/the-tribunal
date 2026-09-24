@@ -4041,6 +4041,186 @@
         "title": "AtRiskDealsResponse",
         "type": "object"
       },
+      "AttemptBucket": {
+        "properties": {
+          "booked": {
+            "title": "Booked",
+            "type": "integer"
+          },
+          "booked_rate": {
+            "title": "Booked Rate",
+            "type": "number"
+          },
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "connect_rate": {
+            "title": "Connect Rate",
+            "type": "number"
+          },
+          "connected": {
+            "title": "Connected",
+            "type": "integer"
+          },
+          "conversation_rate": {
+            "title": "Conversation Rate",
+            "type": "number"
+          },
+          "conversations": {
+            "title": "Conversations",
+            "type": "integer"
+          },
+          "estimated_cost_per_booked_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Cost Per Booked Usd"
+          },
+          "estimated_cost_per_call_usd": {
+            "title": "Estimated Cost Per Call Usd",
+            "type": "number"
+          },
+          "estimated_cost_per_shown_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Cost Per Shown Usd"
+          },
+          "estimated_cost_usd": {
+            "title": "Estimated Cost Usd",
+            "type": "number"
+          },
+          "qualified": {
+            "title": "Qualified",
+            "type": "integer"
+          },
+          "qualified_rate": {
+            "title": "Qualified Rate",
+            "type": "number"
+          },
+          "show_rate_of_booked": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Show Rate Of Booked"
+          },
+          "shown": {
+            "title": "Shown",
+            "type": "integer"
+          },
+          "shown_rate": {
+            "title": "Shown Rate",
+            "type": "number"
+          },
+          "value": {
+            "title": "Value",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "calls",
+          "connected",
+          "conversations",
+          "qualified",
+          "booked",
+          "shown",
+          "connect_rate",
+          "conversation_rate",
+          "qualified_rate",
+          "booked_rate",
+          "shown_rate",
+          "show_rate_of_booked",
+          "estimated_cost_usd",
+          "estimated_cost_per_call_usd",
+          "estimated_cost_per_booked_usd",
+          "estimated_cost_per_shown_usd",
+          "value"
+        ],
+        "title": "AttemptBucket",
+        "type": "object"
+      },
+      "AttemptFunnelResponse": {
+        "properties": {
+          "attempt": {
+            "items": {
+              "$ref": "#/components/schemas/AttemptBucket"
+            },
+            "title": "Attempt",
+            "type": "array"
+          },
+          "campaign": {
+            "items": {
+              "$ref": "#/components/schemas/CampaignBucket"
+            },
+            "title": "Campaign",
+            "type": "array"
+          },
+          "cost_basis": {
+            "title": "Cost Basis",
+            "type": "string"
+          },
+          "ends_at": {
+            "format": "date-time",
+            "title": "Ends At",
+            "type": "string"
+          },
+          "hour_timezone": {
+            "title": "Hour Timezone",
+            "type": "string"
+          },
+          "hour_utc": {
+            "items": {
+              "$ref": "#/components/schemas/HourBucket"
+            },
+            "title": "Hour Utc",
+            "type": "array"
+          },
+          "lead_source": {
+            "items": {
+              "$ref": "#/components/schemas/SourceBucket"
+            },
+            "title": "Lead Source",
+            "type": "array"
+          },
+          "overall": {
+            "$ref": "#/components/schemas/FunnelMetrics"
+          },
+          "starts_at": {
+            "format": "date-time",
+            "title": "Starts At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "starts_at",
+          "ends_at",
+          "hour_timezone",
+          "cost_basis",
+          "overall",
+          "attempt",
+          "hour_utc",
+          "lead_source",
+          "campaign"
+        ],
+        "title": "AttemptFunnelResponse",
+        "type": "object"
+      },
       "AutomationActionSchema": {
         "description": "Schema for automation action.",
         "properties": {
@@ -6623,6 +6803,126 @@
           "contacts_opted_out"
         ],
         "title": "CampaignAnalytics",
+        "type": "object"
+      },
+      "CampaignBucket": {
+        "properties": {
+          "booked": {
+            "title": "Booked",
+            "type": "integer"
+          },
+          "booked_rate": {
+            "title": "Booked Rate",
+            "type": "number"
+          },
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "campaign_name": {
+            "title": "Campaign Name",
+            "type": "string"
+          },
+          "connect_rate": {
+            "title": "Connect Rate",
+            "type": "number"
+          },
+          "connected": {
+            "title": "Connected",
+            "type": "integer"
+          },
+          "conversation_rate": {
+            "title": "Conversation Rate",
+            "type": "number"
+          },
+          "conversations": {
+            "title": "Conversations",
+            "type": "integer"
+          },
+          "estimated_cost_per_booked_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Cost Per Booked Usd"
+          },
+          "estimated_cost_per_call_usd": {
+            "title": "Estimated Cost Per Call Usd",
+            "type": "number"
+          },
+          "estimated_cost_per_shown_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Cost Per Shown Usd"
+          },
+          "estimated_cost_usd": {
+            "title": "Estimated Cost Usd",
+            "type": "number"
+          },
+          "qualified": {
+            "title": "Qualified",
+            "type": "integer"
+          },
+          "qualified_rate": {
+            "title": "Qualified Rate",
+            "type": "number"
+          },
+          "show_rate_of_booked": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Show Rate Of Booked"
+          },
+          "shown": {
+            "title": "Shown",
+            "type": "integer"
+          },
+          "shown_rate": {
+            "title": "Shown Rate",
+            "type": "number"
+          },
+          "value": {
+            "format": "uuid",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "calls",
+          "connected",
+          "conversations",
+          "qualified",
+          "booked",
+          "shown",
+          "connect_rate",
+          "conversation_rate",
+          "qualified_rate",
+          "booked_rate",
+          "shown_rate",
+          "show_rate_of_booked",
+          "estimated_cost_usd",
+          "estimated_cost_per_call_usd",
+          "estimated_cost_per_booked_usd",
+          "estimated_cost_per_shown_usd",
+          "value",
+          "campaign_name"
+        ],
+        "title": "CampaignBucket",
         "type": "object"
       },
       "CampaignContactAdd": {
@@ -11537,6 +11837,115 @@
         "title": "FollowupSettingsUpdate",
         "type": "object"
       },
+      "FunnelMetrics": {
+        "properties": {
+          "booked": {
+            "title": "Booked",
+            "type": "integer"
+          },
+          "booked_rate": {
+            "title": "Booked Rate",
+            "type": "number"
+          },
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "connect_rate": {
+            "title": "Connect Rate",
+            "type": "number"
+          },
+          "connected": {
+            "title": "Connected",
+            "type": "integer"
+          },
+          "conversation_rate": {
+            "title": "Conversation Rate",
+            "type": "number"
+          },
+          "conversations": {
+            "title": "Conversations",
+            "type": "integer"
+          },
+          "estimated_cost_per_booked_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Cost Per Booked Usd"
+          },
+          "estimated_cost_per_call_usd": {
+            "title": "Estimated Cost Per Call Usd",
+            "type": "number"
+          },
+          "estimated_cost_per_shown_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Cost Per Shown Usd"
+          },
+          "estimated_cost_usd": {
+            "title": "Estimated Cost Usd",
+            "type": "number"
+          },
+          "qualified": {
+            "title": "Qualified",
+            "type": "integer"
+          },
+          "qualified_rate": {
+            "title": "Qualified Rate",
+            "type": "number"
+          },
+          "show_rate_of_booked": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Show Rate Of Booked"
+          },
+          "shown": {
+            "title": "Shown",
+            "type": "integer"
+          },
+          "shown_rate": {
+            "title": "Shown Rate",
+            "type": "number"
+          }
+        },
+        "required": [
+          "calls",
+          "connected",
+          "conversations",
+          "qualified",
+          "booked",
+          "shown",
+          "connect_rate",
+          "conversation_rate",
+          "qualified_rate",
+          "booked_rate",
+          "shown_rate",
+          "show_rate_of_booked",
+          "estimated_cost_usd",
+          "estimated_cost_per_call_usd",
+          "estimated_cost_per_booked_usd",
+          "estimated_cost_per_shown_usd"
+        ],
+        "title": "FunnelMetrics",
+        "type": "object"
+      },
       "GenerateSuggestionsRequest": {
         "description": "Schema for generating suggestions.",
         "properties": {
@@ -12098,6 +12507,120 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HourBucket": {
+        "properties": {
+          "booked": {
+            "title": "Booked",
+            "type": "integer"
+          },
+          "booked_rate": {
+            "title": "Booked Rate",
+            "type": "number"
+          },
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "connect_rate": {
+            "title": "Connect Rate",
+            "type": "number"
+          },
+          "connected": {
+            "title": "Connected",
+            "type": "integer"
+          },
+          "conversation_rate": {
+            "title": "Conversation Rate",
+            "type": "number"
+          },
+          "conversations": {
+            "title": "Conversations",
+            "type": "integer"
+          },
+          "estimated_cost_per_booked_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Cost Per Booked Usd"
+          },
+          "estimated_cost_per_call_usd": {
+            "title": "Estimated Cost Per Call Usd",
+            "type": "number"
+          },
+          "estimated_cost_per_shown_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Cost Per Shown Usd"
+          },
+          "estimated_cost_usd": {
+            "title": "Estimated Cost Usd",
+            "type": "number"
+          },
+          "qualified": {
+            "title": "Qualified",
+            "type": "integer"
+          },
+          "qualified_rate": {
+            "title": "Qualified Rate",
+            "type": "number"
+          },
+          "show_rate_of_booked": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Show Rate Of Booked"
+          },
+          "shown": {
+            "title": "Shown",
+            "type": "integer"
+          },
+          "shown_rate": {
+            "title": "Shown Rate",
+            "type": "number"
+          },
+          "value": {
+            "title": "Value",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "calls",
+          "connected",
+          "conversations",
+          "qualified",
+          "booked",
+          "shown",
+          "connect_rate",
+          "conversation_rate",
+          "qualified_rate",
+          "booked_rate",
+          "shown_rate",
+          "show_rate_of_booked",
+          "estimated_cost_usd",
+          "estimated_cost_per_call_usd",
+          "estimated_cost_per_booked_usd",
+          "estimated_cost_per_shown_usd",
+          "value"
+        ],
+        "title": "HourBucket",
         "type": "object"
       },
       "HumanProfileCreate": {
@@ -27090,6 +27613,120 @@
         "title": "SequenceEnrollmentStatus",
         "type": "string"
       },
+      "SourceBucket": {
+        "properties": {
+          "booked": {
+            "title": "Booked",
+            "type": "integer"
+          },
+          "booked_rate": {
+            "title": "Booked Rate",
+            "type": "number"
+          },
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "connect_rate": {
+            "title": "Connect Rate",
+            "type": "number"
+          },
+          "connected": {
+            "title": "Connected",
+            "type": "integer"
+          },
+          "conversation_rate": {
+            "title": "Conversation Rate",
+            "type": "number"
+          },
+          "conversations": {
+            "title": "Conversations",
+            "type": "integer"
+          },
+          "estimated_cost_per_booked_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Cost Per Booked Usd"
+          },
+          "estimated_cost_per_call_usd": {
+            "title": "Estimated Cost Per Call Usd",
+            "type": "number"
+          },
+          "estimated_cost_per_shown_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Cost Per Shown Usd"
+          },
+          "estimated_cost_usd": {
+            "title": "Estimated Cost Usd",
+            "type": "number"
+          },
+          "qualified": {
+            "title": "Qualified",
+            "type": "integer"
+          },
+          "qualified_rate": {
+            "title": "Qualified Rate",
+            "type": "number"
+          },
+          "show_rate_of_booked": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Show Rate Of Booked"
+          },
+          "shown": {
+            "title": "Shown",
+            "type": "integer"
+          },
+          "shown_rate": {
+            "title": "Shown Rate",
+            "type": "number"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "calls",
+          "connected",
+          "conversations",
+          "qualified",
+          "booked",
+          "shown",
+          "connect_rate",
+          "conversation_rate",
+          "qualified_rate",
+          "booked_rate",
+          "shown_rate",
+          "show_rate_of_booked",
+          "estimated_cost_usd",
+          "estimated_cost_per_call_usd",
+          "estimated_cost_per_booked_usd",
+          "estimated_cost_per_shown_usd",
+          "value"
+        ],
+        "title": "SourceBucket",
+        "type": "object"
+      },
       "SpeedToLeadMetrics": {
         "description": "First-response SLA rollup over the recent window (operator-facing).",
         "properties": {
@@ -39133,6 +39770,84 @@
           }
         ],
         "summary": "List Reports",
+        "tags": [
+          "Campaign Reports"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/campaign-reports/attempt-funnel": {
+      "get": {
+        "description": "Voice attempts and outcomes for a rolling UTC window, scoped to this workspace.",
+        "operationId": "attempt_funnel_api_v1_workspaces__workspace_id__campaign_reports_attempt_funnel_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 90,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "campaign_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttemptFunnelResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Attempt Funnel",
         "tags": [
           "Campaign Reports"
         ]
@@ -56304,7 +57019,7 @@
     },
     "/webhooks/telnyx/voice": {
       "post": {
-        "description": "Handle incoming Telnyx voice webhooks.\n\nTelnyx sends webhooks for:\n- call.initiated: Incoming call received\n- call.answered: Call was answered\n- call.hangup: Call ended\n- call.machine.detection.ended: Voicemail/human detection result\n- call.recording.saved: Recording stored (drives AI voicemail handling)\n- call.speak.ended: Spoken audio finished (used to bridge warm transfers)",
+        "description": "Handle incoming Telnyx voice webhooks.\n\nTelnyx sends webhooks for:\n- call.initiated: Incoming call received\n- call.answered: Call was answered\n- call.hangup: Call ended\n- call.machine.detection.ended: Voicemail/human detection result\n- call.recording.saved: Recording stored (drives AI voicemail handling)\n- call.speak.ended: Human briefing completed; await keypad acceptance\n- call.dtmf.received: Confirmed closer accepts the warm transfer",
         "operationId": "telnyx_voice_webhook_webhooks_telnyx_voice_post",
         "responses": {
           "200": {

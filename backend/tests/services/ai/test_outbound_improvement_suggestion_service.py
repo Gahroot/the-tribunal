@@ -20,6 +20,7 @@ from app.services.ai.outbound_improvement_suggestion_service import (
     extract_best_campaign,
     extract_best_message,
     extract_best_segment,
+    measured_best_timing,
     parse_llm_recommendation,
     safe_rate,
     summarize_best_performers,
@@ -61,6 +62,46 @@ def make_evidence(
         key_findings=[{"finding": "Consult-first copy outperformed discounts"}],
         what_worked=[{"angle": "Consult-first"}],
     )
+
+
+def test_measured_timing_requires_sample_and_prefers_shown_rate() -> None:
+    campaign_id = uuid4()
+    funnel = {
+        "hour_utc": [
+            {
+                "value": 9,
+                "calls": 2,
+                "shown_rate": 1.0,
+                "booked_rate": 1.0,
+                "connect_rate": 1.0,
+                "booked": 2,
+                "shown": 2,
+            },
+            {
+                "value": 10,
+                "calls": 20,
+                "shown_rate": 0.2,
+                "booked_rate": 0.3,
+                "connect_rate": 0.5,
+                "booked": 6,
+                "shown": 4,
+            },
+            {
+                "value": 11,
+                "calls": 10,
+                "shown_rate": 0.1,
+                "booked_rate": 0.5,
+                "connect_rate": 0.6,
+                "booked": 5,
+                "shown": 1,
+            },
+        ]
+    }
+    timing = measured_best_timing(funnel, campaign_id)
+    assert timing is not None
+    assert timing["timing"] == "10:00 UTC"
+    assert timing["source_campaign_id"] == str(campaign_id)
+    assert measured_best_timing({"hour_utc": funnel["hour_utc"][:1]}, campaign_id) is None
 
 
 def test_safe_rate_handles_zero_denominator() -> None:

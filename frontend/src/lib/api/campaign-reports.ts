@@ -92,9 +92,44 @@ export interface CampaignReportListParams {
   page_size?: number;
 }
 
+export interface AttemptFunnelMetrics {
+  calls: number;
+  connected: number;
+  conversations: number;
+  qualified: number;
+  booked: number;
+  shown: number;
+  connect_rate: number;
+  conversation_rate: number;
+  qualified_rate: number;
+  booked_rate: number;
+  shown_rate: number;
+  show_rate_of_booked: number | null;
+  estimated_cost_usd: number;
+  estimated_cost_per_call_usd: number;
+  estimated_cost_per_booked_usd: number | null;
+  estimated_cost_per_shown_usd: number | null;
+}
+
+export interface AttemptFunnel {
+  starts_at: string;
+  ends_at: string;
+  hour_timezone: string;
+  cost_basis: string;
+  overall: AttemptFunnelMetrics;
+  attempt: Array<AttemptFunnelMetrics & { value: number }>;
+  hour_utc: Array<AttemptFunnelMetrics & { value: number }>;
+  lead_source: Array<AttemptFunnelMetrics & { value: string }>;
+  campaign: Array<AttemptFunnelMetrics & { value: string; campaign_name: string }>;
+}
+
 // API
 
 export const campaignReportsApi = {
+  attemptFunnel: (workspaceId: string, days = 30): Promise<AttemptFunnel> =>
+    apiGet<AttemptFunnel>(`/api/v1/workspaces/${workspaceId}/campaign-reports/attempt-funnel`, {
+      params: { days },
+    }),
   list: async (
     workspaceId: string,
     params: CampaignReportListParams = {}
