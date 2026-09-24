@@ -29,6 +29,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import httpx
 import structlog
 from openai.types.chat import ChatCompletionMessageToolCall
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,6 +48,37 @@ logger = structlog.get_logger()
 
 # Read-only tools that never mutate state and so bypass the HITL approval gate.
 GATE_EXEMPT_TOOLS: frozenset[str] = frozenset({"search_knowledge"})
+
+
+class _ToolArguments(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class _BookArguments(_ToolArguments):
+    date: str = Field(min_length=1)
+    time: str = Field(min_length=1)
+    email: str = Field(min_length=1)
+    duration_minutes: int = Field(default=30, ge=1)
+    notes: str | None = None
+    skill: str | None = None
+
+
+class _AvailabilityArguments(_ToolArguments):
+    start_date: str = Field(min_length=1)
+    end_date: str | None = None
+    skill: str | None = None
+
+
+class _KnowledgeArguments(_ToolArguments):
+    query: str = Field(min_length=1)
+    top_k: int | None = Field(default=None, ge=1, le=10)
+
+
+_TOOL_SCHEMAS: dict[str, type[_ToolArguments]] = {
+    "book_appointment": _BookArguments,
+    "check_availability": _AvailabilityArguments,
+    "search_knowledge": _KnowledgeArguments,
+}
 
 
 class TextToolExecutor(BaseToolExecutor):
@@ -90,10 +122,12 @@ class TextToolExecutor(BaseToolExecutor):
 
         for tool_call in tool_calls:
             function_name = tool_call.function.name
-            try:
-                arguments = json.loads(tool_call.function.arguments)
-            except json.JSONDecodeError:
-                arguments = {}
+            schema = _TOOL_SCHEMAS.get(function_name)
+            if schema is None:
+                raise ValueError(f"Unknown text tool: {function_name}")
+            arguments = schema.model_validate_json(tool_call.function.arguments).model_dump(
+                exclude_none=True
+            )
 
             self.log.info(
                 "executing_tool_call",

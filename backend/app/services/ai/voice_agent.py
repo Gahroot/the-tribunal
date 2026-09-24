@@ -11,13 +11,15 @@ from typing import Any, Literal
 
 import httpx
 import structlog
+from pydantic import TypeAdapter, ValidationError
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
 from app.core.config import settings
 from app.core.metrics import openai_realtime_latency_ms
 from app.models.agent import Agent
-from app.services.ai.model_config import Selection, log_realtime_usage
+from app.services.ai.call_tracing import ResponseSpans
+from app.services.ai.model_config import Selection, _cost, log_realtime_usage
 from app.services.ai.openai_realtime_config import (
     RealtimeSessionConfig,
     build_client_secret_request,
@@ -32,6 +34,7 @@ from app.services.ai.voice_agent_base import VoiceAgentBase
 from app.services.ai.voice_tools import get_tools_from_agent_config
 
 logger = structlog.get_logger()
+_TOOL_ARGUMENTS = TypeAdapter(dict[str, Any])
 
 TOOL_TIMEOUT_SECONDS = 30.0
 OPENAI_REALTIME_CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets"
@@ -303,15 +306,17 @@ class VoiceAgentSession(VoiceAgentBase):
             return
 
         try:
-            arguments_raw = json.loads(arguments_str)
-        except json.JSONDecodeError:
-            arguments_raw = {}
+            arguments = _TOOL_ARGUMENTS.validate_json(arguments_str)
+        except ValidationError:
             self.logger.warning(
                 "openai_function_call_invalid_arguments",
                 call_id=call_id,
                 function_name=function_name,
             )
-        arguments = arguments_raw if isinstance(arguments_raw, dict) else {}
+            await self.submit_tool_result(
+                call_id, {"success": False, "error": "Invalid tool arguments; retry with an object"}
+            )
+            return
 
         tool_callback = self._tool_callback
         if not tool_callback:
@@ -635,6 +640,7 @@ class VoiceAgentSession(VoiceAgentBase):
         audio_chunks_received = 0
         total_audio_bytes = 0
         responses_completed = 0
+        llm_spans = ResponseSpans("openai", self.model)
 
         try:
             self.logger.info(
@@ -748,7 +754,14 @@ class VoiceAgentSession(VoiceAgentBase):
                     responses_completed += 1
                     response = event.get("response", {})
                     usage = response.get("usage", {})
-                    log_realtime_usage(self.model_selection or Selection(self.model), usage)
+                    selection = self.model_selection or Selection(self.model)
+                    log_realtime_usage(selection, usage)
+                    cost = (
+                        _cost(selection, usage.get("input_tokens"), usage.get("output_tokens"))
+                        if isinstance(usage, dict)
+                        else None
+                    )
+                    llm_spans.finish(response, cost)
                     output = response.get("output", [])
                     response_status = response.get("status", "")
                     output_summary = [
@@ -815,6 +828,7 @@ class VoiceAgentSession(VoiceAgentBase):
                     self._handle_response_created()
 
                     response = event.get("response", {})
+                    llm_spans.start(response)
                     self.logger.info(
                         "response_created",
                         response_id=response.get("id"),
@@ -890,6 +904,8 @@ class VoiceAgentSession(VoiceAgentBase):
                 error=str(e),
                 chunks_received=audio_chunks_received,
             )
+        finally:
+            llm_spans.close()
 
         # Log stream end stats
         self.logger.info(

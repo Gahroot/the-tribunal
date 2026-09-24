@@ -1,89 +1,62 @@
-"""Tests for transcript analysis service."""
+"""Regression tests for validated transcript outputs."""
 
-import json
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
+from pydantic_ai.exceptions import UnexpectedModelBehavior
+from pydantic_ai.messages import ModelResponse, ToolCallPart
+from pydantic_ai.models.function import FunctionModel
 
 from app.services.ai import transcript_analysis
 
 
-def _make_response(payload: dict[str, object]) -> SimpleNamespace:
-    message = SimpleNamespace(content=json.dumps(payload))
-    choice = SimpleNamespace(message=message)
-    return SimpleNamespace(choices=[choice])
-
-
 @pytest.mark.asyncio
-async def test_analyze_transcript_returns_normalized_dict() -> None:
-    payload = {
-        "sentiment": "positive",
-        "sentiment_score": 0.8,
-        "intents": ["book_appointment", "learn_pricing"],
-        "topics": ["pricing", "availability"],
-        "summary": "Caller wants to book a consult.",
-        "objections": ["budget"],
-        "next_steps": ["send quote"],
-        "preferred_call_time": "Thursday afternoon",
-        "callback_promise": "Agent promised to call on Thursday",
-    }
-    fake_client = SimpleNamespace(
-        chat=SimpleNamespace(
-            completions=SimpleNamespace(create=AsyncMock(return_value=_make_response(payload)))
-        )
-    )
+async def test_transcript_retries_invalid_output_then_accepts_correction() -> None:
+    attempts = 0
 
-    with patch.object(transcript_analysis, "_get_client", return_value=fake_client):
+    def respond(messages, info):
+        nonlocal attempts
+        attempts += 1
+        assert info.output_tools
+        payload = {
+            "sentiment": "positive",
+            "sentiment_score": 0.8,
+            "intents": ["book_appointment"],
+            "topics": ["pricing"],
+            "summary": "Caller wants a consult.",
+            "objections": [],
+            "next_steps": ["send quote"],
+            "preferred_call_time": None,
+            "callback_promise": None,
+        }
+        if attempts == 1:
+            payload["sentiment"] = "ecstatic"
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, payload)])
+
+    model = FunctionModel(respond)
+    with (
+        patch.object(transcript_analysis, "_get_client", return_value=object()),
+        patch("app.services.ai.structured_output.OpenAIChatModel", return_value=model),
+        patch("app.services.ai.structured_output.OpenAIProvider", return_value=object()),
+    ):
         result = await transcript_analysis.analyze_transcript("hello world")
-
+    assert attempts == 2
     assert result["sentiment"] == "positive"
-    assert result["sentiment_score"] == pytest.approx(0.8)
-    assert result["intents"] == ["book_appointment", "learn_pricing"]
-    assert result["topics"] == ["pricing", "availability"]
-    assert result["summary"] == "Caller wants to book a consult."
-    assert result["objections"] == ["budget"]
-    assert result["next_steps"] == ["send quote"]
-    assert result["preferred_call_time"] == "Thursday afternoon"
-    assert result["callback_promise"] == "Agent promised to call on Thursday"
+    assert result["summary"] == "Caller wants a consult."
 
 
 @pytest.mark.asyncio
-async def test_analyze_transcript_normalizes_bad_values() -> None:
-    payload = {
-        "sentiment": "ecstatic",
-        "sentiment_score": "not a number",
-        "intents": "nope",
-        "summary": None,
-    }
-    fake_client = SimpleNamespace(
-        chat=SimpleNamespace(
-            completions=SimpleNamespace(create=AsyncMock(return_value=_make_response(payload)))
-        )
-    )
+async def test_transcript_rejects_persistent_invalid_output() -> None:
+    def respond(messages, info):
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, {"sentiment": "bad"})])
 
-    with patch.object(transcript_analysis, "_get_client", return_value=fake_client):
-        result = await transcript_analysis.analyze_transcript("hi")
-
-    assert result["sentiment"] == "neutral"
-    assert result["sentiment_score"] == 0.0
-    assert result["intents"] == []
-    assert result["topics"] == []
-    assert result["objections"] == []
-    assert result["next_steps"] == []
-    assert result["summary"] == "None"
-    assert result["preferred_call_time"] is None
-    assert result["callback_promise"] is None
-
-
-@pytest.mark.asyncio
-async def test_analyze_transcript_clamps_score() -> None:
-    payload = {"sentiment": "negative", "sentiment_score": -9.0}
-    fake_client = SimpleNamespace(
-        chat=SimpleNamespace(
-            completions=SimpleNamespace(create=AsyncMock(return_value=_make_response(payload)))
-        )
-    )
-    with patch.object(transcript_analysis, "_get_client", return_value=fake_client):
-        result = await transcript_analysis.analyze_transcript("text")
-    assert result["sentiment_score"] == -1.0
+    with (
+        patch.object(transcript_analysis, "_get_client", return_value=object()),
+        patch(
+            "app.services.ai.structured_output.OpenAIChatModel",
+            return_value=FunctionModel(respond),
+        ),
+        patch("app.services.ai.structured_output.OpenAIProvider", return_value=object()),
+        pytest.raises(UnexpectedModelBehavior),
+    ):
+        await transcript_analysis.analyze_transcript("hello world")

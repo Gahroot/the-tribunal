@@ -1,8 +1,6 @@
 """AI-powered website content analyzer for lead enrichment."""
 
 import asyncio
-import json
-from typing import Any
 
 import structlog
 from bs4 import BeautifulSoup
@@ -10,34 +8,26 @@ from openai import APIConnectionError, APITimeoutError, AsyncOpenAI, RateLimitEr
 
 from app.schemas.find_leads_ai import WebsiteSummary
 from app.services.ai.openai_credentials import get_openai_bearer_token
+from app.services.ai.structured_output import generate_structured
 
 logger = structlog.get_logger()
 
 
-_STRICT_UNSUPPORTED_KEYS = {"title", "description", "default", "examples"}
+class _WebsiteAnalysis(WebsiteSummary):
+    business_description: str | None
+    services: list[str]
+    target_market: str | None
+    unique_selling_points: list[str]
+    industry: str | None
+    team_size_estimate: str
+    years_in_business: int | None
+    service_areas: list[str]
+    revenue_signals: list[str]
+    has_financing: bool
+    certifications: list[str]
+    decision_maker_name: str | None
+    decision_maker_title: str | None
 
-
-def _make_strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
-    """Transform a Pydantic JSON schema for OpenAI strict mode.
-
-    Strict mode requires all properties in 'required', 'additionalProperties': false,
-    and does not support 'title', 'description', 'default', or 'examples' keywords.
-    """
-    result: dict[str, Any] = {k: v for k, v in schema.items() if k not in _STRICT_UNSUPPORTED_KEYS}
-    if "properties" in result:
-        result["required"] = list(result["properties"].keys())
-        result["additionalProperties"] = False
-        result["properties"] = {k: _make_strict_schema(v) for k, v in result["properties"].items()}
-    if "items" in result and isinstance(result["items"], dict):
-        result["items"] = _make_strict_schema(result["items"])
-    if "anyOf" in result:
-        result["anyOf"] = [
-            _make_strict_schema(v) if isinstance(v, dict) else v for v in result["anyOf"]
-        ]
-    return result
-
-
-_WEBSITE_SUMMARY_STRICT_SCHEMA = _make_strict_schema(WebsiteSummary.model_json_schema())
 
 WEBSITE_ANALYSIS_PROMPT = """Analyze this business website content and extract key information.
 
@@ -124,47 +114,29 @@ class AIContentAnalyzerService:
 
         for attempt in range(max_retries):
             try:
-                response = await asyncio.wait_for(
-                    self._openai.chat.completions.create(
-                        model="gpt-5.4-nano",
-                        messages=[
-                            {"role": "system", "content": WEBSITE_ANALYSIS_PROMPT},
-                            {"role": "user", "content": context + text_content},
-                        ],
-                        response_format={
-                            "type": "json_schema",
-                            "json_schema": {
-                                "name": "website_summary",
-                                "strict": True,
-                                "schema": _WEBSITE_SUMMARY_STRICT_SCHEMA,
-                            },
-                        },
-                        temperature=0.3,
-                        max_completion_tokens=800,
-                    ),
+                result = await generate_structured(
+                    client=self._openai,
+                    model="gpt-5.4-nano",
+                    schema=_WebsiteAnalysis,
+                    system_prompt=WEBSITE_ANALYSIS_PROMPT,
+                    user_prompt=context + text_content,
+                    temperature=0.3,
+                    max_tokens=800,
                     timeout=30.0,
                 )
-
-                result = json.loads(response.choices[0].message.content or "{}")
                 log.info(
                     "website_summary_generated",
-                    has_description=bool(result.get("business_description")),
+                    has_description=bool(result.business_description),
                 )
-
-                return WebsiteSummary(
-                    business_description=result.get("business_description"),
-                    services=result.get("services", [])[:5],
-                    target_market=result.get("target_market"),
-                    unique_selling_points=result.get("unique_selling_points", [])[:3],
-                    industry=result.get("industry"),
-                    team_size_estimate=result.get("team_size_estimate", "unknown"),
-                    years_in_business=result.get("years_in_business"),
-                    service_areas=result.get("service_areas", [])[:10],
-                    revenue_signals=result.get("revenue_signals", [])[:5],
-                    has_financing=result.get("has_financing", False),
-                    certifications=result.get("certifications", [])[:10],
-                    decision_maker_name=result.get("decision_maker_name"),
-                    decision_maker_title=result.get("decision_maker_title"),
+                return WebsiteSummary.model_validate(
+                    {
+                        **result.model_dump(),
+                        "services": result.services[:5],
+                        "unique_selling_points": result.unique_selling_points[:3],
+                        "service_areas": result.service_areas[:10],
+                        "revenue_signals": result.revenue_signals[:5],
+                        "certifications": result.certifications[:10],
+                    }
                 )
 
             except RateLimitError as e:
@@ -179,7 +151,7 @@ class AIContentAnalyzerService:
                     backoff = min(backoff * 2, 30)
                     continue
                 log.warning("openai_rate_limit_max_retries", error=str(e))
-                return None
+                raise
 
             except (APIConnectionError, APITimeoutError, TimeoutError) as e:
                 if attempt < max_retries - 1:
@@ -198,10 +170,10 @@ class AIContentAnalyzerService:
                     error_type=type(e).__name__,
                     error=str(e),
                 )
-                return None
+                raise
 
-            except Exception as e:
-                log.warning("website_summary_failed", error=str(e))
-                return None
+            except Exception:
+                log.exception("website_summary_failed")
+                raise
 
         return None

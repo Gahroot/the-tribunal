@@ -28,15 +28,16 @@ from datetime import UTC, datetime
 from typing import Any
 
 import structlog
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.ai.embeddings import Embedder, embed_texts
+from app.services.ai.model_config import DEFAULTS, Selection, resolve_model
+from app.services.ai.structured_output import generate_structured
 
 logger = structlog.get_logger()
 
-# Model used to summarize a call transcript into a short recap.
-_SUMMARY_MODEL = "gpt-4o-mini"
 # Cap how much of a transcript we feed the summarizer (chars). Voice calls are
 # short, but guard against pathological transcripts blowing the prompt budget.
 _MAX_TRANSCRIPT_CHARS = 12000
@@ -49,8 +50,20 @@ _SUMMARY_SYSTEM_PROMPT = (
     "You summarize phone calls into a short, factual memory for the next time "
     "this same person calls. Write 1-3 sentences in plain past tense. Capture "
     "what the caller wanted, key facts they shared, decisions/outcomes, and any "
-    "promised follow-up. Do NOT invent details. Return only the summary text."
+    "promised follow-up. Do NOT invent details. Return a summary field."
 )
+
+
+class MemorySummary(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    summary: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("summary")
+    @classmethod
+    def nonblank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Memory summary cannot be blank")
+        return value.strip()
 
 
 @dataclass(slots=True)
@@ -110,11 +123,12 @@ async def summarize_call_transcript(
     *,
     agent_name: str | None = None,
     contact_name: str | None = None,
+    selection: Selection | None = None,
 ) -> str | None:
     """Distil a flattened transcript into a short, factual recap.
 
-    Returns ``None`` (rather than raising) on empty input or any LLM failure so
-    the call-completion path degrades gracefully.
+    Returns ``None`` on empty input; model failures propagate to the caller's
+    logged call-completion error handler.
     """
     transcript_text = (transcript_text or "").strip()
     if not transcript_text:
@@ -129,27 +143,18 @@ async def summarize_call_transcript(
         header_bits.append(f"Agent name: {agent_name}.")
     header = (" ".join(header_bits) + "\n\n") if header_bits else ""
 
-    try:
-        client = create_openai_client()
-        response = await client.chat.completions.create(
-            model=_SUMMARY_MODEL,
-            messages=[
-                {"role": "system", "content": _SUMMARY_SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": f"{header}TRANSCRIPT:\n{transcript_text}",
-                },
-            ],
-            temperature=0.2,
-        )
-    except Exception as exc:  # noqa: BLE001 - never break a call on summarizer failure
-        logger.warning("caller_memory_summarize_failed", error_type=type(exc).__name__)
-        return None
-
-    summary = (response.choices[0].message.content or "").strip()
-    if not summary:
-        return None
-    return summary[:_MAX_SUMMARY_CHARS]
+    selection = selection or Selection(DEFAULTS["caller_memory"])
+    result = await generate_structured(
+        client=create_openai_client(),
+        model=selection.model,
+        schema=MemorySummary,
+        system_prompt=_SUMMARY_SYSTEM_PROMPT,
+        user_prompt=f"{header}TRANSCRIPT:\n{transcript_text}",
+        temperature=0.2,
+        selection=selection,
+        task="caller_memory",
+    )
+    return result.summary.strip()
 
 
 async def store_caller_memory(
@@ -290,6 +295,9 @@ async def summarize_and_store_call(  # noqa: PLR0911 - sequential guard clauses
             transcript_text,
             agent_name=agent_name,
             contact_name=contact_name,
+            selection=await resolve_model(
+                db, "caller_memory", conversation.workspace_id, message.agent_id
+            ),
         )
         if not summary:
             log.info("caller_memory_no_summary", message_id=str(message.id))

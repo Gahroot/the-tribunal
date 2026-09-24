@@ -26,6 +26,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import structlog
+from pydantic import TypeAdapter
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,6 +38,7 @@ from app.services.ai.image_input import build_chat_image_content_part
 from app.services.ai.openai_credentials import create_openai_client
 
 logger = structlog.get_logger()
+_TOOL_ARGUMENTS = TypeAdapter(dict[str, Any])
 
 # ── Configuration ────────────────────────────────────────────────────
 MODEL = "gpt-5.4-nano"
@@ -321,10 +323,7 @@ async def _execute_tool_calls_sequential(
     results: list[dict[str, Any]] = []
     for tc in tool_calls:
         name = tc.function.name
-        try:
-            args = json.loads(tc.function.arguments)
-        except json.JSONDecodeError:
-            args = {}
+        args = _TOOL_ARGUMENTS.validate_json(tc.function.arguments)
         result = await executor.execute(name, args)
         results.append({"id": tc.id, "name": name, "arguments": args, "result": result})
     return results
@@ -485,10 +484,7 @@ async def stream_assistant_message(  # noqa: PLR0912, PLR0915
                     continue
                 name = tool_call.function.name
                 yield {"type": "tool_start", "name": name}
-                try:
-                    args = json.loads(tool_call.function.arguments)
-                except json.JSONDecodeError:
-                    args = {}
+                args = _TOOL_ARGUMENTS.validate_json(tool_call.function.arguments)
                 result = await executor.execute(name, args)
                 executions.append(
                     {"id": tool_call.id, "name": name, "arguments": args, "result": result}

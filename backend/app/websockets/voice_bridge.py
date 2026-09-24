@@ -400,6 +400,23 @@ async def voice_stream_bridge(  # noqa: PLR0912, PLR0915
         call_id: Telnyx call control ID
         is_outbound: If True, this is an outbound call and the AI uses an outbound opener
     """
+    from app.services.ai.call_tracing import call_span, measure_first_audio
+
+    trace_start = time.monotonic()
+    with (
+        call_span(
+            call_id,
+            "voice.call",
+            attributes={"voice.direction": "outbound" if is_outbound else "inbound"},
+        ),
+        measure_first_audio(trace_start),
+    ):
+        await _voice_stream_bridge_request(websocket, call_id, is_outbound)
+
+
+async def _voice_stream_bridge_request(
+    websocket: WebSocket, call_id: str, is_outbound: bool
+) -> None:
     connection_start = time.time()
     log = logger.bind(endpoint="voice_stream_bridge", call_id=call_id, is_outbound=is_outbound)
     log.info(
@@ -435,6 +452,9 @@ async def voice_stream_bridge(  # noqa: PLR0912, PLR0915
         timezone = full_context.timezone
         prompt_version_id = full_context.prompt_version_id
         workspace_id = full_context.workspace_id
+        from opentelemetry import trace
+
+        trace.get_current_span().set_attribute("workspace.id", str(workspace_id or ""))
         if agent is not None and workspace_id is not None and agent.voice_provider == "openai":
             async with AsyncSessionLocal() as model_db:
                 selection = await resolve_model(
@@ -468,6 +488,9 @@ async def voice_stream_bridge(  # noqa: PLR0912, PLR0915
             websocket.scope["voice_heartbeat"] = heartbeat
 
             try:
+                from app.services.ai.call_tracing import mark_media_started
+
+                mark_media_started()
                 await _voice_stream_bridge_body(
                     websocket=websocket,
                     call_id=call_id,
@@ -1231,6 +1254,10 @@ async def _receive_from_provider_and_send_to_telnyx(  # noqa: PLR0912, PLR0915
             await websocket.send_text(message)
 
         audio_chunks_sent += 1
+        if audio_chunks_sent == 1:
+            from app.services.ai.call_tracing import record_first_audio
+
+            record_first_audio()
         total_audio_bytes += len(audio_data)
 
         # Log first few chunks for debugging

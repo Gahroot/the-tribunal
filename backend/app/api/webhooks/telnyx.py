@@ -26,6 +26,7 @@ from app.api.webhooks.telnyx_message_handlers import (
 )
 from app.api.webhooks.telnyx_parser import verify_and_parse
 from app.core.metrics import observe_telnyx_webhook
+from app.services.ai.call_tracing import call_span
 
 router = APIRouter()
 logger = structlog.get_logger()
@@ -133,7 +134,12 @@ async def telnyx_voice_webhook(request: Request) -> dict[str, str]:
     handler = _VOICE_HANDLERS.get(event_type)
     if handler is not None:
         try:
-            await handler(event_payload, log)
+            with call_span(
+                str(event_payload.get("call_control_id") or ""),
+                "telephony.telnyx.webhook",
+                attributes={"telephony.event": event_type},
+            ):
+                await handler(event_payload, log)
         except Exception as exc:
             # Re-raise as 500 so Telnyx retries the webhook. Voice handlers
             # are idempotent on call_control_id: handle_call_initiated

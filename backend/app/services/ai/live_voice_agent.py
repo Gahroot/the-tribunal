@@ -40,6 +40,7 @@ from aiortc import (
 from aiortc.mediastreams import MediaStreamError
 
 from app.models.agent import Agent
+from app.services.ai.call_tracing import ResponseSpans
 from app.services.ai.codex_app_server import (
     DEFAULT_CODEX_VOICE,
     SUPPORTED_CODEX_VOICES,
@@ -149,6 +150,9 @@ class LiveVoiceAgentSession(VoiceAgentBase):
 
         # Local metering: the plan-side allowance is not exposed to clients.
         self._audio_duration_ms = 0
+        self._response_spans: ResponseSpans | None = None
+        self._response_sequence = 0
+        self._current_response_id: str | None = None
 
     # ------------------------------------------------------------------
     # Connection
@@ -164,6 +168,7 @@ class LiveVoiceAgentSession(VoiceAgentBase):
 
     async def connect(self) -> bool:
         """Start the app-server, negotiate WebRTC, and open the session."""
+        self._response_spans = ResponseSpans("openai-live", "gpt-live")
         try:
             await self._broker.start()
         except CodexAppServerError as exc:
@@ -248,6 +253,13 @@ class LiveVoiceAgentSession(VoiceAgentBase):
 
     async def disconnect(self) -> None:
         """Tear down the realtime session, peer connection, and broker."""
+        from app.services.ai.call_tracing import record_provider_cost
+
+        if self._response_spans is not None:
+            self._response_spans.close()
+            self._response_spans = None
+            # This is subscription allowance usage, not a per-call invoice.
+            record_provider_cost(None)
         for task in (self._remote_reader, self._turn_flush_task):
             if task and not task.done():
                 task.cancel()
@@ -408,6 +420,9 @@ class LiveVoiceAgentSession(VoiceAgentBase):
         closed by the quiet timer instead.
         """
         self._save_current_agent_transcript()
+        if self._response_spans is not None and self._current_response_id is not None:
+            self._response_spans.finish({"id": self._current_response_id, "status": "completed"})
+            self._current_response_id = None
 
     def _handle_error_event(self, event: dict[str, Any]) -> None:
         """Log a protocol error without tearing down the call."""
@@ -423,12 +438,19 @@ class LiveVoiceAgentSession(VoiceAgentBase):
         "output_transcript.added": lambda self, event: self._append_agent_transcript_delta(
             _event_text(event)
         ),
-        "turn.created": lambda self, event: self._handle_response_created(),
+        "turn.created": lambda self, event: self._start_traced_turn(),
         "turn.done": _handle_turn_done,
         "input_audio.started": lambda self, event: self._handle_speech_started(),
         "delegation.created": lambda self, event: self._handle_delegation(event),
         "error": _handle_error_event,
     }
+
+    def _start_traced_turn(self) -> None:
+        self._handle_response_created()
+        self._response_sequence += 1
+        self._current_response_id = str(self._response_sequence)
+        if self._response_spans is not None:
+            self._response_spans.start({"id": self._current_response_id})
 
     def _record_usage(self, event: dict[str, Any]) -> None:
         """Track local audio usage against the subscription allowance."""

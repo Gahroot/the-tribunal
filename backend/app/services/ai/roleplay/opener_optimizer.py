@@ -31,19 +31,33 @@ import json
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 import structlog
 from openai import AsyncOpenAI
+from pydantic import BaseModel, Field
 
 from app.services.ai.roleplay.agent_responder import generate_agent_reply
 from app.services.ai.roleplay.prospect_simulator import generate_prospect_reply
+from app.services.ai.structured_output import generate_structured
 
 logger = structlog.get_logger()
 
 # Scoring model: a cheap, deterministic-ish judge (matches the report scorer).
 _SCORER_MODEL = "gpt-4o-mini"
 _SCORER_TIMEOUT_SECONDS = 45.0
+
+
+class OutcomeScore(BaseModel):
+    stage: Literal["disengaged", "replied", "engaged", "agreed_to_buy"]
+    reply_quality: float = Field(ge=0, le=100)
+    buying_intent: float = Field(ge=0, le=100)
+    opener_craft: float = Field(ge=0, le=100)
+    reached_close: bool
+    agreed_pack: str | None
+    escalated: bool
+    rationale: str = Field(min_length=1)
+
 
 # Funnel stages, ordered worst -> best, with the point value each is worth.
 # The opener is graded on how far down this funnel the conversation travelled.
@@ -325,38 +339,21 @@ async def _score_conversation(
     base_seed: int | None,
 ) -> ConversationOutcome:
     transcript_text = _format_transcript(transcript)
-    raw: dict[str, Any] = {}
-    create_kwargs: dict[str, Any] = {
-        "model": _SCORER_MODEL,
-        "messages": [
-            {"role": "system", "content": _SCORER_SYSTEM_PROMPT},
-            {"role": "user", "content": _build_scorer_prompt(persona, transcript_text)},
-        ],
-        "response_format": {"type": "json_object"},
-        "temperature": 0.1,
-    }
-    score_seed = _seed_for(base_seed, opener.id, persona.slug, repeat, "score")
-    if score_seed is not None:
-        create_kwargs["seed"] = score_seed
-    try:
-        response = await asyncio.wait_for(
-            client.chat.completions.create(**create_kwargs),
-            timeout=_SCORER_TIMEOUT_SECONDS,
-        )
-        text = response.choices[0].message.content or "{}"
-        parsed = json.loads(text)
-        if isinstance(parsed, dict):
-            raw = parsed
-    except json.JSONDecodeError:
-        logger.warning("opener_score_json_decode_failed", opener_id=opener.id)
-    except Exception:
-        logger.exception("opener_score_failed", opener_id=opener.id)
-
+    score = await generate_structured(
+        client=client,
+        model=_SCORER_MODEL,
+        schema=OutcomeScore,
+        system_prompt=_SCORER_SYSTEM_PROMPT,
+        user_prompt=_build_scorer_prompt(persona, transcript_text),
+        temperature=0.1,
+        timeout=_SCORER_TIMEOUT_SECONDS,
+        seed=_seed_for(base_seed, opener.id, persona.slug, repeat, "score"),
+    )
     return build_outcome(
         opener_id=opener.id,
         persona_slug=persona.slug,
         repeat=repeat,
-        raw=raw,
+        raw=score.model_dump(),
         transcript=transcript,
     )
 

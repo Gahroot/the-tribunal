@@ -58,17 +58,14 @@ async def test_judge_review_or_low_score_blocks() -> None:
             new_callable=AsyncMock,
             return_value={"score": 0.95, "human_review": True},
         ),
-        patch.object(suite, "create_openai_client") as client,
+        patch.object(suite, "create_openai_client"),
+        patch.object(
+            suite,
+            "generate_structured",
+            new_callable=AsyncMock,
+            return_value=suite.ScenarioDecision(success=True, reason="polite"),
+        ),
     ):
-        client.return_value.chat.completions.create = AsyncMock(
-            return_value=SimpleNamespace(
-                choices=[
-                    SimpleNamespace(
-                        message=SimpleNamespace(content='{"success": true, "reason": "polite"}')
-                    )
-                ]
-            )
-        )
         verdict = await suite._verdict(
             "angry lead", "Caller: stop\nAgent: sorry", "Respect opt-out"
         )

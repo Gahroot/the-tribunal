@@ -2,11 +2,10 @@
 
 These cover the pure / LLM-boundary pieces (prospect simulator, agent responder,
 report scorer, default personas) with mocked OpenAI clients — no real DB or
-network. They prove transcript mapping, JSON score parsing/clamping, and
-graceful fallbacks.
+network. They prove transcript mapping, schema-validated scores, and
+failure propagation when model output cannot be trusted.
 """
 
-import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -86,14 +85,14 @@ class TestAgentResponder:
 
 
 class TestReportScorer:
-    async def test_parses_and_clamps_scores(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_accepts_validated_scores(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             "app.services.ai.roleplay.report_scorer.analyze_transcript",
             AsyncMock(return_value={"sentiment": "neutral", "summary": "ok"}),
         )
         payload = {
-            "overall_score": 150,  # should clamp to 100
-            "objection_coverage_score": -5,  # should clamp to 0
+            "overall_score": 100,
+            "objection_coverage_score": 0,
             "tone_score": 72.5,
             "tone_label": "warm",
             "booking_attempted": True,
@@ -105,7 +104,13 @@ class TestReportScorer:
             "gaps": ["no urgency"],
             "suggestions": ["add pricing to knowledge base"],
         }
-        client = _mock_client(json.dumps(payload))
+        from app.services.ai.roleplay.report_scorer import RehearsalScore
+
+        monkeypatch.setattr(
+            "app.services.ai.roleplay.report_scorer.generate_structured",
+            AsyncMock(return_value=RehearsalScore.model_validate(payload)),
+        )
+        client = _mock_client("unused")
 
         report = await score_rehearsal(
             client=client,
@@ -126,24 +131,32 @@ class TestReportScorer:
         assert report.scores["objection_breakdown"][0]["objection"] == "price"
         assert report.scores["sentiment"] == "neutral"
 
-    async def test_invalid_json_yields_valid_zero_report(
+    async def test_invalid_score_fails_instead_of_zero_report(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
             "app.services.ai.roleplay.report_scorer.analyze_transcript",
             AsyncMock(return_value={}),
         )
-        client = _mock_client("not json at all")
-        report = await score_rehearsal(
-            client=client,
-            transcript=SAMPLE_TRANSCRIPT,
-            persona_name="Prospect",
-            objections=[],
-            goal=None,
+        from pydantic import ValidationError
+
+        from app.services.ai.roleplay.report_scorer import RehearsalScore
+
+        with pytest.raises(ValidationError):
+            RehearsalScore.model_validate({"overall_score": 150})
+
+        monkeypatch.setattr(
+            "app.services.ai.roleplay.report_scorer.generate_structured",
+            AsyncMock(side_effect=RuntimeError("retry exhausted")),
         )
-        assert report.overall_score == 0.0
-        assert report.booking_attempted is False
-        assert report.strengths == []
+        with pytest.raises(RuntimeError, match="retry exhausted"):
+            await score_rehearsal(
+                client=_mock_client("unused"),
+                transcript=SAMPLE_TRANSCRIPT,
+                persona_name="Prospect",
+                objections=[],
+                goal=None,
+            )
 
 
 class TestDefaultPersonas:
@@ -172,9 +185,7 @@ class TestDefaultPersonas:
         assert {p.difficulty.value for p in prestyj_personas} == {"easy", "medium", "hard"}
 
         combined_objections = "\n".join(
-            objection.lower()
-            for persona in prestyj_personas
-            for objection in persona.objections
+            objection.lower() for persona in prestyj_personas for objection in persona.objections
         )
         assert "ugc" in combined_objections
         assert "polished" in combined_objections

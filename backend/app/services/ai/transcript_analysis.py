@@ -1,20 +1,17 @@
 """Call transcript sentiment and intent extraction.
 
-Uses OpenAI's JSON mode to pull structured signals (sentiment, intents,
+Uses validated model output to pull structured signals (sentiment, intents,
 topics, summary, objections, next steps) out of a voice call transcript.
 """
 
-import json
-from typing import Any
+from typing import Any, Literal
 
-import structlog
 from openai import AsyncOpenAI
+from pydantic import BaseModel, ConfigDict, Field, StrictStr
 
+from app.services.ai.model_config import DEFAULTS, Selection
 from app.services.ai.openai_credentials import create_openai_client
-
-logger = structlog.get_logger()
-
-_MODEL = "gpt-4o-mini"
+from app.services.ai.structured_output import generate_structured
 
 _SYSTEM_PROMPT = (
     "You are a sales call analyst. Analyze sales call transcripts and "
@@ -41,7 +38,20 @@ _USER_PROMPT = (
     "TRANSCRIPT:\n{transcript}"
 )
 
-_ALLOWED_SENTIMENTS = {"positive", "neutral", "negative"}
+
+class TranscriptSignals(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    sentiment: Literal["positive", "neutral", "negative"]
+    sentiment_score: float = Field(ge=-1, le=1)
+    intents: list[StrictStr]
+    topics: list[StrictStr]
+    summary: StrictStr = Field(min_length=1)
+    objections: list[StrictStr]
+    next_steps: list[StrictStr]
+    preferred_call_time: StrictStr | None
+    callback_promise: StrictStr | None
+
 
 _client: AsyncOpenAI | None = None
 
@@ -53,40 +63,9 @@ def _get_client() -> AsyncOpenAI:
     return _client
 
 
-def _normalize(raw: dict[str, Any]) -> dict[str, Any]:
-    sentiment = str(raw.get("sentiment", "neutral")).lower()
-    if sentiment not in _ALLOWED_SENTIMENTS:
-        sentiment = "neutral"
-
-    try:
-        score = float(raw.get("sentiment_score", 0.0))
-    except (TypeError, ValueError):
-        score = 0.0
-    score = max(-1.0, min(1.0, score))
-
-    def _str_list(key: str) -> list[str]:
-        value = raw.get(key, [])
-        if not isinstance(value, list):
-            return []
-        return [str(item) for item in value if item]
-
-    def _optional_text(value: Any) -> str | None:
-        return value.strip()[:200] if isinstance(value, str) and value.strip() else None
-
-    return {
-        "sentiment": sentiment,
-        "sentiment_score": score,
-        "intents": _str_list("intents"),
-        "topics": _str_list("topics"),
-        "summary": str(raw.get("summary", "")),
-        "objections": _str_list("objections"),
-        "next_steps": _str_list("next_steps"),
-        "preferred_call_time": _optional_text(raw.get("preferred_call_time")),
-        "callback_promise": _optional_text(raw.get("callback_promise")),
-    }
-
-
-async def analyze_transcript(transcript: str) -> dict[str, Any]:
+async def analyze_transcript(
+    transcript: str, *, selection: Selection | None = None
+) -> dict[str, Any]:
     """Analyze a call transcript and return structured signals.
 
     Args:
@@ -97,25 +76,16 @@ async def analyze_transcript(transcript: str) -> dict[str, Any]:
         objections and next_steps fields.
     """
     client = _get_client()
+    selection = selection or Selection(DEFAULTS["transcript_analysis"])
 
-    response = await client.chat.completions.create(
-        model=_MODEL,
-        messages=[
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": _USER_PROMPT.format(transcript=transcript)},
-        ],
-        response_format={"type": "json_object"},
+    result = await generate_structured(
+        client=client,
+        model=selection.model,
+        schema=TranscriptSignals,
+        system_prompt=_SYSTEM_PROMPT,
+        user_prompt=_USER_PROMPT.format(transcript=transcript),
         temperature=0.2,
+        selection=selection,
+        task="transcript_analysis",
     )
-
-    text = response.choices[0].message.content or "{}"
-    try:
-        raw = json.loads(text)
-    except json.JSONDecodeError:
-        logger.exception("transcript_analysis_json_decode_failed")
-        raw = {}
-
-    if not isinstance(raw, dict):
-        raw = {}
-
-    return _normalize(raw)
+    return result.model_dump()

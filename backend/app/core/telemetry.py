@@ -24,6 +24,9 @@ import structlog
 from fastapi import FastAPI
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+    OTLPSpanExporter as HTTPSpanExporter,
+)
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.instrumentation.redis import RedisInstrumentor
@@ -84,7 +87,11 @@ def configure_tracing(*, environment: str | None = None) -> bool:
     # ``OTLPSpanExporter`` reads endpoint, headers, and credentials from the
     # ``OTEL_EXPORTER_OTLP_*`` env vars by default. Passing no kwargs keeps
     # the configuration surface in the environment where operators expect it.
-    exporter = OTLPSpanExporter()
+    # Langfuse ingests OTLP over HTTP at /api/public/otel/v1/traces.
+    # Use OTEL_EXPORTER_OTLP_TRACES_ENDPOINT for that exact URL and
+    # OTEL_EXPORTER_OTLP_HEADERS for Basic auth; never log credential values.
+    protocol = os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc")
+    exporter = HTTPSpanExporter() if protocol == "http/protobuf" else OTLPSpanExporter()
     provider.add_span_processor(BatchSpanProcessor(exporter))
 
     trace.set_tracer_provider(provider)

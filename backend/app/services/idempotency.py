@@ -151,6 +151,7 @@ async def resolve_message_idempotency(
 async def claim_redis_idempotency_key(
     key: str,
     *,
+    value: str = "1",
     ttl_seconds: int = DEFAULT_WEBHOOK_IDEMPOTENCY_TTL_SECONDS,
     log: Any,
     redis_getter: RedisGetter = get_redis,
@@ -159,7 +160,7 @@ async def claim_redis_idempotency_key(
     """Atomically claim ``key`` with ``SET NX EX`` and fail open on Redis errors."""
     try:
         client = await redis_getter()
-        was_set = await client.set(key, "1", nx=True, ex=ttl_seconds)
+        was_set = await client.set(key, value, nx=True, ex=ttl_seconds)
     except Exception as exc:
         log.warning(failure_event, key=key, error=str(exc))
         return RedisIdempotencyClaim(key=key, claimed=True, reason="redis_unavailable")
@@ -167,3 +168,24 @@ async def claim_redis_idempotency_key(
     if was_set:
         return RedisIdempotencyClaim(key=key, claimed=True, reason="claimed")
     return RedisIdempotencyClaim(key=key, claimed=False, reason="duplicate")
+
+
+async def release_redis_idempotency_key(
+    key: str,
+    *,
+    value: str,
+    log: Any,
+    redis_getter: RedisGetter = get_redis,
+) -> None:
+    """Release a failed claim only if its original owner still holds it."""
+    try:
+        client = await redis_getter()
+        await client.eval(
+            "if redis.call('GET', KEYS[1]) == ARGV[1] then "
+            "return redis.call('DEL', KEYS[1]) else return 0 end",
+            1,
+            key,
+            value,
+        )
+    except Exception:
+        log.exception("idempotency_claim_release_failed", key=key)

@@ -11,6 +11,7 @@ from typing import Any
 
 import structlog
 from openai import AsyncOpenAI
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import Integer as SAInteger
 from sqlalchemy import case, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,10 +20,57 @@ from sqlalchemy.sql.expression import extract
 from app.models.call_outcome import CallOutcome
 from app.models.campaign import Campaign, CampaignContact, CampaignType
 from app.models.campaign_report import CampaignReport
-from app.services.ai.model_config import Selection, log_model_usage, resolve_model
+from app.services.ai.model_config import Selection, resolve_model
 from app.services.ai.openai_credentials import create_openai_client
+from app.services.ai.structured_output import generate_structured
 
 logger = structlog.get_logger()
+
+
+class Finding(BaseModel):
+    title: str
+    description: str
+    metric: str
+    sentiment: str
+
+
+class Evidence(BaseModel):
+    title: str
+    description: str
+    evidence: str
+
+
+class Recommendation(BaseModel):
+    title: str
+    description: str
+    priority: str
+    action_type: str
+
+
+class SegmentAnalysis(BaseModel):
+    segment_name: str
+    size: int
+    conversion_rate: float
+    insights: str
+
+
+class TimingAnalysis(BaseModel):
+    best_hours: list[int]
+    worst_hours: list[int]
+    best_days: list[str]
+    worst_days: list[str]
+    recommendation: str
+
+
+class CampaignAnalysis(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    executive_summary: str
+    key_findings: list[Finding]
+    what_worked: list[Evidence]
+    what_didnt_work: list[Evidence]
+    recommendations: list[Recommendation]
+    segment_analysis: list[SegmentAnalysis]
+    timing_analysis: TimingAnalysis
 
 
 class CampaignReportService:
@@ -387,16 +435,14 @@ class CampaignReportService:
             "Reference actual data from the campaign."
         )
 
-        response = await client.chat.completions.create(
+        result = await generate_structured(
+            client=client,
             model=selection.model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            response_format={"type": "json_object"},
+            schema=CampaignAnalysis,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
             temperature=0.3,
+            selection=selection,
+            task="reports",
         )
-
-        log_model_usage("reports", selection, response)
-        text = response.choices[0].message.content or "{}"
-        return json.loads(text)  # type: ignore[no-any-return]
+        return result.model_dump()

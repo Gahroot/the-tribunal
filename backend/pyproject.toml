@@ -84,6 +84,8 @@ dependencies = [
     # feature floor: openai 2.36 is the first SDK with the Realtime API shape we use in app/services/ai/.
     # breaking change floor: 2.x dropped the legacy openai.ChatCompletion module our codebase no longer uses.
     "openai>=2.36.0",
+    # feature floor: typed LLM outputs with retryable validators.
+    "pydantic-ai-slim[openai]==1.39.0",
     # Logging
     # feature floor: structlog 24.4 added the `EventRenamer` processor used by app/core/logging.py.
     "structlog>=24.4.0",

@@ -33,10 +33,11 @@ import json
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 import structlog
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -47,10 +48,12 @@ from app.models.opportunity import Opportunity
 from app.models.pipeline import Pipeline, PipelineStage
 from app.models.workspace import Workspace
 from app.services.ai.call_context import save_call_transcript
+from app.services.ai.structured_output import generate_structured
 from app.services.idempotency import (
     claim_redis_idempotency_key,
     derive_outbound_key,
     derive_webhook_delivery_key,
+    release_redis_idempotency_key,
 )
 from app.services.push_notifications import push_notification_service
 
@@ -70,7 +73,13 @@ _CLASSIFY_MODEL = "gpt-4o-mini"
 # Audio download guard: skip absurdly large payloads (~25 MB OpenAI limit).
 _MAX_AUDIO_BYTES = 25 * 1024 * 1024
 
-_ALLOWED_URGENCIES = ("low", "medium", "high")
+
+class VoicemailSignals(BaseModel):
+    intent: str = Field(min_length=1)
+    urgency: Literal["low", "medium", "high"]
+    summary: str = Field(min_length=1)
+    callback_requested: bool
+
 
 _CLASSIFY_SYSTEM_PROMPT = (
     "You are a CRM assistant that triages voicemails left by inbound callers. "
@@ -186,41 +195,19 @@ async def classify_voicemail(transcript: str, log: Any) -> VoicemailAnalysis:
     if not transcript.strip():
         return fallback
 
-    try:
-        client = create_openai_client()
-        response = await client.chat.completions.create(
-            model=_CLASSIFY_MODEL,
-            messages=[
-                {"role": "system", "content": _CLASSIFY_SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": _CLASSIFY_USER_PROMPT.format(transcript=transcript),
-                },
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.2,
-        )
-        text = response.choices[0].message.content or "{}"
-        raw = json.loads(text)
-        if not isinstance(raw, dict):
-            raw = {}
-    except Exception as exc:
-        log.exception("voicemail_classification_failed", error=str(exc))
-        return fallback
-
-    urgency = str(raw.get("urgency", "medium")).lower()
-    if urgency not in _ALLOWED_URGENCIES:
-        urgency = "medium"
-
-    intent = str(raw.get("intent") or "other").strip() or "other"
-    summary = str(raw.get("summary") or "").strip() or transcript[:200]
-    callback_requested = bool(raw.get("callback_requested", False))
-
+    signals = await generate_structured(
+        client=create_openai_client(),
+        model=_CLASSIFY_MODEL,
+        schema=VoicemailSignals,
+        system_prompt=_CLASSIFY_SYSTEM_PROMPT,
+        user_prompt=_CLASSIFY_USER_PROMPT.format(transcript=transcript),
+        temperature=0.2,
+    )
     return VoicemailAnalysis(
-        intent=intent,
-        urgency=urgency,
-        summary=summary,
-        callback_requested=callback_requested,
+        intent=signals.intent,
+        urgency=signals.urgency,
+        summary=signals.summary,
+        callback_requested=signals.callback_requested,
     )
 
 
@@ -488,6 +475,17 @@ async def _trigger_ai_callback(*, call_control_id: str, log: Any) -> None:
             await voice_service.close()
 
 
+async def _classify_for_followup(
+    transcript: str, *, claim_key: str, claim_value: str, log: Any
+) -> VoicemailAnalysis:
+    """Let webhook delivery retry if validation never yields a usable result."""
+    try:
+        return await classify_voicemail(transcript, log)
+    except Exception:
+        await release_redis_idempotency_key(claim_key, value=claim_value, log=log)
+        raise
+
+
 async def process_voicemail_recording(  # noqa: PLR0911
     call_control_id: str,
     recording_url: str | None,
@@ -511,7 +509,8 @@ async def process_voicemail_recording(  # noqa: PLR0911
         derive_webhook_delivery_key("telnyx", "voicemail", call_control_id, recording_url)
         or f"telnyx:webhook:voicemail:{call_control_id}"
     )
-    claim = await claim_redis_idempotency_key(claim_key, log=log)
+    claim_value = uuid.uuid4().hex
+    claim = await claim_redis_idempotency_key(claim_key, log=log, value=claim_value)
     if not claim.claimed:
         log.info("voicemail_recording_duplicate_skipped")
         return False
@@ -549,6 +548,14 @@ async def process_voicemail_recording(  # noqa: PLR0911
     audio = await _download_recording(recording_url, log)
     transcript = await transcribe_recording(audio, log=log) if audio else ""
 
+    # Classify before marking the recording processed: if model retries fail,
+    # release our claim and let the provider retry without losing follow-up.
+    analysis = None
+    if run_followup and transcript:
+        analysis = await _classify_for_followup(
+            transcript, claim_key=claim_key, claim_value=claim_value, log=log
+        )
+
     # Persist the transcript on the Message row (reuses save_call_transcript).
     transcript_json = json.dumps(
         {
@@ -568,7 +575,7 @@ async def process_voicemail_recording(  # noqa: PLR0911
         log.info("voicemail_empty_transcript_skipping_followup")
         return False
 
-    analysis = await classify_voicemail(transcript, log)
+    assert analysis is not None  # Only a classified, non-empty voicemail reaches follow-up.
 
     async with AsyncSessionLocal() as db:
         workspace = await db.get(Workspace, workspace_id)

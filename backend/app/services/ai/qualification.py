@@ -4,12 +4,12 @@ Implements BANT framework (Budget, Authority, Need, Timeline) for lead qualifica
 and automated lead scoring based on conversation analysis.
 """
 
-import json
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 import structlog
 from openai import AsyncOpenAI
+from pydantic import BaseModel, Field
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -17,8 +17,27 @@ from sqlalchemy.orm import selectinload
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
 from app.services.ai.openai_credentials import get_openai_bearer_token
+from app.services.ai.structured_output import generate_structured
 
 logger = structlog.get_logger()
+
+
+class BantSignal(BaseModel):
+    detected: bool
+    value: str | None
+    confidence: float = Field(ge=0, le=1)
+
+
+class QualificationSignals(BaseModel):
+    budget: BantSignal
+    authority: BantSignal
+    need: BantSignal
+    timeline: BantSignal
+    interest_level: Literal["high", "medium", "low", "unknown"]
+    pain_points: list[str]
+    objections: list[str]
+    next_steps: str | None
+
 
 # Lead scoring weights
 SCORING_WEIGHTS = {
@@ -195,39 +214,16 @@ async def extract_qualification_signals(
 
     client = AsyncOpenAI(api_key=openai_api_key)
 
-    try:
-        response = await client.chat.completions.create(
-            model="gpt-5.4-nano",
-            messages=[
-                {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": (
-                        "Analyze this conversation and extract qualification signals:"
-                        f"\n\n{transcript}"
-                    ),
-                },
-            ],
-            temperature=0.3,
-            max_completion_tokens=1000,
-            response_format={"type": "json_object"},
-        )
-
-        content = response.choices[0].message.content
-        if not content:
-            log.warning("empty_response")
-            return _empty_signals()
-
-        signals: dict[str, Any] = json.loads(content)
-        log.info("signals_extracted", interest_level=signals.get("interest_level"))
-        return signals
-
-    except json.JSONDecodeError as e:
-        log.error("json_parse_error", error=str(e))
-        return _empty_signals()
-    except Exception as e:
-        log.exception("extraction_error", error=str(e))
-        return _empty_signals()
+    signals = await generate_structured(
+        client=client,
+        model="gpt-5.4-nano",
+        schema=QualificationSignals,
+        system_prompt=EXTRACTION_SYSTEM_PROMPT,
+        user_prompt=f"Analyze this conversation and extract qualification signals:\n\n{transcript}",
+        temperature=0.3,
+    )
+    log.info("signals_extracted", interest_level=signals.interest_level)
+    return signals.model_dump()
 
 
 def _empty_signals() -> dict[str, Any]:

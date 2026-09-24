@@ -6,9 +6,12 @@ both the single coaching card's fallback and the at-risk ranking.
 
 from __future__ import annotations
 
+import pytest
+
 from app.schemas.deal_coach import DealSignals
 from app.services.opportunities.deal_coach_service import (
     _build_drafted_action,
+    _CoachingOutput,
     _heuristic_card,
     _parse_llm_card,
     _sentiment_trend,
@@ -144,33 +147,18 @@ class TestHeuristicCard:
 
 
 class TestParseLlmCard:
-    def test_invalid_values_fall_back_to_heuristic(self) -> None:
-        signals = DealSignals(days_since_last_contact=10, awaiting_reply=True)
-        assessment = assess_risk(
-            days_since_last_contact=10,
-            days_in_stage=3,
-            engagement_score=50,
-            lead_score=50,
-            last_sentiment=None,
-            awaiting_reply=True,
-            objections=[],
-            expected_close_overdue=False,
-        )
-        parsed = _parse_llm_card(
-            {
-                "deal_health": "not-a-status",
-                "health_score": "oops",
-                "next_best_action": {"channel": "carrier-pigeon"},
-                "drafted_action": {"body": ""},
-            },
-            signals=signals,
-            assessment=assessment,
-        )
-        assert parsed.deal_health == assessment.health
-        assert parsed.health_score == assessment.health_score
-        assert parsed.next_best_action.channel == "sms"
-        # Empty body backfilled from heuristic so the draft is never blank.
-        assert parsed.drafted_action.body
+    def test_invalid_values_are_rejected(self) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            _CoachingOutput.model_validate(
+                {
+                    "deal_health": "not-a-status",
+                    "health_score": "oops",
+                    "next_best_action": {"channel": "carrier-pigeon"},
+                    "drafted_action": {"body": ""},
+                }
+            )
 
     def test_valid_llm_payload_preserved(self) -> None:
         signals = DealSignals()
@@ -185,24 +173,26 @@ class TestParseLlmCard:
             expected_close_overdue=False,
         )
         parsed = _parse_llm_card(
-            {
-                "deal_health": "watch",
-                "health_score": 62,
-                "health_summary": "Solid but quiet.",
-                "top_risk": "champion silent 4 days",
-                "risk_factors": ["quiet"],
-                "next_best_action": {
-                    "title": "Nudge",
-                    "rationale": "re-open thread",
-                    "channel": "sms",
-                    "timing": "Today",
-                },
-                "drafted_action": {
-                    "channel": "sms",
-                    "description": "SMS nudge",
-                    "body": "Hi there!",
-                },
-            },
+            _CoachingOutput.model_validate(
+                {
+                    "deal_health": "watch",
+                    "health_score": 62,
+                    "health_summary": "Solid but quiet.",
+                    "top_risk": "champion silent 4 days",
+                    "risk_factors": ["quiet"],
+                    "next_best_action": {
+                        "title": "Nudge",
+                        "rationale": "re-open thread",
+                        "channel": "sms",
+                        "timing": "Today",
+                    },
+                    "drafted_action": {
+                        "channel": "sms",
+                        "description": "SMS nudge",
+                        "body": "Hi there!",
+                    },
+                }
+            ),
             signals=signals,
             assessment=assessment,
         )

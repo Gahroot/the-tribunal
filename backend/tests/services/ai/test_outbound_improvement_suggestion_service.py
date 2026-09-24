@@ -15,13 +15,14 @@ from app.services.ai.outbound_improvement_suggestion_service import (
     OutboundImprovementSuggestionService,
     OutboundRecommendation,
     PeriodWindow,
+    RecommendationOutput,
     build_dedupe_key,
     build_pending_action_payload,
     extract_best_campaign,
     extract_best_message,
     extract_best_segment,
     measured_best_timing,
-    parse_llm_recommendation,
+    recommendation_from_output,
     safe_rate,
     summarize_best_performers,
 )
@@ -137,26 +138,27 @@ def test_best_performer_extraction_prefers_highest_observed_rates() -> None:
     assert best_message["message"] == "Initial message for Strong"
 
 
-def test_parse_llm_json_falls_back_on_malformed_response() -> None:
-    fallback = OutboundRecommendation(
-        title="Fallback",
-        rationale="Fallback rationale",
-        target_segment="Segment",
-        angle="Angle",
-        message="Message",
-        responder_agent_id=None,
-        confidence=0.6,
-        expected_outcome="More replies",
-    )
+def test_recommendation_requires_complete_validated_output() -> None:
+    from pydantic import ValidationError
 
-    assert parse_llm_recommendation("not json", fallback) == fallback
+    with pytest.raises(ValidationError):
+        RecommendationOutput.model_validate({"title": "Parsed", "confidence": 2})
 
-    parsed = parse_llm_recommendation(
-        '{"title":"Parsed","confidence":2,"message":"New message"}', fallback
+    parsed = recommendation_from_output(
+        RecommendationOutput(
+            title="Parsed",
+            rationale="Supported by report",
+            target_segment=None,
+            angle=None,
+            message="New message",
+            responder_agent_id=None,
+            confidence=0.8,
+            expected_outcome=None,
+        )
     )
     assert parsed.title == "Parsed"
     assert parsed.message == "New message"
-    assert parsed.confidence == 1.0
+    assert parsed.confidence == 0.8
 
 
 def test_pending_action_payload_and_dedupe_context_shape() -> None:

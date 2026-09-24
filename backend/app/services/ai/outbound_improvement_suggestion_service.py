@@ -15,6 +15,7 @@ from typing import Any, Literal
 
 import structlog
 from openai import AsyncOpenAI
+from pydantic import BaseModel, Field
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +23,7 @@ from app.models.campaign import Campaign, CampaignStatus
 from app.models.campaign_report import CampaignReport
 from app.models.pending_action import PendingAction
 from app.services.ai.openai_credentials import create_openai_client
+from app.services.ai.structured_output import generate_structured
 from app.services.approval.approval_gate_service import ApprovalGateService
 from app.services.campaigns.attempt_funnel import get_attempt_funnel
 
@@ -104,6 +106,17 @@ class OutboundRecommendation:
     message: str | None
     responder_agent_id: uuid.UUID | None
     confidence: float
+    expected_outcome: str | None
+
+
+class RecommendationOutput(BaseModel):
+    title: str = Field(min_length=1)
+    rationale: str = Field(min_length=1)
+    target_segment: str | None
+    angle: str | None
+    message: str | None
+    responder_agent_id: uuid.UUID | None
+    confidence: float = Field(ge=0, le=1)
     expected_outcome: str | None
 
 
@@ -386,43 +399,9 @@ def summarize_best_performers(evidence: list[CampaignEvidence]) -> BestPerformer
     )
 
 
-def parse_llm_recommendation(
-    raw_text: str,
-    fallback: OutboundRecommendation,
-) -> OutboundRecommendation:
-    """Parse an LLM JSON recommendation, falling back safely on malformed output."""
-    try:
-        parsed = json.loads(raw_text or "{}")
-    except json.JSONDecodeError:
-        return fallback
-    if not isinstance(parsed, dict):
-        return fallback
-
-    responder_agent_id = fallback.responder_agent_id
-    raw_agent_id = parsed.get("responder_agent_id")
-    if isinstance(raw_agent_id, str) and raw_agent_id:
-        try:
-            responder_agent_id = uuid.UUID(raw_agent_id)
-        except ValueError:
-            responder_agent_id = fallback.responder_agent_id
-
-    confidence = parsed.get("confidence", fallback.confidence)
-    if not isinstance(confidence, int | float):
-        confidence = fallback.confidence
-
-    return OutboundRecommendation(
-        title=str(parsed.get("title") or fallback.title),
-        rationale=str(parsed.get("rationale") or fallback.rationale),
-        target_segment=_optional_string(parsed.get("target_segment"), fallback.target_segment),
-        angle=_optional_string(parsed.get("angle"), fallback.angle),
-        message=_optional_string(parsed.get("message"), fallback.message),
-        responder_agent_id=responder_agent_id,
-        confidence=max(0.0, min(float(confidence), 1.0)),
-        expected_outcome=_optional_string(
-            parsed.get("expected_outcome"),
-            fallback.expected_outcome,
-        ),
-    )
+def recommendation_from_output(parsed: RecommendationOutput) -> OutboundRecommendation:
+    """Convert only a schema-validated recommendation to the domain value."""
+    return OutboundRecommendation(**parsed.model_dump())
 
 
 def build_dedupe_key(
@@ -486,48 +465,6 @@ def build_pending_action_payload(
         },
         "confidence": recommendation.confidence,
     }
-
-
-def _optional_string(value: Any, fallback: str | None) -> str | None:
-    if isinstance(value, str) and value.strip():
-        return value.strip()
-    return fallback
-
-
-def _fallback_recommendation(summary: BestPerformerSummary) -> OutboundRecommendation:
-    best_segment = summary.best_segment or {}
-    best_angle = summary.best_angle or {}
-    best_message = summary.best_message or {}
-    best_agent = summary.best_responder_agent or {}
-
-    responder_agent_id: uuid.UUID | None = None
-    raw_agent_id = best_agent.get("agent_id")
-    if isinstance(raw_agent_id, str) and raw_agent_id:
-        try:
-            responder_agent_id = uuid.UUID(raw_agent_id)
-        except ValueError:
-            responder_agent_id = None
-
-    target_segment = text_from_mapping(best_segment, ("segment",))
-    angle = text_from_mapping(best_angle, ("angle",))
-    message = text_from_mapping(best_message, ("message",))
-
-    return OutboundRecommendation(
-        title="Run a follow-up campaign based on recent outbound winners",
-        rationale=(
-            "Recent completed campaign reports contain enough evidence to replicate the strongest "
-            "segment, message, and responder patterns."
-        ),
-        target_segment=target_segment,
-        angle=angle,
-        message=message,
-        responder_agent_id=responder_agent_id,
-        confidence=0.65,
-        expected_outcome=(
-            "Improve reply, qualification, or booking rates by reusing the strongest observed "
-            "outbound pattern."
-        ),
-    )
 
 
 class OutboundImprovementSuggestionService:
@@ -728,31 +665,19 @@ class OutboundImprovementSuggestionService:
         summary: BestPerformerSummary,
     ) -> OutboundRecommendation:
         """Use OpenAI to synthesize a concise follow-up campaign recommendation."""
-        fallback = _fallback_recommendation(summary)
         prompt = self._build_synthesis_prompt(evidence, summary)
-        try:
-            client = self._get_client()
-            response = await client.chat.completions.create(
-                model="gpt-5.4-mini",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You analyze outbound sales campaign performance and return one "
-                            "safe follow-up campaign recommendation as JSON only. Do not "
-                            "create or execute campaigns."
-                        ),
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.2,
-            )
-        except Exception:
-            logger.exception("Failed to synthesize outbound recommendation with OpenAI")
-            return fallback
-        content = response.choices[0].message.content or "{}"
-        return parse_llm_recommendation(content, fallback)
+        output = await generate_structured(
+            client=self._get_client(),
+            model="gpt-5.4-mini",
+            schema=RecommendationOutput,
+            system_prompt=(
+                "You analyze outbound sales campaign performance and return one "
+                "safe follow-up campaign recommendation. Do not create or execute campaigns."
+            ),
+            user_prompt=prompt,
+            temperature=0.2,
+        )
+        return recommendation_from_output(output)
 
     async def mark_reports_with_suggestion(
         self,

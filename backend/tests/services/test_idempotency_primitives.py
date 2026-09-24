@@ -20,6 +20,7 @@ from app.services.idempotency import (
     encode_client_state,
     idempotency_headers,
     is_message_send_applied,
+    release_redis_idempotency_key,
     webhook_key_prefix,
 )
 
@@ -95,6 +96,21 @@ async def test_redis_claim_uses_set_nx_ex() -> None:
         nx=True,
         ex=DEFAULT_WEBHOOK_IDEMPOTENCY_TTL_SECONDS,
     )
+
+
+async def test_releasing_failed_claim_requires_same_owner_token() -> None:
+    redis_client = MagicMock()
+    redis_client.eval = AsyncMock(return_value=1)
+    await release_redis_idempotency_key(
+        "telnyx:webhook:vm_1",
+        value="random-owner-token",
+        log=MagicMock(),
+        redis_getter=AsyncMock(return_value=redis_client),
+    )
+    redis_client.eval.assert_awaited_once()
+    script, key_count, key, token = redis_client.eval.await_args.args
+    assert "GET" in script and "DEL" in script
+    assert (key_count, key, token) == (1, "telnyx:webhook:vm_1", "random-owner-token")
 
 
 async def test_redis_claim_returns_duplicate_on_nx_collision() -> None:

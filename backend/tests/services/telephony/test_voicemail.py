@@ -114,28 +114,24 @@ def test_extract_recording_url_returns_none_when_absent() -> None:
 
 
 def _patch_openai(monkeypatch: pytest.MonkeyPatch, content: str | Exception) -> None:
-    client = MagicMock()
-    if isinstance(content, Exception):
-        client.chat.completions.create = AsyncMock(side_effect=content)
-    else:
-        choice = MagicMock()
-        choice.message.content = content
-        completion = MagicMock()
-        completion.choices = [choice]
-        client.chat.completions.create = AsyncMock(return_value=completion)
     monkeypatch.setattr(
         "app.services.ai.openai_credentials.create_openai_client",
-        lambda: client,
+        lambda: MagicMock(),
     )
+    if isinstance(content, Exception):
+        fake = AsyncMock(side_effect=content)
+    else:
+        fake = AsyncMock(return_value=vm.VoicemailSignals.model_validate_json(content))
+    monkeypatch.setattr(vm, "generate_structured", fake)
 
 
-async def test_classify_voicemail_normalizes_fields(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_classify_voicemail_accepts_validated_fields(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_openai(
         monkeypatch,
         json.dumps(
             {
                 "intent": "book_appointment",
-                "urgency": "HIGH",
+                "urgency": "high",
                 "summary": "Caller wants a viewing this week.",
                 "callback_requested": True,
             }
@@ -147,11 +143,10 @@ async def test_classify_voicemail_normalizes_fields(monkeypatch: pytest.MonkeyPa
     assert result.callback_requested is True
 
 
-async def test_classify_voicemail_falls_back_on_error(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_classify_voicemail_propagates_error(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_openai(monkeypatch, RuntimeError("boom"))
-    result = await vm.classify_voicemail("some message", _make_log())
-    assert result.urgency == "medium"
-    assert result.intent == "other"
+    with pytest.raises(RuntimeError, match="boom"):
+        await vm.classify_voicemail("some message", _make_log())
 
 
 async def test_classify_voicemail_empty_transcript_is_fallback() -> None:
@@ -281,6 +276,36 @@ async def test_process_full_voicemail_pipeline(monkeypatch: pytest.MonkeyPatch) 
     create_oppo.assert_awaited_once()
     notify.assert_awaited_once()
     automated.assert_awaited_once()
+
+
+async def test_failed_classification_releases_claim_before_saving_transcript(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    claim = AsyncMock(return_value=RedisIdempotencyClaim(key="k", claimed=True, reason="claimed"))
+    release = AsyncMock()
+    monkeypatch.setattr(vm, "claim_redis_idempotency_key", claim)
+    monkeypatch.setattr(vm, "release_redis_idempotency_key", release)
+    message = MagicMock()
+    message.id = uuid.uuid4()
+    message.transcript = None
+    message.conversation = MagicMock()
+    message.conversation.workspace_id = uuid.uuid4()
+    message.conversation.contact_id = 7
+    message.conversation.contact_phone = "+14155550123"
+    _patch_session_local(monkeypatch, _make_db(execute_returns=[_Result(scalar=message)]))
+    monkeypatch.setattr(vm, "_download_recording", AsyncMock(return_value=b"audio"))
+    monkeypatch.setattr(vm, "transcribe_recording", AsyncMock(return_value="Please call"))
+    monkeypatch.setattr(vm, "classify_voicemail", AsyncMock(side_effect=RuntimeError("bad output")))
+    save = AsyncMock()
+    monkeypatch.setattr(vm, "save_call_transcript", save)
+
+    with pytest.raises(RuntimeError, match="bad output"):
+        await vm.process_voicemail_recording(
+            "cc-failed", "https://x/r.mp3", run_followup=True, log=_make_log()
+        )
+    release.assert_awaited_once()
+    assert release.await_args.kwargs["value"] == claim.await_args.kwargs["value"]
+    save.assert_not_awaited()
 
 
 async def test_process_recording_without_followup_only_saves_transcript(

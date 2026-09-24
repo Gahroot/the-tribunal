@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.services.ai.model_config import Selection
 from app.workers.prompt_improvement_worker import PromptImprovementWorker
 
 
@@ -59,7 +60,7 @@ async def test_promotion_uses_candidate_evidence_not_source():
         commit=AsyncMock(),
     )
     worker = PromptImprovementWorker()
-    agent = SimpleNamespace(id="agent")
+    agent = SimpleNamespace(id="agent", workspace_id="workspace")
     with patch.object(worker, "_can_auto_activate", AsyncMock(return_value=False)) as gate:
         assert await worker._promote_tested_candidate(db, agent) is False
     gate.assert_awaited_once_with(db, candidate)
@@ -83,12 +84,21 @@ async def test_tested_candidate_can_be_promoted():
     with (
         patch.object(worker, "_can_auto_activate", AsyncMock(return_value=True)),
         patch(
+            "app.workers.prompt_improvement_worker.resolve_model",
+            new_callable=AsyncMock,
+            return_value=Selection("gpt-test"),
+        ) as resolve,
+        patch(
             "app.workers.prompt_improvement_worker.require_scenario_pass",
             new_callable=AsyncMock,
         ) as scenarios,
     ):
-        assert await worker._promote_tested_candidate(db, SimpleNamespace(id="agent")) is True
-    scenarios.assert_awaited_once_with(candidate)
+        agent = SimpleNamespace(id="agent", workspace_id="workspace")
+        assert await worker._promote_tested_candidate(db, agent) is True
+    scenarios.assert_awaited_once_with(
+        candidate, simulation=Selection("gpt-test"), judgment=Selection("gpt-test")
+    )
+    assert resolve.await_count == 2
     assert db.execute.await_count == 2
     db.commit.assert_awaited_once()
 
@@ -104,12 +114,18 @@ async def test_candidate_failing_scenarios_cannot_replace_live_version():
     with (
         patch.object(worker, "_can_auto_activate", AsyncMock(return_value=True)),
         patch(
+            "app.workers.prompt_improvement_worker.resolve_model",
+            new_callable=AsyncMock,
+            return_value=Selection("gpt-test"),
+        ),
+        patch(
             "app.workers.prompt_improvement_worker.require_scenario_pass",
             new_callable=AsyncMock,
             side_effect=ValueError("scenario failed"),
         ),
         pytest.raises(ValueError, match="scenario failed"),
     ):
-        await worker._promote_tested_candidate(db, SimpleNamespace(id="agent"))
+        agent = SimpleNamespace(id="agent", workspace_id="workspace")
+        await worker._promote_tested_candidate(db, agent)
     db.execute.assert_awaited_once()
     db.commit.assert_not_awaited()

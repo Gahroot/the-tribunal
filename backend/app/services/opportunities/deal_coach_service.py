@@ -10,8 +10,8 @@ Design notes:
   (populated by the transcript-analysis worker) rather than recomputed.
 - Deterministic signals (cadence, days-in-stage, sentiment trend) are computed
   in code; an LLM only synthesizes the narrative + draft on top of them.
-- When OpenAI is not configured or the call fails, a deterministic heuristic
-  produces the same structured card so the endpoint never 500s.
+- When OpenAI is not configured, a deterministic heuristic produces a card.
+  Invalid model output is retried and surfaced rather than hidden.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal
 
 import structlog
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -42,6 +43,7 @@ from app.schemas.deal_coach import (
     DraftedAction,
     NextBestAction,
 )
+from app.services.ai.structured_output import generate_structured
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -76,6 +78,29 @@ class _CardBody:
     risk_factors: list[str]
     next_best_action: NextBestAction
     drafted_action: DraftedAction
+
+
+class _ActionSuggestion(BaseModel):
+    title: str = Field(min_length=1, max_length=160)
+    rationale: str = Field(min_length=1, max_length=600)
+    channel: Literal["sms", "call", "email", "offer", "task"]
+    timing: str = Field(min_length=1, max_length=60)
+
+
+class _DraftSuggestion(BaseModel):
+    channel: Literal["sms", "call", "email", "offer", "task"]
+    description: str = Field(min_length=1, max_length=300)
+    body: str = Field(min_length=1, max_length=1000)
+
+
+class _CoachingOutput(BaseModel):
+    deal_health: DealHealthStatus
+    health_score: int = Field(ge=0, le=100)
+    health_summary: str = Field(min_length=1, max_length=600)
+    top_risk: str = Field(min_length=1, max_length=300)
+    risk_factors: list[str]
+    next_best_action: _ActionSuggestion
+    drafted_action: _DraftSuggestion
 
 
 def _str_list(value: object) -> list[str]:
@@ -700,7 +725,7 @@ class DealCoachService:
         assessment: _RiskAssessment,
         llm_context: dict[str, Any],
     ) -> _CardBody | None:
-        """Call the LLM for narrative synthesis. Returns None on any failure."""
+        """Call the LLM for narrative synthesis; malformed output fails loudly."""
         from app.services.ai.openai_credentials import (
             create_openai_client,
             is_openai_configured,
@@ -729,25 +754,15 @@ class DealCoachService:
             "recent_messages": llm_context.get("recent_messages", []),
         }
 
-        try:
-            client = create_openai_client()
-            response = await client.chat.completions.create(
-                model=_LLM_MODEL,
-                messages=[
-                    {"role": "system", "content": _SYSTEM_PROMPT},
-                    {
-                        "role": "user",
-                        "content": _USER_PROMPT.format(payload=json.dumps(payload, default=str)),
-                    },
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.3,
-            )
-            raw = json.loads(response.choices[0].message.content or "{}")
-            return _parse_llm_card(raw, signals=signals, assessment=assessment)
-        except Exception:
-            self.log.warning("deal_coach_llm_failed", opportunity_id=str(opportunity.id))
-            return None
+        output = await generate_structured(
+            client=create_openai_client(),
+            model=_LLM_MODEL,
+            schema=_CoachingOutput,
+            system_prompt=_SYSTEM_PROMPT,
+            user_prompt=_USER_PROMPT.format(payload=json.dumps(payload, default=str)),
+            temperature=0.3,
+        )
+        return _parse_llm_card(output, signals=signals, assessment=assessment)
 
 
 def _sentiment_trend(
@@ -870,64 +885,24 @@ def _heuristic_card(
 
 
 def _parse_llm_card(
-    raw: dict[str, Any],
+    raw: _CoachingOutput,
     *,
     signals: DealSignals,
     assessment: _RiskAssessment,
 ) -> _CardBody:
-    """Validate/normalize the LLM JSON into card fields, backfilling from heuristic."""
-    valid_health = {"healthy", "watch", "at_risk", "critical"}
-    valid_channels = {"sms", "call", "email", "offer", "task"}
-
-    health = raw.get("deal_health")
-    if health not in valid_health:
-        health = assessment.health
-
-    try:
-        health_score = int(raw.get("health_score", assessment.health_score))
-    except (TypeError, ValueError):
-        health_score = assessment.health_score
-    health_score = max(0, min(100, health_score))
-
-    health_status: DealHealthStatus = health
-
-    nba_raw = raw.get("next_best_action") or {}
-    channel = nba_raw.get("channel")
-    if channel not in valid_channels:
-        channel = "sms"
-    action = NextBestAction(
-        title=str(nba_raw.get("title") or "Follow up")[:160],
-        rationale=str(nba_raw.get("rationale") or assessment.top_risk)[:600],
-        channel=channel,  # type: ignore[arg-type]
-        timing=str(nba_raw.get("timing") or "Today")[:60],
-    )
-
-    draft_raw = raw.get("drafted_action") or {}
-    draft_channel = draft_raw.get("channel")
-    if draft_channel not in valid_channels:
-        draft_channel = channel
-    body = str(draft_raw.get("body") or "").strip()
-    if not body:
-        # No usable draft body — fall back to heuristic draft entirely.
-        body = _heuristic_card(
-            contact_name=None, signals=signals, assessment=assessment
-        ).drafted_action.body
-    description = str(draft_raw.get("description") or action.title)[:300]
-
-    risk_factors = [str(f) for f in (raw.get("risk_factors") or assessment.risk_factors) if f][:6]
-
+    """Adapt a validated model result to the existing coaching card."""
     return _CardBody(
-        deal_health=health_status,
-        health_score=health_score,
-        health_summary=str(raw.get("health_summary") or assessment.top_risk)[:600],
-        top_risk=str(raw.get("top_risk") or assessment.top_risk)[:300],
-        risk_factors=risk_factors,
-        next_best_action=action,
+        deal_health=raw.deal_health,
+        health_score=raw.health_score,
+        health_summary=raw.health_summary,
+        top_risk=raw.top_risk,
+        risk_factors=raw.risk_factors[:6],
+        next_best_action=NextBestAction(**raw.next_best_action.model_dump()),
         drafted_action=_build_drafted_action(
             contact_name=None,
-            channel=draft_channel,
-            body=body[:1000],
-            description=description,
+            channel=raw.drafted_action.channel,
+            body=raw.drafted_action.body,
+            description=raw.drafted_action.description,
         ),
     )
 

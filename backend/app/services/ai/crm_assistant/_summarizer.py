@@ -10,11 +10,13 @@ assistant's smaller context (no images, no thinking blocks, no
 multi-provider concerns).
 """
 
-import asyncio
 from typing import Any
 
 import structlog
 from openai import AsyncOpenAI
+from pydantic import BaseModel, Field, field_validator
+
+from app.services.ai.structured_output import generate_structured
 
 logger = structlog.get_logger()
 
@@ -38,9 +40,21 @@ MAX_SUMMARY_TOKENS = 600
 # Model for summarization — cheap + fast, same as the main loop.
 SUMMARY_MODEL = "gpt-5.4-nano"
 
+
+class CompactedHistory(BaseModel):
+    summary: str = Field(min_length=1)
+
+    @field_validator("summary")
+    @classmethod
+    def nonblank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("History summary cannot be blank")
+        return value.strip()
+
+
 _SUMMARY_SYSTEM_PROMPT = (
     "You compact CRM operator chat history into a brief technical summary. "
-    "Output only the summary — no preamble, no questions.\n\n"
+    "Output a summary field — no preamble, no questions.\n\n"
     "Include: operator's goals, contacts/campaigns/agents referenced by id or name, "
     "actions taken (tools called + outcome), key facts the assistant should remember.\n"
     "Exclude: tool-call boilerplate, full record dumps, conversational filler, "
@@ -182,32 +196,17 @@ async def maybe_summarize(  # noqa: PLR0911
 
     flattened = _flatten_for_summary(middle)
 
-    try:
-        response = await asyncio.wait_for(
-            client.chat.completions.create(
-                model=SUMMARY_MODEL,
-                messages=[
-                    {"role": "system", "content": _SUMMARY_SYSTEM_PROMPT},
-                    {
-                        "role": "user",
-                        "content": (
-                            f"Summarize the following CRM operator chat history:\n\n{flattened}"
-                        ),
-                    },
-                ],
-                temperature=0.2,
-                max_completion_tokens=MAX_SUMMARY_TOKENS,
-            ),
-            timeout=20.0,
-        )
-        summary_text = response.choices[0].message.content
-    except (TimeoutError, Exception):  # noqa: BLE001
-        log.exception("summary_call_failed")
-        return messages  # fall back to raw history; caller decides what to do
-
-    if not summary_text:
-        log.warning("empty_summary_returned")
-        return messages
+    summary = await generate_structured(
+        client=client,
+        model=SUMMARY_MODEL,
+        schema=CompactedHistory,
+        system_prompt=_SUMMARY_SYSTEM_PROMPT,
+        user_prompt=f"Summarize the following CRM operator chat history:\n\n{flattened}",
+        temperature=0.2,
+        max_tokens=MAX_SUMMARY_TOKENS,
+        timeout=20.0,
+    )
+    summary_text = summary.summary
 
     summary_msg = {
         "role": "system",

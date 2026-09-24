@@ -109,45 +109,40 @@ class TestTranscriptToText:
 # Summarization (LLM mocked)
 # --------------------------------------------------------------------------- #
 class TestSummarize:
+    def test_blank_summary_is_invalid(self) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            svc.MemorySummary(summary="   ")
+
     @pytest.mark.asyncio
     async def test_returns_none_for_empty_input(self) -> None:
         assert await svc.summarize_call_transcript("   ") is None
 
     @pytest.mark.asyncio
-    async def test_summarizes_and_truncates(self) -> None:
-        long_summary = "x" * 5000
-        message = SimpleNamespace(content=long_summary)
-        choice = SimpleNamespace(message=message)
-        completion = SimpleNamespace(choices=[choice])
-        client = SimpleNamespace(
-            chat=SimpleNamespace(
-                completions=SimpleNamespace(create=AsyncMock(return_value=completion))
-            )
-        )
-        # create_openai_client is imported lazily inside the function; patch the
-        # real import target so the fake client is used.
-        with patch(
-            "app.services.ai.openai_credentials.create_openai_client",
-            return_value=client,
+    async def test_summarizes_validated_output(self) -> None:
+        with (
+            patch("app.services.ai.openai_credentials.create_openai_client", return_value=object()),
+            patch.object(
+                svc,
+                "generate_structured",
+                AsyncMock(return_value=svc.MemorySummary(summary="Caller wanted a quote.")),
+            ) as generate,
         ):
             out = await svc.summarize_call_transcript(
                 "Caller: I want a quote.", agent_name="Ara", contact_name="Sam"
             )
-        assert out is not None
-        assert len(out) <= svc._MAX_SUMMARY_CHARS
+        assert out == "Caller wanted a quote."
+        assert generate.await_args.kwargs["schema"] is svc.MemorySummary
 
     @pytest.mark.asyncio
-    async def test_llm_failure_returns_none(self) -> None:
-        client = SimpleNamespace(
-            chat=SimpleNamespace(
-                completions=SimpleNamespace(create=AsyncMock(side_effect=RuntimeError("x")))
-            )
-        )
-        with patch(
-            "app.services.ai.openai_credentials.create_openai_client",
-            return_value=client,
+    async def test_llm_failure_is_not_silently_discarded(self) -> None:
+        with (
+            patch("app.services.ai.openai_credentials.create_openai_client", return_value=object()),
+            patch.object(svc, "generate_structured", AsyncMock(side_effect=RuntimeError("x"))),
+            pytest.raises(RuntimeError, match="x"),
         ):
-            assert await svc.summarize_call_transcript("Caller: hello") is None
+            await svc.summarize_call_transcript("Caller: hello")
 
 
 # --------------------------------------------------------------------------- #

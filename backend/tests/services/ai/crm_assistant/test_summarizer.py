@@ -1,11 +1,18 @@
 """Tests for the CRM assistant summarizer."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from app.services.ai.crm_assistant import _summarizer as summarizer
+
+
+def test_blank_compaction_is_invalid() -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        summarizer.CompactedHistory(summary="   ")
 
 
 def test_estimate_tokens_includes_tool_calls() -> None:
@@ -15,8 +22,11 @@ def test_estimate_tokens_includes_tool_calls() -> None:
             "role": "assistant",
             "content": "",
             "tool_calls": [
-                {"id": "1", "type": "function",
-                 "function": {"name": "list_agents", "arguments": "{}"}},
+                {
+                    "id": "1",
+                    "type": "function",
+                    "function": {"name": "list_agents", "arguments": "{}"},
+                },
             ],
         },
     ]
@@ -54,16 +64,13 @@ async def test_summarize_replaces_middle_keeps_recent_and_system() -> None:
     for i in range(summarizer.KEEP_RECENT_MESSAGES + 4):
         msgs.append({"role": "user" if i % 2 == 0 else "assistant", "content": f"m{i}"})
 
-    fake_response = SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content="SUMMARY_TEXT"))]
-    )
-    fake_client = SimpleNamespace(
-        chat=SimpleNamespace(
-            completions=SimpleNamespace(create=AsyncMock(return_value=fake_response))
-        )
-    )
-
-    out = await summarizer.maybe_summarize(fake_client, msgs)
+    with patch.object(
+        summarizer,
+        "generate_structured",
+        AsyncMock(return_value=summarizer.CompactedHistory(summary="SUMMARY_TEXT")),
+    ) as generate:
+        out = await summarizer.maybe_summarize(object(), msgs)
+    assert generate.await_args.kwargs["schema"] is summarizer.CompactedHistory
 
     # System prompt preserved byte-for-byte (cache stability)
     assert out[0] == msgs[0]
@@ -77,8 +84,8 @@ async def test_summarize_replaces_middle_keeps_recent_and_system() -> None:
 
 
 @pytest.mark.asyncio
-async def test_summarize_falls_back_on_llm_failure() -> None:
-    """If the summary call fails, return the original messages unchanged."""
+async def test_summarize_failure_is_not_silent() -> None:
+    """A failed model call cannot masquerade as a successful compaction."""
     long_text = "x" * (summarizer._CHARS_PER_TOKEN * summarizer.SUMMARIZE_TRIGGER_TOKENS + 1000)
     msgs = [
         {"role": "system", "content": "S"},
@@ -87,14 +94,13 @@ async def test_summarize_falls_back_on_llm_failure() -> None:
     for i in range(summarizer.KEEP_RECENT_MESSAGES + 4):
         msgs.append({"role": "user", "content": f"m{i}"})
 
-    fake_client = SimpleNamespace(
-        chat=SimpleNamespace(
-            completions=SimpleNamespace(create=AsyncMock(side_effect=RuntimeError("boom")))
-        )
-    )
-
-    out = await summarizer.maybe_summarize(fake_client, msgs)
-    assert out == msgs
+    with (
+        patch.object(
+            summarizer, "generate_structured", AsyncMock(side_effect=RuntimeError("boom"))
+        ),
+        pytest.raises(RuntimeError, match="boom"),
+    ):
+        await summarizer.maybe_summarize(object(), msgs)
 
 
 def test_split_point_avoids_breaking_tool_pairs() -> None:
@@ -110,8 +116,7 @@ def test_split_point_avoids_breaking_tool_pairs() -> None:
             "role": "assistant",
             "content": "",
             "tool_calls": [
-                {"id": "T1", "type": "function",
-                 "function": {"name": "x", "arguments": "{}"}},
+                {"id": "T1", "type": "function", "function": {"name": "x", "arguments": "{}"}},
             ],
         }
     )

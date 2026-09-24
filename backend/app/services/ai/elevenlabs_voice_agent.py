@@ -16,6 +16,7 @@ from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 import structlog
+from pydantic import TypeAdapter, ValidationError
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed, ConnectionClosedError
 
@@ -29,6 +30,7 @@ from app.services.ai.voice_tools import (
 )
 
 logger = structlog.get_logger()
+_TOOL_ARGUMENTS = TypeAdapter(dict[str, Any])
 
 
 class ElevenLabsVoiceAgentSession(VoiceAgentBase):
@@ -210,15 +212,35 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
         text_to_send = self._text_buffer
         self._text_buffer = ""
 
+        from decimal import Decimal
+
+        from app.services.ai.call_tracing import (
+            current_span,
+            estimated_cost,
+            record_provider_cost,
+        )
+
+        tts_span = current_span("voice.tts", **{"gen_ai.system": "elevenlabs"})
+        tts_span.set_attribute("voice.tts.characters", len(text_to_send))
+        cost = estimated_cost(
+            "VOICE_ELEVENLABS_USD_PER_1000_CHARS", Decimal(len(text_to_send)) / 1000
+        )
         try:
             await self._tts_session.send_text(text_to_send, flush=True)
+            record_provider_cost(cost)
+            if cost is not None:
+                tts_span.set_attribute("gen_ai.estimated_cost.usd", float(cost))
             self.logger.debug(
                 "transcript_flushed_to_elevenlabs",
                 text_preview=text_to_send[:50] if text_to_send else "",
                 text_length=len(text_to_send),
             )
         except Exception as e:
+            record_provider_cost(None)
+            tts_span.set_attribute("voice.tts.success", False)
             self.logger.exception("flush_text_buffer_error", error=str(e))
+        finally:
+            tts_span.end()
 
     async def _flush_text_buffer_final(self) -> None:
         """Flush any remaining text in buffer (e.g., on response complete)."""
@@ -536,7 +558,10 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
         if not self.grok_ws:
             return
 
+        from app.services.ai.call_tracing import ResponseSpans, grok_token_cost
+
         responses_completed = 0
+        responses = ResponseSpans("xai", "grok-realtime")
 
         try:
             self.logger.info("starting_grok_receive_loop")
@@ -570,6 +595,7 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
                 elif event_type == "response.done":
                     responses_completed += 1
                     response_data = event.get("response", {})
+                    responses.finish(response_data, grok_token_cost(response_data))
                     response_status = response_data.get("status", "")
 
                     # Flush any remaining buffered text to ElevenLabs
@@ -599,6 +625,7 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
                     self.logger.debug("user_speech_stopped")
 
                 elif event_type == "response.created":
+                    responses.start(event.get("response"))
                     # Handle new response - resets interrupted flag using base class
                     self._handle_response_created()
 
@@ -631,6 +658,8 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
             self.logger.info("grok_receive_cancelled")
         except Exception as e:
             self.logger.exception("grok_receive_error", error=str(e))
+        finally:
+            responses.close()
 
     async def _receive_from_tts(self) -> None:
         """Receive audio from ElevenLabs TTS and queue for output."""
@@ -659,9 +688,13 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
         )
 
         try:
-            arguments = json.loads(arguments_str)
-        except json.JSONDecodeError:
-            arguments = {}
+            arguments = _TOOL_ARGUMENTS.validate_json(arguments_str)
+        except ValidationError:
+            self.logger.warning("function_call_invalid_arguments", call_id=call_id)
+            await self.submit_tool_result(
+                call_id, {"success": False, "error": "Invalid tool arguments; retry with an object"}
+            )
+            return
 
         if not self._tool_callback:
             self.logger.warning("no_tool_callback_set", function_name=function_name)

@@ -6,15 +6,58 @@ urgency elements, and CTAs based on the Hormozi value equation:
 Value = (Dream Outcome × Likelihood of Achievement) / (Time × Effort)
 """
 
-import json
-from typing import Any
+from typing import Any, Literal
 
 import structlog
 from openai import AsyncOpenAI
+from pydantic import BaseModel, Field
 
 from app.services.ai.openai_credentials import get_openai_bearer_token
+from app.services.ai.structured_output import generate_structured
 
 logger = structlog.get_logger()
+
+
+class CopyOption(BaseModel):
+    text: str = Field(min_length=1)
+    style: str | None = None
+    subtext: str | None = None
+
+
+class ValueItem(BaseModel):
+    name: str
+    description: str
+    value: float
+
+
+class Guarantee(BaseModel):
+    type: Literal["money_back", "satisfaction", "results"]
+    days: int
+    text: str
+
+
+class Urgency(BaseModel):
+    type: Literal["limited_time", "limited_quantity", "expiring"]
+    text: str
+    count: int | None = None
+
+
+class BonusIdea(BaseModel):
+    name: str
+    description: str
+    value: float
+    suggested_type: Literal["pdf", "video", "checklist", "template"]
+
+
+class OfferContent(BaseModel):
+    headlines: list[CopyOption]
+    subheadlines: list[CopyOption]
+    value_stack_items: list[ValueItem]
+    guarantees: list[Guarantee]
+    urgency_options: list[Urgency]
+    ctas: list[CopyOption]
+    bonus_ideas: list[BonusIdea]
+
 
 OFFER_GENERATION_SYSTEM_PROMPT = """You are an expert direct-response copywriter \
 specializing in the Alex Hormozi value framework. Your goal is to create irresistible \
@@ -181,37 +224,17 @@ Generate 3 options for each element. Return JSON with this exact structure:
 
     client = AsyncOpenAI(api_key=api_key)
 
-    try:
-        response = await client.chat.completions.create(
-            model="gpt-5.4-nano",
-            messages=[
-                {"role": "system", "content": OFFER_GENERATION_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.8,
-            max_completion_tokens=2500,
-            response_format={"type": "json_object"},
-        )
-
-        content = response.choices[0].message.content
-        if not content:
-            log.warning("empty_response")
-            return {"success": False, "error": "Empty response from AI"}
-
-        generated: dict[str, Any] = json.loads(content)
-        generated["success"] = True
-
-        log.info(
-            "offer_content_generated",
-            headline_count=len(generated.get("headlines", [])),
-            value_stack_count=len(generated.get("value_stack_items", [])),
-        )
-
-        return generated
-
-    except json.JSONDecodeError as e:
-        log.error("json_parse_error", error=str(e))
-        return {"success": False, "error": f"Failed to parse AI response: {str(e)}"}
-    except Exception as e:
-        log.exception("generation_error", error=str(e))
-        return {"success": False, "error": f"Generation failed: {str(e)}"}
+    generated = await generate_structured(
+        client=client,
+        model="gpt-5.4-nano",
+        schema=OfferContent,
+        system_prompt=OFFER_GENERATION_SYSTEM_PROMPT,
+        user_prompt=user_prompt,
+        temperature=0.8,
+    )
+    log.info(
+        "offer_content_generated",
+        headline_count=len(generated.headlines),
+        value_stack_count=len(generated.value_stack_items),
+    )
+    return {**generated.model_dump(exclude_none=True), "success": True}

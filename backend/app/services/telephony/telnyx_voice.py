@@ -1,5 +1,6 @@
 """Telnyx voice service for making and receiving calls."""
 
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -349,7 +350,13 @@ class TelnyxVoiceService:
                 db, message, workspace_id, conversation.contact_id, agent_id, log
             )
 
-        # Initiate call via Telnyx
+        # Initiate call via Telnyx. The provider ID does not exist yet, so the
+        # local message ID also traces dial failures before the first webhook.
+        from app.services.ai.call_tracing import call_span
+
+        dial_start_ns = time.time_ns()
+        provider_call_id: str | None = None
+        dial_http_status: int | None = None
         try:
             # ``client_state`` round-trips through every Telnyx webhook for
             # this call, so the receiver side can also key on the same UUID
@@ -381,6 +388,7 @@ class TelnyxVoiceService:
                     json=payload,
                     headers=idempotency_headers(effective_key),
                 )
+            dial_http_status = response.status_code
             response_data = response.json()
 
             log.info(
@@ -392,6 +400,8 @@ class TelnyxVoiceService:
                 data = response_data.get("data", {})
                 call_id = data.get("id")
                 call_control_id = data.get("call_control_id")
+                if isinstance(call_control_id, str):
+                    provider_call_id = call_control_id
 
                 message.provider_message_id = call_control_id  # Store call_control_id
                 message.status = MessageStatus.RINGING
@@ -415,6 +425,18 @@ class TelnyxVoiceService:
             message.error_code = "EXCEPTION"
             message.error_message = str(e)[:500]
             log.exception("call_initiation_exception", error=str(e))
+        finally:
+            with call_span(
+                provider_call_id or str(message.id),
+                "telephony.telnyx.dial",
+                start_time=dial_start_ns,
+                attributes={"call.message_id": str(message.id), "workspace.id": str(workspace_id)},
+            ) as dial_span:
+                dial_span.set_attribute(
+                    "telephony.dial.success", message.status == MessageStatus.RINGING
+                )
+                if dial_http_status is not None:
+                    dial_span.set_attribute("http.response.status_code", dial_http_status)
 
         # Update conversation
         conversation.channel = "voice"

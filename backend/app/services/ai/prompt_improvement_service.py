@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 
 import structlog
 from openai import AsyncOpenAI
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,9 +18,10 @@ from app.models.agent import Agent
 from app.models.call_outcome import CallOutcome, OutcomeType
 from app.models.improvement_suggestion import ImprovementSuggestion
 from app.models.prompt_version import PromptVersion
-from app.services.ai.model_config import DEFAULTS, Selection, log_model_usage, resolve_model
+from app.services.ai.model_config import DEFAULTS, Selection, resolve_model
 from app.services.ai.openai_credentials import create_openai_client
 from app.services.ai.prompt_version_service import PromptVersionService
+from app.services.ai.structured_output import generate_structured
 
 logger = structlog.get_logger()
 
@@ -36,15 +38,22 @@ MUTATION_TYPES = {
 }
 
 
-@dataclass
-class PromptAnalysis:
+class PromptAnalysis(BaseModel):
     """Analysis of prompt performance."""
 
     strengths: list[str]
     weaknesses: list[str]
     improvement_areas: list[str]
     recommended_mutations: list[str]
-    summary: str
+    summary: str = Field(min_length=1)
+
+
+class VariationOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    improved_prompt: str = Field(min_length=1)
+    improved_greeting: str | None
+    changes_made: str
+    expected_improvement: str
 
 
 @dataclass
@@ -153,36 +162,19 @@ class PromptImprovementService:
         # Call LLM for analysis
         client = self._get_client()
         selection = await self._selection(db, version)
-        response = await client.chat.completions.create(
+        return await generate_structured(
+            client=client,
             model=selection.model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an expert at analyzing AI voice agent prompts for sales "
-                        "and appointment booking. Analyze the provided prompt and call outcomes "
-                        "to identify patterns in successful vs unsuccessful calls."
-                    ),
-                },
-                {"role": "user", "content": analysis_prompt},
-            ],
-            response_format={"type": "json_object"},
+            schema=PromptAnalysis,
+            system_prompt=(
+                "You are an expert at analyzing AI voice agent prompts for sales "
+                "and appointment booking. Analyze the provided prompt and call outcomes "
+                "to identify patterns in successful vs unsuccessful calls."
+            ),
+            user_prompt=analysis_prompt,
             temperature=0.3,
-        )
-
-        # Parse response
-        import json
-
-        log_model_usage("prompt_improvement", selection, response)
-        analysis_text = response.choices[0].message.content or "{}"
-        analysis_data = json.loads(analysis_text)
-
-        return PromptAnalysis(
-            strengths=analysis_data.get("strengths", []),
-            weaknesses=analysis_data.get("weaknesses", []),
-            improvement_areas=analysis_data.get("improvement_areas", []),
-            recommended_mutations=analysis_data.get("recommended_mutations", []),
-            summary=analysis_data.get("summary", "No analysis available"),
+            selection=selection,
+            task="prompt_improvement",
         )
 
     async def generate_variations(
@@ -273,36 +265,24 @@ Return JSON with:
 
         client = self._get_client()
         selection = selection or Selection(DEFAULTS["prompt_improvement"])
-        response = await client.chat.completions.create(
+        result = await generate_structured(
+            client=client,
             model=selection.model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an expert at optimizing AI voice agent prompts for sales. "
-                        "Make targeted improvements while preserving the prompt's core purpose."
-                    ),
-                },
-                {"role": "user", "content": generation_prompt},
-            ],
-            response_format={"type": "json_object"},
+            schema=VariationOutput,
+            system_prompt=(
+                "You are an expert at optimizing AI voice agent prompts for sales. "
+                "Make targeted improvements while preserving the prompt's core purpose."
+            ),
+            user_prompt=generation_prompt,
             temperature=0.7,
+            selection=selection,
+            task="prompt_improvement",
         )
-
-        import json
-
-        log_model_usage("prompt_improvement", selection, response)
-        result_text = response.choices[0].message.content or "{}"
-        result = json.loads(result_text)
-
-        if not result.get("improved_prompt"):
-            return None
-
         return GeneratedVariation(
-            prompt=result["improved_prompt"],
-            greeting=result.get("improved_greeting"),
+            prompt=result.improved_prompt,
+            greeting=result.improved_greeting,
             mutation_type=mutation_type,
-            expected_improvement=result.get("expected_improvement", ""),
+            expected_improvement=result.expected_improvement,
         )
 
     async def create_suggestion(

@@ -10,16 +10,14 @@ the report with sentiment/intent signals from the existing pipeline.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
-import structlog
 from openai import AsyncOpenAI
+from pydantic import BaseModel, Field
 
+from app.services.ai.structured_output import generate_structured
 from app.services.ai.transcript_analysis import analyze_transcript
-
-logger = structlog.get_logger()
 
 _MODEL = "gpt-4o-mini"
 _TIMEOUT_SECONDS = 45.0
@@ -46,26 +44,31 @@ class RehearsalReport:
     scores: dict[str, Any] = field(default_factory=dict)
 
 
+class ObjectionResult(BaseModel):
+    objection: str
+    addressed: bool
+    note: str
+
+
+class RehearsalScore(BaseModel):
+    overall_score: float = Field(ge=0, le=100)
+    objection_coverage_score: float = Field(ge=0, le=100)
+    tone_score: float = Field(ge=0, le=100)
+    booking_attempted: bool
+    tone_label: Literal["warm", "neutral", "pushy", "robotic"]
+    objection_breakdown: list[ObjectionResult]
+    summary: str = Field(min_length=1)
+    strengths: list[str]
+    gaps: list[str]
+    suggestions: list[str]
+
+
 def _format_transcript(transcript: list[dict[str, Any]]) -> str:
     lines: list[str] = []
     for turn in transcript:
         speaker = "PROSPECT" if turn.get("role") == "prospect" else "REP"
         lines.append(f"{speaker}: {turn.get('content', '')}")
     return "\n".join(lines)
-
-
-def _clamp_score(value: Any, default: float = 0.0) -> float:
-    try:
-        score = float(value)
-    except (TypeError, ValueError):
-        return default
-    return max(0.0, min(100.0, score))
-
-
-def _str_list(value: Any, limit: int = 8) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [str(item) for item in value if item][:limit]
 
 
 def _build_user_prompt(
@@ -113,66 +116,30 @@ async def score_rehearsal(
 ) -> RehearsalReport:
     """Score a rehearsal transcript into a structured report.
 
-    Falls back to a low-signal but valid report if the LLM response can't be
-    parsed, so a rehearsal always yields a result rather than failing hard.
+    Invalid scores are retried with the model, then fail rather than being
+    recorded as a successful low-signal rehearsal.
     """
     transcript_text = _format_transcript(transcript)
 
     # Enrich with the existing transcript-analysis pipeline (sentiment/intents).
-    analysis: dict[str, Any] = {}
-    try:
-        analysis = await analyze_transcript(transcript_text)
-    except Exception:
-        logger.exception("rehearsal_transcript_analysis_failed")
-
-    raw: dict[str, Any] = {}
-    try:
-        response = await client.chat.completions.create(
-            model=_MODEL,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": _build_user_prompt(transcript_text, persona_name, objections, goal),
-                },
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.2,
-        )
-        text = response.choices[0].message.content or "{}"
-        parsed = json.loads(text)
-        if isinstance(parsed, dict):
-            raw = parsed
-    except json.JSONDecodeError:
-        logger.exception("rehearsal_score_json_decode_failed")
-    except Exception:
-        logger.exception("rehearsal_score_failed")
-
-    overall = _clamp_score(raw.get("overall_score"), default=0.0)
-    objection_coverage = _clamp_score(raw.get("objection_coverage_score"), default=0.0)
-    tone = _clamp_score(raw.get("tone_score"), default=0.0)
-    booking_attempted = bool(raw.get("booking_attempted", False))
-
-    breakdown = raw.get("objection_breakdown")
-    objection_breakdown: list[dict[str, Any]] = []
-    if isinstance(breakdown, list):
-        for item in breakdown:
-            if isinstance(item, dict):
-                objection_breakdown.append(
-                    {
-                        "objection": str(item.get("objection", "")),
-                        "addressed": bool(item.get("addressed", False)),
-                        "note": str(item.get("note", "")),
-                    }
-                )
+    analysis = await analyze_transcript(transcript_text)
+    raw = await generate_structured(
+        client=client,
+        model=_MODEL,
+        schema=RehearsalScore,
+        system_prompt=_SYSTEM_PROMPT,
+        user_prompt=_build_user_prompt(transcript_text, persona_name, objections, goal),
+        temperature=0.2,
+        timeout=_TIMEOUT_SECONDS,
+    )
 
     scores = {
-        "overall_score": overall,
-        "objection_coverage_score": objection_coverage,
-        "tone_score": tone,
-        "tone_label": str(raw.get("tone_label", "neutral")),
-        "booking_attempted": booking_attempted,
-        "objection_breakdown": objection_breakdown,
+        "overall_score": raw.overall_score,
+        "objection_coverage_score": raw.objection_coverage_score,
+        "tone_score": raw.tone_score,
+        "tone_label": raw.tone_label,
+        "booking_attempted": raw.booking_attempted,
+        "objection_breakdown": [item.model_dump() for item in raw.objection_breakdown],
         "sentiment": analysis.get("sentiment"),
         "sentiment_score": analysis.get("sentiment_score"),
         "intents": analysis.get("intents", []),
@@ -180,13 +147,13 @@ async def score_rehearsal(
     }
 
     return RehearsalReport(
-        overall_score=overall,
-        objection_coverage=objection_coverage,
-        booking_attempted=booking_attempted,
-        tone_score=tone,
-        summary=str(raw.get("summary", "")) or analysis.get("summary", ""),
-        strengths=_str_list(raw.get("strengths")),
-        gaps=_str_list(raw.get("gaps")),
-        suggestions=_str_list(raw.get("suggestions")),
+        overall_score=raw.overall_score,
+        objection_coverage=raw.objection_coverage_score,
+        booking_attempted=raw.booking_attempted,
+        tone_score=raw.tone_score,
+        summary=raw.summary,
+        strengths=raw.strengths[:8],
+        gaps=raw.gaps[:8],
+        suggestions=raw.suggestions[:8],
         scores=scores,
     )

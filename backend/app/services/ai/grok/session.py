@@ -14,6 +14,7 @@ from collections.abc import AsyncIterator, Callable
 from typing import TYPE_CHECKING, Any
 
 import structlog
+from pydantic import TypeAdapter, ValidationError
 from websockets.asyncio.client import connect
 
 from app.models.agent import Agent
@@ -24,6 +25,8 @@ from app.services.ai.grok.event_handlers import EventContext, EventHandlerRegist
 from app.services.ai.grok.ivr_mode_controller import IVRModeConfig, IVRModeController
 from app.services.ai.grok.session_config import GrokSessionConfigBuilder
 from app.services.ai.voice_agent_base import VoiceAgentBase
+
+_TOOL_ARGUMENTS = TypeAdapter(dict[str, Any])
 
 if TYPE_CHECKING:
     from app.services.ai.ivr_detector import IVRMode
@@ -409,22 +412,31 @@ class GrokVoiceAgentSession(VoiceAgentBase):
             agent_transcript=lambda: self._agent_transcript,
         )
 
+        from app.services.ai.call_tracing import ResponseSpans, grok_token_cost
+
+        responses = ResponseSpans("xai", "grok-realtime")
         self.logger.info("grok_starting_audio_receive_stream")
 
-        # Process events through the handler registry
-        async for event in stream_manager.iter_events():
-            result = await self._event_registry.dispatch(event, context)
+        try:
+            # Process events through the handler registry
+            async for event in stream_manager.iter_events():
+                if event.get("type") == "response.created":
+                    responses.start(event.get("response"))
+                elif event.get("type") == "response.done":
+                    response = event.get("response")
+                    responses.finish(response, grok_token_cost(response))
+                result = await self._event_registry.dispatch(event, context)
 
-            # Update stats for audio chunks
-            for chunk in result.audio_chunks:
-                stream_manager.stats.record_audio_chunk(len(chunk))
-                yield chunk
+                # Update stats for audio chunks
+                for chunk in result.audio_chunks:
+                    stream_manager.stats.record_audio_chunk(len(chunk))
+                    yield chunk
 
-            if not result.should_continue:
-                break
-
-        # Log final stats
-        stream_manager.log_stream_end(len(self._transcript_entries))
+                if not result.should_continue:
+                    break
+        finally:
+            responses.close()
+            stream_manager.log_stream_end(len(self._transcript_entries))
 
     async def _handle_function_call(self, item: dict[str, Any]) -> None:
         """Handle a function call from Grok.
@@ -442,17 +454,16 @@ class GrokVoiceAgentSession(VoiceAgentBase):
             "grok_function_call_received",
             call_id=call_id,
             function_name=function_name,
-            arguments=arguments_str[:100],
         )
 
         try:
-            arguments = json.loads(arguments_str)
-        except json.JSONDecodeError:
-            arguments = {}
-            self.logger.warning(
-                "grok_function_call_invalid_arguments",
-                arguments=arguments_str,
+            arguments = _TOOL_ARGUMENTS.validate_json(arguments_str)
+        except ValidationError:
+            self.logger.warning("grok_function_call_invalid_arguments", call_id=call_id)
+            await self.submit_tool_result(
+                call_id, {"success": False, "error": "Invalid tool arguments; retry with an object"}
             )
+            return
 
         if not self._tool_callback:
             self.logger.warning(

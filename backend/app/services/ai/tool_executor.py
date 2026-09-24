@@ -98,11 +98,33 @@ class VoiceToolExecutor(BaseToolExecutor):
         self.contact_info = contact_info
         self.call_control_id = call_control_id
         self.workspace_id = workspace_id
+        from app.services.ai.call_tracing import call_totals
+
+        self._trace_totals = call_totals()
         self.log = logger.bind(service="voice_tool_executor")
 
     # ── Main dispatch ───────────────────────────────────────────────
 
-    async def execute(  # noqa: PLR0911, PLR0912 - flat tool dispatch table
+    async def execute(self, function_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        from app.services.ai.call_tracing import call_span, record_tool_result
+
+        with call_span(
+            self.call_control_id or "", "voice.tool", attributes={"tool.name": function_name}
+        ) as span:
+            try:
+                result = await self._execute(function_name, arguments)
+                success = result.get("success") is True
+                span.set_attribute("tool.success", success)
+                record_tool_result(success, totals=self._trace_totals)
+                if success and function_name == "book_appointment" and result.get("booking_uid"):
+                    span.set_attribute("appointment.booking_uid", str(result["booking_uid"]))
+                return result
+            except BaseException:
+                span.set_attribute("tool.success", False)
+                record_tool_result(False, totals=self._trace_totals)
+                raise
+
+    async def _execute(  # noqa: PLR0911, PLR0912 - flat tool dispatch table
         self,
         function_name: str,
         arguments: dict[str, Any],

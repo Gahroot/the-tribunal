@@ -4,15 +4,89 @@ Generates quiz questions, calculator configurations, and rich content
 for interactive lead magnets.
 """
 
-import json
-from typing import Any
+from typing import Any, Literal
 
 import structlog
 from openai import AsyncOpenAI
+from pydantic import BaseModel, Field
 
 from app.services.ai.openai_credentials import get_openai_bearer_token
+from app.services.ai.structured_output import generate_structured
 
 logger = structlog.get_logger()
+
+
+class QuizOption(BaseModel):
+    id: str
+    text: str
+    score: int
+
+
+class QuizQuestion(BaseModel):
+    id: str
+    text: str
+    type: Literal["single_choice", "multiple_choice", "scale"]
+    options: list[QuizOption] = Field(default_factory=list)
+    weight: float | None = None
+
+
+class QuizResult(BaseModel):
+    id: str
+    min_score: int
+    max_score: int
+    title: str
+    description: str
+    cta_text: str
+
+
+class QuizContent(BaseModel):
+    title: str = Field(min_length=1)
+    description: str
+    questions: list[QuizQuestion] = Field(min_length=1)
+    results: list[QuizResult] = Field(min_length=1)
+
+
+class CalculatorOption(BaseModel):
+    value: str
+    label: str
+    multiplier: float | None = None
+
+
+class CalculatorInput(BaseModel):
+    id: str
+    label: str
+    type: Literal["number", "currency", "percentage", "select"]
+    placeholder: str | None = None
+    default_value: float | None = None
+    prefix: str | None = None
+    suffix: str | None = None
+    help_text: str | None = None
+    options: list[CalculatorOption] | None = None
+    required: bool
+
+
+class CalculatorResult(BaseModel):
+    id: str
+    label: str
+    formula: str
+    format: Literal["currency", "percentage", "number", "text"]
+    highlight: bool | None = None
+    description: str | None = None
+
+
+class CalculatorCTA(BaseModel):
+    text: str
+    description: str
+
+
+class CalculatorContent(BaseModel):
+    title: str = Field(min_length=1)
+    description: str
+    inputs: list[CalculatorInput] = Field(min_length=1)
+    calculations: list[CalculatorResult]
+    outputs: list[CalculatorResult] = Field(min_length=1)
+    cta: CalculatorCTA
+
 
 QUIZ_GENERATION_SYSTEM_PROMPT = """You are an expert at creating engaging qualification quizzes \
 that help segment and qualify leads while providing value to the quiz taker.
@@ -155,40 +229,20 @@ For scale type, score = selected value * weight (include "weight" field)"""
 
     client = AsyncOpenAI(api_key=api_key)
 
-    try:
-        response = await client.chat.completions.create(
-            model="gpt-5.4-nano",
-            messages=[
-                {"role": "system", "content": QUIZ_GENERATION_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.7,
-            max_tokens=2500,
-            response_format={"type": "json_object"},
-        )
-
-        content = response.choices[0].message.content
-        if not content:
-            log.warning("empty_response")
-            return {"success": False, "error": "Empty response from AI"}
-
-        generated: dict[str, Any] = json.loads(content)
-        generated["success"] = True
-
-        log.info(
-            "quiz_content_generated",
-            question_count=len(generated.get("questions", [])),
-            result_count=len(generated.get("results", [])),
-        )
-
-        return generated
-
-    except json.JSONDecodeError as e:
-        log.error("json_parse_error", error=str(e))
-        return {"success": False, "error": f"Failed to parse AI response: {str(e)}"}
-    except Exception as e:
-        log.exception("generation_error", error=str(e))
-        return {"success": False, "error": f"Generation failed: {str(e)}"}
+    generated = await generate_structured(
+        client=client,
+        model="gpt-5.4-nano",
+        schema=QuizContent,
+        system_prompt=QUIZ_GENERATION_SYSTEM_PROMPT,
+        user_prompt=user_prompt,
+        temperature=0.7,
+    )
+    log.info(
+        "quiz_content_generated",
+        question_count=len(generated.questions),
+        result_count=len(generated.results),
+    )
+    return {**generated.model_dump(exclude_none=True), "success": True}
 
 
 async def generate_calculator_content(
@@ -297,37 +351,17 @@ Output formats: currency, percentage, number, text"""
 
     client = AsyncOpenAI(api_key=api_key)
 
-    try:
-        response = await client.chat.completions.create(
-            model="gpt-5.4-nano",
-            messages=[
-                {"role": "system", "content": CALCULATOR_GENERATION_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.7,
-            max_completion_tokens=2000,
-            response_format={"type": "json_object"},
-        )
-
-        content = response.choices[0].message.content
-        if not content:
-            log.warning("empty_response")
-            return {"success": False, "error": "Empty response from AI"}
-
-        generated: dict[str, Any] = json.loads(content)
-        generated["success"] = True
-
-        log.info(
-            "calculator_content_generated",
-            input_count=len(generated.get("inputs", [])),
-            output_count=len(generated.get("outputs", [])),
-        )
-
-        return generated
-
-    except json.JSONDecodeError as e:
-        log.error("json_parse_error", error=str(e))
-        return {"success": False, "error": f"Failed to parse AI response: {str(e)}"}
-    except Exception as e:
-        log.exception("generation_error", error=str(e))
-        return {"success": False, "error": f"Generation failed: {str(e)}"}
+    generated = await generate_structured(
+        client=client,
+        model="gpt-5.4-nano",
+        schema=CalculatorContent,
+        system_prompt=CALCULATOR_GENERATION_SYSTEM_PROMPT,
+        user_prompt=user_prompt,
+        temperature=0.7,
+    )
+    log.info(
+        "calculator_content_generated",
+        input_count=len(generated.inputs),
+        output_count=len(generated.outputs),
+    )
+    return {**generated.model_dump(exclude_none=True), "success": True}
