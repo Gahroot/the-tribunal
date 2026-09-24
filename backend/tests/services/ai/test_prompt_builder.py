@@ -6,8 +6,13 @@ Tests prompt construction and enhancement for voice agents.
 from unittest.mock import MagicMock
 
 import pytest
+import tiktoken
 
 from app.services.ai.prompt_builder import VoicePromptBuilder
+
+
+def builder_tokenize(prompt: str) -> list[int]:
+    return tiktoken.get_encoding("cl100k_base").encode(prompt)
 
 
 @pytest.fixture
@@ -190,6 +195,60 @@ class TestVoicePromptBuilder:
 
         # Should include outbound telephony guidance
         assert "YOU initiated" in prompt
+
+    def test_budget_drops_context_before_date_and_realism(
+        self, mock_agent: MagicMock, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        builder = VoicePromptBuilder(agent=mock_agent, token_budget=350)
+        prompt = builder.build_full_prompt(
+            contact_info={
+                "name": "Jane",
+                "notes": "private intake " * 1000,
+                "returning_summary": "old conversation " * 1000,
+            },
+            include_realism=True,
+            include_telephony=False,
+        )
+        assert "helpful sales assistant" in prompt
+        assert "CRITICAL IDENTITY INSTRUCTION" in prompt
+        assert "CRITICAL DATE CONTEXT" in prompt
+        assert "[sigh]" in prompt
+        assert "private intake" not in prompt
+        assert "old conversation" not in prompt
+        assert len(builder_tokenize(prompt)) <= builder.token_budget
+        assert "Voice prompt budget exceeded" in caplog.text
+        assert "private intake" not in caplog.text
+
+    def test_booking_and_disclosure_survive_p0_overflow(
+        self, mock_agent: MagicMock, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        mock_agent.system_prompt = "You must disclose that this is an AI. " * 100
+        builder = VoicePromptBuilder(agent=mock_agent, token_budget=20)
+        prompt = builder.build_full_prompt(include_booking=True, contact_info={"notes": "secret"})
+        assert mock_agent.system_prompt in prompt
+        assert "book_appointment" in prompt
+        assert "CRITICAL IDENTITY INSTRUCTION" in prompt
+        assert "secret" not in prompt
+        assert "p0_over_budget=True" in caplog.text
+
+    def test_search_context_evicted_before_p1(self, mock_agent: MagicMock) -> None:
+        builder = VoicePromptBuilder(agent=mock_agent)
+        full = builder.build_full_prompt(include_telephony=False)
+        without_search = builder.build_full_prompt(include_search=False, include_telephony=False)
+        builder.token_budget = len(builder_tokenize(without_search))
+        trimmed = builder.build_full_prompt(include_telephony=False)
+        assert "# Search Capabilities" in full
+        assert "# Search Capabilities" not in trimmed
+        assert "CRITICAL DATE CONTEXT" in trimmed
+        assert "helpful sales assistant" in trimmed
+
+    def test_special_token_spelling_in_notes_does_not_break_assembly(self) -> None:
+        prompt = VoicePromptBuilder().build_full_prompt(contact_info={"notes": "<|endoftext|>"})
+        assert "<|endoftext|>" in prompt
+
+    def test_invalid_budget_rejected(self) -> None:
+        with pytest.raises(ValueError, match="token_budget"):
+            VoicePromptBuilder(token_budget=0)
 
     def test_build_full_prompt_without_agent(self) -> None:
         """Test building prompt without agent."""
