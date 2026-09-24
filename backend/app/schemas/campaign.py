@@ -5,6 +5,8 @@ from datetime import datetime, time
 
 from pydantic import BaseModel, ConfigDict, field_serializer, field_validator
 
+from app.schemas.voice_experiment import VoiceExperiment, VoiceExperimentResults
+
 
 class CampaignCreate(BaseModel):
     """Schema for creating a campaign."""
@@ -174,6 +176,7 @@ class VoiceCampaignCreate(BaseModel):
 
     # Voice settings
     voice_agent_id: uuid.UUID
+    voice_experiment: VoiceExperiment | None = None
     voice_connection_id: str | None = None
     enable_machine_detection: bool = True
     max_call_duration_seconds: int = 120
@@ -208,6 +211,7 @@ class VoiceCampaignUpdate(BaseModel):
 
     # Voice settings
     voice_agent_id: uuid.UUID | None = None
+    voice_experiment: VoiceExperiment | None = None
     voice_connection_id: str | None = None
     enable_machine_detection: bool | None = None
     max_call_duration_seconds: int | None = None
@@ -247,6 +251,7 @@ class VoiceCampaignResponse(BaseModel):
 
     # Voice settings
     voice_agent_id: uuid.UUID | None
+    voice_experiment: VoiceExperiment | None = None
     voice_connection_id: str | None
     enable_machine_detection: bool
     max_call_duration_seconds: int
@@ -371,6 +376,8 @@ class VoiceCampaignContactResponse(BaseModel):
 
 class VoiceCampaignAnalytics(BaseModel):
     """Voice campaign analytics response."""
+
+    voice_experiment: VoiceExperimentResults | None = None
 
     total_contacts: int
     calls_attempted: int

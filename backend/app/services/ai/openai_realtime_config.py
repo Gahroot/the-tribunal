@@ -479,8 +479,11 @@ def build_realtime_session_config(
     tool_choice: str = "auto",
     truncation_retention_ratio: float = 0.8,
     reasoning_effort: str = "low",
+    speed: float = 1.0,
 ) -> RealtimeSessionConfig:
     """Build a GA Realtime session config for OpenAI voice sessions."""
+    if not 0.25 <= speed <= 1.5:
+        raise ValueError("OpenAI voice speed must be between 0.25 and 1.5")
     selected_model = model or settings.openai_realtime_model
     session: RealtimeSessionConfig = {
         "type": "realtime",
@@ -503,6 +506,7 @@ def build_realtime_session_config(
         },
     }
 
+    session["audio"]["output"]["speed"] = speed
     openai_tools = _filter_openai_tools(tools)
     if openai_tools:
         session["tools"] = openai_tools

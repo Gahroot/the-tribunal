@@ -375,7 +375,7 @@ class VoiceAgentSession(VoiceAgentBase):
     def _build_initial_session_config(self) -> RealtimeSessionConfig:
         """Build the initial Realtime session config for connection startup."""
         instructions = self._prompt_builder.build_full_prompt(
-            include_realism=False,
+            include_realism=True,
             include_booking=False,
         )
         tools = get_tools_from_agent_config(
@@ -394,6 +394,9 @@ class VoiceAgentSession(VoiceAgentBase):
             language=self.agent.language if self.agent else None,
             tools=tools,
             reasoning_effort=self.reasoning_effort,
+            speed=(self.agent.tool_settings or {}).get("campaign_voice", {}).get("speed", 1.0)
+            if self.agent
+            else 1.0,
         )
 
     async def _configure_session(self, session_config: RealtimeSessionConfig | None = None) -> None:
@@ -435,7 +438,7 @@ class VoiceAgentSession(VoiceAgentBase):
 
         enhanced_prompt = self._prompt_builder.build_full_prompt(
             base_prompt=system_prompt,
-            include_realism=False,
+            include_realism=True,
             include_booking=False,
         )
         tools = get_tools_from_agent_config(
@@ -459,6 +462,9 @@ class VoiceAgentSession(VoiceAgentBase):
             language=self.agent.language if self.agent else None,
             tools=tools,
             reasoning_effort=self.reasoning_effort,
+            speed=(self.agent.tool_settings or {}).get("campaign_voice", {}).get("speed", 1.0)
+            if self.agent
+            else 1.0,
         )
         await self._send_event(build_session_update_event(session_config))
         self.logger.info("session_reconfigured", updates=list(session_config.keys()))
@@ -950,7 +956,7 @@ class VoiceAgentSession(VoiceAgentBase):
 
         # Build full instructions using prompt builder
         full_instructions = self._prompt_builder.build_full_prompt(
-            include_realism=False,
+            include_realism=True,
             include_booking=False,
             contact_info=contact_info,
             offer_info=offer_info,
@@ -973,6 +979,9 @@ class VoiceAgentSession(VoiceAgentBase):
             language=self.agent.language if self.agent else None,
             tools=tools,
             reasoning_effort=self.reasoning_effort,
+            speed=(self.agent.tool_settings or {}).get("campaign_voice", {}).get("speed", 1.0)
+            if self.agent
+            else 1.0,
         )
 
         try:

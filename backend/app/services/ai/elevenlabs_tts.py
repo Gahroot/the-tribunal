@@ -91,6 +91,7 @@ class ElevenLabsTTSSession:
         api_key: str,
         voice_id: str = "21m00Tcm4TlvDq8ikWAM",
         model_id: str | None = None,
+        speed: float = 1.0,
     ) -> None:
         """Initialize ElevenLabs TTS session.
 
@@ -99,6 +100,9 @@ class ElevenLabsTTSSession:
             voice_id: Voice ID (default: Rachel)
             model_id: Model ID (default: eleven_flash_v2_5)
         """
+        if not 0.7 <= speed <= 1.2:
+            raise ValueError("ElevenLabs speed must be between 0.7 and 1.2")
+        self.speed = speed
         self.api_key = api_key
         self.voice_id = voice_id
         self.model_id = model_id or self.MODEL_ID
@@ -275,6 +279,7 @@ class ElevenLabsTTSSession:
             "voice_settings": {
                 "stability": 0.5,
                 "similarity_boost": 0.75,
+                "speed": self.speed,
             },
             "xi_api_key": self.api_key,
         }

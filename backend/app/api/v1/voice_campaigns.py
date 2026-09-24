@@ -34,7 +34,9 @@ from app.schemas.campaign import (
     VoiceCampaignResponse,
     VoiceCampaignUpdate,
 )
+from app.schemas.voice_experiment import VoiceExperiment
 from app.services.campaigns.guarantee_tracker import check_guarantee_expiry
+from app.services.campaigns.voice_experiments import validate_provider, voice_results
 from app.utils.datetime import parse_time_string
 
 router = APIRouter()
@@ -44,14 +46,15 @@ async def _get_voice_campaign(
     db: AsyncSession,
     campaign_id: uuid.UUID,
     workspace_id: uuid.UUID,
+    *,
+    lock: bool = False,
 ) -> Campaign:
     """Fetch a voice campaign by ID, raising 404 if not found."""
-    result = await db.execute(
-        apply_workspace_scope(select(Campaign), Campaign, workspace_id).where(
-            Campaign.id == campaign_id,
-            Campaign.campaign_type == CampaignType.VOICE_SMS_FALLBACK,
-        )
+    query = apply_workspace_scope(select(Campaign), Campaign, workspace_id).where(
+        Campaign.id == campaign_id,
+        Campaign.campaign_type == CampaignType.VOICE_SMS_FALLBACK,
     )
+    result = await db.execute(query.with_for_update() if lock else query)
     campaign = result.scalar_one_or_none()
 
     if not campaign:
@@ -150,6 +153,12 @@ async def create_voice_campaign(
             detail="Agent must support voice channel",
         )
 
+    if campaign_in.voice_experiment:
+        try:
+            validate_provider(campaign_in.voice_experiment, voice_agent.voice_provider)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     # Verify SMS fallback agent if provided
     if campaign_in.sms_fallback_agent_id:
         sms_agent_result = await db.execute(
@@ -236,6 +245,46 @@ async def get_voice_campaign(
     return campaign
 
 
+async def _validate_experiment_update(
+    db: AsyncSession,
+    campaign: Campaign,
+    campaign_in: VoiceCampaignUpdate,
+) -> None:
+    """Freeze launch cohorts and validate the effective provider before any writes."""
+    changed = campaign_in.model_fields_set
+    if campaign.started_at and (
+        "voice_experiment" in changed or (campaign.voice_experiment and "voice_agent_id" in changed)
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Voice experiment and agent are frozen after launch; create a new campaign.",
+        )
+    if "voice_agent_id" in changed and campaign_in.voice_agent_id is None:
+        raise HTTPException(status_code=422, detail="Voice agent cannot be null")
+    experiment = (
+        campaign_in.voice_experiment
+        if "voice_experiment" in changed
+        else VoiceExperiment.model_validate(campaign.voice_experiment)
+        if campaign.voice_experiment
+        else None
+    )
+    if experiment is None:
+        return
+    result = await db.execute(
+        select(Agent).where(
+            Agent.id == (campaign_in.voice_agent_id or campaign.voice_agent_id),
+            Agent.workspace_id == campaign.workspace_id,
+        )
+    )
+    agent = result.scalar_one_or_none()
+    if agent is None:
+        raise HTTPException(status_code=422, detail="Voice experiment requires a voice agent")
+    try:
+        validate_provider(experiment, agent.voice_provider)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.put("/{campaign_id}", response_model=VoiceCampaignResponse)
 async def update_voice_campaign(
     workspace_id: uuid.UUID,
@@ -246,7 +295,8 @@ async def update_voice_campaign(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> Campaign:
     """Update a voice campaign."""
-    campaign = await _get_voice_campaign(db, campaign_id, workspace_id)
+    campaign = await _get_voice_campaign(db, campaign_id, workspace_id, lock=True)
+    await _validate_experiment_update(db, campaign, campaign_in)
 
     if campaign.status not in ("draft", "paused"):
         raise HTTPException(
@@ -323,7 +373,7 @@ async def start_voice_campaign(
     workspace: Annotated[Workspace, Depends(get_workspace)],
 ) -> dict[str, str]:
     """Start a voice campaign."""
-    campaign = await _get_voice_campaign(db, campaign_id, workspace_id)
+    campaign = await _get_voice_campaign(db, campaign_id, workspace_id, lock=True)
 
     if campaign.status not in ("draft", "paused", "scheduled"):
         raise HTTPException(
@@ -345,12 +395,25 @@ async def start_voice_campaign(
 
     # Verify voice agent is still valid
     if campaign.voice_agent_id:
-        agent_result = await db.execute(select(Agent).where(Agent.id == campaign.voice_agent_id))
-        if not agent_result.scalar_one_or_none():
+        agent_result = await db.execute(
+            select(Agent).where(
+                Agent.id == campaign.voice_agent_id,
+                Agent.workspace_id == workspace_id,
+            )
+        )
+        agent = agent_result.scalar_one_or_none()
+        if not agent:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Voice agent no longer exists",
             )
+        if campaign.voice_experiment:
+            try:
+                validate_provider(
+                    VoiceExperiment.model_validate(campaign.voice_experiment), agent.voice_provider
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     await _validate_voice_campaign_sender(db, workspace_id, campaign.from_phone_number)
 
@@ -538,6 +601,7 @@ async def get_voice_campaign_analytics(
         qualification_rate = (campaign.contacts_qualified / total_responses) * 100
 
     return VoiceCampaignAnalytics(
+        voice_experiment=await voice_results(db, campaign),
         total_contacts=campaign.total_contacts,
         calls_attempted=campaign.calls_attempted,
         calls_answered=campaign.calls_answered,

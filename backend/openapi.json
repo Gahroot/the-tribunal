@@ -29704,6 +29704,16 @@
           "total_contacts": {
             "title": "Total Contacts",
             "type": "integer"
+          },
+          "voice_experiment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VoiceExperimentResults"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -30039,6 +30049,16 @@
               }
             ],
             "title": "Voice Connection Id"
+          },
+          "voice_experiment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VoiceExperiment"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -30361,6 +30381,16 @@
             ],
             "title": "Voice Connection Id"
           },
+          "voice_experiment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VoiceExperiment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "workspace_id": {
             "format": "uuid",
             "title": "Workspace Id",
@@ -30653,9 +30683,147 @@
               }
             ],
             "title": "Voice Connection Id"
+          },
+          "voice_experiment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VoiceExperiment"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "title": "VoiceCampaignUpdate",
+        "type": "object"
+      },
+      "VoiceExperiment": {
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "enum": [
+              "openai",
+              "grok",
+              "elevenlabs",
+              "live"
+            ],
+            "title": "Provider",
+            "type": "string"
+          },
+          "variants": {
+            "items": {
+              "$ref": "#/components/schemas/VoiceVariant"
+            },
+            "maxItems": 6,
+            "minItems": 2,
+            "title": "Variants",
+            "type": "array"
+          }
+        },
+        "required": [
+          "provider",
+          "variants"
+        ],
+        "title": "VoiceExperiment",
+        "type": "object"
+      },
+      "VoiceExperimentResults": {
+        "properties": {
+          "denominator": {
+            "const": "assigned_contacts",
+            "default": "assigned_contacts",
+            "title": "Denominator",
+            "type": "string"
+          },
+          "metric": {
+            "const": "campaign_appointment_booking",
+            "default": "campaign_appointment_booking",
+            "title": "Metric",
+            "type": "string"
+          },
+          "variants": {
+            "items": {
+              "$ref": "#/components/schemas/VoiceVariantResult"
+            },
+            "title": "Variants",
+            "type": "array"
+          }
+        },
+        "title": "VoiceExperimentResults",
+        "type": "object"
+      },
+      "VoiceVariant": {
+        "additionalProperties": false,
+        "properties": {
+          "accent": {
+            "maxLength": 60,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9 ()-]+$",
+            "title": "Accent",
+            "type": "string"
+          },
+          "gender": {
+            "enum": [
+              "female",
+              "male",
+              "neutral"
+            ],
+            "title": "Gender",
+            "type": "string"
+          },
+          "id": {
+            "pattern": "^[a-zA-Z0-9_-]{1,40}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "speed": {
+            "default": 1.0,
+            "maximum": 1.2,
+            "minimum": 0.7,
+            "title": "Speed",
+            "type": "number"
+          },
+          "voice_id": {
+            "pattern": "^[a-zA-Z0-9_-]{1,100}$",
+            "title": "Voice Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "voice_id",
+          "gender",
+          "accent"
+        ],
+        "title": "VoiceVariant",
+        "type": "object"
+      },
+      "VoiceVariantResult": {
+        "properties": {
+          "assigned_contacts": {
+            "title": "Assigned Contacts",
+            "type": "integer"
+          },
+          "conversion_rate": {
+            "title": "Conversion Rate",
+            "type": "number"
+          },
+          "converted_contacts": {
+            "title": "Converted Contacts",
+            "type": "integer"
+          },
+          "variant": {
+            "$ref": "#/components/schemas/VoiceVariant"
+          }
+        },
+        "required": [
+          "variant",
+          "assigned_contacts",
+          "converted_contacts",
+          "conversion_rate"
+        ],
+        "title": "VoiceVariantResult",
         "type": "object"
       },
       "WinnerDetectionResponse": {

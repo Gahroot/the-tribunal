@@ -249,6 +249,7 @@ async def test_saved_brief_reaches_voice_context_without_inbound_memory_retrieva
         direction="outbound",
         conversation=conversation,
         agent_id=None,
+        campaign_id=None,
         outbound_brief="CRM: Jane\nPrevious call: The contact asked for a tour",
     )
     contact = SimpleNamespace(

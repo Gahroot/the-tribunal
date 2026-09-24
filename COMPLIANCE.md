@@ -25,3 +25,14 @@ Approve local consent, recording, licensing, fair-housing and advertising requir
 ## Not checked / re-verify before relying
 
 No legal effective dates are asserted. No live send, production data, website, payment flow or jurisdiction-wide review was performed here. Existing runtime sending controls are unchanged. Reconcile real cohorts, costs and permission records separately; evidence references are not fetched or authenticated by the exporter.
+
+## Voice realism / campaign experiments — 2026-09-24
+
+Base commit: `abb3e31`. Inline scope only; earlier VP findings were not re-verified in this pass. Engineering guidance, NOT LEGAL ADVICE.
+
+| ID | Severity | Trigger | Evidence | Obligation / status | Guard |
+| --- | --- | --- | --- | --- | --- |
+| VOICE-01 | HIGH | Human-like synthetic speech could obscure AI identity | RUNTIME: shared prompt regression tests | Realism explicitly preserves AI identity, disclosure, consent and opt-outs; no impersonation instruction | All-provider prompt tests retain disclosure instructions |
+| VOICE-02 | LAWYER | Outreach, recording and catalog/cloned voice usage | CODE: worker eligibility gates are unchanged | Operators still need appropriate permissions for calls and selected voices; this feature does not establish those permissions | Assignment occurs after existing call eligibility checks; no live calls sent during verification |
+
+Voice experiments use catalog labels, not contact demographics, and report aggregate booked-appointment conversion without claiming uplift or choosing a winner. Live audio, production consent records, and jurisdiction-specific obligations were not checked. See `backend/docs/voice/campaign-voice-experiments.md` for configuration, measurement and verification limits.

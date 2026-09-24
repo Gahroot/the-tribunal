@@ -174,6 +174,9 @@ class Campaign(Base):
     max_call_duration_seconds: Mapped[int] = mapped_column(Integer, default=120, nullable=False)
     calls_per_minute: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
 
+    # Frozen after launch; equal-weight catalog voice/speed variants.
+    voice_experiment: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+
     # SMS fallback settings (for voice campaigns)
     sms_fallback_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     sms_fallback_template: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -324,6 +327,9 @@ class CampaignContact(Base):
 
     # Priority
     priority: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # Immutable assignment snapshot, retained across call retries and SMS fallback.
+    voice_assignment: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
 
     # Call tracking (for voice campaigns)
     call_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

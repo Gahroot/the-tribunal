@@ -279,6 +279,9 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
             self._tts_session = ElevenLabsTTSSession(
                 api_key=self.elevenlabs_api_key,
                 voice_id=voice_id,
+                speed=(self.agent.tool_settings or {}).get("campaign_voice", {}).get("speed", 1.0)
+                if self.agent
+                else 1.0,
             )
 
             if not await self._tts_session.connect(output_format="ulaw_8000"):

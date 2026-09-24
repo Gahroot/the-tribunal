@@ -18125,6 +18125,7 @@ export interface components {
             sms_fallbacks_sent: number;
             /** Total Contacts */
             total_contacts: number;
+            voice_experiment?: components["schemas"]["VoiceExperimentResults"] | null;
         };
         /**
          * VoiceCampaignContactResponse
@@ -18244,6 +18245,7 @@ export interface components {
             voice_agent_id: string;
             /** Voice Connection Id */
             voice_connection_id?: string | null;
+            voice_experiment?: components["schemas"]["VoiceExperiment"] | null;
         };
         /**
          * VoiceCampaignResponse
@@ -18350,6 +18352,7 @@ export interface components {
             voice_agent_id: string | null;
             /** Voice Connection Id */
             voice_connection_id: string | null;
+            voice_experiment?: components["schemas"]["VoiceExperiment"] | null;
             /**
              * Workspace Id
              * Format: uuid
@@ -18403,6 +18406,63 @@ export interface components {
             voice_agent_id?: string | null;
             /** Voice Connection Id */
             voice_connection_id?: string | null;
+            voice_experiment?: components["schemas"]["VoiceExperiment"] | null;
+        };
+        /** VoiceExperiment */
+        VoiceExperiment: {
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "openai" | "grok" | "elevenlabs" | "live";
+            /** Variants */
+            variants: components["schemas"]["VoiceVariant"][];
+        };
+        /** VoiceExperimentResults */
+        VoiceExperimentResults: {
+            /**
+             * Denominator
+             * @default assigned_contacts
+             * @constant
+             */
+            denominator: "assigned_contacts";
+            /**
+             * Metric
+             * @default campaign_appointment_booking
+             * @constant
+             */
+            metric: "campaign_appointment_booking";
+            /** Variants */
+            variants?: components["schemas"]["VoiceVariantResult"][];
+        };
+        /** VoiceVariant */
+        VoiceVariant: {
+            /** Accent */
+            accent: string;
+            /**
+             * Gender
+             * @enum {string}
+             */
+            gender: "female" | "male" | "neutral";
+            /** Id */
+            id: string;
+            /**
+             * Speed
+             * @default 1
+             */
+            speed: number;
+            /** Voice Id */
+            voice_id: string;
+        };
+        /** VoiceVariantResult */
+        VoiceVariantResult: {
+            /** Assigned Contacts */
+            assigned_contacts: number;
+            /** Conversion Rate */
+            conversion_rate: number;
+            /** Converted Contacts */
+            converted_contacts: number;
+            variant: components["schemas"]["VoiceVariant"];
         };
         /**
          * WinnerDetectionResponse

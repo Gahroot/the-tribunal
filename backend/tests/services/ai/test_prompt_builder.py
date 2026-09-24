@@ -69,9 +69,14 @@ class TestVoicePromptBuilder:
         builder = VoicePromptBuilder()
         cues = builder.get_realism_cues()
 
-        assert "[sigh]" in cues
-        assert "[laugh]" in cues
-        assert "[whisper]" in cues
+        assert "25 words" in cues
+        assert "5–10%" in cues
+        assert "turn starts" in cues
+        assert "quick restart" in cues
+        assert "not SSML" in cues
+        assert "Preserve AI identification" in cues
+        assert "[sigh]" not in cues
+        assert "[laugh]" not in cues
 
     def test_get_search_guidance_with_tools(self, mock_agent: MagicMock) -> None:
         """Test search guidance when tools are enabled."""
@@ -188,7 +193,7 @@ class TestVoicePromptBuilder:
         )
 
         # Should include realism cues
-        assert "[sigh]" in prompt or "[laugh]" in prompt
+        assert "Voice Realism Enhancements" in prompt
 
         # Should include booking instructions
         assert "check_availability" in prompt
@@ -199,7 +204,8 @@ class TestVoicePromptBuilder:
     def test_budget_drops_context_before_date_and_realism(
         self, mock_agent: MagicMock, caplog: pytest.LogCaptureFixture
     ) -> None:
-        builder = VoicePromptBuilder(agent=mock_agent, token_budget=350)
+        # Full provider-neutral realism guidance is larger than the former audio tags.
+        builder = VoicePromptBuilder(agent=mock_agent, token_budget=550)
         prompt = builder.build_full_prompt(
             contact_info={
                 "name": "Jane",
@@ -212,7 +218,7 @@ class TestVoicePromptBuilder:
         assert "helpful sales assistant" in prompt
         assert "CRITICAL IDENTITY INSTRUCTION" in prompt
         assert "CRITICAL DATE CONTEXT" in prompt
-        assert "[sigh]" in prompt
+        assert "Voice Realism Enhancements" in prompt
         assert "private intake" not in prompt
         assert "old conversation" not in prompt
         assert len(builder_tokenize(prompt)) <= builder.token_budget

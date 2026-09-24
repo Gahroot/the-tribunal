@@ -226,7 +226,7 @@ class LiveVoiceAgentSession(VoiceAgentBase):
     def _build_start_options(self) -> RealtimeStartOptions:
         """Build realtime session options from agent configuration."""
         prompt = self._prompt_builder.build_full_prompt(
-            include_realism=False,
+            include_realism=True,
             include_booking=False,
         )
         tools = get_tools_from_agent_config(
@@ -633,7 +633,7 @@ class LiveVoiceAgentSession(VoiceAgentBase):
         if system_prompt:
             rebuilt = self._prompt_builder.build_full_prompt(
                 base_prompt=system_prompt,
-                include_realism=False,
+                include_realism=True,
                 include_booking=False,
             )
             session["prompt"] = f"{rebuilt}\n\n{_DELEGATION_POLICY}"
@@ -684,7 +684,7 @@ class LiveVoiceAgentSession(VoiceAgentBase):
         # Mirrors the Realtime path: rebuild the whole prompt with context
         # folded in, since v3 has no conversation-item injection.
         full_instructions = self._prompt_builder.build_full_prompt(
-            include_realism=False,
+            include_realism=True,
             include_booking=False,
             contact_info=contact_info,
             offer_info=offer_info,

@@ -194,6 +194,80 @@ async def client(mock_db: AsyncMock) -> AsyncIterator[AsyncClient]:
         yield ac
 
 
+async def test_voice_experiment_analytics_serializes_cohorts(
+    client: AsyncClient,
+    mock_db: AsyncMock,
+) -> None:
+    campaign = _make_campaign()
+    campaign.voice_experiment = {
+        "provider": "openai",
+        "variants": [
+            {
+                "id": "a",
+                "voice_id": "alloy",
+                "gender": "neutral",
+                "accent": "American",
+                "speed": 1.0,
+            },
+            {
+                "id": "b",
+                "voice_id": "shimmer",
+                "gender": "female",
+                "accent": "British",
+                "speed": 0.9,
+            },
+        ],
+    }
+    mock_db.execute = AsyncMock(side_effect=[_scalar_result(campaign), [("a", 8, 2), ("b", 10, 5)]])
+    response = await client.get(
+        f"/api/v1/workspaces/{WS_ID}/voice-campaigns/{CAMPAIGN_ID}/analytics"
+    )
+    assert response.status_code == 200
+    result = response.json()["voice_experiment"]
+    assert result["metric"] == "campaign_appointment_booking"
+    assert result["denominator"] == "assigned_contacts"
+    assert [v["conversion_rate"] for v in result["variants"]] == [25.0, 50.0]
+    assert [v["converted_contacts"] for v in result["variants"]] == [2, 5]
+    assert result["variants"][1]["variant"]["speed"] == 0.9
+    _assert_scoped_query(mock_db.execute.await_args_list[0].args[0], "campaigns")
+
+
+async def test_voice_experiment_invalid_speed_rejected_at_boundary(
+    client: AsyncClient,
+    mock_db: AsyncMock,
+) -> None:
+    response = await client.post(
+        f"/api/v1/workspaces/{WS_ID}/voice-campaigns",
+        json={
+            "name": "Test",
+            "from_phone_number": "+15551234567",
+            "voice_agent_id": str(uuid.uuid4()),
+            "voice_experiment": {
+                "provider": "openai",
+                "variants": [
+                    {
+                        "id": "a",
+                        "voice_id": "alloy",
+                        "gender": "neutral",
+                        "accent": "American",
+                        "speed": 9,
+                    },
+                    {
+                        "id": "b",
+                        "voice_id": "shimmer",
+                        "gender": "female",
+                        "accent": "British",
+                        "speed": 1.0,
+                    },
+                ],
+            },
+        },
+    )
+    assert response.status_code == 422
+    mock_db.execute.assert_not_awaited()
+    mock_db.commit.assert_not_awaited()
+
+
 async def test_create_voice_campaign_hides_cross_workspace_voice_agent(
     client: AsyncClient,
     mock_db: AsyncMock,

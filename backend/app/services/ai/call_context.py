@@ -22,6 +22,7 @@ from app.db.session import AsyncSessionLocal
 from app.models.agent import Agent
 from app.services.ai.bandit_arm_selector import BanditArmSelector
 from app.services.ai.bandit_context import build_decision_context
+from app.services.campaigns.voice_experiments import load_call_voice_assignment
 
 logger = structlog.get_logger()
 
@@ -231,10 +232,19 @@ async def lookup_call_context(
             context.timezone = workspace.settings.get("timezone", "America/New_York")
 
         # Look up the assigned agent
-        # Priority: conversation.assigned_agent_id > message.agent_id
-        agent_id = conversation.assigned_agent_id or message.agent_id
+        # Campaign calls retain their own agent even if the conversation was reassigned.
+        agent_id = (
+            (message.agent_id if message.campaign_id else None)
+            or conversation.assigned_agent_id
+            or message.agent_id
+        )
         if agent_id:
-            agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
+            agent_result = await db.execute(
+                select(Agent).where(
+                    Agent.id == agent_id,
+                    Agent.workspace_id == conversation.workspace_id,
+                )
+            )
             context.agent = agent_result.scalar_one_or_none()
             if context.agent:
                 log.info(
@@ -252,6 +262,8 @@ async def lookup_call_context(
                     contact_id=conversation.contact_id,
                     log=log,
                 )
+
+        await load_call_voice_assignment(db, context.agent, message)
 
         # Look up contact info
         if conversation.contact_id:

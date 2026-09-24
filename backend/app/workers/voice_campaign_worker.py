@@ -32,6 +32,7 @@ from app.services.campaigns.cadence import (
     sms_touch_due_at,
     sms_touch_pending,
 )
+from app.services.campaigns.voice_experiments import assign_voice
 from app.services.campaigns.voice_recovery import (
     RECOVERY,
     SMS_PENDING,
@@ -297,6 +298,10 @@ class VoiceCampaignWorker(BaseCampaignWorker):
                     campaign_contact.id,
                     campaign_contact.call_attempts,
                 )
+
+                # Persist the assignment in the same transaction as the call's
+                # Message. Deterministic assignment also survives a rolled-back dial.
+                assign_voice(campaign, campaign_contact)
 
                 # Initiate call
                 message = await voice_service.initiate_call(
