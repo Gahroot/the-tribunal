@@ -303,6 +303,75 @@ class TestRetrieveShortCircuits:
         assert db.execute.await_count == 1
 
 
+def test_keyword_query_matches_any_term_without_interpreting_operators() -> None:
+    stmt = _build_keyword_stmt(
+        uuid.uuid4(), uuid.uuid4(), 'Can I get a refund? !cancel "OR" policy:*', 15
+    )
+    params = stmt.compile().params
+    assert "can | i | get | a | refund | cancel | or | policy" in params.values()
+    assert "to_tsquery" in str(stmt)
+
+
+@pytest.mark.asyncio
+async def test_reranker_can_promote_hit_outside_final_top_k() -> None:
+    from types import SimpleNamespace
+
+    rows = [
+        SimpleNamespace(
+            id=uuid.uuid4(),
+            document_id=uuid.uuid4(),
+            content=f"policy {index}",
+            ordinal=index,
+            char_start=0,
+            char_end=8,
+            distance=0.1 + index / 10,
+        )
+        for index in range(3)
+    ]
+    db = AsyncMock()
+    db.execute.return_value.all = lambda: rows
+    embedder = AsyncMock(return_value=EmbeddingResult(ok=True, embeddings=[[0.1] * 1536]))
+    seen = []
+
+    async def rerank(query: str, chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
+        assert query == "policy"
+        seen.extend(chunks)
+        return list(reversed(chunks))
+
+    results = await KnowledgeRetrievalService().retrieve(
+        db,
+        workspace_id=uuid.uuid4(),
+        agent_id=uuid.uuid4(),
+        query="policy",
+        options=RetrieveOptions(
+            top_k=1,
+            hybrid=False,
+            use_mmr=False,
+            embedder=embedder,
+            reranker=rerank,
+        ),
+    )
+    assert len(seen) == 3
+    assert [chunk.chunk_id for chunk in results] == [rows[2].id]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("top_k", [0, -1, 51])
+async def test_retrieval_rejects_unbounded_candidate_requests(top_k: int) -> None:
+    db = AsyncMock()
+    embedder = AsyncMock()
+    with pytest.raises(ValueError, match="top_k"):
+        await KnowledgeRetrievalService().retrieve(
+            db,
+            workspace_id=uuid.uuid4(),
+            agent_id=uuid.uuid4(),
+            query="pricing",
+            options=RetrieveOptions(top_k=top_k, embedder=embedder),
+        )
+    db.execute.assert_not_awaited()
+    embedder.assert_not_awaited()
+
+
 # ── retrieve_passages() title enrichment ─────────────────────────────
 class TestRetrievePassages:
     @pytest.mark.asyncio

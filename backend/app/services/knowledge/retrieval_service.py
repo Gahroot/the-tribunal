@@ -36,8 +36,8 @@ _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 
 # ── Reranker seam (port of rerank.ts) ───────────────────────────────────────
 # A reranker reorders (and may trim) retrieved chunks for a query, e.g. with a
-# cross-encoder or hosted relevance API. It runs after fusion + MMR. Defaults to
-# the identity no-op so no network dependency is added.
+# cross-encoder or hosted relevance API. It sees the full fused shortlist before
+# the final top-k cut. The local default remains RRF + MMR (no extra provider).
 Reranker = Callable[[str, list["RetrievedChunk"]], Awaitable[list["RetrievedChunk"]]]
 
 
@@ -358,7 +358,12 @@ def _build_keyword_stmt(
     limit: int,
 ) -> Select[tuple[uuid.UUID, uuid.UUID, str, int, int, int, float]]:
     """Full-text over-fetch ranked by ts_rank, scoped to workspace + agent."""
-    ts_query = func.websearch_to_tsquery(TS_CONFIG, query)
+    # Spoken questions include filler and qualifiers absent from the answer.
+    # AND-ing every word makes the lexical arm silently miss exact policy terms.
+    # Only alphanumeric tokens enter the bound tsquery; operators in user input
+    # are never interpreted. PostgreSQL still applies English stemming/stopwords.
+    terms = re.findall(r"[^\W_]+", query.lower())[:64]
+    ts_query = func.to_tsquery(TS_CONFIG, " | ".join(dict.fromkeys(terms)))
     rank = func.ts_rank(KnowledgeChunk.search_vector, ts_query).label("rank")
     return (
         select(
@@ -402,6 +407,8 @@ class KnowledgeRetrievalService:
         ``min_score`` gates dense-only cosine hits, not exact lexical hits.
         """
         opts = options or RetrieveOptions()
+        if not 1 <= opts.top_k <= 50:
+            raise ValueError("top_k must be between 1 and 50")
         embedder = opts.embedder or embed_texts
         reranker = opts.reranker or identity_reranker
 
@@ -486,10 +493,13 @@ class KnowledgeRetrievalService:
             vector_weight=opts.vector_weight if query_vector is not None else 0.0,
             keyword_weight=opts.keyword_weight if opts.hybrid else 0.0,
         )
+        # The local default needs only top-k MMR selections; do not pay for
+        # diversifying an entire shortlist unless another reranker needs it.
+        shortlist_k = candidate_k if opts.reranker is not None else opts.top_k
         selected = (
-            mmr_rerank(scored, lambda_=opts.mmr_lambda, limit=opts.top_k)
+            mmr_rerank(scored, lambda_=opts.mmr_lambda, limit=shortlist_k)
             if opts.use_mmr
-            else scored[: opts.top_k]
+            else scored[:shortlist_k]
         )
 
         chunks = [
@@ -505,7 +515,7 @@ class KnowledgeRetrievalService:
             )
             for entry in selected
         ]
-        return await reranker(trimmed, chunks)
+        return (await reranker(trimmed, chunks))[: opts.top_k]
 
     async def retrieve_passages(
         self,
