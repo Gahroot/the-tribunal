@@ -182,7 +182,9 @@ export function useCallSupervisor({
     }
 
     try {
-      playbackCtxRef.current = new AudioContext({ sampleRate: PLAYBACK_SAMPLE_RATE });
+      // AudioBuffer keeps the stream's 24 kHz rate; the browser resamples it
+      // for its actual output device rate.
+      playbackCtxRef.current = new AudioContext();
       await playbackCtxRef.current.resume();
       if (generation !== generationRef.current) {
         cleanup();
