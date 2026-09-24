@@ -21,6 +21,7 @@ class CRMToolContext:
     db: AsyncSession
     workspace_id: uuid.UUID
     user_id: int
+    approved_action_id: uuid.UUID | None = None
 
 
 def parse_uuid(raw_value: Any) -> uuid.UUID | None:

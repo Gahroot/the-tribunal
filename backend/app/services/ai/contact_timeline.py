@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -66,6 +66,11 @@ async def record_event(
                 "facts": statement.excluded.facts,
                 "occurred_at": statement.excluded.occurred_at,
             },
+            where=or_(
+                ContactTimelineEvent.summary.is_distinct_from(statement.excluded.summary),
+                ContactTimelineEvent.facts.is_distinct_from(statement.excluded.facts),
+                ContactTimelineEvent.occurred_at.is_distinct_from(statement.excluded.occurred_at),
+            ),
         )
     )
 
@@ -265,6 +270,13 @@ async def sync_contact_timeline(
                     "facts": statement.excluded.facts,
                     "occurred_at": statement.excluded.occurred_at,
                 },
+                where=or_(
+                    ContactTimelineEvent.summary.is_distinct_from(statement.excluded.summary),
+                    ContactTimelineEvent.facts.is_distinct_from(statement.excluded.facts),
+                    ContactTimelineEvent.occurred_at.is_distinct_from(
+                        statement.excluded.occurred_at
+                    ),
+                ),
             )
         )
 
@@ -282,21 +294,41 @@ async def read_contact_timeline(
     await sync_contact_timeline(
         db, workspace_id=workspace_id, contact_id=contact_id, current_message_id=current_message_id
     )
-    return list(
+    scope = (
+        ContactTimelineEvent.workspace_id == workspace_id,
+        ContactTimelineEvent.contact_id == contact_id,
+    )
+    order = (ContactTimelineEvent.occurred_at.desc(), ContactTimelineEvent.id.desc())
+    # Preserve a couple of explicit objections/preferences/promises even when
+    # frequent SMS and campaign updates would push them outside the recent window.
+    highlights = (
         (
             await db.execute(
                 select(ContactTimelineEvent)
-                .where(
-                    ContactTimelineEvent.workspace_id == workspace_id,
-                    ContactTimelineEvent.contact_id == contact_id,
-                )
-                .order_by(ContactTimelineEvent.occurred_at.desc(), ContactTimelineEvent.id.desc())
-                .limit(min(limit, 20))
+                .where(*scope, ContactTimelineEvent.facts != {})
+                .order_by(*order)
+                .limit(2)
             )
         )
         .scalars()
         .all()
     )
+    recent = (
+        (
+            await db.execute(
+                select(ContactTimelineEvent).where(*scope).order_by(*order).limit(min(limit, 20))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    seen: set[uuid.UUID] = set()
+    events: list[ContactTimelineEvent] = []
+    for event in [*highlights, *recent]:
+        if event.id not in seen:
+            seen.add(event.id)
+            events.append(event)
+    return events[: min(limit, 20)]
 
 
 def format_contact_timeline(events: list[ContactTimelineEvent]) -> str:

@@ -89,7 +89,7 @@ class ContactAssistantTools:
         return {"success": True, "data": format_contact_timeline(events)}
 
     async def record_contact_note(self, args: ToolArguments) -> dict[str, object]:
-        """Store a human-confirmed fact, never an instruction to other agents."""
+        """Store an approved contact fact, never an instruction to other agents."""
         contact_id = int(args["contact_id"])
         contact = await self.context.db.scalar(
             select_workspace_owned(Contact, self.context.workspace_id, Contact.id == contact_id)
@@ -104,7 +104,7 @@ class ContactAssistantTools:
             workspace_id=self.context.workspace_id,
             contact_id=contact_id,
             source="crm_note",
-            source_id=str(uuid.uuid4()),
+            source_id=str(self.context.approved_action_id or uuid.uuid4()),
             channel="crm",
             summary=note,
             occurred_at=datetime.now(UTC),

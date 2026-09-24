@@ -9,7 +9,9 @@ never raises (recognition must never break taking a call).
 from __future__ import annotations
 
 import uuid
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -36,9 +38,21 @@ async def test_injects_summary_for_returning_caller() -> None:
             )
         ],
     )
-    with patch(
-        "app.services.ai.caller_memory_service.detect_returning_caller",
-        new=AsyncMock(return_value=info),
+    timeline_db = SimpleNamespace(commit=AsyncMock())
+
+    @asynccontextmanager
+    async def timeline_session():
+        yield timeline_db
+
+    with (
+        patch(
+            "app.services.ai.caller_memory_service.detect_returning_caller",
+            new=AsyncMock(return_value=info),
+        ),
+        patch("app.services.ai.call_context.AsyncSessionLocal", timeline_session),
+        patch(
+            "app.services.ai.contact_timeline.read_contact_timeline", new=AsyncMock(return_value=[])
+        ) as timeline,
     ):
         await _attach_returning_caller_context(
             db=object(),
@@ -49,6 +63,9 @@ async def test_injects_summary_for_returning_caller() -> None:
             log=_StubLog(),
         )
 
+    timeline.assert_awaited_once()
+    assert timeline.await_args.args[0] is timeline_db
+    timeline_db.commit.assert_awaited_once()
     assert "returning_summary" in context.contact_info
     assert "Returning Caller" in context.contact_info["returning_summary"]
     assert context.metadata["returning_caller"]["is_returning"] is True
@@ -60,9 +77,21 @@ async def test_no_injection_for_new_caller() -> None:
     context = CallContext()
     context.contact_info = {"name": "New Person"}
 
-    with patch(
-        "app.services.ai.caller_memory_service.detect_returning_caller",
-        new=AsyncMock(return_value=ReturningCallerInfo(is_returning=False)),
+    timeline_db = SimpleNamespace(commit=AsyncMock())
+
+    @asynccontextmanager
+    async def timeline_session():
+        yield timeline_db
+
+    with (
+        patch(
+            "app.services.ai.caller_memory_service.detect_returning_caller",
+            new=AsyncMock(return_value=ReturningCallerInfo(is_returning=False)),
+        ),
+        patch("app.services.ai.call_context.AsyncSessionLocal", timeline_session),
+        patch(
+            "app.services.ai.contact_timeline.read_contact_timeline", new=AsyncMock(return_value=[])
+        ),
     ):
         await _attach_returning_caller_context(
             db=object(),

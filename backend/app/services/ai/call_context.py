@@ -142,12 +142,16 @@ async def _attach_returning_caller_context(
                 read_contact_timeline,
             )
 
-            events = await read_contact_timeline(
-                db,
-                workspace_id=workspace_id,
-                contact_id=contact_id,
-                current_message_id=current_message_id,
-            )
+            # This lookup's session closes without committing. Import history in
+            # its own transaction so the shared record survives the call setup.
+            async with AsyncSessionLocal() as timeline_db:
+                events = await read_contact_timeline(
+                    timeline_db,
+                    workspace_id=workspace_id,
+                    contact_id=contact_id,
+                    current_message_id=current_message_id,
+                )
+                await timeline_db.commit()
             history = format_contact_timeline(events)
             if history or summary:
                 # The timeline already includes legacy caller-memory summaries.

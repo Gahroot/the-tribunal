@@ -25,11 +25,24 @@ from app.services.approval.approval_gate_service import approval_gate_service
 class CRMToolExecutor:
     """Execute CRM tool calls on behalf of the assistant."""
 
-    def __init__(self, db: AsyncSession, workspace_id: uuid.UUID, user_id: int) -> None:
-        self.context = CRMToolContext(db=db, workspace_id=workspace_id, user_id=user_id)
+    def __init__(
+        self,
+        db: AsyncSession,
+        workspace_id: uuid.UUID,
+        user_id: int,
+        *,
+        approved_action_id: uuid.UUID | None = None,
+    ) -> None:
+        self.context = CRMToolContext(
+            db=db,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            approved_action_id=approved_action_id,
+        )
         self.db = db
         self.workspace_id = workspace_id
         self.user_id = user_id
+        self.approved_action_id = approved_action_id
         self.log = structlog.get_logger(service="crm_tool_executor")
         self.tool_metadata = self._build_tool_metadata()
         self.handlers = {name: metadata.handler for name, metadata in self.tool_metadata.items()}
@@ -104,7 +117,10 @@ class CRMToolExecutor:
         if metadata is None:
             return {"success": False, "error": f"Unknown function: {function_name}"}
         try:
-            if metadata.requires_approval and not self._is_explicitly_confirmed(arguments):
+            if metadata.requires_approval and (
+                (function_name == "record_contact_note" and self.approved_action_id is None)
+                or not self._is_explicitly_confirmed(arguments)
+            ):
                 return await self._queue_pending_action(metadata, arguments)
             return await metadata.handler(arguments)
         except Exception:

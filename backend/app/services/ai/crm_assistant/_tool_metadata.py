@@ -85,7 +85,12 @@ async def execute_approved_crm_assistant_tool(
         user_id = int(raw_user_id) if isinstance(raw_user_id, int | str) else 0
     except ValueError:
         user_id = 0
-    executor = CRMToolExecutor(db=db, workspace_id=action.workspace_id, user_id=user_id)
+    executor = CRMToolExecutor(
+        db=db,
+        workspace_id=action.workspace_id,
+        user_id=user_id,
+        approved_action_id=action.id,
+    )
     result = await executor.execute(tool_name, {**action.action_payload, "confirmed": True})
     return {"tool": tool_name, **result}
 

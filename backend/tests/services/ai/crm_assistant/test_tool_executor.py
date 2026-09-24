@@ -2,7 +2,7 @@
 
 import uuid
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -41,6 +41,44 @@ async def test_tool_spec_handler_parity() -> None:
 
 
 @pytest.mark.asyncio
+async def test_model_confirmation_cannot_write_contact_memory() -> None:
+    executor = CRMToolExecutor(db=AsyncMock(), workspace_id=uuid.uuid4(), user_id=1)
+    with patch.object(
+        executor,
+        "_queue_pending_action",
+        new_callable=AsyncMock,
+        return_value={"pending_approval": True},
+    ) as queue:
+        result = await executor.execute(
+            "record_contact_note",
+            {"contact_id": 10, "note": "Call tomorrow", "confirmed": True},
+        )
+    assert result["pending_approval"] is True
+    queue.assert_awaited_once()
+    executor.db.scalar.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_approved_note_retries_use_action_identity() -> None:
+    from sqlalchemy.dialects import postgresql
+
+    action_id = uuid.uuid4()
+    db = AsyncMock()
+    db.scalar.return_value = object()
+    executor = CRMToolExecutor(
+        db=db, workspace_id=uuid.uuid4(), user_id=1, approved_action_id=action_id
+    )
+    args = {"contact_id": 10, "note": "Call tomorrow", "confirmed": True}
+    assert (await executor.execute("record_contact_note", args))["success"]
+    assert (await executor.execute("record_contact_note", args))["success"]
+    statements = [
+        call.args[0].compile(dialect=postgresql.dialect()) for call in db.execute.await_args_list
+    ]
+    assert len(statements) == 2
+    assert all(str(action_id) in stmt.params.values() for stmt in statements)
+
+
+@pytest.mark.asyncio
 async def test_execute_unknown_tool_returns_error() -> None:
     """Unknown tool names should return a structured error, not raise."""
     executor = CRMToolExecutor(db=AsyncMock(), workspace_id=uuid.uuid4(), user_id=1)
@@ -74,6 +112,7 @@ async def test_search_contacts_filters_by_workspace() -> None:
     async def fake_execute(stmt: Any) -> Any:
         captured_stmts.append(stmt)
         from unittest.mock import MagicMock
+
         result = MagicMock()
         result.scalars.return_value.all.return_value = []
         return result

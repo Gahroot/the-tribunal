@@ -3,12 +3,16 @@
 import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy.dialects import postgresql
 
-from app.services.ai.contact_timeline import format_contact_timeline, record_event
+from app.services.ai.contact_timeline import (
+    format_contact_timeline,
+    read_contact_timeline,
+    record_event,
+)
 
 
 @pytest.mark.asyncio
@@ -45,6 +49,51 @@ async def test_record_event_uses_source_conflict_for_retries():
     )
     query = str(db.execute.await_args.args[0].compile(dialect=postgresql.dialect()))
     assert "ON CONFLICT ON CONSTRAINT uq_contact_timeline_source DO UPDATE" in query
+
+
+@pytest.mark.asyncio
+async def test_relevant_callback_survives_a_busy_sms_thread():
+    workspace_id = uuid.uuid4()
+    contact_id = 17
+    callback = SimpleNamespace(
+        id=uuid.uuid4(),
+        channel="voice",
+        occurred_at=datetime.now(UTC),
+        summary="Asked for a callback",
+        facts={"callback_promise": "Thursday"},
+    )
+    sms = [
+        SimpleNamespace(
+            id=uuid.uuid4(),
+            channel="sms",
+            occurred_at=datetime.now(UTC),
+            summary=f"message {i}",
+            facts={},
+        )
+        for i in range(8)
+    ]
+
+    class Result:
+        def __init__(self, events):
+            self.events = events
+
+        def scalars(self):
+            return self
+
+        def all(self):
+            return self.events
+
+    db = SimpleNamespace(execute=AsyncMock(side_effect=[Result([callback]), Result(sms)]))
+    with patch("app.services.ai.contact_timeline.sync_contact_timeline", new_callable=AsyncMock):
+        events = await read_contact_timeline(
+            db, workspace_id=workspace_id, contact_id=contact_id, limit=8
+        )
+    assert events[0] is callback
+    assert len(events) == 8
+    for call in db.execute.await_args_list:
+        query = call.args[0].compile(dialect=postgresql.dialect())
+        assert workspace_id in query.params.values()
+        assert contact_id in query.params.values()
 
 
 def test_timeline_keeps_channel_and_structured_post_call_facts_bounded():

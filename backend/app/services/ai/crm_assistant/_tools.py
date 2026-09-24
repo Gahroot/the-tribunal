@@ -49,7 +49,7 @@ CRM_TOOLS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "record_contact_note",
-            "description": "Record a confirmed fact for this contact. Requires human approval.",
+            "description": "Record a contact fact, subject to workspace approval rules.",
             "parameters": {
                 "type": "object",
                 "properties": {"contact_id": {"type": "integer"}, "note": {"type": "string"}},
