@@ -7,9 +7,12 @@ message count toward qualification and appointments.
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import Integer, and_, case, exists, func, literal, select
+from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.selectable import Subquery
 
 from app.core.config import settings
 from app.models.appointment import Appointment, AppointmentStatus
@@ -25,7 +28,7 @@ from app.models.conversation import (
 )
 
 
-def _attempts(workspace_id: uuid.UUID, campaign_id: uuid.UUID | None = None):
+def _attempts(workspace_id: uuid.UUID, campaign_id: uuid.UUID | None = None) -> Subquery:
     """One row per initiated outbound voice message, including old attempts."""
     appointment_booked = exists().where(
         Appointment.message_id == Message.id,
@@ -101,7 +104,7 @@ def _attempts(workspace_id: uuid.UUID, campaign_id: uuid.UUID | None = None):
     return query.subquery()
 
 
-def _metrics(row) -> dict:
+def _metrics(row: Row[Any]) -> dict[str, Any]:
     calls = int(row.calls or 0)
     connected = int(row.connected or 0)
     conversations = int(row.conversation or 0)
@@ -136,7 +139,7 @@ async def get_attempt_funnel(
     starts_at: datetime,
     ends_at: datetime,
     campaign_id: uuid.UUID | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Aggregate calls in [starts_at, ends_at) by four independent dimensions."""
     attempts = _attempts(workspace_id, campaign_id)
     hour = func.extract("hour", attempts.c.called_at.op("AT TIME ZONE")("UTC")).cast(Integer)
@@ -146,7 +149,7 @@ async def get_attempt_funnel(
         "lead_source": attempts.c.source,
         "campaign": attempts.c.campaign_id,
     }
-    result = {}
+    result: dict[str, dict[str, Any] | list[dict[str, Any]]] = {}
     for name, dimension in [("overall", None), *dimensions.items()]:
         cols = [
             func.count().label("calls"),

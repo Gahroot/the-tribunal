@@ -7,6 +7,7 @@ permission. The user-provided $224/$487 figures are context, not measured here.
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -55,7 +56,7 @@ class FunnelPeriod:
             raise ValueError("Cost must be finite and nonnegative")
 
 
-def benchmark_context() -> dict:
+def benchmark_context() -> dict[str, Any]:
     """Arithmetic on brief-supplied figures, NOT an observed or sourced result.
 
     Do not use as customer proof without independently validating denominators,
@@ -82,7 +83,7 @@ def _delta(before: Decimal | None, after: Decimal | None) -> Decimal | None:
     return (after - before) * 100 if before is not None and after is not None else None
 
 
-def build_proof_pack(before: FunnelPeriod, after: FunnelPeriod) -> dict:
+def build_proof_pack(before: FunnelPeriod, after: FunnelPeriod) -> dict[str, Any]:
     """Compute comparable funnel rates and lift; leave unknowns explicitly null.
 
     Both windows need independent source references; operator must verify cohort,
@@ -93,7 +94,7 @@ def build_proof_pack(before: FunnelPeriod, after: FunnelPeriod) -> dict:
     if before.ends_at > after.starts_at:
         raise ValueError("Comparison windows must not overlap")
 
-    def metrics(period: FunnelPeriod) -> dict:
+    def metrics(period: FunnelPeriod) -> dict[str, Any]:
         return {
             "attempts": period.attempts,
             "connected": period.connected,
