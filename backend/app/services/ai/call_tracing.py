@@ -27,6 +27,8 @@ from opentelemetry.trace import (
     set_span_in_context,
 )
 
+from app.services.ai.voice_latency import VoiceLatencyBudget
+
 _TRACER = trace.get_tracer("app.services.ai.call_tracing")
 _CALL_ID: ContextVar[str | None] = ContextVar("call_id", default=None)
 
@@ -36,6 +38,7 @@ class _Totals:
     # One shared object: ContextVar.set in a child task does not update its parent.
     started_at: float = 0
     first_audio: bool = False
+    latency: VoiceLatencyBudget | None = None
     media_started: float | None = None
     root: Span = trace.INVALID_SPAN
     cost_usd: Decimal = Decimal(0)
@@ -126,6 +129,14 @@ def grok_token_cost(response: object) -> str | None:
 def call_totals() -> _Totals | None:
     """Capture per-call counters before passing callbacks to an external provider."""
     return _TOTALS.get()
+
+
+def configure_latency_budget(provider: str) -> None:
+    totals = _TOTALS.get()
+    if totals is not None and totals.latency is None:
+        totals.latency = VoiceLatencyBudget(totals.root, provider)
+        totals.root.set_attribute("voice.provider_path", totals.latency.provider)
+        totals.latency.start("greeting", totals.started_at)
 
 
 def mark_media_started() -> None:
@@ -287,6 +298,8 @@ def measure_first_audio(started_at: float | None = None) -> Iterator[None]:
     try:
         yield
     finally:
+        if totals.latency is not None:
+            totals.latency.close()
         span = totals.root
         media_started = totals.media_started
         elapsed_seconds = (
@@ -322,8 +335,10 @@ def measure_first_audio(started_at: float | None = None) -> Iterator[None]:
 
 
 def record_first_audio() -> None:
-    """Record first outbound media frame; independent of the provider's first chunk."""
+    """Observe a sent frame for call/turn TTFA, not merely a provider audio chunk."""
     totals = _TOTALS.get()
+    if totals is not None and totals.latency is not None:
+        totals.latency.audio_sent()
     if totals is None or totals.first_audio:
         return
     totals.first_audio = True

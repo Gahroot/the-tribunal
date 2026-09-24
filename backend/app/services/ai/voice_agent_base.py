@@ -72,6 +72,9 @@ class VoiceAgentBase(ABC):
             agent: Optional Agent model for configuration
             timezone: Timezone for date context in prompts (IANA format)
         """
+        from app.services.ai.call_tracing import call_totals
+
+        self._call_totals = call_totals()
         self.agent = agent
         self.ws: ClientConnection | None = None
         self.provider_failure_reason: str | None = None
@@ -116,6 +119,18 @@ class VoiceAgentBase(ABC):
     def observe_provider_event(self, event: dict[str, Any]) -> None:
         """Record fatal/rate-limit events without retaining provider payloads."""
         from app.services.ai.voice_health import event_failure_reason
+
+        budget = self._call_totals.latency if self._call_totals is not None else None
+        if budget is not None:
+            event_type = event.get("type")
+            if event_type in {"input_audio_buffer.speech_started", "input_audio.started"}:
+                budget.interrupt()
+            elif event_type == "input_audio_buffer.speech_stopped":
+                budget.start("turn")
+            elif event_type == "turn.created":
+                # GPT Live exposes no speech-end event: label this separately,
+                # rather than presenting response-start latency as turn latency.
+                budget.start("response")
 
         reason = event_failure_reason(event)
         if reason:

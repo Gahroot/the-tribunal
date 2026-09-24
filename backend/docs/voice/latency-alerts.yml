@@ -1,0 +1,10 @@
+groups:
+  - name: voice-latency
+    rules:
+      - alert: VoiceAudioLatencyRegression
+        expr: sum by (provider_path, phase) (increase(voice_audio_latency_regressions_total[5m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Voice audio exceeded 1 s on {{ $labels.provider_path }} ({{ $labels.phase }})'
+          description: 'Inspect voice.audio_latency spans and voice_latency_budget_exceeded logs. Includes missing-audio waits; target is strictly below 500 ms. Do not hang up a slow call.'

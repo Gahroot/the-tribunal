@@ -37,6 +37,19 @@ from prometheus_client import Counter, Histogram
 # Voice calls
 # --------------------------------------------------------------------------- #
 
+voice_audio_latency_ms = Histogram(
+    "voice_audio_latency_ms",
+    "Server-side first outbound audio latency, not caller-heard PSTN latency.",
+    labelnames=("provider_path", "phase"),
+    buckets=(100, 250, 500, 750, 1000, 1500, 2000, 5000, 10000),
+)
+
+voice_audio_latency_regressions_total = Counter(
+    "voice_audio_latency_regressions_total",
+    "Voice greeting/turn waits exceeding one second, including missing audio.",
+    labelnames=("provider_path", "phase"),
+)
+
 voice_calls_started_total = Counter(
     "voice_calls_started_total",
     "Outbound or inbound voice calls that have started (one event per call).",

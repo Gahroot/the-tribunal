@@ -398,6 +398,7 @@ class LiveVoiceAgentSession(VoiceAgentBase):
 
     def _handle_event(self, event: dict[str, Any]) -> None:
         """Route a protocol v3 event."""
+        self.observe_provider_event(event)
         event_type = event.get("type", "")
         handler = self._EVENT_HANDLERS.get(event_type)
         if handler is None:

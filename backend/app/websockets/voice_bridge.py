@@ -648,6 +648,10 @@ async def _voice_stream_bridge_body(  # noqa: PLR0912, PLR0915
         elevenlabs_key_configured=bool(settings.elevenlabs_api_key),
     )
 
+    from app.services.ai.call_tracing import configure_latency_budget
+
+    configure_latency_budget(voice_provider)
+
     # Create appropriate voice session based on provider
     log.info("creating_voice_session", provider=voice_provider)
     if workspace_id is None:
@@ -1282,10 +1286,9 @@ async def _receive_from_provider_and_send_to_telnyx(  # noqa: PLR0912, PLR0915
             await websocket.send_text(message)
 
         audio_chunks_sent += 1
-        if audio_chunks_sent == 1:
-            from app.services.ai.call_tracing import record_first_audio
+        from app.services.ai.call_tracing import record_first_audio
 
-            record_first_audio()
+        record_first_audio()
         total_audio_bytes += len(audio_data)
 
         # Log first few chunks for debugging
