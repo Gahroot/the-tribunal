@@ -16719,6 +16719,106 @@
         "title": "MissionStatus",
         "type": "string"
       },
+      "ModelPolicyResponse": {
+        "properties": {
+          "input_usd_per_million": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Usd Per Million"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "output_usd_per_million": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Usd Per Million"
+          },
+          "task": {
+            "enum": [
+              "voice_llm",
+              "transcript_analysis",
+              "transcript_judgment",
+              "caller_memory",
+              "prompt_improvement",
+              "reports"
+            ],
+            "title": "Task",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task",
+          "model",
+          "input_usd_per_million",
+          "output_usd_per_million"
+        ],
+        "title": "ModelPolicyResponse",
+        "type": "object"
+      },
+      "ModelPolicyUpdate": {
+        "properties": {
+          "input_usd_per_million": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,6}|(?=[\\d.]{1,13}0*$)\\d{0,6}\\.\\d{0,6}0*$)",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Usd Per Million"
+          },
+          "model": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*$",
+            "title": "Model",
+            "type": "string"
+          },
+          "output_usd_per_million": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,6}|(?=[\\d.]{1,13}0*$)\\d{0,6}\\.\\d{0,6}0*$)",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Usd Per Million"
+          }
+        },
+        "required": [
+          "model"
+        ],
+        "title": "ModelPolicyUpdate",
+        "type": "object"
+      },
       "NegotiationStep": {
         "description": "Ordered autonomous sales strategy step for an offer.",
         "properties": {
@@ -47422,6 +47522,240 @@
         "summary": "Update Variant",
         "tags": [
           "Message Tests"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/model-configs": {
+      "get": {
+        "operationId": "list_model_policies_api_v1_workspaces__workspace_id__model_configs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ModelPolicyResponse"
+                  },
+                  "title": "Response List Model Policies Api V1 Workspaces  Workspace Id  Model Configs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Model Policies",
+        "tags": [
+          "Model Configs"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/model-configs/{task}": {
+      "delete": {
+        "operationId": "clear_model_policy_api_v1_workspaces__workspace_id__model_configs__task__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task",
+            "required": true,
+            "schema": {
+              "enum": [
+                "voice_llm",
+                "transcript_analysis",
+                "transcript_judgment",
+                "caller_memory",
+                "prompt_improvement",
+                "reports"
+              ],
+              "title": "Task",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Clear Model Policy",
+        "tags": [
+          "Model Configs"
+        ]
+      },
+      "put": {
+        "operationId": "set_model_policy_api_v1_workspaces__workspace_id__model_configs__task__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task",
+            "required": true,
+            "schema": {
+              "enum": [
+                "voice_llm",
+                "transcript_analysis",
+                "transcript_judgment",
+                "caller_memory",
+                "prompt_improvement",
+                "reports"
+              ],
+              "title": "Task",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelPolicyUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelPolicyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Set Model Policy",
+        "tags": [
+          "Model Configs"
         ]
       }
     },

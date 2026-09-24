@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     openai_oauth_originator: str = ""
     openai_oauth_user_agent: str = ""
     openai_realtime_model: str = "gpt-realtime-2"
+    transcript_analysis_model: str = "gpt-5.4-nano"
+    transcript_judgment_model: str = "gpt-5.4-mini"
+    caller_memory_model: str = "gpt-5.4-nano"
+    prompt_improvement_model: str = "gpt-5.4-mini"
+    reports_model: str = "gpt-5.4-mini"
     openai_realtime_client_secret_ttl_seconds: int = 600
     openai_realtime_idle_timeout_ms: int | None = 6000
     openai_codex_voice_enabled: bool = False

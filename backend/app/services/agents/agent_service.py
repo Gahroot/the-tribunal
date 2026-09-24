@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.crud import get_or_404
 from app.db.pagination import paginate
 from app.models.agent import Agent, generate_public_id
+from app.models.model_config import ModelConfig
 from app.schemas.agent import (
     AgentCreate,
     AgentResponse,
@@ -81,6 +82,16 @@ class AgentService:
         """Create a new agent."""
         agent = Agent(workspace_id=workspace_id, **agent_in.model_dump())
         self.db.add(agent)
+        if agent.realtime_model:
+            await self.db.flush()
+            self.db.add(
+                ModelConfig(
+                    workspace_id=workspace_id,
+                    agent_id=agent.id,
+                    task="voice_llm",
+                    model=agent.realtime_model,
+                )
+            )
         await self.db.commit()
         await self.db.refresh(agent)
         self.log.info("agent_created", agent_id=agent.id, workspace_id=str(workspace_id))
@@ -106,6 +117,33 @@ class AgentService:
         update_data = agent_in.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             setattr(agent, field, value)
+        if "realtime_model" in update_data:
+            row = (
+                await self.db.execute(
+                    select(ModelConfig).where(
+                        ModelConfig.workspace_id == workspace_id,
+                        ModelConfig.agent_id == agent_id,
+                        ModelConfig.task == "voice_llm",
+                    )
+                )
+            ).scalar_one_or_none()
+            if update_data["realtime_model"] is None:
+                if row is not None:
+                    await self.db.delete(row)
+            elif row is None:
+                self.db.add(
+                    ModelConfig(
+                        workspace_id=workspace_id,
+                        agent_id=agent_id,
+                        task="voice_llm",
+                        model=update_data["realtime_model"],
+                    )
+                )
+            else:
+                if row.model != update_data["realtime_model"]:
+                    row.input_usd_per_million = None
+                    row.output_usd_per_million = None
+                row.model = update_data["realtime_model"]
 
         await self.db.commit()
         await self.db.refresh(agent)

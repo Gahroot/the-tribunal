@@ -13,9 +13,11 @@ from openai import AsyncOpenAI
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.agent import Agent
 from app.models.call_outcome import CallOutcome, OutcomeType
 from app.models.improvement_suggestion import ImprovementSuggestion
 from app.models.prompt_version import PromptVersion
+from app.services.ai.model_config import DEFAULTS, Selection, log_model_usage, resolve_model
 from app.services.ai.openai_credentials import create_openai_client
 from app.services.ai.prompt_version_service import PromptVersionService
 
@@ -72,6 +74,14 @@ class PromptImprovementService:
         if self._client is None:
             self._client = create_openai_client()
         return self._client
+
+    async def _selection(self, db: AsyncSession, version: PromptVersion) -> Selection:
+        workspace_id = await db.scalar(
+            select(Agent.workspace_id).where(Agent.id == version.agent_id)
+        )
+        if workspace_id is None:
+            raise ValueError("Prompt agent not found")
+        return await resolve_model(db, "prompt_improvement", workspace_id, version.agent_id)
 
     async def analyze_performance(
         self,
@@ -142,8 +152,9 @@ class PromptImprovementService:
 
         # Call LLM for analysis
         client = self._get_client()
+        selection = await self._selection(db, version)
         response = await client.chat.completions.create(
-            model="gpt-5.4-mini",
+            model=selection.model,
             messages=[
                 {
                     "role": "system",
@@ -162,6 +173,7 @@ class PromptImprovementService:
         # Parse response
         import json
 
+        log_model_usage("prompt_improvement", selection, response)
         analysis_text = response.choices[0].message.content or "{}"
         analysis_data = json.loads(analysis_text)
 
@@ -178,6 +190,7 @@ class PromptImprovementService:
         version: PromptVersion,
         analysis: PromptAnalysis,
         num_variations: int = 3,
+        selection: Selection | None = None,
     ) -> list[GeneratedVariation]:
         """Generate improved prompt variations based on analysis.
 
@@ -201,7 +214,9 @@ class PromptImprovementService:
                     mutations.append(m)
 
         for mutation_type in mutations:
-            variation = await self._generate_single_variation(version, analysis, mutation_type)
+            variation = await self._generate_single_variation(
+                version, analysis, mutation_type, selection=selection
+            )
             if variation:
                 variations.append(variation)
 
@@ -212,6 +227,8 @@ class PromptImprovementService:
         version: PromptVersion,
         analysis: PromptAnalysis,
         mutation_type: str,
+        *,
+        selection: Selection | None = None,
     ) -> GeneratedVariation | None:
         """Generate a single prompt variation.
 
@@ -255,8 +272,9 @@ Return JSON with:
 """
 
         client = self._get_client()
+        selection = selection or Selection(DEFAULTS["prompt_improvement"])
         response = await client.chat.completions.create(
-            model="gpt-5.4-mini",
+            model=selection.model,
             messages=[
                 {
                     "role": "system",
@@ -273,6 +291,7 @@ Return JSON with:
 
         import json
 
+        log_model_usage("prompt_improvement", selection, response)
         result_text = response.choices[0].message.content or "{}"
         result = json.loads(result_text)
 
@@ -357,11 +376,22 @@ Return JSON with:
 
             from app.services.ai.prompt_scenario_suite import require_scenario_pass
 
+            workspace_id = await db.scalar(
+                select(Agent.workspace_id).where(Agent.id == suggestion.agent_id)
+            )
+            if workspace_id is None:
+                raise ValueError("Suggestion agent not found")
             await require_scenario_pass(
                 SimpleNamespace(
                     system_prompt=suggestion.suggested_prompt,
                     initial_greeting=suggestion.suggested_greeting,
-                )
+                ),
+                simulation=await resolve_model(
+                    db, "prompt_improvement", workspace_id, suggestion.agent_id
+                ),
+                judgment=await resolve_model(
+                    db, "transcript_judgment", workspace_id, suggestion.agent_id
+                ),
             )
 
         # Create new prompt version

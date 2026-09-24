@@ -63,6 +63,7 @@ from app.models.message_test import (
     TestVariant,
 )
 from app.models.message_trace import MessageTrace
+from app.models.model_config import ModelConfig
 from app.models.offer import Offer
 from app.models.offer_lead_magnet import OfferLeadMagnet
 from app.models.opportunity import Opportunity, OpportunityActivity, OpportunityLineItem
@@ -136,6 +137,7 @@ __all__ = [
     "Message",
     "DemoRequest",
     "Agent",
+    "ModelConfig",
     "Campaign",
     "CampaignContact",
     "CampaignNumberPool",

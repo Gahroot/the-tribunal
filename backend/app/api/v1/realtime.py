@@ -14,6 +14,7 @@ from app.api.deps import DB, CurrentUser, get_workspace
 from app.core.config import settings
 from app.models.workspace import Workspace
 from app.services.agents import AgentService
+from app.services.ai.model_config import resolve_model
 from app.services.ai.openai_credentials import OpenAICredentialError, resolve_openai_credentials
 from app.services.ai.openai_realtime_config import (
     build_client_secret_request,
@@ -73,9 +74,10 @@ async def create_realtime_token(
             detail="Voice service not configured",
         ) from None
 
+    voice_model = await resolve_model(db, "voice_llm", workspace_id, agent.id)
     session_config = build_realtime_session_config(
         instructions=instructions,
-        model=normalize_realtime_model(agent.realtime_model),
+        model=normalize_realtime_model(voice_model.model),
         reasoning_effort=agent.reasoning_effort,
         voice=body.voice or agent.voice_id,
         turn_detection_mode=agent.turn_detection_mode,

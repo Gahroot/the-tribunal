@@ -4396,6 +4396,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/model-configs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Model Policies */
+        get: operations["list_model_policies_api_v1_workspaces__workspace_id__model_configs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/model-configs/{task}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Model Policy */
+        put: operations["set_model_policy_api_v1_workspaces__workspace_id__model_configs__task__put"];
+        post?: never;
+        /** Clear Model Policy */
+        delete: operations["clear_model_policy_api_v1_workspaces__workspace_id__model_configs__task__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/nudge-settings": {
         parameters: {
             query?: never;
@@ -13280,6 +13315,29 @@ export interface components {
          * @enum {string}
          */
         MissionStatus: "draft" | "active" | "paused" | "completed" | "archived";
+        /** ModelPolicyResponse */
+        ModelPolicyResponse: {
+            /** Input Usd Per Million */
+            input_usd_per_million: string | null;
+            /** Model */
+            model: string;
+            /** Output Usd Per Million */
+            output_usd_per_million: string | null;
+            /**
+             * Task
+             * @enum {string}
+             */
+            task: "voice_llm" | "transcript_analysis" | "transcript_judgment" | "caller_memory" | "prompt_improvement" | "reports";
+        };
+        /** ModelPolicyUpdate */
+        ModelPolicyUpdate: {
+            /** Input Usd Per Million */
+            input_usd_per_million?: number | string | null;
+            /** Model */
+            model: string;
+            /** Output Usd Per Million */
+            output_usd_per_million?: number | string | null;
+        };
         /**
          * NegotiationStep
          * @description Ordered autonomous sales strategy step for an offer.
@@ -27378,6 +27436,109 @@ export interface operations {
                 workspace_id: string;
                 test_id: string;
                 variant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_model_policies_api_v1_workspaces__workspace_id__model_configs_get: {
+        parameters: {
+            query?: {
+                agent_id?: string | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelPolicyResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_model_policy_api_v1_workspaces__workspace_id__model_configs__task__put: {
+        parameters: {
+            query?: {
+                agent_id?: string | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+                task: "voice_llm" | "transcript_analysis" | "transcript_judgment" | "caller_memory" | "prompt_improvement" | "reports";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelPolicyUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelPolicyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_model_policy_api_v1_workspaces__workspace_id__model_configs__task__delete: {
+        parameters: {
+            query?: {
+                agent_id?: string | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+                task: "voice_llm" | "transcript_analysis" | "transcript_judgment" | "caller_memory" | "prompt_improvement" | "reports";
             };
             cookie?: never;
         };

@@ -79,7 +79,10 @@ async def test_judge_review_or_low_score_blocks() -> None:
 @pytest.mark.asyncio
 async def test_system_approval_cannot_create_version_when_suite_fails() -> None:
     suggestion = SimpleNamespace(
-        status="pending", suggested_prompt="unsafe", suggested_greeting=None
+        status="pending",
+        suggested_prompt="unsafe",
+        suggested_greeting=None,
+        agent_id=uuid.uuid4(),
     )
     db = AsyncMock()
     db.execute.return_value = MagicMock()
@@ -104,7 +107,7 @@ async def test_replay_is_limited_to_fifty_and_does_not_return_transcripts() -> N
     db = AsyncMock()
     db.execute.return_value = MagicMock()
     db.execute.return_value.all.return_value = [("Caller: hello\nAgent: hi",)]
-    version = SimpleNamespace(id="version-id")
+    version = SimpleNamespace(id="version-id", agent_id=uuid.uuid4())
     with patch.object(
         suite,
         "_verdict",

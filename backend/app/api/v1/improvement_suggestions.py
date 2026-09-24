@@ -381,7 +381,10 @@ async def generate_suggestions_for_agent(
 
     # Generate variations
     variations = await service.generate_variations(
-        active_version, analysis, num_variations=body.num_suggestions
+        active_version,
+        analysis,
+        num_variations=body.num_suggestions,
+        selection=await service._selection(db, active_version),
     )
 
     # Create suggestions

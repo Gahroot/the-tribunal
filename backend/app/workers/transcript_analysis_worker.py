@@ -6,9 +6,11 @@ into the linked CallOutcome.signals dict.
 """
 
 import asyncio
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db.session import AsyncSessionLocal
@@ -16,11 +18,26 @@ from app.models.call_outcome import CallOutcome
 from app.models.conversation import Message
 from app.services.ai.bandit_reward_service import record_bandit_reward
 from app.services.ai.call_judge import judge_call
+from app.services.ai.model_config import Selection, resolve_model
 from app.services.ai.transcript_analysis import analyze_transcript
 from app.workers.base import BaseWorker, WorkerRegistry
 from app.workers.retryable import RetryableWorker
 
 BATCH_SIZE = 10
+
+
+async def _load_policies(
+    db: AsyncSession, items: list[tuple[Message, CallOutcome, str | None]]
+) -> dict[tuple[uuid.UUID, uuid.UUID | None], tuple[Selection, Selection]]:
+    policies: dict[tuple[uuid.UUID, uuid.UUID | None], tuple[Selection, Selection]] = {}
+    for msg, _, _ in items:
+        key = (msg.conversation.workspace_id, msg.agent_id)
+        if key not in policies:
+            policies[key] = (
+                await resolve_model(db, "transcript_analysis", *key),
+                await resolve_model(db, "transcript_judgment", *key),
+            )
+    return policies
 
 
 class TranscriptAnalysisWorker(RetryableWorker, BaseWorker):
@@ -43,7 +60,7 @@ class TranscriptAnalysisWorker(RetryableWorker, BaseWorker):
             result = await db.execute(
                 select(Message)
                 .join(CallOutcome, CallOutcome.message_id == Message.id)
-                .options(selectinload(Message.call_outcome))
+                .options(selectinload(Message.call_outcome), selectinload(Message.conversation))
                 .where(
                     Message.channel == "voice",
                     CallOutcome.signals["live_only"].astext.is_(None),
@@ -77,8 +94,14 @@ class TranscriptAnalysisWorker(RetryableWorker, BaseWorker):
 
             self.logger.info("transcript_analysis_batch", count=len(items))
 
+            policies = await _load_policies(db, items)
+
             async def evaluate(
-                transcript: str | None, analyzed: object, judged: object
+                transcript: str | None,
+                analyzed: object,
+                judged: object,
+                extraction: Selection,
+                judging: Selection,
             ) -> tuple[object, object]:
                 if not transcript:
                     return None, None
@@ -88,8 +111,12 @@ class TranscriptAnalysisWorker(RetryableWorker, BaseWorker):
                 ):
                     judged = None
                 analysis = await asyncio.gather(
-                    analyze_transcript(transcript) if analyzed is None else asyncio.sleep(0),
-                    judge_call(transcript) if judged is None else asyncio.sleep(0),
+                    analyze_transcript(transcript, selection=extraction)
+                    if analyzed is None
+                    else asyncio.sleep(0),
+                    judge_call(transcript, selection=judging)
+                    if judged is None
+                    else asyncio.sleep(0),
                     return_exceptions=True,
                 )
                 return analysis
@@ -102,8 +129,9 @@ class TranscriptAnalysisWorker(RetryableWorker, BaseWorker):
                         if outcome.signals.get("analyzed") == "unavailable"
                         else outcome.signals.get("analyzed"),
                         outcome.signals.get("judge"),
+                        *policies[(msg.conversation.workspace_id, msg.agent_id)],
                     )
-                    for _, outcome, text in items
+                    for msg, outcome, text in items
                 ),
                 return_exceptions=True,
             )

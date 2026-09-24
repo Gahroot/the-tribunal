@@ -36,6 +36,7 @@ from app.api.v1 import (
     knowledge_documents,
     message_templates,
     message_tests,
+    model_configs,
     nudges,
     offers,
     opportunities,
@@ -96,6 +97,11 @@ api_router.include_router(
     agents.router,
     prefix="/workspaces/{workspace_id}/agents",
     tags=["Agents"],
+)
+api_router.include_router(
+    model_configs.router,
+    prefix="/workspaces/{workspace_id}/model-configs",
+    tags=["Model Configs"],
 )
 api_router.include_router(
     crm_assistant.router,

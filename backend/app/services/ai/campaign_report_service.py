@@ -19,6 +19,7 @@ from sqlalchemy.sql.expression import extract
 from app.models.call_outcome import CallOutcome
 from app.models.campaign import Campaign, CampaignContact, CampaignType
 from app.models.campaign_report import CampaignReport
+from app.services.ai.model_config import Selection, log_model_usage, resolve_model
 from app.services.ai.openai_credentials import create_openai_client
 
 logger = structlog.get_logger()
@@ -67,7 +68,8 @@ class CampaignReportService:
             log.info("Campaign data gathered", contact_count=data.get("total_contacts", 0))
 
             # Analyze with LLM
-            analysis = await self._analyze_with_llm(data)
+            selection = await resolve_model(db, "reports", campaign.workspace_id, campaign.agent_id)
+            analysis = await self._analyze_with_llm(data, selection=selection)
 
             # Populate report
             report.metrics_snapshot = data.get("metrics", {})
@@ -345,8 +347,10 @@ class CampaignReportService:
 
         return {"hourly": hourly, "daily": daily}
 
-    async def _analyze_with_llm(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Send gathered data to GPT-4o for analysis."""
+    async def _analyze_with_llm(
+        self, data: dict[str, Any], *, selection: Selection
+    ) -> dict[str, Any]:
+        """Send gathered data to the selected report model."""
         client = self._get_client()
 
         system_prompt = (
@@ -384,7 +388,7 @@ class CampaignReportService:
         )
 
         response = await client.chat.completions.create(
-            model="gpt-5.4-mini",
+            model=selection.model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -393,5 +397,6 @@ class CampaignReportService:
             temperature=0.3,
         )
 
+        log_model_usage("reports", selection, response)
         text = response.choices[0].message.content or "{}"
         return json.loads(text)  # type: ignore[no-any-return]

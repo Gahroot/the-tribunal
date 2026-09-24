@@ -16,6 +16,7 @@ from app.models.call_outcome import CallOutcome
 from app.models.conversation import Message
 from app.models.improvement_suggestion import ImprovementSuggestion
 from app.models.prompt_version import PromptVersion
+from app.services.ai.model_config import resolve_model
 from app.services.ai.prompt_improvement_service import PromptImprovementService
 from app.services.ai.prompt_scenario_suite import require_scenario_pass
 from app.workers.base import BaseWorker, WorkerRegistry
@@ -145,7 +146,15 @@ class PromptImprovementWorker(RetryableWorker, BaseWorker):
                 continue
             # Outcome evidence alone cannot promote a prompt: test the candidate
             # itself before deactivating the current version.
-            await require_scenario_pass(candidate)
+            await require_scenario_pass(
+                candidate,
+                simulation=await resolve_model(
+                    db, "prompt_improvement", agent.workspace_id, agent.id
+                ),
+                judgment=await resolve_model(
+                    db, "transcript_judgment", agent.workspace_id, agent.id
+                ),
+            )
             updated = await db.execute(
                 update(PromptVersion)
                 .where(
@@ -233,7 +242,10 @@ class PromptImprovementWorker(RetryableWorker, BaseWorker):
 
             # Generate variations (just 1 for auto-mode)
             variations = await service.generate_variations(
-                active_version, analysis, num_variations=1
+                active_version,
+                analysis,
+                num_variations=1,
+                selection=await service._selection(db, active_version),
             )
 
             # Create suggestions

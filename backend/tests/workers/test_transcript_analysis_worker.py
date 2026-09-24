@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.services.ai.model_config import Selection
 from app.workers import transcript_analysis_worker as worker_module
 
 
@@ -54,11 +55,18 @@ async def test_worker_analyzes_unanalyzed_messages() -> None:
         ) as mocked_analyze,
         patch.object(worker_module, "judge_call", AsyncMock(return_value={"score": 0.8})),
         patch.object(worker_module, "record_bandit_reward", AsyncMock()),
+        patch.object(
+            worker_module,
+            "resolve_model",
+            AsyncMock(side_effect=lambda db, task, *ids: Selection(f"gpt-{task}")),
+        ),
     ):
         worker = worker_module.TranscriptAnalysisWorker()
         await worker._process_items()
 
-    mocked_analyze.assert_awaited_once_with(msg.transcript)
+    mocked_analyze.assert_awaited_once_with(
+        msg.transcript, selection=Selection("gpt-transcript_analysis")
+    )
     assert outcome.signals["sentiment"] == "positive"
     assert outcome.signals["analyzed"] is True
     assert outcome.signals["judge"]["score"] == 0.8
@@ -117,9 +125,14 @@ async def test_worker_judges_late_transcript_after_missing_evidence(error: str) 
         ),
         patch.object(worker_module, "judge_call", AsyncMock(return_value={"score": 0.75})) as judge,
         patch.object(worker_module, "record_bandit_reward", AsyncMock()) as reward,
+        patch.object(
+            worker_module,
+            "resolve_model",
+            AsyncMock(side_effect=lambda db, task, *ids: Selection(f"gpt-{task}")),
+        ),
     ):
         await worker_module.TranscriptAnalysisWorker()._process_items()
-    judge.assert_awaited_once_with(msg.transcript)
+    judge.assert_awaited_once_with(msg.transcript, selection=Selection("gpt-transcript_judgment"))
     assert outcome.signals["judge"]["score"] == 0.75
     assert outcome.signals["analyzed"] is True
     reward.assert_awaited_once_with(session, outcome)

@@ -17,6 +17,7 @@ from websockets.exceptions import ConnectionClosed, InvalidStatus
 from app.core.config import settings
 from app.core.metrics import openai_realtime_latency_ms
 from app.models.agent import Agent
+from app.services.ai.model_config import Selection, log_realtime_usage
 from app.services.ai.openai_realtime_config import (
     RealtimeSessionConfig,
     build_client_secret_request,
@@ -86,6 +87,7 @@ class VoiceAgentSession(VoiceAgentBase):
         """
         super().__init__(agent)
         self.api_key = api_key
+        self.model_selection: Selection | None = getattr(agent, "_model_selection", None)
         # Model precedence: explicit arg > per-agent realtime_model > global default.
         self.model = (
             model
@@ -746,6 +748,7 @@ class VoiceAgentSession(VoiceAgentBase):
                     responses_completed += 1
                     response = event.get("response", {})
                     usage = response.get("usage", {})
+                    log_realtime_usage(self.model_selection or Selection(self.model), usage)
                     output = response.get("output", [])
                     response_status = response.get("status", "")
                     output_summary = [

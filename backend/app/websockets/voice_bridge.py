@@ -31,6 +31,7 @@ from app.models.conversation import Message
 from app.services.ai.call_context import lookup_call_context, save_call_transcript
 from app.services.ai.grok import GrokVoiceAgentSession
 from app.services.ai.ivr.gate import GateOutcome, GateResult, IVRGate
+from app.services.ai.model_config import resolve_model
 from app.services.ai.openai_credentials import is_openai_configured
 from app.services.ai.protocols import receives_mulaw, sends_mulaw, supports_tools
 from app.services.ai.tool_executor import create_tool_callback
@@ -434,6 +435,15 @@ async def voice_stream_bridge(  # noqa: PLR0912, PLR0915
         timezone = full_context.timezone
         prompt_version_id = full_context.prompt_version_id
         workspace_id = full_context.workspace_id
+        if agent is not None and workspace_id is not None and agent.voice_provider == "openai":
+            async with AsyncSessionLocal() as model_db:
+                selection = await resolve_model(
+                    model_db, "voice_llm", uuid.UUID(str(workspace_id)), agent.id
+                )
+            # Context agent is detached; this is a per-call effective value, not a DB write.
+            agent.realtime_model = selection.model
+            agent.__dict__["_model_selection"] = selection
+            log.info("ai_model_selected", task="voice_llm", model=selection.model)
 
         # Per-tenant cap (Redis-backed). Fails open on Redis outage so a cache
         # blip can't drop live calls. Heartbeat watchdog + duration backstop
@@ -734,6 +744,7 @@ async def _voice_stream_bridge_body(  # noqa: PLR0912, PLR0915
         if workspace_id:
             registry.register(live_call)
             if hasattr(voice_session, "set_supervisor_alert_callback"):
+
                 def flag_operator_request() -> None:
                     live_call.needs_operator = True
                     log.info("qualified_caller_requested_operator", call_id=call_id)
