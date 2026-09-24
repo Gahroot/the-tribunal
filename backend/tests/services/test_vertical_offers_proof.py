@@ -1,10 +1,13 @@
 """Vertical kit catalog and evidence-gated proof calculations."""
 
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
+from tribunal_lead_capture.service import build_lead_magnet_email_body
 
-from app.services.offers.roi_proof import FunnelPeriod, build_proof_pack
+from app.services.offers.roi_proof import FunnelPeriod, benchmark_context, build_proof_pack
+from app.services.offers.vertical_drafts import build_vertical_drafts
 from app.services.offers.vertical_kits import (
     VERTICAL_KITS,
     get_vertical_campaign_copy,
@@ -35,7 +38,19 @@ def test_vertical_kits_are_complete_and_campaign_compatible() -> None:
     for key in VERTICAL_KITS:
         kit = get_vertical_kit(key)
         assert kit.offer and kit.qualification and kit.objections
-        assert kit.proof_assets and kit.compliance_addendum
+        assert kit.evidence_to_collect and kit.compliance_addendum
+        drafts = build_vertical_drafts(key)
+        assert drafts.offer.is_active is False
+        assert drafts.lead_magnet.is_active is False
+        assert drafts.lead_magnet.content_data is not None
+        assert kit.voice_script in drafts.lead_magnet.content_data["body"]
+        assert all(reply in drafts.lead_magnet.content_data["body"] for _, reply in kit.objections)
+        email = build_lead_magnet_email_body(
+            lead_magnet=SimpleNamespace(**drafts.lead_magnet.model_dump()),
+            offer_name=drafts.offer.name,
+        )
+        assert kit.voice_script in email
+        assert all(reply in email for _, reply in kit.objections)
         assert get_vertical_campaign_copy(key) == {
             "name": kit.name,
             "initial_message": kit.initial_sms,
@@ -68,6 +83,14 @@ def test_proof_pack_calculates_percentage_points_not_relative_growth() -> None:
     assert proof["lift_percentage_points"]["connect_rate"] == Decimal("10.0")
     assert proof["lift_percentage_points"]["show_rate"] == Decimal("20.0")
     assert proof["publishable"] is False
+
+
+def test_brief_benchmark_is_arithmetic_only_not_customer_proof() -> None:
+    context = benchmark_context()
+    assert context["difference_usd"] == Decimal("263")
+    assert round(context["lower_fraction"] * 100) == 54
+    assert "unverified" in context["source"]
+    assert context["publishable"] is False
 
 
 def test_no_denominator_does_not_create_a_claim() -> None:

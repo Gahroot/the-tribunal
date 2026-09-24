@@ -55,6 +55,24 @@ class FunnelPeriod:
             raise ValueError("Cost must be finite and nonnegative")
 
 
+def benchmark_context() -> dict:
+    """Arithmetic on brief-supplied figures, NOT an observed or sourced result.
+
+    Do not use as customer proof without independently validating denominators,
+    cost inclusion, dates and the human-only benchmark source.
+    """
+    hybrid = Decimal("224")
+    human_only = Decimal("487")
+    return {
+        "hybrid_usd": hybrid,
+        "human_only_usd": human_only,
+        "difference_usd": human_only - hybrid,
+        "lower_fraction": (human_only - hybrid) / human_only,
+        "source": "user brief; independently unverified",
+        "publishable": False,
+    }
+
+
 def _rate(numerator: int, denominator: int) -> Decimal | None:
     return Decimal(numerator) / Decimal(denominator) if denominator else None
 

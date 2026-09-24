@@ -16,7 +16,7 @@ class VerticalKit:
     initial_sms: str
     follow_up_sms: str
     objections: tuple[tuple[str, str], ...]
-    proof_assets: tuple[str, ...]
+    evidence_to_collect: tuple[str, ...]
     compliance_addendum: tuple[str, ...]
 
 
@@ -63,7 +63,7 @@ VERTICAL_KITS: dict[str, VerticalKit] = {
                 "I can't promise a price without reviewing the property.",
             ),
         ),
-        proof_assets=(
+        evidence_to_collect=(
             "Permissioned anonymized inquiry-to-meeting funnel with dates",
             "Agent-approved redacted sample follow-up transcript",
             "Attendance report and lead-source breakdown",
@@ -107,7 +107,7 @@ VERTICAL_KITS: dict[str, VerticalKit] = {
                 "guidance. I'll flag the urgency rather than promise a slot.",
             ),
         ),
-        proof_assets=(
+        evidence_to_collect=(
             "Redacted estimate-request to inspection funnel by source",
             "Permissioned work examples with scope and date",
             "Attendance and estimate-acceptance report from contractor records",
@@ -157,7 +157,7 @@ VERTICAL_KITS: dict[str, VerticalKit] = {
                 "or emergency services immediately; don't wait for an appointment.",
             ),
         ),
-        proof_assets=(
+        evidence_to_collect=(
             "Redacted request-to-completed-visit funnel",
             "Permissioned technician follow-up example without customer details",
             "Dated booking, attendance and job outcome summary",
