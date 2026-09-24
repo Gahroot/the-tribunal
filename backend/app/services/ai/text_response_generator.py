@@ -14,7 +14,7 @@ from typing import Any
 
 import structlog
 from openai import AsyncOpenAI
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,6 +47,8 @@ logger = structlog.get_logger()
 
 
 class TextOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
     text: str = Field(min_length=1, max_length=1600)
 
     @field_validator("text")

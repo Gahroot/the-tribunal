@@ -7,7 +7,7 @@ topics, summary, objections, next steps) out of a voice call transcript.
 from typing import Any, Literal
 
 from openai import AsyncOpenAI
-from pydantic import BaseModel, ConfigDict, Field, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
 
 from app.services.ai.model_config import DEFAULTS, Selection
 from app.services.ai.openai_credentials import create_openai_client
@@ -51,6 +51,13 @@ class TranscriptSignals(BaseModel):
     next_steps: list[StrictStr]
     preferred_call_time: StrictStr | None
     callback_promise: StrictStr | None
+
+    @field_validator("summary")
+    @classmethod
+    def nonblank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Transcript summary must not be blank")
+        return value
 
 
 _client: AsyncOpenAI | None = None
