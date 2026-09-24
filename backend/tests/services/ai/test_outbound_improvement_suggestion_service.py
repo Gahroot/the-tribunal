@@ -10,6 +10,7 @@ from uuid import uuid4
 import pytest
 
 from app.models.campaign_report import CampaignReport
+from app.services.ai.model_config import Selection
 from app.services.ai.outbound_improvement_suggestion_service import (
     CampaignEvidence,
     OutboundImprovementSuggestionService,
@@ -63,6 +64,36 @@ def make_evidence(
         key_findings=[{"finding": "Consult-first copy outperformed discounts"}],
         what_worked=[{"angle": "Consult-first"}],
     )
+
+
+@pytest.mark.asyncio
+async def test_synthesis_uses_selected_report_model_and_accounting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selection = Selection("gpt-workspace-reports")
+    output = RecommendationOutput(
+        title="Follow up",
+        rationale="Measured response",
+        target_segment="Past no-shows",
+        angle="Consult first",
+        message="Book a consult",
+        responder_agent_id=None,
+        confidence=0.8,
+        expected_outcome="More appointments",
+    )
+    generate = AsyncMock(return_value=output)
+    monkeypatch.setattr(
+        "app.services.ai.outbound_improvement_suggestion_service.generate_structured", generate
+    )
+    service = OutboundImprovementSuggestionService()
+    monkeypatch.setattr(service, "_get_client", lambda: object())
+    evidence = [make_evidence()]
+    await service.synthesize_recommendation(
+        evidence, summarize_best_performers(evidence), selection
+    )
+    assert generate.call_args.kwargs["model"] == selection.model
+    assert generate.call_args.kwargs["selection"] is selection
+    assert generate.call_args.kwargs["task"] == "reports"
 
 
 def test_measured_timing_requires_sample_and_prefers_shown_rate() -> None:

@@ -8,9 +8,11 @@ failure propagation when model output cannot be trusted.
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
 
+from app.services.ai.model_config import Selection
 from app.services.ai.roleplay import DEFAULT_PERSONAS
 from app.services.ai.roleplay.agent_responder import (
     _build_messages as build_agent_messages,
@@ -106,10 +108,12 @@ class TestReportScorer:
         }
         from app.services.ai.roleplay.report_scorer import RehearsalScore
 
-        monkeypatch.setattr(
-            "app.services.ai.roleplay.report_scorer.generate_structured",
-            AsyncMock(return_value=RehearsalScore.model_validate(payload)),
-        )
+        generate = AsyncMock(return_value=RehearsalScore.model_validate(payload))
+        monkeypatch.setattr("app.services.ai.roleplay.report_scorer.generate_structured", generate)
+        extract = AsyncMock(return_value={"sentiment": "neutral"})
+        monkeypatch.setattr("app.services.ai.roleplay.report_scorer.analyze_transcript", extract)
+        judgment = Selection("gpt-agent-judge")
+        extraction = Selection("gpt-agent-extraction")
         client = _mock_client("unused")
 
         report = await score_rehearsal(
@@ -118,8 +122,14 @@ class TestReportScorer:
             persona_name="Skeptical Homeowner",
             objections=["price"],
             goal="book a visit",
+            judgment=judgment,
+            extraction=extraction,
         )
 
+        assert generate.call_args.kwargs["model"] == judgment.model
+        assert generate.call_args.kwargs["selection"] is judgment
+        assert generate.call_args.kwargs["task"] == "transcript_judgment"
+        assert extract.call_args.kwargs["selection"] is extraction
         assert report.overall_score == 100.0
         assert report.objection_coverage == 0.0
         assert report.tone_score == 72.5
@@ -157,6 +167,31 @@ class TestReportScorer:
                 objections=[],
                 goal=None,
             )
+
+
+async def test_report_resolves_both_tasks_for_the_runs_workspace_and_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services.ai.roleplay.report_scorer import RehearsalReport
+    from app.services.ai.roleplay.roleplay_service import RoleplayService
+
+    judgment, extraction = Selection("gpt-judge"), Selection("gpt-extract")
+    resolve = AsyncMock(side_effect=[judgment, extraction])
+    score = AsyncMock(return_value=RehearsalReport(80, 70, True, 90, "Good"))
+    monkeypatch.setattr("app.services.ai.roleplay.roleplay_service.resolve_model", resolve)
+    monkeypatch.setattr("app.services.ai.roleplay.roleplay_service.score_rehearsal", score)
+    run = SimpleNamespace(
+        workspace_id=uuid4(), agent_id=uuid4(), transcript=[], persona_name="Prospect"
+    )
+    db = MagicMock()
+    await RoleplayService(db)._apply_report(run, MagicMock(), None)
+    assert [call.args for call in resolve.await_args_list] == [
+        (db, "transcript_judgment", run.workspace_id, run.agent_id),
+        (db, "transcript_analysis", run.workspace_id, run.agent_id),
+    ]
+    assert score.call_args.kwargs["judgment"] is judgment
+    assert score.call_args.kwargs["extraction"] is extraction
+    assert run.overall_score == 80
 
 
 class TestDefaultPersonas:

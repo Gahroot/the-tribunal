@@ -24,6 +24,7 @@ from app.models.roleplay import (
     RehearseeType,
 )
 from app.services.ai.message_context_builder import get_workspace_timezone
+from app.services.ai.model_config import resolve_model
 from app.services.ai.openai_credentials import get_workspace_openai_bearer_token
 from app.services.ai.roleplay.agent_responder import (
     build_agent_system_prompt,
@@ -426,6 +427,12 @@ class RoleplayService:
             persona_name=run.persona_name or (persona.name if persona else "Prospect"),
             objections=list(persona.objections) if persona else [],
             goal=persona.goal if persona else None,
+            judgment=await resolve_model(
+                self.db, "transcript_judgment", run.workspace_id, run.agent_id
+            ),
+            extraction=await resolve_model(
+                self.db, "transcript_analysis", run.workspace_id, run.agent_id
+            ),
         )
         run.overall_score = report.overall_score
         run.objection_coverage = report.objection_coverage

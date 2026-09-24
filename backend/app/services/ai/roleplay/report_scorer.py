@@ -16,10 +16,10 @@ from typing import Any, Literal
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 
+from app.services.ai.model_config import DEFAULTS, Selection
 from app.services.ai.structured_output import generate_structured
 from app.services.ai.transcript_analysis import analyze_transcript
 
-_MODEL = "gpt-4o-mini"
 _TIMEOUT_SECONDS = 45.0
 
 _SYSTEM_PROMPT = (
@@ -113,6 +113,8 @@ async def score_rehearsal(
     persona_name: str,
     objections: list[str],
     goal: str | None,
+    judgment: Selection | None = None,
+    extraction: Selection | None = None,
 ) -> RehearsalReport:
     """Score a rehearsal transcript into a structured report.
 
@@ -122,10 +124,13 @@ async def score_rehearsal(
     transcript_text = _format_transcript(transcript)
 
     # Enrich with the existing transcript-analysis pipeline (sentiment/intents).
-    analysis = await analyze_transcript(transcript_text)
+    analysis = await analyze_transcript(transcript_text, selection=extraction)
+    judgment = judgment or Selection(DEFAULTS["transcript_judgment"])
     raw = await generate_structured(
         client=client,
-        model=_MODEL,
+        model=judgment.model,
+        selection=judgment,
+        task="transcript_judgment",
         schema=RehearsalScore,
         system_prompt=_SYSTEM_PROMPT,
         user_prompt=_build_user_prompt(transcript_text, persona_name, objections, goal),

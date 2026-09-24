@@ -4,4 +4,8 @@ Use the workspace-scoped `/api/v1/workspaces/{workspace_id}/model-configs` API t
 
 Example body: `{"model":"gpt-5.4-mini","input_usd_per_million":"1.00","output_usd_per_million":"4.00"}`. Both prices are optional **together**. They are **operator-supplied** USD per million tokens, not a live provider price list. For Realtime audio/text mixes, a single pair of prices is only a blended estimate; omit prices when a meaningful blended rate is unavailable. The structured `ai_model_call` log records task, effective model, token usage and `cost_usd`; `cost_usd: null` means price or usage is unknown, **not** a free call. Keep prices current when changing model rates.
 
+Structured-output calls emit one `ai_model_call` event per provider response, before output validation. Correction retries each retain their own returned model and usage, including responses in runs that ultimately exhaust validation retries. Requests that fail without a provider response have no known token cost.
+
+Production rehearsal reports use `transcript_analysis` for extraction and `transcript_judgment` for grading, resolved for the run's workspace and agent. Outbound follow-up recommendations combine evidence from multiple campaigns and use the workspace-level `reports` policy, not an arbitrary source agent's override. Standalone developer simulations and other tasks outside the task list above are not covered by this policy.
+
 The former `agents.realtime_model` column is retained for existing clients and copied into the new table by the migration. Legacy agent edits synchronize the new policy; the policy API also keeps the old field current when setting or deleting an agent voice override. New callers should use model-configs rather than editing the legacy field.

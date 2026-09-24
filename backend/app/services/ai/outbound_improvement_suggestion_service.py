@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.campaign import Campaign, CampaignStatus
 from app.models.campaign_report import CampaignReport
 from app.models.pending_action import PendingAction
+from app.services.ai.model_config import Selection, resolve_model
 from app.services.ai.openai_credentials import create_openai_client
 from app.services.ai.structured_output import generate_structured
 from app.services.approval.approval_gate_service import ApprovalGateService
@@ -528,7 +529,9 @@ class OutboundImprovementSuggestionService:
                 campaign_id=source_campaign_id,
             )
             summary = replace(summary, best_timing=measured_best_timing(funnel, source_campaign_id))
-        recommendation = await self.synthesize_recommendation(evidence, summary)
+        # This synthesis spans campaigns/agents, so use the workspace reports policy.
+        selection = await resolve_model(db, "reports", workspace_id)
+        recommendation = await self.synthesize_recommendation(evidence, summary, selection)
         payload = build_pending_action_payload(window, evidence, summary, recommendation)
         context = {
             "source": OUTBOUND_SUGGESTION_SOURCE,
@@ -663,12 +666,15 @@ class OutboundImprovementSuggestionService:
         self,
         evidence: list[CampaignEvidence],
         summary: BestPerformerSummary,
+        selection: Selection,
     ) -> OutboundRecommendation:
         """Use OpenAI to synthesize a concise follow-up campaign recommendation."""
         prompt = self._build_synthesis_prompt(evidence, summary)
         output = await generate_structured(
             client=self._get_client(),
-            model="gpt-5.4-mini",
+            model=selection.model,
+            selection=selection,
+            task="reports",
             schema=RecommendationOutput,
             system_prompt=(
                 "You analyze outbound sales campaign performance and return one "
