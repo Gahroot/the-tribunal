@@ -1,5 +1,7 @@
 """Call traces join across independent requests without exporting customer content."""
 
+import asyncio
+import json
 from decimal import Decimal
 from time import time_ns
 from unittest.mock import AsyncMock, MagicMock
@@ -167,6 +169,9 @@ async def test_booked_tool_is_linked_to_call_trace(monkeypatch):
     tool_span = next(span for span in exporter.spans if span.name == "voice.tool")
     assert tool_span.context.trace_id == exporter.spans[-1].context.trace_id
     assert tool_span.attributes["appointment.booking_uid"] == "cal-booking"
+    assert tool_span.attributes["langfuse.trace.metadata.booking_uid"] == "cal-booking"
+    assert tool_span.attributes["langfuse.observation.type"] == "tool"
+    assert tool_span.parent.span_id == exporter.spans[-1].context.span_id
 
 
 @pytest.mark.asyncio
@@ -184,3 +189,76 @@ async def test_failed_bridge_attempt_still_exports_call_span(monkeypatch):
     assert exporter.spans[-1].name == "voice.call"
     assert exporter.spans[-1].attributes["call.id"] == "call-failed"
     assert exporter.spans[-1].status.status_code.name == "ERROR"
+    assert not exporter.spans[-1].events
+    assert exporter.spans[-1].status.description is None
+
+
+@pytest.mark.asyncio
+async def test_audio_and_media_state_are_shared_across_child_tasks(monkeypatch):
+    exporter = _Exporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(call_tracing, "_TRACER", provider.get_tracer("test.calls"))
+    monkeypatch.setenv("VOICE_TELNYX_USD_PER_MINUTE", "0.01")
+
+    async def relay():
+        call_tracing.mark_media_started()
+        call_tracing.record_first_audio()
+
+    with call_tracing.call_span("async-call", "voice.call") as root:
+        with call_tracing.measure_first_audio():
+            await asyncio.gather(relay(), relay())
+        assert len(root.events) == 1
+        assert root.attributes["voice.cost_complete"] is True
+        assert root.attributes["voice.first_audio_target_ms"] == 500
+
+
+def test_langfuse_generation_mapping(monkeypatch):
+    exporter = _Exporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(call_tracing, "_TRACER", provider.get_tracer("test.calls"))
+    with call_tracing.call_span("mapped-call", "voice.call"):
+        turns = call_tracing.ResponseSpans("openai", "realtime")
+        turns.start({"id": "r1"})
+        turns.finish(
+            {"id": "r1", "status": "completed", "usage": {"input_tokens": 20, "output_tokens": 5}},
+            "0.002",
+        )
+    generation = exporter.spans[0]
+    assert generation.attributes["langfuse.observation.type"] == "generation"
+    assert generation.attributes["session.id"] == "mapped-call"
+    assert json.loads(generation.attributes["langfuse.observation.cost_details"]) == {
+        "total": 0.002
+    }
+
+
+@pytest.mark.asyncio
+async def test_failed_tool_is_error_without_exporting_result(monkeypatch):
+    from app.services.ai.tool_executor import VoiceToolExecutor
+
+    exporter = _Exporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(call_tracing, "_TRACER", provider.get_tracer("test.calls"))
+    with call_tracing.call_span("failed-tool", "voice.call") as root:
+        with call_tracing.measure_first_audio():
+            executor = VoiceToolExecutor(MagicMock(), call_control_id="failed-tool")
+            executor._execute = AsyncMock(return_value={"success": False, "error": "private"})
+            await executor.execute("book_appointment", {"email": "private@example.com"})
+        assert root.attributes["voice.tool_success_rate"] == 0
+        assert root.attributes["voice.tool_success_target_met"] is False
+    assert exporter.spans[0].status.status_code.name == "ERROR"
+    assert "private" not in str(exporter.spans[0].attributes)
+
+
+def test_structured_events_include_active_trace_ids(monkeypatch):
+    from app.core.logging import add_trace_context
+
+    provider = TracerProvider()
+    monkeypatch.setattr(call_tracing, "_TRACER", provider.get_tracer("test.calls"))
+    with call_tracing.call_span("logged-call", "voice.call") as span:
+        event = add_trace_context(None, "info", {"event": "response_done"})
+        assert event["trace_id"] == format(span.get_span_context().trace_id, "032x")
+        assert event["span_id"] == format(span.get_span_context().span_id, "016x")
+    assert add_trace_context(None, "info", {"event": "outside"}) == {"event": "outside"}

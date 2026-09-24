@@ -7,6 +7,7 @@ relying on Telnyx to propagate traceparent. Export is batched by core.telemetry.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import time
 from collections.abc import Iterator, Mapping
@@ -21,18 +22,22 @@ from opentelemetry.trace import (
     NonRecordingSpan,
     Span,
     SpanContext,
+    StatusCode,
     TraceFlags,
     set_span_in_context,
 )
 
 _TRACER = trace.get_tracer("app.services.ai.call_tracing")
-_CALL_STARTED: ContextVar[float | None] = ContextVar("call_started", default=None)
-_FIRST_AUDIO: ContextVar[bool] = ContextVar("first_audio", default=False)
-_MEDIA_STARTED: ContextVar[float | None] = ContextVar("media_started", default=None)
+_CALL_ID: ContextVar[str | None] = ContextVar("call_id", default=None)
 
 
 @dataclass
 class _Totals:
+    # One shared object: ContextVar.set in a child task does not update its parent.
+    started_at: float = 0
+    first_audio: bool = False
+    media_started: float | None = None
+    root: Span = trace.INVALID_SPAN
     cost_usd: Decimal = Decimal(0)
     cost_complete: bool = True
     llm_calls: int = 0
@@ -124,7 +129,9 @@ def call_totals() -> _Totals | None:
 
 
 def mark_media_started() -> None:
-    _MEDIA_STARTED.set(time.monotonic())
+    totals = _TOTALS.get()
+    if totals is not None and totals.media_started is None:
+        totals.media_started = time.monotonic()
 
 
 def record_tool_result(success: bool, *, totals: _Totals | None = None) -> None:
@@ -162,13 +169,34 @@ def call_span(
     if not call_id or len(call_id) > 256:
         yield trace.INVALID_SPAN
         return
-    with _TRACER.start_as_current_span(
-        name,
-        context=_parent(call_id),
-        attributes={"call.id": call_id, **(attributes or {})},
-        start_time=start_time,
-    ) as span:
-        yield span
+    token = _CALL_ID.set(call_id)
+    parent = _parent(call_id)
+    if trace.get_current_span().get_span_context().trace_id == (
+        trace.get_current_span(parent).get_span_context().trace_id
+    ):
+        parent = set_span_in_context(trace.get_current_span())
+    try:
+        with _TRACER.start_as_current_span(
+            name,
+            context=parent,
+            attributes={
+                "call.id": call_id,
+                "session.id": call_id,
+                "langfuse.trace.name": "voice.call",
+                **(attributes or {}),
+            },
+            start_time=start_time,
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
+            try:
+                yield span
+            except BaseException:
+                # Exceptions may contain customer content or provider credentials.
+                span.set_status(StatusCode.ERROR)
+                raise
+    finally:
+        _CALL_ID.reset(token)
 
 
 def current_span(name: str, **attributes: str) -> Span:
@@ -184,6 +212,14 @@ class ResponseSpans:
         self.model = model
         self._context: Context = set_span_in_context(trace.get_current_span())
         self._totals = _TOTALS.get()
+        self._attributes = {
+            "gen_ai.system": provider,
+            "gen_ai.request.model": model,
+            "langfuse.observation.type": "generation",
+            "langfuse.trace.name": "voice.call",
+        }
+        if call_id := _CALL_ID.get():
+            self._attributes.update({"call.id": call_id, "session.id": call_id})
         self._spans: dict[str, Span] = {}
 
     def start(self, response: object) -> None:
@@ -196,7 +232,7 @@ class ResponseSpans:
         self._spans[response_id] = _TRACER.start_span(
             "voice.llm",
             context=self._context,
-            attributes={"gen_ai.system": self.provider, "gen_ai.request.model": self.model},
+            attributes=self._attributes,
         )
 
     def finish(self, response: object, cost: str | None = None) -> None:
@@ -210,8 +246,7 @@ class ResponseSpans:
                 "voice.llm",
                 context=self._context,
                 attributes={
-                    "gen_ai.system": self.provider,
-                    "gen_ai.request.model": self.model,
+                    **self._attributes,
                     "voice.llm.start_missing": True,
                 },
             )
@@ -224,7 +259,13 @@ class ResponseSpans:
                 span.set_attribute(f"gen_ai.usage.{name}", value)
         if cost is not None:
             span.set_attribute("gen_ai.cost.usd", float(cost))
-        span.set_attribute("gen_ai.response.status", str(data.get("status", ""))[:32])
+            span.set_attribute(
+                "langfuse.observation.cost_details", json.dumps({"total": float(cost)})
+            )
+        status = str(data.get("status", ""))[:32]
+        span.set_attribute("gen_ai.response.status", status)
+        if status in {"failed", "incomplete"}:
+            span.set_status(StatusCode.ERROR)
         record_llm_cost(cost, input_tokens, output_tokens, totals=self._totals)
         span.end()
 
@@ -238,18 +279,19 @@ class ResponseSpans:
 
 @contextmanager
 def measure_first_audio(started_at: float | None = None) -> Iterator[None]:
-    started_value = started_at if started_at is not None else time.monotonic()
-    started = _CALL_STARTED.set(started_value)
-    first = _FIRST_AUDIO.set(False)
-    totals = _Totals()
+    totals = _Totals(
+        started_at=started_at if started_at is not None else time.monotonic(),
+        root=trace.get_current_span(),
+    )
     total_token = _TOTALS.set(totals)
-    media_token = _MEDIA_STARTED.set(None)
     try:
         yield
     finally:
-        span = trace.get_current_span()
-        media_started = _MEDIA_STARTED.get()
-        elapsed_seconds = max(0, time.monotonic() - media_started) if media_started else 0
+        span = totals.root
+        media_started = totals.media_started
+        elapsed_seconds = (
+            max(0, time.monotonic() - media_started) if media_started is not None else 0
+        )
         telephony_cost = (
             estimated_cost("VOICE_TELNYX_USD_PER_MINUTE", Decimal(str(elapsed_seconds)) / 60)
             if media_started is not None
@@ -276,21 +318,19 @@ def measure_first_audio(started_at: float | None = None) -> Iterator[None]:
             span.set_attribute("voice.cost_complete", totals.cost_complete)
             if totals.cost_complete:
                 span.set_attribute("voice.estimated_cost_usd", float(totals.cost_usd))
-        _MEDIA_STARTED.reset(media_token)
         _TOTALS.reset(total_token)
-        _FIRST_AUDIO.reset(first)
-        _CALL_STARTED.reset(started)
 
 
 def record_first_audio() -> None:
     """Record first outbound media frame; independent of the provider's first chunk."""
-    started_at = _CALL_STARTED.get()
-    if started_at is None or _FIRST_AUDIO.get():
+    totals = _TOTALS.get()
+    if totals is None or totals.first_audio:
         return
-    _FIRST_AUDIO.set(True)
-    span = trace.get_current_span()
+    totals.first_audio = True
+    span = totals.root
     if span.is_recording():
-        ms = max(0, round((time.monotonic() - started_at) * 1000))
+        ms = max(0, round((time.monotonic() - totals.started_at) * 1000))
+        span.set_attribute("voice.first_audio_target_ms", 500)
         span.set_attribute("voice.first_audio_ms", ms)
         span.set_attribute("voice.first_audio_target_met", ms < 500)
         span.add_event("voice.first_audio", {"latency_ms": ms})

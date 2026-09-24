@@ -106,18 +106,26 @@ class VoiceToolExecutor(BaseToolExecutor):
     # ── Main dispatch ───────────────────────────────────────────────
 
     async def execute(self, function_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        from opentelemetry.trace import StatusCode
+
         from app.services.ai.call_tracing import call_span, record_tool_result
 
         with call_span(
-            self.call_control_id or "", "voice.tool", attributes={"tool.name": function_name}
+            self.call_control_id or "",
+            "voice.tool",
+            attributes={"tool.name": function_name, "langfuse.observation.type": "tool"},
         ) as span:
             try:
                 result = await self._execute(function_name, arguments)
                 success = result.get("success") is True
                 span.set_attribute("tool.success", success)
+                if not success:
+                    span.set_status(StatusCode.ERROR)
                 record_tool_result(success, totals=self._trace_totals)
                 if success and function_name == "book_appointment" and result.get("booking_uid"):
-                    span.set_attribute("appointment.booking_uid", str(result["booking_uid"]))
+                    booking_uid = str(result["booking_uid"])[:256]
+                    span.set_attribute("appointment.booking_uid", booking_uid)
+                    span.set_attribute("langfuse.trace.metadata.booking_uid", booking_uid)
                 return result
             except BaseException:
                 span.set_attribute("tool.success", False)

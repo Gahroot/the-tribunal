@@ -1,12 +1,12 @@
 """OpenTelemetry tracing setup.
 
-Initializes a global :class:`TracerProvider` with an OTLP gRPC exporter and
+Initializes a global :class:`TracerProvider` with an OTLP HTTP or gRPC exporter and
 auto-instruments the libraries that produce the most useful spans for this
 codebase: FastAPI (HTTP server), httpx (outbound HTTP), SQLAlchemy (Postgres),
 and redis (cache + queue).
 
-Activation is gated on the ``OTEL_EXPORTER_OTLP_ENDPOINT`` environment variable:
-when unset, this module is a no-op so local development and tests don't try to
+Activation requires ``OTEL_EXPORTER_OTLP_ENDPOINT`` or the signal-specific
+``OTEL_EXPORTER_OTLP_TRACES_ENDPOINT``. Without either, local development won't
 ship spans to a non-existent collector. When set (e.g. to a Honeycomb / Tempo /
 Datadog OTLP endpoint), spans are batched and exported in the background.
 
@@ -38,10 +38,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 logger = structlog.get_logger()
 
-# Env var that gates the entire OTEL setup. Standard OpenTelemetry name so
-# operators can configure once and have every OTEL-aware tool in the process
-# pick it up (e.g. the optional ``opentelemetry-distro`` auto-loader honours
-# the same variable). Unset → tracing is disabled.
+# Standard OTLP base endpoint; the signal-specific traces endpoint takes precedence.
+# Without either endpoint tracing is disabled.
 _ENDPOINT_ENV = "OTEL_EXPORTER_OTLP_ENDPOINT"
 _SERVICE_NAME_ENV = "OTEL_SERVICE_NAME"
 _DEFAULT_SERVICE_NAME = "aicrm-backend"
@@ -51,7 +49,14 @@ _configured = False
 
 def is_enabled() -> bool:
     """Return ``True`` if an OTLP endpoint is configured."""
-    return bool(os.environ.get(_ENDPOINT_ENV, "").strip())
+    return bool(_endpoint())
+
+
+def _endpoint() -> str:
+    return (
+        os.environ.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "").strip()
+        or os.environ.get(_ENDPOINT_ENV, "").strip()
+    )
 
 
 def configure_tracing(*, environment: str | None = None) -> bool:
@@ -65,11 +70,11 @@ def configure_tracing(*, environment: str | None = None) -> bool:
     if _configured:
         return True
 
-    endpoint = os.environ.get(_ENDPOINT_ENV, "").strip()
+    endpoint = _endpoint()
     if not endpoint:
         logger.info(
             "otel_disabled",
-            reason="OTEL_EXPORTER_OTLP_ENDPOINT is unset",
+            reason="No OTLP trace endpoint configured",
         )
         return False
 
@@ -90,7 +95,12 @@ def configure_tracing(*, environment: str | None = None) -> bool:
     # Langfuse ingests OTLP over HTTP at /api/public/otel/v1/traces.
     # Use OTEL_EXPORTER_OTLP_TRACES_ENDPOINT for that exact URL and
     # OTEL_EXPORTER_OTLP_HEADERS for Basic auth; never log credential values.
-    protocol = os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc")
+    protocol = os.environ.get(
+        "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL",
+        os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc"),
+    )
+    if protocol not in {"grpc", "http/protobuf"}:
+        raise ValueError("OTLP trace protocol must be grpc or http/protobuf")
     exporter = HTTPSpanExporter() if protocol == "http/protobuf" else OTLPSpanExporter()
     provider.add_span_processor(BatchSpanProcessor(exporter))
 
@@ -99,7 +109,7 @@ def configure_tracing(*, environment: str | None = None) -> bool:
 
     logger.info(
         "otel_enabled",
-        endpoint=endpoint,
+        protocol=protocol,
         service_name=service_name,
     )
     return True
@@ -109,7 +119,7 @@ def instrument_app(app: FastAPI, engine: AsyncEngine) -> None:
     """Attach OpenTelemetry instrumentation to the FastAPI app and engine.
 
     No-op when :func:`configure_tracing` was not activated, so tests and
-    local dev (which leave ``OTEL_EXPORTER_OTLP_ENDPOINT`` unset) don't pay
+    local dev (which leave both OTLP endpoint settings unset) don't pay
     the instrumentation overhead.
     """
     if not _configured:

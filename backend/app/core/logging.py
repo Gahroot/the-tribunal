@@ -14,6 +14,7 @@ from collections.abc import Mapping, MutableMapping, Sequence
 from typing import Any, Final
 
 import structlog
+from opentelemetry import trace
 from structlog.typing import EventDict, Processor, WrappedLogger
 
 REDACTED: Final[str] = "[REDACTED]"
@@ -84,9 +85,21 @@ def redact_sensitive_keys(
     return event_dict
 
 
+def add_trace_context(
+    _logger: WrappedLogger, _method_name: str, event_dict: EventDict
+) -> EventDict:
+    """Join structured events to the active span without logging customer content."""
+    context = trace.get_current_span().get_span_context()
+    if context.is_valid:
+        event_dict["trace_id"] = format(context.trace_id, "032x")
+        event_dict["span_id"] = format(context.span_id, "016x")
+    return event_dict
+
+
 def _build_processors() -> list[Processor]:
     return [
         structlog.contextvars.merge_contextvars,
+        add_trace_context,
         structlog.processors.add_log_level,
         structlog.processors.TimeStamper(fmt="iso", utc=True),
         redact_sensitive_keys,
