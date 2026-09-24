@@ -46,6 +46,8 @@ def test_outcome_quality_duration_all_contribute():
     assert compute_call_reward("appointment_booked", {}, None, 120) < good
     assert compute_call_reward("appointment_booked", {}, quality, 10) < good
     assert compute_call_reward("failed", {}, None, None) == 0
+    assert compute_call_reward("no_answer", {}, quality, 600) == pytest.approx(0.3)
+    assert compute_call_reward("voicemail", {}, quality, 600) == pytest.approx(0.36)
 
 
 def test_invalid_agent_reward_weights_fail_closed():

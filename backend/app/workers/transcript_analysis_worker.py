@@ -52,7 +52,7 @@ class TranscriptAnalysisWorker(RetryableWorker, BaseWorker):
                         CallOutcome.signals["judge"].astext.is_(None),
                         (
                             (CallOutcome.signals["judge"]["error"].astext == "evaluation_failed")
-                            & (CallOutcome.signals["judge_attempts"].astext.in_(["1", "2"]))
+                            & (CallOutcome.updated_at < datetime.now(UTC) - timedelta(minutes=30))
                         ),
                         (
                             (CallOutcome.signals["judge"]["error"].astext == "no_transcript")

@@ -30,17 +30,36 @@ async def test_voice_reward_deferred_until_judged_then_idempotent():
             side_effect=[
                 SimpleNamespace(scalar_one_or_none=lambda: decision),
                 SimpleNamespace(scalar_one_or_none=lambda: decision),
+                SimpleNamespace(scalar_one_or_none=lambda: decision),
+                SimpleNamespace(scalar_one_or_none=lambda: decision),
                 SimpleNamespace(scalar_one_or_none=lambda: version),
                 SimpleNamespace(scalar_one_or_none=lambda: decision),
             ]
         ),
-        get=AsyncMock(side_effect=[message, message, agent]),
+        get=AsyncMock(side_effect=[message, message, message, message, agent]),
         commit=AsyncMock(),
     )
     service = BanditRewardService()
     assert await service.record_reward(db, outcome) is None
     db.commit.assert_not_awaited()
-    outcome.signals = {"judge": {"score": 0.8, "human_review": False}}
+    outcome.signals = {"judge": {"human_review": True, "error": "no_transcript"}}
+    assert await service.record_reward(db, outcome) is None
+    outcome.signals = {
+        "judge": {"human_review": True, "error": "evaluation_failed"},
+        "judge_attempts": 3,
+    }
+    assert await service.record_reward(db, outcome) is None
+    db.commit.assert_not_awaited()
+    outcome.signals = {
+        "judge": {
+            "score": 0.8,
+            "human_review": False,
+            "scores": {
+                name: {"score": 3, "quote": "Agent: Hi"}
+                for name in ("opening", "listening", "objection_handling", "compliance", "close")
+            },
+        }
+    }
     reward = await service.record_reward(db, outcome)
     assert reward == pytest.approx(0.6 * 0.3 + 0.3 * 0.8 + 0.1)
     assert await service.record_reward(db, outcome) == reward

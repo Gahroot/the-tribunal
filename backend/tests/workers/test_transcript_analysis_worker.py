@@ -96,15 +96,43 @@ async def test_worker_marks_errors_without_infinite_retry() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("error", ["no_transcript", "evaluation_failed"])
+async def test_worker_judges_late_transcript_after_missing_evidence(error: str) -> None:
+    outcome = SimpleNamespace(
+        signals={
+            "analyzed": "unavailable",
+            "judge": {"human_review": True, "error": error},
+            "judge_attempts": 3,
+        }
+    )
+    msg = MagicMock()
+    msg.id = "late-transcript"
+    msg.transcript = "Agent: Hello. Prospect: Hi."
+    msg.call_outcome = outcome
+    session = _fake_session([msg])
+    with (
+        patch.object(worker_module, "AsyncSessionLocal", MagicMock(return_value=session.__ctx__)),
+        patch.object(
+            worker_module, "analyze_transcript", AsyncMock(return_value={"sentiment": "neutral"})
+        ),
+        patch.object(worker_module, "judge_call", AsyncMock(return_value={"score": 0.75})) as judge,
+        patch.object(worker_module, "record_bandit_reward", AsyncMock()) as reward,
+    ):
+        await worker_module.TranscriptAnalysisWorker()._process_items()
+    judge.assert_awaited_once_with(msg.transcript)
+    assert outcome.signals["judge"]["score"] == 0.75
+    assert outcome.signals["analyzed"] is True
+    reward.assert_awaited_once_with(session, outcome)
+
+
+@pytest.mark.asyncio
 async def test_worker_noop_on_empty_queue() -> None:
     session = _fake_session([])
     fake_sessionmaker = MagicMock(return_value=session.__ctx__)
 
     with (
         patch.object(worker_module, "AsyncSessionLocal", fake_sessionmaker),
-        patch.object(
-            worker_module, "analyze_transcript", AsyncMock()
-        ) as mocked_analyze,
+        patch.object(worker_module, "analyze_transcript", AsyncMock()) as mocked_analyze,
     ):
         worker = worker_module.TranscriptAnalysisWorker()
         await worker._process_items()

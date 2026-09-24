@@ -6,7 +6,7 @@ suggestions for agents with auto_suggest or auto_activate enabled.
 
 import math
 
-from sqlalchemy import exists, select
+from sqlalchemy import exists, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import AsyncSessionLocal
@@ -21,12 +21,34 @@ from app.workers.base import BaseWorker, WorkerRegistry
 from app.workers.retryable import RetryableWorker
 
 
+def _eligible_score(judge: object) -> float | None:
+    if not isinstance(judge, dict):
+        return None
+    score, confidence = judge.get("score"), judge.get("confidence")
+    if (
+        judge.get("human_review") is not False
+        or judge.get("rubric_version") != 1
+        or not isinstance(judge.get("scores"), dict)
+        or len(judge["scores"]) != 5
+        or not isinstance(score, (int, float))
+        or isinstance(score, bool)
+        or not math.isfinite(score)
+        or not 0 <= score <= 1
+        or not isinstance(confidence, (int, float))
+        or isinstance(confidence, bool)
+        or not math.isfinite(confidence)
+        or confidence < 0.7
+    ):
+        return None
+    return float(score)
+
+
 class PromptImprovementWorker(RetryableWorker, BaseWorker):
     """Generates prompt improvement suggestions automatically.
 
     Runs daily to analyze agents with auto_suggest=True and generate
-    improvement suggestions. If auto_activate=True, also auto-approves
-    suggestions when no pending suggestions exist.
+    improvement suggestions. With auto_activate, promotes approved candidates
+    only after a human-started canary has judged calls and verified outcomes.
     """
 
     POLL_INTERVAL_SECONDS = 86400  # Daily
@@ -91,13 +113,8 @@ class PromptImprovementWorker(RetryableWorker, BaseWorker):
         scores = []
         positive_outcomes = 0
         for signals, booking_outcome, shown in rows:
-            judge = (signals or {}).get("judge")
-            if not isinstance(judge, dict) or judge.get("human_review") is not False:
-                return False
-            score = judge.get("score")
-            if not isinstance(score, (int, float)) or isinstance(score, bool):
-                return False
-            if not math.isfinite(score) or not 0 <= score <= 1:
+            score = _eligible_score((signals or {}).get("judge"))
+            if score is None:
                 return False
             scores.append(score)
             positive_outcomes += booking_outcome == "success" or shown is True
@@ -106,6 +123,39 @@ class PromptImprovementWorker(RetryableWorker, BaseWorker):
             and positive_outcomes >= 1
             and positive_outcomes / len(rows) >= 0.1
         )
+
+    async def _promote_tested_candidate(self, db: AsyncSession, agent: Agent) -> bool:
+        """Promote only an approved candidate already exposed in a human-started test."""
+        result = await db.execute(
+            select(PromptVersion)
+            .join(
+                ImprovementSuggestion, ImprovementSuggestion.created_version_id == PromptVersion.id
+            )
+            .where(
+                ImprovementSuggestion.agent_id == agent.id,
+                ImprovementSuggestion.status == "approved",
+                PromptVersion.is_active.is_(True),
+                PromptVersion.arm_status == "active",
+            )
+            .order_by(PromptVersion.version_number.desc())
+        )
+        for candidate in result.scalars():
+            if not await self._can_auto_activate(db, candidate):
+                continue
+            updated = await db.execute(
+                update(PromptVersion)
+                .where(
+                    PromptVersion.agent_id == agent.id,
+                    PromptVersion.id != candidate.id,
+                    PromptVersion.is_active.is_(True),
+                )
+                .values(is_active=False)
+                .returning(PromptVersion.id)
+            )
+            if updated.first() is not None:
+                await db.commit()
+                return True
+        return False
 
     async def _process_agent(
         self,
@@ -120,15 +170,22 @@ class PromptImprovementWorker(RetryableWorker, BaseWorker):
         """
         log = self.logger.bind(agent_id=str(agent.id), agent_name=agent.name)
 
+        # Manual canary exposure comes first; only its own judged calls can
+        # promote a candidate to exclusive live use.
+        if agent.auto_activate and await self._promote_tested_candidate(db, agent):
+            return
+
         # Get active version
         version_result = await db.execute(
-            select(PromptVersion).where(
+            select(PromptVersion)
+            .where(
                 PromptVersion.agent_id == agent.id,
                 PromptVersion.is_active.is_(True),
                 PromptVersion.arm_status == "active",
             )
+            .order_by(PromptVersion.version_number.asc())
         )
-        active_version = version_result.scalar_one_or_none()
+        active_version = version_result.scalars().first()
 
         if not active_version:
             log.debug("No active version, skipping")
@@ -152,37 +209,16 @@ class PromptImprovementWorker(RetryableWorker, BaseWorker):
         )
         pending_suggestions = list(pending_result.scalars().all())
 
-        if pending_suggestions and not agent.auto_activate:
+        if pending_suggestions:
             log.debug(
                 "Pending suggestions exist, skipping generation",
                 pending_count=len(pending_suggestions),
             )
             return
 
-        # No transcript-only auto-promotion: require judged calls AND real bookings.
-        can_activate = agent.auto_activate and await self._can_auto_activate(db, active_version)
+        # A new prompt has no outcome evidence yet. Leave its suggestion
+        # pending until a human starts a canary through the existing approval flow.
         service = PromptImprovementService()
-
-        # If auto_activate and there are pending suggestions, approve the first one
-        if agent.auto_activate and pending_suggestions:
-            top_suggestion = pending_suggestions[0]
-            if not can_activate or top_suggestion.source_version_id != active_version.id:
-                log.info("Auto-activation gated on judged quality and verified bookings")
-                return
-            log.info("Auto-activating pending suggestion", suggestion_id=str(top_suggestion.id))
-
-            try:
-                await service.approve_suggestion(
-                    db=db,
-                    suggestion_id=top_suggestion.id,
-                    user_id=None,  # System-approved
-                    activate=True,
-                )
-                log.info("Auto-activated suggestion successfully")
-            except Exception as e:
-                log.error("Failed to auto-activate suggestion", error=str(e))
-
-            return
 
         # Generate new suggestions
         log.info("Generating improvement suggestions")
@@ -209,16 +245,6 @@ class PromptImprovementWorker(RetryableWorker, BaseWorker):
                     suggestion_id=str(suggestion.id),
                     mutation_type=variation.mutation_type,
                 )
-
-                # If auto_activate, approve immediately
-                if can_activate:
-                    await service.approve_suggestion(
-                        db=db,
-                        suggestion_id=suggestion.id,
-                        user_id=None,
-                        activate=True,
-                    )
-                    log.info("Auto-activated new suggestion")
 
         except Exception as e:
             log.error("Failed to generate suggestions", error=str(e))

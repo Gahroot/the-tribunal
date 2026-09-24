@@ -74,15 +74,16 @@ class BanditRewardService:
         if (outcome.signals or {}).get("live_only"):
             return None
         message = await db.get(Message, outcome.message_id)
-        if message is None or (
-            message.channel == "voice" and "judge" not in (outcome.signals or {})
-        ):
+        if message is None:
             return None
         judge = (outcome.signals or {}).get("judge")
-        if (
+        # Never finalize a voice reward without verified rubric evidence. A late
+        # transcript or a recovered judge may still provide it on a later poll.
+        if message.channel == "voice" and not (
             isinstance(judge, dict)
-            and judge.get("error") == "evaluation_failed"
-            and (outcome.signals or {}).get("judge_attempts") in (1, 2)
+            and isinstance(judge.get("scores"), dict)
+            and isinstance(judge.get("score"), (int, float))
+            and len(judge["scores"]) == 5
         ):
             return None
         agent = await db.get(Agent, decision.agent_id)

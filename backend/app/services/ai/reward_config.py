@@ -119,7 +119,13 @@ def compute_call_reward(
         and 0 <= score <= 1
     ):
         quality = float(score)
-    duration = duration_seconds if type(duration_seconds) is int and duration_seconds > 0 else 0
+    # Ring time and voicemail are not time held with a prospect.
+    conversational = outcome_type in ("completed", "appointment_booked", "lead_qualified")
+    duration = (
+        duration_seconds
+        if conversational and quality > 0 and type(duration_seconds) is int and duration_seconds > 0
+        else 0
+    )
     held = min(duration / config.held_seconds, 1.0)
     return (
         weights["outcome_weight"] * compute_reward(outcome_type, signals, config)
