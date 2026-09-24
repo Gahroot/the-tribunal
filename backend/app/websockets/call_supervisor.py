@@ -92,7 +92,38 @@ async def _pump_audio_to_operator(
         log.info("supervisor_audio_pump_stopped", error=str(exc))
 
 
-async def _handle_control_message(  # noqa: PLR0911, PLR0912
+async def _start_monitoring(
+    websocket: WebSocket, live_call: LiveCall, log: Any
+) -> tuple[bool, asyncio.Task[None] | None]:
+    """Subscribe this socket to call audio, respecting the listener cap."""
+    queue = live_call.add_subscriber()
+    if queue is None:
+        await websocket.send_json(
+            {"type": "error", "message": "Too many supervisors on this call"}
+        )
+        return False, None
+    audio_task = asyncio.create_task(
+        _pump_audio_to_operator(websocket, queue, log),
+        name="supervisor-audio-pump",
+    )
+    websocket.scope["supervisor_queue"] = queue
+    await websocket.send_json({"type": "monitoring"})
+    return True, audio_task
+
+
+async def _forward_operator_audio(
+    live_call: LiveCall, data: Any, operator_user_id: int
+) -> None:
+    """Discard malformed/oversized frames before forwarding to the caller."""
+    if not isinstance(data, str) or len(data) > 32768:
+        return
+    with contextlib.suppress(Exception):
+        pcm = base64.b64decode(data, validate=True)
+        if len(pcm) % 2 == 0:
+            await live_call.send_barge_audio_pcm16(pcm, operator_user_id)
+
+
+async def _handle_control_message(  # noqa: PLR0911
     websocket: WebSocket,
     live_call: LiveCall,
     message: dict[str, Any],
@@ -110,21 +141,9 @@ async def _handle_control_message(  # noqa: PLR0911, PLR0912
     audio_task: asyncio.Task[None] | None = None
 
     if msg_type == "monitor":
-        if not monitoring:
-            queue = live_call.add_subscriber()
-            if queue is None:
-                await websocket.send_json(
-                    {"type": "error", "message": "Too many supervisors on this call"}
-                )
-            else:
-                audio_task = asyncio.create_task(
-                    _pump_audio_to_operator(websocket, queue, log),
-                    name="supervisor-audio-pump",
-                )
-                websocket.scope["supervisor_queue"] = queue
-                monitoring = True
-                await websocket.send_json({"type": "monitoring"})
-        return monitoring, audio_task
+        if monitoring:
+            return monitoring, audio_task
+        return await _start_monitoring(websocket, live_call, log)
 
     if msg_type == "whisper":
         text = message.get("text")
@@ -147,12 +166,7 @@ async def _handle_control_message(  # noqa: PLR0911, PLR0912
         return monitoring, audio_task
 
     if msg_type == "barge_audio":
-        data = message.get("data", "")
-        if isinstance(data, str) and len(data) <= 32768:
-            with contextlib.suppress(Exception):
-                pcm = base64.b64decode(data, validate=True)
-                if len(pcm) % 2 == 0:
-                    await live_call.send_barge_audio_pcm16(pcm, operator_user_id or 0)
+        await _forward_operator_audio(live_call, message.get("data"), operator_user_id or 0)
         return monitoring, audio_task
 
     if msg_type == "unbarge":
