@@ -26,6 +26,7 @@ from app.schemas.appointment import (
     AppointmentUpdate,
     PaginatedAppointments,
 )
+from app.services.tags import TagService
 
 logger = structlog.get_logger()
 
@@ -129,6 +130,14 @@ class AppointmentService:
 
             assign_deposit(appointment, agent.booking_deposit_mode)
         self.db.add(appointment)
+        await self.db.flush()
+        from app.services.opportunities.appointment_stages import move_appointment_opportunities
+
+        await move_appointment_opportunities(self.db, workspace_id, contact.id, "scheduled")
+        await TagService(self.db).add_tag_to_contact(
+            workspace_id=workspace_id, contact_id=contact.id, name="appointment-scheduled"
+        )
+        contact.last_appointment_status = "scheduled"
         await self.db.commit()
         await self.db.refresh(appointment)
 
@@ -203,8 +212,48 @@ class AppointmentService:
         for field, value in update_data.items():
             setattr(appointment, field, value)
 
+        if previous_status != appointment.status:
+            if appointment.status in (AppointmentStatus.COMPLETED, AppointmentStatus.NO_SHOW):
+                from app.services.appointments.show_rate import record_appointment_outcome
+
+                await record_appointment_outcome(self.db, appointment)
+            elif appointment.status == AppointmentStatus.SCHEDULED:
+                from app.services.opportunities.appointment_stages import (
+                    move_appointment_opportunities,
+                )
+
+                await move_appointment_opportunities(
+                    self.db, workspace_id, appointment.contact_id, "scheduled"
+                )
+                contact = await self.db.scalar(
+                    select(Contact).where(
+                        Contact.id == appointment.contact_id,
+                        Contact.workspace_id == workspace_id,
+                    )
+                )
+                if contact is not None:
+                    contact.last_appointment_status = "scheduled"
+                    await TagService(self.db).add_tag_to_contact(
+                        workspace_id=workspace_id,
+                        contact_id=contact.id,
+                        name="appointment-scheduled",
+                    )
+
         await self.db.commit()
         await self.db.refresh(appointment)
+
+        if (
+            previous_status != appointment.status
+            and appointment.status == AppointmentStatus.NO_SHOW
+            and appointment.confirmed_at
+        ):
+            try:
+                from app.services.appointments.waitlist import offer_waitlist_opening
+
+                await offer_waitlist_opening(self.db, appointment)
+            except Exception:
+                self.log.exception("waitlist_offer_failed", appointment_id=appointment.id)
+                await self.db.rollback()
 
         self.log.info(
             "appointment_updated",

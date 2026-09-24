@@ -32,6 +32,7 @@ from app.models.contact import Contact
 from app.models.workspace import Workspace
 from app.services.campaigns.guarantee_tracker import increment_completed_and_check_guarantee
 from app.services.email import send_appointment_booked_notification
+from app.services.opportunities.appointment_stages import move_appointment_opportunities
 from app.services.push_notifications import push_notification_service
 from app.services.tags import TagService
 from app.utils.background_tasks import spawn_background_task
@@ -191,6 +192,8 @@ async def handle_booking_created(data: dict[str, Any], log: Any) -> None:  # noq
 
                 assign_deposit(appointment, agent.booking_deposit_mode)
 
+        if appointment.status == AppointmentStatus.SCHEDULED:
+            await move_appointment_opportunities(db, workspace_id, contact.id, "scheduled")
         await db.commit()
         await db.refresh(appointment)
 
@@ -700,9 +703,11 @@ async def handle_meeting_ended(data: dict[str, Any], log: Any) -> None:  # noqa:
 
     async with AsyncSessionLocal() as db:
         result = await db.execute(
-            select(Appointment).where(
+            select(Appointment)
+            .where(
                 Appointment.calcom_booking_uid == booking_uid,
             )
+            .with_for_update()
         )
         appointment = result.scalar_one_or_none()
 
@@ -713,16 +718,17 @@ async def handle_meeting_ended(data: dict[str, Any], log: Any) -> None:  # noqa:
         # Skip if already in terminal state
         if appointment.status in (
             AppointmentStatus.COMPLETED,
+            AppointmentStatus.NO_SHOW,
             AppointmentStatus.CANCELLED,
         ):
             log.info("appointment_already_terminal", status=appointment.status)
             return
 
         # Determine if completed or no-show
-        no_show_host = data.get("noShowHost", False)
-        attendees = data.get("attendees", [])
+        attendees = data.get("attendees") or []
 
-        if no_show_host or not attendees:
+        # Host absence is not evidence that the *contact* missed the meeting.
+        if not attendees or all(isinstance(a, dict) and a.get("noShow") is True for a in attendees):
             appointment.status = AppointmentStatus.NO_SHOW
             log.info("appointment_no_show", appointment_id=appointment.id)
         else:
@@ -738,30 +744,20 @@ async def handle_meeting_ended(data: dict[str, Any], log: Any) -> None:  # noqa:
 
         is_no_show = appointment.status == AppointmentStatus.NO_SHOW
 
-        # Update contact lifecycle tags and status fields before committing
-        meeting_contact_result = await db.execute(
-            select(Contact).where(Contact.id == appointment.contact_id)
-        )
-        meeting_contact = meeting_contact_result.scalar_one_or_none()
-        if meeting_contact:
-            if is_no_show:
-                await TagService(db).add_tag_to_contact(
-                    workspace_id=meeting_contact.workspace_id,
-                    contact_id=meeting_contact.id,
-                    name="no-show",
-                )
-                meeting_contact.last_appointment_status = "no_show"
-                meeting_contact.noshow_count = (meeting_contact.noshow_count or 0) + 1
-            else:
-                await TagService(db).add_tag_to_contact(
-                    workspace_id=meeting_contact.workspace_id,
-                    contact_id=meeting_contact.id,
-                    name="showed-up",
-                )
-                meeting_contact.last_appointment_status = "completed"
-            db.add(meeting_contact)
+        from app.services.appointments.show_rate import record_appointment_outcome
+
+        await record_appointment_outcome(db, appointment)
 
         await db.commit()
+
+        if is_no_show and appointment.confirmed_at:
+            try:
+                from app.services.appointments.waitlist import offer_waitlist_opening
+
+                await offer_waitlist_opening(db, appointment)
+            except Exception:
+                log.exception("waitlist_offer_failed", appointment_id=appointment.id)
+                await db.rollback()
 
         log.info(
             "meeting_ended_processed",

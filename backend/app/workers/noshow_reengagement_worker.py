@@ -24,6 +24,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.models.agent import Agent
+from app.models.appointment import Appointment, AppointmentStatus
 from app.models.contact import Contact
 from app.models.conversation import Conversation
 from app.models.phone_number import PhoneNumber
@@ -38,13 +39,19 @@ from app.workers.retryable import RetryableWorker
 MAX_CONTACTS_PER_TICK = 20
 
 # Default templates used when the agent has not configured a custom one
-_DEFAULT_DAY3_TEMPLATE = (
-    "Hey {first_name}, we'd still love to connect. Want to reschedule? {reschedule_link}"
-)
-_DEFAULT_DAY7_TEMPLATE = (
-    "Hi {first_name}, we're offering 300 free video ads to qualified businesses. "
-    "Still interested? Book here: {reschedule_link}"
-)
+_DEFAULT_DAY3_TEMPLATE = "Hey {first_name}, {reengagement_message} {reschedule_link}"
+_DEFAULT_DAY7_TEMPLATE = "Hi {first_name}, {reengagement_message} {reschedule_link}"
+
+_CAUSE_COPY = {
+    "noshow-confirmed-then-no-show": (
+        "we know plans can change even after confirming. Want to find another time?",
+        "would another time work better for you? Book here:",
+    ),
+    "noshow-never-confirmed": (
+        "we weren't able to confirm your last appointment. Is there a better time to connect?",
+        "if the earlier time didn't work, you can choose a better one here:",
+    ),
+}
 
 
 class NoshowReengagementWorker(RetryableWorker, BaseWorker):
@@ -206,7 +213,33 @@ class NoshowReengagementWorker(RetryableWorker, BaseWorker):
             log.warning("Could not resolve from number, will retry next tick")
             return
 
-        body = self._render_template(template, contact, agent)
+        latest_noshow_id = await db.scalar(
+            select(Appointment.id)
+            .where(
+                Appointment.workspace_id == contact.workspace_id,
+                Appointment.contact_id == contact.id,
+                Appointment.status == AppointmentStatus.NO_SHOW,
+            )
+            .order_by(Appointment.scheduled_at.desc(), Appointment.id.desc())
+            .limit(1)
+        )
+        cause = await db.scalar(
+            select(Tag.name)
+            .join(ContactTag, ContactTag.tag_id == Tag.id)
+            .where(
+                Tag.workspace_id == contact.workspace_id,
+                ContactTag.contact_id == contact.id,
+                Tag.name.in_(tuple(_CAUSE_COPY)),
+            )
+            .limit(1)
+        )
+        body = self._render_template(
+            template,
+            contact,
+            agent,
+            cause=cause,
+            day=3 if sent_tag == "noshow-day3-sent" else 7,
+        )
 
         sms_service = TelnyxSMSService(telnyx_key)
         try:
@@ -214,6 +247,7 @@ class NoshowReengagementWorker(RetryableWorker, BaseWorker):
                 "noshow_reengagement",
                 agent.id,
                 contact.id,
+                latest_noshow_id,
                 sent_tag,
             )
             message = await sms_service.send_message(
@@ -267,7 +301,14 @@ class NoshowReengagementWorker(RetryableWorker, BaseWorker):
             )
         )
 
-    def _render_template(self, template: str, contact: Contact, agent: Agent) -> str:
+    def _render_template(
+        self,
+        template: str,
+        contact: Contact,
+        agent: Agent,
+        cause: str | None = None,
+        day: int = 3,
+    ) -> str:
         """Render a re-engagement template with placeholders."""
         first_name = contact.first_name or "there"
         reschedule_link = self._build_reschedule_link(contact, agent)
@@ -277,9 +318,21 @@ class NoshowReengagementWorker(RetryableWorker, BaseWorker):
             "last_name": contact.last_name or "",
             "reschedule_link": reschedule_link,
             "booking_link": reschedule_link,
+            "noshow_cause": cause or "unknown",
+            "reengagement_message": _CAUSE_COPY.get(
+                cause,
+                (
+                    "we'd still love to connect. Want to reschedule?",
+                    "would you like to find another time? Book here:",
+                ),
+            )[0 if day == 3 else 1],
         }
 
         message = template
+        if cause in _CAUSE_COPY and not re.search(
+            r"\{(?:reengagement_message|noshow_cause)\}", template, re.IGNORECASE
+        ):
+            message = f"{_CAUSE_COPY[cause][0 if day == 3 else 1]} {message}"
         for placeholder, value in replacements.items():
             try:
                 pattern = re.compile(rf"\{{{placeholder}\}}", re.IGNORECASE)

@@ -152,7 +152,7 @@ class ReminderWorker(RetryableWorker, BaseWorker):
                     appt.confirmed_at is None
                     and appt.reschedule_requested_at is None
                     and RECONFIRM_CALL_SENTINEL not in (appt.reminders_sent or [])
-                    and now + timedelta(minutes=90) >= appt.scheduled_at
+                    and self._morning_due(appt, now)
                 ):
                     await self._send_reconfirm_call(appt, db)
 
@@ -171,7 +171,7 @@ class ReminderWorker(RetryableWorker, BaseWorker):
         return local_now.date() == local_appt.date() and local_now >= morning_start
 
     async def _send_reconfirm_call(self, appt: Appointment, db: AsyncSession) -> None:
-        """One extra AI call for unconfirmed appointments, 90 minutes before start."""
+        """One AI call for unconfirmed appointments on the morning of the meeting."""
         from app.services.telephony.telnyx_voice import TelnyxVoiceService
 
         contact = appt.contact

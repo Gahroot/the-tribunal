@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.models.agent import Agent
+from app.models.appointment import Appointment
 from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
 from app.models.phone_number import PhoneNumber
@@ -121,6 +122,13 @@ class NeverBookedWorker(RetryableWorker, BaseWorker):
             )
         )
 
+        has_ever_booked = exists(
+            select(Appointment.id).where(
+                Appointment.workspace_id == agent.workspace_id,
+                Appointment.contact_id == Contact.id,
+            )
+        )
+
         result = await db.execute(
             select(Contact)
             .where(
@@ -128,6 +136,7 @@ class NeverBookedWorker(RetryableWorker, BaseWorker):
                     Contact.workspace_id == agent.workspace_id,
                     has_inbound,
                     has_recent_conversation,
+                    ~has_ever_booked,
                     ~blocked_by_lifecycle_tag,
                 )
             )

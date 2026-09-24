@@ -83,6 +83,8 @@ def _make_db(execute_returns: list[Any]) -> MagicMock:
     """Build a mock AsyncSession whose ``execute`` yields each result in turn."""
     db = MagicMock()
     db.execute = AsyncMock(side_effect=list(execute_returns))
+    db.scalars = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+    db.scalar = AsyncMock(return_value=False)
     db.add = MagicMock()
     db.commit = AsyncMock()
     db.refresh = AsyncMock()
@@ -146,6 +148,9 @@ def _stub_side_effects(monkeypatch: pytest.MonkeyPatch) -> dict[str, MagicMock]:
     tag_service.add_tag_to_contact = AsyncMock(return_value=None)
     tag_service_factory = MagicMock(return_value=tag_service)
     monkeypatch.setattr(handlers, "TagService", tag_service_factory)
+    from app.services.appointments import show_rate
+
+    monkeypatch.setattr(show_rate, "TagService", tag_service_factory)
     stubs["tag_service"] = tag_service
 
     increment_guarantee = AsyncMock(return_value=None)
@@ -720,6 +725,24 @@ async def test_meeting_ended_marks_completed_and_increments_guarantee(
     stubs["send_lifecycle_sms"].assert_not_awaited()
 
 
+async def test_host_absence_does_not_label_contact_a_no_show(
+    monkeypatch: pytest.MonkeyPatch,
+    meeting_ended_completed: dict[str, Any],
+) -> None:
+    _stub_side_effects(monkeypatch)
+    workspace_id = uuid.uuid4()
+    contact = _make_contact(workspace_id=workspace_id)
+    appointment = _make_appointment(workspace_id=workspace_id, contact_id=contact.id)
+    meeting_ended_completed["noShowHost"] = True
+    db = _make_db([_Result(scalar=appointment), _Result(scalar=contact), _Result(scalar=contact)])
+    _patch_session_local(monkeypatch, db)
+
+    await handlers.handle_meeting_ended(meeting_ended_completed, _make_log())
+
+    assert appointment.status == AppointmentStatus.COMPLETED
+    assert contact.noshow_count == 0
+
+
 async def test_meeting_ended_marks_no_show_and_increments_count(
     monkeypatch: pytest.MonkeyPatch,
     meeting_ended_no_show: dict[str, Any],
@@ -738,6 +761,7 @@ async def test_meeting_ended_marks_no_show_and_increments_count(
         execute_returns=[
             _Result(scalar=appt),  # Appointment
             _Result(scalar=contact),  # Contact for tag update
+            _Result(),  # Remove stale opposite-cause tag
             _Result(scalar=contact),  # Contact for no-show SMS
         ]
     )
