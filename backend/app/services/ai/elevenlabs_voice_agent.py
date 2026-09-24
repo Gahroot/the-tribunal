@@ -22,7 +22,11 @@ from websockets.exceptions import ConnectionClosed, ConnectionClosedError
 from app.models.agent import Agent
 from app.services.ai.elevenlabs_tts import ElevenLabsTTSSession, get_voice_id
 from app.services.ai.voice_agent_base import VoiceAgentBase
-from app.services.ai.voice_tools import GROK_BUILTIN_TOOLS, VOICE_BOOKING_TOOLS
+from app.services.ai.voice_tools import (
+    CONFIRM_APPOINTMENT_TOOL,
+    GROK_BUILTIN_TOOLS,
+    VOICE_BOOKING_TOOLS,
+)
 
 logger = structlog.get_logger()
 
@@ -363,7 +367,7 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
         }
 
         # Build tools list
-        tools: list[dict[str, Any]] = []
+        tools: list[dict[str, Any]] = [CONFIRM_APPOINTMENT_TOOL]
 
         agent_enabled_tools = (
             self.agent.enabled_tools if self.agent and self.agent.enabled_tools else []

@@ -581,6 +581,23 @@ async def test_booking_cancelled_returns_when_appointment_missing(
     log.warning.assert_any_call("appointment_not_found")
 
 
+async def test_release_cancellation_preserves_confirmed_no_show(
+    monkeypatch: pytest.MonkeyPatch,
+    booking_cancelled_by_attendee: dict[str, Any],
+) -> None:
+    stubs = _stub_side_effects(monkeypatch)
+    appointment = _make_appointment()
+    appointment.status = AppointmentStatus.NO_SHOW
+    db = _make_db([_Result(scalar=appointment)])
+    _patch_session_local(monkeypatch, db)
+
+    await handlers.handle_booking_cancelled(booking_cancelled_by_attendee, _make_log())
+
+    assert appointment.status == AppointmentStatus.NO_SHOW
+    db.commit.assert_not_awaited()
+    stubs["send_lifecycle_sms"].assert_not_awaited()
+
+
 async def test_booking_cancelled_by_attendee_fires_rebook_sms(
     monkeypatch: pytest.MonkeyPatch,
     booking_cancelled_by_attendee: dict[str, Any],

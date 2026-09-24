@@ -32,6 +32,26 @@ GROK_BUILTIN_TOOLS: dict[str, dict[str, str]] = {
     },
 }
 
+# Only a live, matching appointment reconfirmation call may execute this tool.
+CONFIRM_APPOINTMENT_TOOL: dict[str, Any] = {
+    "type": "function",
+    "name": "confirm_appointment",
+    "description": (
+        "Only on an appointment reconfirmation call, record the caller's explicit "
+        "yes to attending. Do not use for voicemail, uncertain answers, or rescheduling."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "caller_quote": {
+                "type": "string",
+                "description": "The caller's exact affirmative words (e.g. 'yes').",
+            },
+        },
+        "required": ["caller_quote"],
+    },
+}
+
 # DTMF tool for IVR menu navigation
 # Allows AI agent to send touch-tone digits during calls
 DTMF_TOOL: dict[str, Any] = {
@@ -564,7 +584,7 @@ def build_tools_list(
     Returns:
         List of tool definitions for session configuration
     """
-    tools: list[dict[str, Any]] = []
+    tools: list[dict[str, Any]] = [CONFIRM_APPOINTMENT_TOOL]
 
     # Built-in Grok tools
     if enable_web_search:

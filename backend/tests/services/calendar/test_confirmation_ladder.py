@@ -1,5 +1,6 @@
 """Appointment confirmation and logistics behavior."""
 
+import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -8,7 +9,11 @@ import pytest
 
 from app.api.webhooks.calcom_events import DEFAULT_CONFIRMATION_BODY, build_logistics_body
 from app.models.conversation import MessageStatus
+from app.services.ai.tool_executor import VoiceToolExecutor
+from app.services.ai.voice_tools import get_tools_from_agent_config
 from app.services.calendar.confirmation_reply import handle_confirmation_reply
+from app.services.calendar.voice_confirmation import confirm_from_voice
+from app.services.idempotency import derive_outbound_key
 from app.workers.reminder_worker import ReminderWorker
 
 
@@ -233,3 +238,172 @@ async def test_reschedule_reply_acknowledges_without_duplicate_booking(sent: boo
     assert "Our team will follow up" in sender.await_args.kwargs["body_text"]
     assert "http" not in sender.await_args.kwargs["body_text"]
     sender.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "quote,accepted",
+    [
+        ("yes", True),
+        ("I'll be there", True),
+        ("Yes, I'll be there", True),
+        ("maybe", False),
+        ("yes, but reschedule", False),
+        ("no", False),
+    ],
+)
+async def test_voice_confirmation_requires_matching_call_and_explicit_yes(quote, accepted):
+    workspace_id, agent_id = uuid.uuid4(), uuid.uuid4()
+    now = datetime.now(UTC)
+    appointment = SimpleNamespace(
+        id=42,
+        workspace_id=workspace_id,
+        agent_id=agent_id,
+        contact_id=17,
+        status="scheduled",
+        scheduled_at=now + timedelta(hours=2),
+        confirmed_at=None,
+    )
+    message = SimpleNamespace(
+        body="appointment_reconfirm:42",
+        agent_id=agent_id,
+        direction="outbound",
+        status=MessageStatus.ANSWERED,
+        idempotency_key=derive_outbound_key(
+            "appointment_reconfirm_call", 42, appointment.scheduled_at
+        ),
+        conversation=SimpleNamespace(contact_id=17, workspace_id=workspace_id),
+    )
+    db = AsyncMock()
+    db.scalar.side_effect = [message, appointment]
+    result = await confirm_from_voice(
+        db,
+        call_control_id="call-42",
+        workspace_id=workspace_id,
+        agent_id=agent_id,
+        caller_quote=quote,
+    )
+    assert result is accepted
+    if accepted:
+        assert appointment.confirmed_at is not None
+        db.commit.assert_awaited_once()
+    else:
+        assert appointment.confirmed_at is None
+        db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_voice_confirmation_rejects_mismatched_call_key():
+    workspace_id, agent_id = uuid.uuid4(), uuid.uuid4()
+    now = datetime.now(UTC)
+    appointment = SimpleNamespace(
+        id=42,
+        workspace_id=workspace_id,
+        agent_id=agent_id,
+        contact_id=17,
+        status="scheduled",
+        scheduled_at=now + timedelta(hours=2),
+        confirmed_at=None,
+    )
+    message = SimpleNamespace(
+        body="appointment_reconfirm:42",
+        idempotency_key=uuid.uuid4(),
+        conversation=SimpleNamespace(contact_id=17, workspace_id=workspace_id),
+    )
+    db = AsyncMock()
+    db.scalar.side_effect = [message, appointment]
+    assert not await confirm_from_voice(
+        db,
+        call_control_id="wrong-call",
+        workspace_id=workspace_id,
+        agent_id=agent_id,
+        caller_quote="yes",
+    )
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_voice_tool_dispatch_persists_matching_approval_only():
+    workspace_id, agent_id = uuid.uuid4(), uuid.uuid4()
+    agent = SimpleNamespace(id=agent_id)
+    executor = VoiceToolExecutor(
+        agent,
+        call_control_id="call-42",
+        workspace_id=workspace_id,
+    )
+    db = AsyncMock()
+    session = MagicMock()
+    session.__aenter__ = AsyncMock(return_value=db)
+    session.__aexit__ = AsyncMock(return_value=None)
+    with (
+        patch("app.db.session.AsyncSessionLocal", return_value=session),
+        patch(
+            "app.services.calendar.voice_confirmation.confirm_from_voice",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as confirm,
+    ):
+        assert await executor.execute("confirm_appointment", {"caller_quote": "yes"}) == {
+            "success": True
+        }
+    confirm.assert_awaited_once_with(
+        db,
+        call_control_id="call-42",
+        workspace_id=workspace_id,
+        agent_id=agent_id,
+        caller_quote="yes",
+    )
+
+
+def test_reconfirm_tool_is_exposed_to_voice_agent():
+    agent = SimpleNamespace(enabled_tools=[], tool_settings={})
+    assert any(
+        tool["name"] == "confirm_appointment"
+        for tool in get_tools_from_agent_config(agent, enable_booking=False)
+    )
+
+
+@pytest.mark.asyncio
+async def test_disabled_sms_reminders_do_not_disable_reconfirmation_call():
+    worker = ReminderWorker()
+    now = datetime.now(UTC)
+    appt = SimpleNamespace(
+        id=1,
+        agent=SimpleNamespace(reminder_enabled=False),
+        reminders_sent=[],
+        confirmed_at=None,
+        reschedule_requested_at=None,
+    )
+    worker._morning_due = MagicMock(return_value=True)
+    worker._send_reconfirm_call = AsyncMock()
+    worker._send_reminder = AsyncMock()
+    worker._process_value_reinforcement = AsyncMock()
+    db = AsyncMock()
+
+    await worker._process_appointments([appt], now, db)
+
+    worker._send_reconfirm_call.assert_awaited_once_with(appt, db)
+    worker._send_reminder.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reminder_scan_pages_past_processed_first_twenty():
+    from app.workers.reminder_worker import MAX_REMINDERS_PER_TICK
+
+    worker = ReminderWorker()
+    worker._process_appointments = AsyncMock()
+    future = datetime.now(UTC) + timedelta(hours=1)
+    first = [SimpleNamespace(id=i, scheduled_at=future) for i in range(MAX_REMINDERS_PER_TICK)]
+    later = SimpleNamespace(id=MAX_REMINDERS_PER_TICK + 1, scheduled_at=future)
+    db = AsyncMock()
+    db.execute.side_effect = [
+        MagicMock(unique=lambda: MagicMock(scalars=lambda: MagicMock(all=lambda: first))),
+        MagicMock(unique=lambda: MagicMock(scalars=lambda: MagicMock(all=lambda: [later]))),
+    ]
+    session = MagicMock()
+    session.__aenter__ = AsyncMock(return_value=db)
+    session.__aexit__ = AsyncMock(return_value=None)
+    with patch("app.workers.reminder_worker.AsyncSessionLocal", return_value=session):
+        await worker._process_items()
+    assert worker._process_appointments.await_count == 2
+    assert worker._process_appointments.await_args.args[0] == [later]

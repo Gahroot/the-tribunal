@@ -4,6 +4,7 @@ Stages are scoped to each deal's existing pipeline; custom pipelines retain thei
 own columns. The pipeline row lock serializes creation on concurrent webhooks.
 """
 
+import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import func, select
@@ -16,7 +17,7 @@ STAGES = {"scheduled": ("Booked", 40), "completed": ("Showed", 60), "no_show": (
 
 
 async def move_appointment_opportunities(
-    db: AsyncSession, workspace_id, contact_id: int, status: str
+    db: AsyncSession, workspace_id: uuid.UUID, contact_id: int, status: str
 ) -> None:
     """Advance open opportunities for the primary contact; caller commits."""
     if status not in STAGES:

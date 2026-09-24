@@ -102,7 +102,7 @@ class VoiceToolExecutor(BaseToolExecutor):
 
     # ── Main dispatch ───────────────────────────────────────────────
 
-    async def execute(  # noqa: PLR0911 - flat tool dispatch table
+    async def execute(  # noqa: PLR0911, PLR0912 - flat tool dispatch table
         self,
         function_name: str,
         arguments: dict[str, Any],
@@ -114,9 +114,27 @@ class VoiceToolExecutor(BaseToolExecutor):
             arguments=(
                 {"caller_consented": arguments.get("caller_consented") is True}
                 if function_name == "transfer_call"
+                else {"caller_quote_provided": bool(arguments.get("caller_quote"))}
+                if function_name == "confirm_appointment"
                 else arguments
             ),
         )
+
+        if function_name == "confirm_appointment":
+            if not self.call_control_id or not self.workspace_id or not self.agent:
+                return {"success": False, "error": "No active reconfirmation call"}
+            from app.db.session import AsyncSessionLocal
+            from app.services.calendar.voice_confirmation import confirm_from_voice
+
+            async with AsyncSessionLocal() as db:
+                confirmed = await confirm_from_voice(
+                    db,
+                    call_control_id=self.call_control_id,
+                    workspace_id=self.workspace_id,
+                    agent_id=self.agent.id,
+                    caller_quote=arguments.get("caller_quote", ""),
+                )
+            return {"success": confirmed}
 
         if function_name == "check_availability":
             return await self.execute_check_availability(
@@ -1807,12 +1825,18 @@ def create_tool_callback(
             arguments=(
                 {"caller_consented": arguments.get("caller_consented") is True}
                 if function_name == "transfer_call"
+                else {"caller_quote_provided": bool(arguments.get("caller_quote"))}
+                if function_name == "confirm_appointment"
                 else arguments
             ),
         )
 
         # Read-only tools (e.g. knowledge lookups) skip the approval gate so a
         # live call never stalls waiting for operator sign-off on a retrieval.
+        # Confirmation is not an agent-initiated mutation: execution verifies
+        # this exact answered call and appointment, then stores the caller's yes.
+        if function_name == "confirm_appointment":
+            return await executor.execute(function_name, arguments)
         if function_name in GATE_EXEMPT_TOOLS:
             result = await executor.execute(function_name, arguments)
             log.info(

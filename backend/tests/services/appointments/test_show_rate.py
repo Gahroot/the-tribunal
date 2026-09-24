@@ -1,7 +1,7 @@
 """Regression checks for no-show classification and deal stage transitions."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -109,10 +109,19 @@ async def test_stage_transition_keeps_closed_deals_out_of_query():
     assert deal.stage_changed_at is not None
 
 
-async def test_waitlist_skips_opted_out_contact_and_offers_next_opening(monkeypatch):
+async def test_waitlist_skips_opted_out_contact_and_offers_freed_slot(monkeypatch):
     workspace_id = uuid.uuid4()
+    start = datetime.now(UTC).replace(microsecond=0) + timedelta(hours=2)
     appt = SimpleNamespace(
-        id=44, workspace_id=workspace_id, contact_id=13, agent_id=None, calcom_event_type_id=123
+        id=44,
+        workspace_id=workspace_id,
+        contact_id=13,
+        agent_id=None,
+        calcom_event_type_id=123,
+        status="no_show",
+        confirmed_at=datetime.now(UTC),
+        scheduled_at=start,
+        calcom_booking_uid="booking-44",
     )
     blocked = SimpleNamespace(
         id=14, first_name="A", last_name=None, email=None, phone_number="+14155550111"
@@ -125,11 +134,13 @@ async def test_waitlist_skips_opted_out_contact_and_offers_next_opening(monkeypa
     opt_out = MagicMock(check_opt_out=AsyncMock(side_effect=[True, False]))
     monkeypatch.setattr(waitlist, "OptOutManager", lambda: opt_out)
     monkeypatch.setattr(waitlist.settings, "calcom_api_key", "test-key")
-    monkeypatch.setattr(
-        waitlist,
-        "CalComService",
-        lambda key: MagicMock(generate_booking_url=MagicMock(return_value="https://cal.com/open")),
+    cal = MagicMock(
+        generate_booking_url=MagicMock(return_value="https://cal.com/open"),
+        cancel_booking=AsyncMock(return_value=True),
+        get_availability=AsyncMock(return_value=[{"iso": start.isoformat()}]),
+        close=AsyncMock(),
     )
+    monkeypatch.setattr(waitlist, "CalComService", lambda key: cal)
     send = AsyncMock(return_value=True)
     monkeypatch.setattr(waitlist, "send_lifecycle_sms", send)
 
@@ -137,8 +148,87 @@ async def test_waitlist_skips_opted_out_contact_and_offers_next_opening(monkeypa
 
     assert send.await_args.kwargs["contact"] is eligible
     assert send.await_args.kwargs["idempotency_parts"] == (44, 15)
-    assert "available times" in send.await_args.kwargs["body_text"]
-    assert "freed slot" not in send.await_args.kwargs["body_text"]
+    assert start.strftime("%b %d at %I:%M %p UTC") in send.await_args.kwargs["body_text"]
+    cal.cancel_booking.assert_awaited_once()
+    cal.get_availability.assert_awaited_once()
+
+
+async def test_future_slot_not_offered_when_calcom_does_not_show_it(monkeypatch):
+    start = datetime.now(UTC).replace(microsecond=0) + timedelta(hours=2)
+    appt = SimpleNamespace(
+        id=45,
+        workspace_id=uuid.uuid4(),
+        contact_id=13,
+        agent_id=None,
+        confirmed_at=datetime.now(UTC),
+        status="no_show",
+        calcom_booking_uid="booking-45",
+        calcom_event_type_id=123,
+        scheduled_at=start,
+    )
+    contact = SimpleNamespace(
+        id=15, phone_number="+14155550222", email="b@example.com", first_name="B", last_name="C"
+    )
+    db = MagicMock(scalars=AsyncMock(return_value=MagicMock(all=lambda: [contact])))
+    monkeypatch.setattr(waitlist.settings, "calcom_api_key", "test-key")
+    monkeypatch.setattr(
+        waitlist, "OptOutManager", lambda: MagicMock(check_opt_out=AsyncMock(return_value=False))
+    )
+    cal = MagicMock(
+        cancel_booking=AsyncMock(return_value=True),
+        get_availability=AsyncMock(return_value=[]),
+        close=AsyncMock(),
+    )
+    monkeypatch.setattr(waitlist, "CalComService", lambda key: cal)
+    send = AsyncMock()
+    monkeypatch.setattr(waitlist, "send_lifecycle_sms", send)
+
+    await waitlist.offer_waitlist_opening(db, appt)
+
+    send.assert_not_awaited()
+    cal.close.assert_awaited_once()
+
+
+async def test_expired_no_show_offers_verified_future_slot_not_expired_time(monkeypatch):
+    now = datetime.now(UTC).replace(microsecond=0)
+    next_time = now + timedelta(days=1)
+    appt = SimpleNamespace(
+        id=46,
+        workspace_id=uuid.uuid4(),
+        contact_id=13,
+        agent_id=None,
+        confirmed_at=now,
+        status="no_show",
+        calcom_booking_uid="old-booking",
+        calcom_event_type_id=123,
+        scheduled_at=now - timedelta(hours=1),
+    )
+    contact = SimpleNamespace(
+        id=15, phone_number="+14155550222", email="b@example.com", first_name="B", last_name="C"
+    )
+    db = MagicMock(scalars=AsyncMock(return_value=MagicMock(all=lambda: [contact])))
+    monkeypatch.setattr(waitlist.settings, "calcom_api_key", "test-key")
+    monkeypatch.setattr(
+        waitlist, "OptOutManager", lambda: MagicMock(check_opt_out=AsyncMock(return_value=False))
+    )
+    cal = MagicMock(
+        cancel_booking=AsyncMock(),
+        get_availability=AsyncMock(return_value=[{"iso": next_time.isoformat()}]),
+        generate_booking_url=MagicMock(return_value="https://cal.com/open"),
+        close=AsyncMock(),
+    )
+    monkeypatch.setattr(waitlist, "CalComService", lambda key: cal)
+    send = AsyncMock()
+    monkeypatch.setattr(waitlist, "send_lifecycle_sms", send)
+
+    await waitlist.offer_waitlist_opening(db, appt)
+
+    cal.cancel_booking.assert_not_awaited()
+    assert next_time.strftime("%b %d at %I:%M %p UTC") in send.await_args.kwargs["body_text"]
+    assert (
+        appt.scheduled_at.strftime("%b %d at %I:%M %p UTC")
+        not in send.await_args.kwargs["body_text"]
+    )
 
 
 @pytest.mark.parametrize(

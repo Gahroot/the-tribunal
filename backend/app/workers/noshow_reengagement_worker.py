@@ -320,7 +320,7 @@ class NoshowReengagementWorker(RetryableWorker, BaseWorker):
             "booking_link": reschedule_link,
             "noshow_cause": cause or "unknown",
             "reengagement_message": _CAUSE_COPY.get(
-                cause,
+                cause or "",
                 (
                     "we'd still love to connect. Want to reschedule?",
                     "would you like to find another time? Book here:",

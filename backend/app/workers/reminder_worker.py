@@ -76,85 +76,86 @@ class ReminderWorker(RetryableWorker, BaseWorker):
             # standard offset (1440 min = 24 h) with a safety margin.
             lookahead_minutes = 1500  # 25 hours
 
-            # Broad fetch: scheduled appointments in the lookahead window
-            # that still have at least one offset potentially unsent.
-            # Precise per-offset filtering happens in Python after loading.
-            result = await db.execute(
-                select(Appointment)
-                .options(
-                    joinedload(Appointment.agent),
-                    joinedload(Appointment.contact),
-                    joinedload(Appointment.workspace),
-                )
-                .where(
-                    and_(
+            # Keyset pagination prevents processed early rows from starving later
+            # appointments when more than one batch is inside the window.
+            cursor: tuple[datetime, int] | None = None
+            while True:
+                query = (
+                    select(Appointment)
+                    .options(
+                        joinedload(Appointment.agent),
+                        joinedload(Appointment.contact),
+                        joinedload(Appointment.workspace),
+                    )
+                    .where(
                         Appointment.status == "scheduled",
                         Appointment.reschedule_requested_at.is_(None),
                         Appointment.scheduled_at > now,
                         Appointment.scheduled_at <= now + timedelta(minutes=lookahead_minutes),
                         Appointment.contact_id.is_not(None),
                     )
+                    .order_by(Appointment.scheduled_at, Appointment.id)
+                    .limit(MAX_REMINDERS_PER_TICK)
                 )
-                .order_by(Appointment.scheduled_at)
-                .limit(MAX_REMINDERS_PER_TICK)
+                if cursor is not None:
+                    from sqlalchemy import tuple_
+
+                    query = query.where(tuple_(Appointment.scheduled_at, Appointment.id) > cursor)
+                result = await db.execute(query)
+                appointments = result.unique().scalars().all()
+                if not appointments:
+                    break
+                cursor = (appointments[-1].scheduled_at, appointments[-1].id)
+                await self._process_appointments(appointments, now, db)
+                if len(appointments) < MAX_REMINDERS_PER_TICK:
+                    break
+
+    async def _process_appointments(
+        self, appointments: Sequence[Appointment], now: datetime, db: AsyncSession
+    ) -> None:
+        """Process one bounded batch; voice calls are independent of SMS settings."""
+        due_pairs: list[tuple[Appointment, int]] = []
+        for appt in appointments:
+            agent = appt.agent
+            if agent is not None and not agent.reminder_enabled:
+                continue
+            offsets = (
+                agent.reminder_offsets
+                if agent is not None and agent.reminder_offsets
+                else _AGENTLESS_DEFAULT_OFFSETS
             )
-            appointments = result.unique().scalars().all()
-
-            if not appointments:
-                return
-
-            # Build the list of (appointment, offset) pairs that are due
-            due_pairs: list[tuple[Appointment, int]] = []
-            for appt in appointments:
-                agent = appt.agent
-                if agent is not None and not agent.reminder_enabled:
-                    continue
-
-                offsets = (
-                    agent.reminder_offsets
-                    if agent is not None and agent.reminder_offsets
-                    else _AGENTLESS_DEFAULT_OFFSETS
-                )
-                already_sent: list[int] = list(appt.reminders_sent or [])
-
-                for offset in offsets:
-                    if offset in already_sent:
-                        continue  # Already fired this touchpoint
-                    threshold = now + timedelta(minutes=offset)
-                    if appt.scheduled_at <= threshold:
-                        due_pairs.append((appt, offset))
-
-            if due_pairs:
-                self.logger.info(
-                    "Processing appointment reminders",
-                    count=len(due_pairs),
-                )
-
-                for appt, offset in due_pairs:
-                    await self.execute_with_retry(
-                        self._send_reminder,
-                        appt,
-                        offset,
-                        db,
-                        item_key=derive_worker_retry_key("reminder", appt.id, "offset", offset),
-                    )
-
-            # Value-reinforcement pre-appointment messages
-            await self._process_value_reinforcement(appointments, now, db)
-            for appt in appointments:
-                if appt.agent is not None and not appt.agent.reminder_enabled:
-                    continue
-                if self._morning_due(appt, now) and MORNING_SENTINEL not in (
-                    appt.reminders_sent or []
+            already_sent: list[int] = list(appt.reminders_sent or [])
+            for offset in offsets:
+                if offset not in already_sent and appt.scheduled_at <= now + timedelta(
+                    minutes=offset
                 ):
-                    await self._send_reminder(appt, MORNING_SENTINEL, db)
-                if (
-                    appt.confirmed_at is None
-                    and appt.reschedule_requested_at is None
-                    and RECONFIRM_CALL_SENTINEL not in (appt.reminders_sent or [])
-                    and self._morning_due(appt, now)
-                ):
-                    await self._send_reconfirm_call(appt, db)
+                    due_pairs.append((appt, offset))
+
+        for appt, offset in due_pairs:
+            await self.execute_with_retry(
+                self._send_reminder,
+                appt,
+                offset,
+                db,
+                item_key=f"reminder:{appt.id}:offset:{offset}",
+            )
+
+        await self._process_value_reinforcement(appointments, now, db)
+        for appt in appointments:
+            morning_due = self._morning_due(appt, now)
+            if (
+                (appt.agent is None or appt.agent.reminder_enabled)
+                and morning_due
+                and MORNING_SENTINEL not in (appt.reminders_sent or [])
+            ):
+                await self._send_reminder(appt, MORNING_SENTINEL, db)
+            if (
+                appt.confirmed_at is None
+                and appt.reschedule_requested_at is None
+                and RECONFIRM_CALL_SENTINEL not in (appt.reminders_sent or [])
+                and morning_due
+            ):
+                await self._send_reconfirm_call(appt, db)
 
     @staticmethod
     def _morning_due(appt: Appointment, now: datetime) -> bool:

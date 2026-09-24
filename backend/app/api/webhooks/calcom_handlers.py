@@ -541,6 +541,11 @@ async def handle_booking_cancelled(data: dict[str, Any], log: Any) -> None:  # n
         if not appointment:
             log.warning("appointment_not_found")
             return
+        if appointment.status == AppointmentStatus.NO_SHOW:
+            # Releasing an early no-show's future slot can generate this webhook.
+            # Preserve the forensic no-show rather than reclassifying it.
+            log.info("cancelled_booking_already_recorded_as_no_show")
+            return
 
         # Update appointment status
         appointment.status = AppointmentStatus.CANCELLED

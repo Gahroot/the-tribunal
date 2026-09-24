@@ -38,5 +38,7 @@ async def reconfirm_prompt(call_id: str, workspace_id: uuid.UUID, agent_id: uuid
             "\nThis is an appointment reconfirmation call. Confirm whether the contact can "
             f"attend the appointment at {appointment.scheduled_at.isoformat()}. "
             "If they need to reschedule, help them choose a new time. "
+            "After they explicitly say yes, use confirm_appointment with their exact words. "
+            "Never call it for uncertainty, a voicemail, or a reschedule request. "
             "Do not claim the appointment has been confirmed without their answer."
         )
