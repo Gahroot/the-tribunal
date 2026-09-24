@@ -317,6 +317,18 @@ async def generate_text_response(  # noqa: PLR0915, PLR0912
         await knowledge_context_service.has_active_documents(db, agent.id)
     )
 
+    from app.services.ai.contact_timeline import format_contact_timeline, read_contact_timeline
+
+    timeline_context = ""
+    if conversation.contact_id is not None:
+        timeline_context = format_contact_timeline(
+            await read_contact_timeline(
+                db,
+                workspace_id=conversation.workspace_id,
+                contact_id=conversation.contact_id,
+            )
+        )
+
     system_prompt = build_text_instructions(
         system_prompt=agent.system_prompt + booking_instructions,
         language=agent.language,
@@ -326,6 +338,8 @@ async def generate_text_response(  # noqa: PLR0915, PLR0912
         booking_url=None,  # Don't include URL when using function calling
         knowledge_context=knowledge_context,
     )
+    if timeline_context:
+        system_prompt += "\n\n" + timeline_context
 
     if trace is not None:
         trace.set_prompt(

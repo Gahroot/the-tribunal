@@ -25,6 +25,8 @@ async def test_analyze_transcript_returns_normalized_dict() -> None:
         "summary": "Caller wants to book a consult.",
         "objections": ["budget"],
         "next_steps": ["send quote"],
+        "preferred_call_time": "Thursday afternoon",
+        "callback_promise": "Agent promised to call on Thursday",
     }
     fake_client = SimpleNamespace(
         chat=SimpleNamespace(
@@ -42,6 +44,8 @@ async def test_analyze_transcript_returns_normalized_dict() -> None:
     assert result["summary"] == "Caller wants to book a consult."
     assert result["objections"] == ["budget"]
     assert result["next_steps"] == ["send quote"]
+    assert result["preferred_call_time"] == "Thursday afternoon"
+    assert result["callback_promise"] == "Agent promised to call on Thursday"
 
 
 @pytest.mark.asyncio
@@ -68,6 +72,8 @@ async def test_analyze_transcript_normalizes_bad_values() -> None:
     assert result["objections"] == []
     assert result["next_steps"] == []
     assert result["summary"] == "None"
+    assert result["preferred_call_time"] is None
+    assert result["callback_promise"] is None
 
 
 @pytest.mark.asyncio

@@ -36,6 +36,30 @@ CRM_TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "get_contact_timeline",
+            "description": "Read a contact's shared voice, SMS, campaign and CRM history.",
+            "parameters": {
+                "type": "object",
+                "properties": {"contact_id": {"type": "integer"}},
+                "required": ["contact_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "record_contact_note",
+            "description": "Record a confirmed fact for this contact. Requires human approval.",
+            "parameters": {
+                "type": "object",
+                "properties": {"contact_id": {"type": "integer"}, "note": {"type": "string"}},
+                "required": ["contact_id", "note"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "search_contacts",
             "description": "Search contacts by name, phone, email, or company.",
             "parameters": {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import func
@@ -11,6 +12,11 @@ from app.models.appointment import Appointment
 from app.models.campaign import Campaign
 from app.models.contact import Contact
 from app.models.conversation import Conversation
+from app.services.ai.contact_timeline import (
+    format_contact_timeline,
+    read_contact_timeline,
+    record_event,
+)
 from app.services.ai.crm_assistant._tool_context import CRMToolContext, ToolArguments, ToolHandler
 from app.services.dashboard.today_queue_service import TodayQueueService
 
@@ -24,6 +30,8 @@ class ContactAssistantTools:
     def handlers(self) -> dict[str, ToolHandler]:
         return {
             "search_contacts": self.search_contacts,
+            "get_contact_timeline": self.get_contact_timeline,
+            "record_contact_note": self.record_contact_note,
             "create_contact": self.create_contact,
             "get_dashboard_stats": self.get_dashboard_stats,
             "get_today_queue": self.get_today_queue,
@@ -65,6 +73,43 @@ class ContactAssistantTools:
             ],
             "count": len(contacts),
         }
+
+    async def get_contact_timeline(self, args: ToolArguments) -> dict[str, object]:
+        contact_id = int(args["contact_id"])
+        contact = await self.context.db.scalar(
+            select_workspace_owned(Contact, self.context.workspace_id, Contact.id == contact_id)
+        )
+        if contact is None:
+            return {"success": False, "error": "Contact not found"}
+        events = await read_contact_timeline(
+            self.context.db,
+            workspace_id=self.context.workspace_id,
+            contact_id=contact_id,
+        )
+        return {"success": True, "data": format_contact_timeline(events)}
+
+    async def record_contact_note(self, args: ToolArguments) -> dict[str, object]:
+        """Store a human-confirmed fact, never an instruction to other agents."""
+        contact_id = int(args["contact_id"])
+        contact = await self.context.db.scalar(
+            select_workspace_owned(Contact, self.context.workspace_id, Contact.id == contact_id)
+        )
+        if contact is None:
+            return {"success": False, "error": "Contact not found"}
+        note = str(args["note"]).strip()[:500]
+        if not note:
+            return {"success": False, "error": "Note is empty"}
+        await record_event(
+            self.context.db,
+            workspace_id=self.context.workspace_id,
+            contact_id=contact_id,
+            source="crm_note",
+            source_id=str(uuid.uuid4()),
+            channel="crm",
+            summary=note,
+            occurred_at=datetime.now(UTC),
+        )
+        return {"success": True}
 
     async def create_contact(self, args: ToolArguments) -> dict[str, object]:
         phone = args["phone"]

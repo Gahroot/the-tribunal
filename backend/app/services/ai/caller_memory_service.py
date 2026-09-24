@@ -308,6 +308,18 @@ async def summarize_and_store_call(  # noqa: PLR0911 - sequential guard clauses
             embedder=embedder,
         )
         if stored:
+            from app.services.ai.contact_timeline import record_event
+
+            await record_event(
+                db,
+                workspace_id=conversation.workspace_id,
+                contact_id=conversation.contact_id,
+                source="call_memory",
+                source_id=str(message.id),
+                channel="voice",
+                summary=summary,
+                occurred_at=occurred_at,
+            )
             await db.commit()
             log.info(
                 "caller_memory_stored",

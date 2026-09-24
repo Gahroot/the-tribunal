@@ -135,6 +135,14 @@ _DEFAULT_TOOL_POLICY = CRMToolMetadata(
 
 
 _TOOL_POLICY_OVERRIDES: dict[str, CRMToolMetadata] = {
+    "record_contact_note": CRMToolMetadata(
+        name="record_contact_note",
+        handler=_missing_handler,
+        risk_level=ToolRiskLevel.MEDIUM,
+        approval=ApprovalPolicy(required=True, requires_confirmation=True),
+        approved_executor=execute_approved_crm_assistant_tool,
+        description_template="Record a contact note for {contact_id}",
+    ),
     "create_contact": CRMToolMetadata(
         name="create_contact",
         handler=_missing_handler,

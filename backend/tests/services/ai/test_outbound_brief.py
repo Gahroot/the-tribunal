@@ -37,10 +37,12 @@ async def test_brief_uses_scoped_contact_memory_and_public_company_only():
     memory = SimpleNamespace(
         summary="The contact asked us to call back Tuesday after discussing a tour",
         occurred_at=datetime.now(UTC) - timedelta(days=1),
+        channel="voice",
+        facts={},
     )
     with (
         patch(
-            "app.services.ai.outbound_brief.retrieve_caller_memories",
+            "app.services.ai.outbound_brief.read_contact_timeline",
             new_callable=AsyncMock,
             return_value=[memory],
         ) as retrieve,
@@ -59,7 +61,7 @@ async def test_brief_uses_scoped_contact_memory_and_public_company_only():
     assert brief is not None
     assert len(brief.splitlines()) == 3
     assert "Interested in a tour" in brief
-    assert "Previous call: The contact asked us to call back Tuesday" in brief
+    assert "Previous voice: The contact asked us to call back Tuesday" in brief
     assert "Opened a new office" in brief
     assert "workspaces" not in brief
     assert retrieve.await_args.kwargs["workspace_id"] == workspace_id
@@ -81,7 +83,7 @@ async def test_public_website_hook_without_company_or_agent_search_tool():
     db = SimpleNamespace(execute=AsyncMock(return_value=_Result(contact)))
     with (
         patch(
-            "app.services.ai.outbound_brief.retrieve_caller_memories",
+            "app.services.ai.outbound_brief.read_contact_timeline",
             new_callable=AsyncMock,
             return_value=[],
         ),
@@ -106,7 +108,7 @@ async def test_public_website_hook_without_company_or_agent_search_tool():
 async def test_no_contact_does_not_retrieve_other_tenants_data():
     db = SimpleNamespace(execute=AsyncMock(return_value=_Result(None)))
     with patch(
-        "app.services.ai.outbound_brief.retrieve_caller_memories", new_callable=AsyncMock
+        "app.services.ai.outbound_brief.read_contact_timeline", new_callable=AsyncMock
     ) as retrieve:
         assert await build_outbound_brief(db, workspace_id=uuid.uuid4(), contact_id=1) is None
     retrieve.assert_not_awaited()

@@ -135,23 +135,35 @@ async def _attach_returning_caller_context(
             contact_id=contact_id,
             current_message_id=current_message_id,
         )
-        if not info.is_returning:
-            return
-
         summary = build_returning_caller_summary(info, timezone=context.timezone)
-        if summary and context.contact_info is not None:
-            context.contact_info["returning_summary"] = summary
-        context.metadata["returning_caller"] = {
-            "is_returning": True,
-            "prior_call_count": info.prior_call_count,
-            "memory_count": len(info.memories),
-        }
-        log.info(
-            "returning_caller_detected",
-            contact_id=contact_id,
-            prior_call_count=info.prior_call_count,
-            memory_count=len(info.memories),
-        )
+        if context.contact_info is not None:
+            from app.services.ai.contact_timeline import (
+                format_contact_timeline,
+                read_contact_timeline,
+            )
+
+            events = await read_contact_timeline(
+                db,
+                workspace_id=workspace_id,
+                contact_id=contact_id,
+                current_message_id=current_message_id,
+            )
+            history = format_contact_timeline(events)
+            if history or summary:
+                # The timeline already includes legacy caller-memory summaries.
+                context.contact_info["returning_summary"] = history or summary
+        if info.is_returning:
+            context.metadata["returning_caller"] = {
+                "is_returning": True,
+                "prior_call_count": info.prior_call_count,
+                "memory_count": len(info.memories),
+            }
+            log.info(
+                "returning_caller_detected",
+                contact_id=contact_id,
+                prior_call_count=info.prior_call_count,
+                memory_count=len(info.memories),
+            )
     except Exception as e:  # noqa: BLE001 - recognition must never break a call
         log.warning("returning_caller_detection_failed", error=str(e))
 

@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.contact import Contact
-from app.services.ai.caller_memory_service import retrieve_caller_memories
+from app.services.ai.contact_timeline import read_contact_timeline
 
 logger = structlog.get_logger()
 
@@ -112,19 +112,33 @@ async def build_outbound_brief(
     ]
     if contact.notes:
         lines[0] += f"; notes: {_line(contact.notes, 160)}"
-    memories = await retrieve_caller_memories(
+    history = await read_contact_timeline(
         db,
         workspace_id=workspace_id,
         contact_id=contact_id,
-        limit=1,
+        limit=6,
     )
-    if memories:
-        summary = _line(memories[0].summary)
+    for event in history[:2]:
+        summary = _line(event.summary)
         if summary:
-            callback = _callback_hook(summary, timezone, memories[0].occurred_at)
-            lines.append(f"Previous call: {summary}" + (f" {callback}" if callback else ""))
+            facts = event.facts or {}
+            detail = "; ".join(
+                f"{key.replace('_', ' ')}: {_line(str(facts[key]), 90)}"
+                for key in ("objections", "preferred_call_time", "callback_promise", "next_steps")
+                if facts.get(key)
+            )
+            callback = (
+                _callback_hook(summary, timezone, event.occurred_at)
+                if event.channel == "voice"
+                else None
+            )
+            lines.append(
+                f"Previous {event.channel}: {summary}"
+                + (f"; {detail}" if detail else "")
+                + (f" {callback}" if callback else "")
+            )
     if len(lines) == 1:
-        lines.append("Previous call: No stored call recap; do not imply a prior conversation.")
+        lines.append("No stored interaction; do not imply a prior conversation.")
 
     # The server-side research does not depend on the live agent's tool grants.
     # Only a public business name or website host leaves the database; never

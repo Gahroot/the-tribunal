@@ -20,6 +20,7 @@ from app.models.campaign import Campaign, CampaignContact
 from app.models.campaign_number_pool import CampaignNumberPool
 from app.models.campaign_report import CampaignReport
 from app.models.contact import Contact
+from app.models.contact_timeline import ContactTimelineEvent
 from app.models.conversation import Conversation, Message
 from app.models.demo_request import DemoRequest
 from app.models.device_token import DeviceToken
