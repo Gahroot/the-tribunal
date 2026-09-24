@@ -1,5 +1,6 @@
 """Regression tests for prompt promotion and transcript replay gates."""
 
+import asyncio
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -35,6 +36,34 @@ async def test_all_scripted_personas_run_and_fail_closed() -> None:
 
 
 @pytest.mark.asyncio
+async def test_provider_error_returns_failure_and_runs_remaining_personas() -> None:
+    with (
+        patch.object(
+            suite, "_simulate", new_callable=AsyncMock, side_effect=RuntimeError("private")
+        ),
+        patch.object(suite, "_verdict", new_callable=AsyncMock) as judge,
+    ):
+        verdicts = await suite.run_scenarios(
+            SimpleNamespace(system_prompt="Be polite", initial_greeting=None)
+        )
+    assert len(verdicts) == 8
+    assert all(not v.success and v.score == 0 for v in verdicts)
+    assert all("private" not in v.reason for v in verdicts)
+    judge.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cancellation_is_not_swallowed() -> None:
+    with (
+        patch.object(
+            suite, "_simulate", new_callable=AsyncMock, side_effect=asyncio.CancelledError
+        ),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await suite.run_scenarios(SimpleNamespace(system_prompt="Be polite", initial_greeting=None))
+
+
+@pytest.mark.asyncio
 async def test_silent_caller_waits_for_second_silence_before_judgment() -> None:
     response = SimpleNamespace(
         choices=[SimpleNamespace(message=SimpleNamespace(content="Are you there?"))]
@@ -50,27 +79,39 @@ async def test_silent_caller_waits_for_second_silence_before_judgment() -> None:
 
 
 @pytest.mark.asyncio
-async def test_judge_review_or_low_score_blocks() -> None:
+@pytest.mark.parametrize(
+    ("score", "review", "decision", "passed"),
+    [
+        (0.95, True, True, False),
+        (0.79, False, True, False),
+        (0.8, False, True, True),
+        (0.95, False, False, False),
+    ],
+)
+async def test_judge_review_or_low_score_blocks(score, review, decision, passed) -> None:
     with (
         patch.object(
             suite,
             "judge_call",
             new_callable=AsyncMock,
-            return_value={"score": 0.95, "human_review": True},
+            return_value={"score": score, "human_review": review},
         ),
         patch.object(suite, "create_openai_client"),
         patch.object(
             suite,
             "generate_structured",
             new_callable=AsyncMock,
-            return_value=suite.ScenarioDecision(success=True, reason="polite"),
+            return_value=suite.ScenarioDecision(success=decision, reason="scenario decision"),
         ),
     ):
         verdict = await suite._verdict(
             "angry lead", "Caller: stop\nAgent: sorry", "Respect opt-out"
         )
-        assert not verdict.success
-        assert "human review" in verdict.reason
+        assert verdict.success is passed
+        if review:
+            assert "human review" in verdict.reason
+        elif score < suite.MIN_SCORE:
+            assert "below" in verdict.reason
 
 
 @pytest.mark.asyncio

@@ -6,13 +6,14 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
-from app.services.ai.prompt_scenario_suite import require_scenario_pass
+from app.services.ai.prompt_scenario_suite import SCENARIOS, run_scenarios
 
 
 async def main(paths: list[str]) -> int:
     if not paths:
         print("No prompt snapshots supplied", file=sys.stderr)
         return 1
+    failed = False
     for path in paths:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         if (
@@ -24,12 +25,14 @@ async def main(paths: list[str]) -> int:
         greeting = data.get("initial_greeting")
         if greeting is not None and not isinstance(greeting, str):
             raise ValueError(f"Invalid greeting: {path}")
-        verdicts = await require_scenario_pass(
+        verdicts = await run_scenarios(
             SimpleNamespace(system_prompt=data["system_prompt"], initial_greeting=greeting)
         )
+        failed |= len(verdicts) != len(SCENARIOS) or any(not v.success for v in verdicts)
         for verdict in verdicts:
-            print(f"{path}: {verdict.name}: PASS ({verdict.score:.2f}) - {verdict.reason}")
-    return 0
+            status = "PASS" if verdict.success else "FAIL"
+            print(f"{path}: {verdict.name}: {status} ({verdict.score:.2f}) - {verdict.reason}")
+    return int(failed)
 
 
 if __name__ == "__main__":

@@ -16,6 +16,8 @@ from app.db.session import AsyncSessionLocal
 from app.models.agent import Agent
 from app.models.prompt_version import PromptVersion
 from app.services.ai.bandit_statistics import ComparisonResult, compare_prompt_versions
+from app.services.ai.model_config import resolve_model
+from app.services.ai.prompt_scenario_suite import require_scenario_pass
 from app.services.ai.prompt_version_service import PromptVersionService
 from app.workers.base import BaseWorker, WorkerRegistry
 from app.workers.retryable import RetryableWorker
@@ -132,6 +134,21 @@ class ExperimentEvaluationWorker(RetryableWorker, BaseWorker):
             winner_probability=comparison.winner_probability,
         )
 
+        # Statistical success must not bypass the safety/quality gate.
+        workspace_id = await db.scalar(
+            select(Agent.workspace_id).where(Agent.id == winner_version.agent_id)
+        )
+        if workspace_id is None:
+            raise ValueError("Prompt agent not found")
+        await require_scenario_pass(
+            winner_version,
+            simulation=await resolve_model(
+                db, "prompt_improvement", workspace_id, winner_version.agent_id
+            ),
+            judgment=await resolve_model(
+                db, "transcript_judgment", workspace_id, winner_version.agent_id
+            ),
+        )
         # activate_version deactivates all other versions for this agent
         await version_service.activate_version(db, winner_id)
 
