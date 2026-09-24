@@ -69,7 +69,7 @@ SCENARIOS = (
     ),
     Scenario(
         "silent breather",
-        ("[Silence; breathing audible]",),
+        ("[Silence; breathing audible]", "[Still silent; breathing audible]"),
         "Check if someone is there, then disengage politely; do not invent consent.",
     ),
     Scenario(

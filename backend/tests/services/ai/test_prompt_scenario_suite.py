@@ -35,6 +35,21 @@ async def test_all_scripted_personas_run_and_fail_closed() -> None:
 
 
 @pytest.mark.asyncio
+async def test_silent_caller_waits_for_second_silence_before_judgment() -> None:
+    response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="Are you there?"))]
+    )
+    with patch.object(suite, "create_openai_client") as client:
+        client.return_value.chat.completions.create = AsyncMock(return_value=response)
+        transcript = await suite._simulate(
+            SimpleNamespace(system_prompt="Be polite", initial_greeting=None),
+            next(s for s in suite.SCENARIOS if s.name == "silent breather"),
+        )
+        assert client.return_value.chat.completions.create.await_count == 2
+    assert transcript.count("Caller:") == 2
+
+
+@pytest.mark.asyncio
 async def test_judge_review_or_low_score_blocks() -> None:
     with (
         patch.object(
