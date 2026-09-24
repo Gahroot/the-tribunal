@@ -38,7 +38,7 @@ from app.services.knowledge.chunking import (
     DEFAULT_OVERLAP_TOKENS,
     DEFAULT_TARGET_TOKENS,
     TextChunk,
-    chunk_text,
+    chunk_sections,
 )
 
 logger = structlog.get_logger()
@@ -108,7 +108,7 @@ class KnowledgeIngestionService:
         """
         embed = embedder or embed_texts
 
-        chunks = chunk_text(
+        chunks = chunk_sections(
             document.content,
             target_tokens=self._target_tokens,
             overlap_tokens=self._overlap_tokens,

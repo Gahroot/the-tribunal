@@ -31,6 +31,8 @@ from app.services.knowledge.retrieval_service import (
     min_max_normalize,
     mmr_rerank,
     normalize_weights,
+    parent_context,
+    reciprocal_rank_fusion,
     tokenize,
 )
 
@@ -169,6 +171,34 @@ class TestMmr:
         assert len(mmr_rerank(items, limit=10)) == 1
 
 
+def test_rrf_preserves_exact_keyword_hit_even_at_last_rank() -> None:
+    ids = [uuid.uuid4(), uuid.uuid4()]
+    candidates = {key: _candidate(str(key), "policy") for key in ids}
+    candidates = {c.chunk_id: c for c in candidates.values()}
+    rows = [type("Row", (), {"id": key})() for key in candidates]
+    ranked = reciprocal_rank_fusion(
+        candidates, [], rows, min_score=0.9, vector_weight=0, keyword_weight=1
+    )
+    assert [item.candidate.chunk_id for item in ranked] == list(candidates)
+
+
+def test_parent_context_keeps_policy_with_heading_not_neighbor_section() -> None:
+    document = (
+        "# Pricing\nBasic $20.\n# Refund policy\nReturns within 30 days.\n# Shipping\nShips Monday."
+    )
+    start = document.index("Returns")
+    chunk = RetrievedChunk(
+        uuid.uuid4(), uuid.uuid4(), "Returns within 30 days.", 1, start, start + 23, 0.1, 0.9
+    )
+    assert parent_context(document, chunk) == "# Refund policy\nReturns within 30 days."
+    assert (
+        parent_context(
+            document, RetrievedChunk(uuid.uuid4(), uuid.uuid4(), "fallback", 1, -1, 0, 0.1, 0.9)
+        )
+        == "fallback"
+    )
+
+
 # ── Workspace + agent scoping (compiled SQL) ────────────────────────────────
 class TestScoping:
     def _sql(self, stmt: object) -> str:
@@ -230,8 +260,24 @@ class TestRetrieveShortCircuits:
         db.execute.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_embed_failure_returns_empty_without_querying_db(self) -> None:
+    async def test_embed_failure_falls_back_to_keyword_search(self) -> None:
+        chunk_id = uuid.uuid4()
+        doc_id = uuid.uuid4()
+        row = type(
+            "Row",
+            (),
+            {
+                "id": chunk_id,
+                "document_id": doc_id,
+                "content": "Refund policy: 30 days",
+                "ordinal": 0,
+                "char_start": 0,
+                "char_end": 22,
+                "rank": 0.1,
+            },
+        )()
         db = AsyncMock()
+        db.execute.return_value.all = lambda: [row]
 
         async def failing_embedder(_texts: list[str]) -> EmbeddingResult:
             return EmbeddingResult(ok=False, error="boom")
@@ -243,8 +289,8 @@ class TestRetrieveShortCircuits:
             query="pricing",
             options=RetrieveOptions(embedder=failing_embedder),
         )
-        assert out == []
-        db.execute.assert_not_awaited()
+        assert [chunk.content for chunk in out] == ["Refund policy: 30 days"]
+        assert db.execute.await_count == 1
 
 
 # ── retrieve_passages() title enrichment ─────────────────────────────
@@ -294,7 +340,9 @@ class TestRetrievePassages:
         service.retrieve = AsyncMock(return_value=chunks)  # type: ignore[method-assign]
 
         # Only doc_a has a title row; doc_b falls back to "Untitled".
-        title_row = type("Row", (), {"id": doc_a, "title": "Pricing"})()
+        title_row = type(
+            "Row", (), {"id": doc_a, "title": "Pricing", "content": "plans start at $49"}
+        )()
         title_result = type("Res", (), {"all": lambda self: [title_row]})()
         db = AsyncMock()
         db.execute.return_value = title_result

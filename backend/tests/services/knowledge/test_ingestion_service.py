@@ -23,7 +23,7 @@ from sqlalchemy.sql.dml import Delete
 
 from app.models.knowledge_document import KnowledgeDocument
 from app.services.ai.embeddings import EmbeddingResult
-from app.services.knowledge.chunking import chunk_text
+from app.services.knowledge.chunking import chunk_sections, chunk_text
 from app.services.knowledge.ingestion_service import (
     IngestionError,
     KnowledgeIngestionService,
@@ -173,6 +173,20 @@ class TestDedup:
 
 
 class TestHappyPath:
+    @pytest.mark.asyncio
+    async def test_children_do_not_cross_parent_sections(self) -> None:
+        text = "# Pricing\nA plan costs $49.\n# Refunds\nRefund within 30 days."
+        chunks = chunk_sections(text)
+        assert len(chunks) == 2
+        assert [chunk.content for chunk in chunks] == [
+            "# Pricing\nA plan costs $49.",
+            "# Refunds\nRefund within 30 days.",
+        ]
+        doc = _document(text)
+        session = _FakeSession()
+        await KnowledgeIngestionService().reindex_document(session, doc, embedder=_ok_embedder())
+        assert [chunk.content for chunk in session.added] == [chunk.content for chunk in chunks]
+
     @pytest.mark.asyncio
     async def test_builds_chunks_with_embeddings_and_offsets(self) -> None:
         text = "\n\n".join(f"Paragraph {i} with a handful of descriptive words." for i in range(6))

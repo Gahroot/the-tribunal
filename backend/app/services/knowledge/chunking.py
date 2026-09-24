@@ -19,6 +19,7 @@ chunk boundaries), so they round-trip losslessly.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
@@ -237,6 +238,39 @@ def _trim_span(text: str, start: int, end: int) -> tuple[int, int]:
     while end > start and text[end - 1].isspace():
         end -= 1
     return start, end
+
+
+_SECTION_HEADING = re.compile(r"(?m)^#{1,6}\s+[^\n]+$")
+
+
+def chunk_sections(
+    text: str,
+    *,
+    target_tokens: int = DEFAULT_TARGET_TOKENS,
+    overlap_tokens: int = DEFAULT_OVERLAP_TOKENS,
+) -> list[TextChunk]:
+    """Index small children within heading-delimited parent sections.
+
+    A section boundary never shares an overlap with an unrelated section. The
+    source offsets remain exact so retrieval can expand a hit to its parent.
+    Heading-less documents retain the existing recursive splitter behavior.
+    """
+    starts = [0] + [m.start() for m in _SECTION_HEADING.finditer(text) if m.start() != 0]
+    chunks: list[TextChunk] = []
+    for start, end in zip(starts, starts[1:] + [len(text)], strict=True):
+        for chunk in chunk_text(
+            text[start:end], target_tokens=target_tokens, overlap_tokens=overlap_tokens
+        ):
+            chunks.append(
+                TextChunk(
+                    ordinal=len(chunks),
+                    content=chunk.content,
+                    char_start=start + chunk.char_start,
+                    char_end=start + chunk.char_end,
+                    token_count=chunk.token_count,
+                )
+            )
+    return chunks
 
 
 # ── Public API ───────────────────────────────────────────────────────────────

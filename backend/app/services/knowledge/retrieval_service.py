@@ -1,31 +1,19 @@
-"""Hybrid knowledge retrieval — Python port of noledge ``src/lib/ai/rag``.
+"""Workspace/agent-scoped pgvector + Postgres FTS knowledge retrieval.
 
-Mirrors ``retrieve.ts`` + ``mmr.ts``:
-
-1. Embed the query, then over-fetch candidates from two arms:
-   * **vector** — pgvector cosine KNN over ``knowledge_chunks.embedding``.
-   * **keyword** — Postgres ``tsvector``/``ts_rank`` full-text search.
-2. **Min-max normalize** each arm's raw scores into ``[0, 1]``.
-3. **Weighted fusion** of the two normalized arms (default vector 0.7 /
-   keyword 0.3, renormalized to sum 1).
-4. Drop anything below a **minScore** floor (default 0.3).
-5. **MMR** diversity rerank (token-Jaccard similarity, lambda 0.7) to avoid
-   near-duplicate chunks crowding the top-k.
-6. A pluggable **reranker** seam runs last (identity no-op by default).
-
-Every query is scoped to a single ``workspace_id`` + ``agent_id`` so one tenant
-can never read another's knowledge base.
+Both arms over-fetch, RRF fuses their ranks, and MMR diversifies the shortlist.
+Hits are expanded to bounded parent sections using offsets in the source document.
+Keyword search remains available when the embedding provider fails.
 """
 
 from __future__ import annotations
 
 import re
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, replace
 
 import structlog
-from sqlalchemy import Select, func, select
+from sqlalchemy import Row, Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.knowledge_chunk import KnowledgeChunk
@@ -37,8 +25,8 @@ logger = structlog.get_logger()
 # ── Defaults (mirror noledge retrieve.ts) ───────────────────────────────────
 DEFAULT_TOP_K = 5
 DEFAULT_MIN_SCORE = 0.3
-DEFAULT_VECTOR_WEIGHT = 0.7
-DEFAULT_KEYWORD_WEIGHT = 0.3
+DEFAULT_VECTOR_WEIGHT = 0.5
+DEFAULT_KEYWORD_WEIGHT = 0.5
 DEFAULT_MMR_LAMBDA = 0.7
 # Postgres text-search config used by the generated tsvector column + queries.
 TS_CONFIG = "english"
@@ -87,7 +75,7 @@ class RetrievedChunk:
     char_start: int
     char_end: int
     distance: float
-    # Combined normalized relevance score in ``[0, 1]`` (higher = better).
+    # RRF relevance score (higher = better).
     score: float
 
 
@@ -256,6 +244,79 @@ def fuse_and_filter(
     return survivors
 
 
+SearchRow = Row[tuple[uuid.UUID, uuid.UUID, str, int, int, int, float]]
+
+
+def reciprocal_rank_fusion(
+    candidates: dict[uuid.UUID, Candidate],
+    vector_rows: Sequence[SearchRow],
+    keyword_rows: Sequence[SearchRow],
+    *,
+    min_score: float,
+    vector_weight: float,
+    keyword_weight: float,
+) -> list[ScoredCandidate]:
+    """Fuse ranked shortlists, not incomparable raw distances and ts_rank values.
+
+    A single-arm hit retains its full rank contribution. The score floor applies
+    to cosine similarity only for dense-only hits; lexical matches must remain
+    eligible even when dense retrieval misses a proper noun or exact price.
+    """
+    weights = normalize_weights(vector_weight, keyword_weight)
+    if not vector_rows:
+        weights = (0.0, 1.0)
+    if not keyword_rows:
+        weights = (1.0, 0.0)
+    scores: dict[uuid.UUID, float] = {}
+    for rows, weight in zip((vector_rows, keyword_rows), weights, strict=True):
+        for rank, row in enumerate(rows, start=1):
+            scores[row.id] = scores.get(row.id, 0.0) + weight / (60 + rank)
+    lexical_ids = {row.id for row in keyword_rows}
+    results = [
+        ScoredCandidate(candidate, score * 61)
+        for chunk_id, score in scores.items()
+        if (candidate := candidates[chunk_id]).chunk_id in lexical_ids
+        or 1.0 - candidate.distance >= min_score
+    ]
+    return sorted(results, key=lambda item: (-item.score, str(item.candidate.chunk_id)))
+
+
+_HEADING = re.compile(r"(?m)^#{1,6}\s+[^\n]+$")
+MAX_PARENT_CHARS = 1600
+
+
+def parent_context(document: str, chunk: RetrievedChunk) -> str:
+    """Expand a child hit to its bounded parent section without crossing headings.
+
+    Old chunks work immediately: offsets already point into the original document.
+    Invalid offsets fall back to stored child content instead of unrelated text.
+    """
+    if not (0 <= chunk.char_start < chunk.char_end <= len(document)):
+        return chunk.content
+    if chunk.char_end - chunk.char_start >= MAX_PARENT_CHARS:
+        return chunk.content
+    headings = list(_HEADING.finditer(document))
+    before = [heading for heading in headings if heading.start() <= chunk.char_start]
+    section_start = before[-1].start() if before else 0
+    section_end = next(
+        (heading.start() for heading in headings if heading.start() >= chunk.char_end),
+        len(document),
+    )
+    if section_end - section_start <= MAX_PARENT_CHARS:
+        return document[section_start:section_end].strip()
+    # Keep the hit, a little surrounding context, and the section heading.
+    start = max(section_start, chunk.char_start - 200)
+    end = min(section_end, max(chunk.char_end, start + MAX_PARENT_CHARS))
+    if end - start > MAX_PARENT_CHARS:
+        start = max(section_start, end - MAX_PARENT_CHARS)
+    body = document[start:end].strip()
+    if before and start > section_start:
+        heading = before[-1].group().strip()
+        if not body.startswith(heading):
+            body = f"{heading}\n{body}"
+    return body
+
+
 # ── DB query builders (workspace + agent scoped) ────────────────────────────
 def _build_vector_stmt(
     workspace_id: uuid.UUID,
@@ -327,9 +388,8 @@ class KnowledgeRetrievalService:
     ) -> list[RetrievedChunk]:
         """Return the top-k most relevant chunks for ``query``.
 
-        Over-fetch per arm → min-max normalize each arm → weighted fuse → filter
-        by ``min_score`` → MMR diversify → slice to ``top_k`` → rerank. Always
-        scoped to ``workspace_id`` + ``agent_id``.
+        Over-fetch per arm → RRF → MMR diversify → slice to ``top_k``.
+        ``min_score`` gates dense-only cosine hits, not exact lexical hits.
         """
         opts = options or RetrieveOptions()
         embedder = opts.embedder or embed_texts
@@ -344,26 +404,31 @@ class KnowledgeRetrievalService:
             return []
 
         embedded = await embedder([trimmed])
-        if not embedded.ok or not embedded.embeddings:
+        query_vector = embedded.embeddings[0] if embedded.ok and embedded.embeddings else None
+        if query_vector is None:
             logger.warning(
                 "knowledge_retrieval_embed_failed",
                 workspace_id=str(workspace_id),
                 agent_id=str(agent_id),
                 error=embedded.error,
             )
-            return []
-        query_vector = embedded.embeddings[0]
+            if not opts.hybrid:
+                return []
 
         candidate_k = candidate_count(opts.top_k)
         candidates: dict[uuid.UUID, Candidate] = {}
 
         # ── Vector arm ──────────────────────────────────────────────────────
         vector_rows = (
-            await db.execute(_build_vector_stmt(workspace_id, agent_id, query_vector, candidate_k))
-        ).all()
-        raw_vector_scores = [1.0 - float(row.distance) for row in vector_rows]
-        norm_vector_scores = min_max_normalize(raw_vector_scores)
-        for row, v_score in zip(vector_rows, norm_vector_scores, strict=True):
+            (
+                await db.execute(
+                    _build_vector_stmt(workspace_id, agent_id, query_vector, candidate_k)
+                )
+            ).all()
+            if query_vector is not None
+            else []
+        )
+        for row in vector_rows:
             candidates[row.id] = Candidate(
                 chunk_id=row.id,
                 document_id=row.document_id,
@@ -372,21 +437,20 @@ class KnowledgeRetrievalService:
                 char_start=row.char_start,
                 char_end=row.char_end,
                 distance=float(row.distance),
-                vector_score=v_score,
+                vector_score=0.0,
                 keyword_score=0.0,
             )
 
         # ── Keyword arm ─────────────────────────────────────────────────────
+        keyword_rows: Sequence[SearchRow] = []
         if opts.hybrid:
             keyword_rows = (
                 await db.execute(_build_keyword_stmt(workspace_id, agent_id, trimmed, candidate_k))
             ).all()
-            raw_keyword_scores = [float(row.rank) for row in keyword_rows]
-            norm_keyword_scores = min_max_normalize(raw_keyword_scores)
-            for row, k_score in zip(keyword_rows, norm_keyword_scores, strict=True):
+            for row in keyword_rows:
                 existing = candidates.get(row.id)
                 if existing is not None:
-                    existing.keyword_score = k_score
+                    existing.keyword_score = 1.0
                     continue
                 candidates[row.id] = Candidate(
                     chunk_id=row.id,
@@ -397,15 +461,20 @@ class KnowledgeRetrievalService:
                     char_end=row.char_end,
                     distance=float("inf"),
                     vector_score=0.0,
-                    keyword_score=k_score,
+                    keyword_score=1.0,
                 )
 
         # ── Fuse → filter → MMR → slice ─────────────────────────────────────
-        scored = fuse_and_filter(
-            list(candidates.values()),
-            opts.vector_weight,
-            opts.keyword_weight,
-            min_score,
+        # Rank fusion is stable across cosine and ts_rank score scales. In
+        # particular, a keyword-only pricing hit is not penalized just because
+        # it was absent from the dense arm's shortlist.
+        scored = reciprocal_rank_fusion(
+            candidates,
+            vector_rows,
+            keyword_rows if opts.hybrid else [],
+            min_score=min_score,
+            vector_weight=opts.vector_weight if query_vector is not None else 0.0,
+            keyword_weight=opts.keyword_weight if opts.hybrid else 0.0,
         )
         selected = (
             mmr_rerank(scored, lambda_=opts.mmr_lambda, limit=opts.top_k)
@@ -462,18 +531,26 @@ class KnowledgeRetrievalService:
         document_ids = {chunk.document_id for chunk in chunks}
         title_rows = (
             await db.execute(
-                select(KnowledgeDocument.id, KnowledgeDocument.title).where(
-                    KnowledgeDocument.id.in_(document_ids)
+                select(
+                    KnowledgeDocument.id, KnowledgeDocument.title, KnowledgeDocument.content
+                ).where(
+                    KnowledgeDocument.id.in_(document_ids),
+                    KnowledgeDocument.workspace_id == workspace_id,
+                    KnowledgeDocument.agent_id == agent_id,
                 )
             )
         ).all()
-        titles = {row.id: row.title for row in title_rows}
+        documents = {row.id: row for row in title_rows}
 
         return [
             RetrievedPassage(
                 document_id=chunk.document_id,
-                title=titles.get(chunk.document_id, "Untitled"),
-                content=chunk.content,
+                title=documents[chunk.document_id].title
+                if chunk.document_id in documents
+                else "Untitled",
+                content=parent_context(documents[chunk.document_id].content, chunk)
+                if chunk.document_id in documents
+                else chunk.content,
                 score=chunk.score,
                 ordinal=chunk.ordinal,
             )
