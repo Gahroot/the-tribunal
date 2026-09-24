@@ -369,11 +369,19 @@ class ApprovalGateService:
         require_approval_without_agent: bool,
     ) -> tuple[str, dict[str, Any] | None]:
         """Core evaluation logic."""
+        # Live-call helpers inherit their parent tool's policy, but cannot be
+        # replayed later by an approval worker after the call/hold has expired.
+        live_call_parent = {
+            "hold_booking_slot": "book_appointment",
+            "booking_recovery": "book_appointment",
+            "navigate_booking_menu": "send_dtmf",
+        }.get(action_type)
+        policy_action_type = live_call_parent or action_type
         raw_workspace = db.get(Workspace, workspace_id)
         workspace = await raw_workspace if inspect.isawaitable(raw_workspace) else None
         if workspace is not None and autonomy_allows_action(
             workspace.autonomy_mandate,
-            action_type=action_type,
+            action_type=policy_action_type,
             action_payload=action_payload,
             context=context,
         ):
@@ -398,7 +406,9 @@ class ApprovalGateService:
             return ("auto", None)
 
         policy = (
-            profile.action_policies.get(action_type, profile.default_policy) if profile else "ask"
+            profile.action_policies.get(policy_action_type, profile.default_policy)
+            if profile
+            else "ask"
         )
 
         if policy == "auto":
@@ -410,6 +420,8 @@ class ApprovalGateService:
             return ("blocked", None)
 
         # policy == "ask" (or any unrecognised value falls through to ask)
+        if live_call_parent:
+            return ("blocked", {"reason": "live_call_action_requires_operator"})
         action = await self._create_pending_action(
             db,
             agent_id=agent_id,

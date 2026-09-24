@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
 
-from app.services.calendar.calcom import CalComService
+from app.services.calendar.calcom import MAX_RETRIES, CalComService
 
 logger = structlog.get_logger()
 
@@ -72,11 +72,13 @@ class BookingService:
         event_type_id: int,
         timezone: str = "America/New_York",
         calcom_service: CalComService | None = None,
+        *,
+        max_attempts: int = MAX_RETRIES,
     ) -> None:
         self._api_key = api_key
         self._event_type_id = event_type_id
         self._timezone = timezone
-        self._calcom = calcom_service or CalComService(api_key)
+        self._calcom = calcom_service or CalComService(api_key, max_attempts=max_attempts)
         self._owns_calcom = calcom_service is None
         self._log = logger.bind(service="booking_service")
 
@@ -132,6 +134,14 @@ class BookingService:
         except Exception as e:
             self._log.exception("check_availability_error", error=str(e))
             return AvailabilityResult(success=False, error=f"Failed to check availability: {e!s}")
+
+    async def reserve_slot(self, start_iso: str) -> dict[str, Any]:
+        """Place a short-lived hold on a slot returned by availability."""
+        return await self._calcom.reserve_slot(self._event_type_id, start_iso)
+
+    async def release_slot(self, reservation_uid: str) -> None:
+        """Release this session's hold before normal availability validation."""
+        await self._calcom.release_slot(reservation_uid)
 
     async def book_appointment(
         self,

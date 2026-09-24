@@ -114,11 +114,26 @@ def test_booking_contract_and_date_context_do_not_drift_between_channels():
         voice = get_booking_tools("not/a-timezone")
         clock.now.assert_called_once_with(ZoneInfo("America/New_York"))
         text = get_text_booking_tools("America/New_York")
-    for realtime, chat, static in zip(voice, text, VOICE_BOOKING_TOOLS, strict=True):
-        assert chat["function"] == {key: value for key, value in realtime.items() if key != "type"}
-        assert "TODAY IS Thursday, September 24, 2026 (2026-09-24)" in realtime["description"]
-        assert realtime["parameters"] == static["parameters"]
+    assert [tool["name"] for tool in voice] == [
+        "book_appointment",
+        "check_availability",
+        "hold_booking_slot",
+        "booking_recovery",
+    ]
+    assert [tool["function"]["name"] for tool in text] == [
+        "book_appointment",
+        "check_availability",
+    ]
+    for realtime, chat in zip(voice[:2], text, strict=True):
+        assert chat["function"]["name"] == realtime["name"]
+        assert chat["function"]["parameters"] == realtime["parameters"]
+        assert realtime["description"].startswith(chat["function"]["description"])
+        assert "VOICE FLOW" not in chat["function"]["description"]
         assert "skill" in realtime["parameters"]["properties"]
+    for realtime, static in zip(voice, VOICE_BOOKING_TOOLS, strict=True):
+        assert "TODAY IS Thursday, September 24, 2026 (2026-09-24)" in realtime["description"]
+        assert "VOICE FLOW" in realtime["description"]
+        assert realtime["parameters"] == static["parameters"]
     assert voice[0]["parameters"]["required"] == ["date", "time", "email"]
 
 
@@ -172,8 +187,11 @@ def test_grok_builder_uses_generated_schemas_without_expanding_enabled_tools():
     tools = builder.with_tools(enable_booking=True, ivr_detector_active=True).build()["tools"]
     assert [tool["name"] for tool in tools] == [
         "send_dtmf",
+        "navigate_booking_menu",
         "book_appointment",
         "check_availability",
+        "hold_booking_slot",
+        "booking_recovery",
     ]
     for tool in tools:
         assert tool["parameters"] == TOOL_DEFINITIONS[tool["name"]].render("grok")["parameters"]

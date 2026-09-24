@@ -15,7 +15,7 @@ Usage:
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
@@ -24,6 +24,9 @@ from app.core.config import settings
 from app.services.ai.base_tool_executor import BaseToolExecutor
 from app.services.ai.tool_definitions import gate_exempt_tools
 from app.services.approval.approval_gate_service import approval_gate_service
+
+if TYPE_CHECKING:
+    from app.services.calendar.booking import BookingService
 
 logger = structlog.get_logger()
 
@@ -94,6 +97,11 @@ class VoiceToolExecutor(BaseToolExecutor):
 
         self._trace_totals = call_totals()
         self.log = logger.bind(service="voice_tool_executor")
+        from app.services.ai.booking_flow import VoiceBookingFlow
+        from app.services.ai.ivr.booking_menu import BookingMenuNavigator
+
+        self.booking_flow = VoiceBookingFlow(self)
+        self.booking_menu = BookingMenuNavigator()
 
     # ── Main dispatch ───────────────────────────────────────────────
 
@@ -124,7 +132,26 @@ class VoiceToolExecutor(BaseToolExecutor):
                 record_tool_result(False, totals=self._trace_totals)
                 raise
 
-    async def _execute(  # noqa: PLR0911, PLR0912 - flat tool dispatch table
+    async def _execute(self, function_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        if function_name in self.booking_flow.TOOLS:
+            return await self.booking_flow.execute(function_name, arguments)
+        if function_name == "navigate_booking_menu":
+            from pydantic import ValidationError
+
+            from app.services.ai.tool_definitions import NavigateBookingMenuArguments
+
+            try:
+                args = NavigateBookingMenuArguments.model_validate(arguments)
+            except ValidationError:
+                return {"success": False, "error": "Invalid menu input"}
+            return await self.booking_menu.navigate(
+                args.transcript,
+                args.goal,
+                self._execute_send_dtmf,
+            )
+        return await self._execute_without_booking_flow(function_name, arguments)
+
+    async def _execute_without_booking_flow(  # noqa: PLR0911, PLR0912 - flat tool dispatch table
         self,
         function_name: str,
         arguments: dict[str, Any],
@@ -234,7 +261,59 @@ class VoiceToolExecutor(BaseToolExecutor):
 
     # ── Hook overrides ──────────────────────────────────────────────
 
+    def _create_booking_service(self, event_type_id: int | None = None) -> "BookingService":
+        from app.services.calendar.booking import BookingService
+
+        # An ambiguous network response must not produce a second booking POST.
+        return BookingService(
+            api_key=settings.calcom_api_key,
+            event_type_id=event_type_id or self.agent.calcom_event_type_id,
+            timezone=self.timezone,
+            max_attempts=1,
+        )
+
+    async def _resolve_event_type_id(
+        self,
+        required_skill: str | None,
+        *,
+        record: bool = True,
+    ) -> int | None:
+        # Keep availability, reservation and booking on the same staff calendar even
+        # if another call advances round-robin while this caller provides their name.
+        if record and self.booking_flow.event_type_id:
+            if self.assigned_staff:
+                from datetime import UTC, datetime
+                from uuid import UUID
+
+                from sqlalchemy import select
+
+                from app.db.session import AsyncSessionLocal
+                from app.models.bookable_staff import BookableStaff
+
+                async with AsyncSessionLocal() as db:
+                    staff = await db.scalar(
+                        select(BookableStaff)
+                        .where(
+                            BookableStaff.id == UUID(str(self.assigned_staff["id"])),
+                            BookableStaff.agent_id == self.agent.id,
+                            BookableStaff.is_active.is_(True),
+                            BookableStaff.calcom_event_type_id == self.booking_flow.event_type_id,
+                        )
+                        .with_for_update()
+                    )
+                    if staff is None:
+                        return None
+                    staff.assignment_count = (staff.assignment_count or 0) + 1
+                    staff.last_assigned_at = datetime.now(UTC)
+                    await db.commit()
+            return self.booking_flow.event_type_id
+        event_type_id = await super()._resolve_event_type_id(required_skill, record=record)
+        self.booking_flow.event_type_id = event_type_id
+        return event_type_id
+
     def get_contact_name(self) -> str:
+        if self.booking_flow.name:
+            return self.booking_flow.name
         if self.contact_info:
             name: str = self.contact_info.get("name", "Customer")
             return name
@@ -1858,6 +1937,13 @@ def create_tool_callback(
         # Confirmation is not an agent-initiated mutation: execution verifies
         # this exact answered call and appointment, then stores the caller's yes.
         if function_name == "confirm_appointment":
+            return await executor.execute(function_name, arguments)
+        if function_name == "booking_recovery" and arguments.get("action") in {
+            "status",
+            "off_script",
+            "resume",
+        }:
+            # These only inspect or resume call-local dialog state, never the calendar.
             return await executor.execute(function_name, arguments)
         if function_name in GATE_EXEMPT_TOOLS:
             result = await executor.execute(function_name, arguments)

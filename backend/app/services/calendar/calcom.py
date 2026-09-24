@@ -7,6 +7,8 @@ Handles:
 - Error handling and retry logic with exponential backoff
 """
 
+import re
+from contextlib import suppress
 from datetime import datetime, timedelta
 from typing import Any, cast
 
@@ -66,13 +68,14 @@ class CalComRateLimitError(CalComError):
 class CalComService:
     """Cal.com appointment booking and sync service."""
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, *, max_attempts: int = MAX_RETRIES) -> None:
         """Initialize Cal.com service.
 
         Args:
             api_key: Cal.com API key for authentication
         """
         self.api_key = api_key
+        self.max_attempts = max_attempts
         self.base_url = "https://api.cal.com/v2"
         self.logger = logger.bind(component="calcom_service")
         self._client: AsyncProviderHTTPClient | None = None
@@ -90,7 +93,7 @@ class CalComService:
                 "cal-api-version": "2024-08-13",
             },
             retry_policy=ProviderRetryPolicy(
-                max_attempts=MAX_RETRIES,
+                max_attempts=self.max_attempts,
                 initial_backoff_seconds=float(INITIAL_BACKOFF_SECONDS),
                 max_backoff_seconds=float(MAX_BACKOFF_SECONDS),
             ),
@@ -208,6 +211,41 @@ class CalComService:
         except Exception as e:
             log.error("get_availability_unexpected_error", error=str(e))
             raise CalComError(f"Failed to get availability: {str(e)}") from e
+
+    async def reserve_slot(self, event_type_id: int, start_iso: str) -> dict[str, Any]:
+        """Reserve an offered slot for five minutes; never retry a reservation POST."""
+        client = self._build_client()
+        client.retry_policy = ProviderRetryPolicy(max_attempts=1)
+        try:
+            response = await self._request_with_retry(
+                "POST",
+                "/slots/reservations",
+                client=client,
+                headers={"cal-api-version": "2024-09-04"},
+                json={
+                    "eventTypeId": event_type_id,
+                    "slotStart": start_iso,
+                    "reservationDuration": 5,
+                },
+            )
+            data = response.get("data", {})
+            if response.get("status") != "success" or not data.get("reservationUid"):
+                raise CalComError("Reservation was not acknowledged")
+            return cast(dict[str, Any], data)
+        finally:
+            await client.aclose()
+
+    async def release_slot(self, reservation_uid: str) -> None:
+        """Release only the reservation UID retained by the calling flow."""
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,256}", reservation_uid):
+            raise CalComError("Invalid reservation UID")
+        # Expired reservations are already released.
+        with suppress(CalComNotFoundError):
+            await self._request_with_retry(
+                "DELETE",
+                f"/slots/reservations/{reservation_uid}",
+                headers={"cal-api-version": "2024-09-04"},
+            )
 
     async def create_booking(
         self,

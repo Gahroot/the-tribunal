@@ -171,6 +171,7 @@ class GrokSessionConfigBuilder:
         # Add DTMF tool for IVR navigation if enabled
         if self._should_enable_dtmf(agent_enabled_tools, ivr_detector_active):
             self._tools.append(TOOL_DEFINITIONS["send_dtmf"].render("grok"))
+            self._tools.append(TOOL_DEFINITIONS["navigate_booking_menu"].render("grok"))
             dtmf_reason = "ivr_detector_active" if ivr_detector_active else "explicit_config"
             self._logger.info("grok_dtmf_tool_enabled", reason=dtmf_reason)
 

@@ -9,7 +9,7 @@ assigned staff is surfaced in the tool result.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
@@ -57,6 +57,20 @@ class _FakeSession:
     async def execute(self, _query: Any) -> _FakeResult:
         return _FakeResult(self._pool)
 
+    async def scalar(self, query: Any) -> Any:
+        params = query.compile().params
+        assert "agent_id_1" in params
+        return next(
+            (
+                s
+                for s in self._pool
+                if s.id == params["id_1"]
+                and s.calcom_event_type_id == params["calcom_event_type_id_1"]
+                and s.is_active
+            ),
+            None,
+        )
+
     def add(self, _obj: Any) -> None:
         pass
 
@@ -75,8 +89,31 @@ class _FakeBookingService:
 
     captured_event_type_id: int | None = None
 
-    def __init__(self, *, api_key: str, event_type_id: int, timezone: str) -> None:
+    def __init__(
+        self, *, api_key: str, event_type_id: int, timezone: str, max_attempts: int = 1
+    ) -> None:
         _FakeBookingService.captured_event_type_id = event_type_id
+
+    async def check_availability(self, *_args: Any, **_kwargs: Any) -> SimpleNamespace:
+        return SimpleNamespace(
+            success=True,
+            slots=[
+                SimpleNamespace(
+                    date="2099-01-15",
+                    time="14:00",
+                    iso="2099-01-15T19:00:00Z",
+                )
+            ],
+        )
+
+    async def reserve_slot(self, _iso: str) -> dict[str, str]:
+        return {
+            "reservationUid": "hold-bob",
+            "reservationUntil": (datetime.now(UTC) + timedelta(minutes=5)).isoformat(),
+        }
+
+    async def release_slot(self, uid: str) -> None:
+        assert uid == "hold-bob"
 
     async def book_appointment(self, **_kwargs: Any) -> SimpleNamespace:
         return SimpleNamespace(
@@ -113,17 +150,28 @@ async def test_book_appointment_routes_to_selected_staff_event_type() -> None:
 
     with (
         patch.object(base_tool_executor.settings, "calcom_api_key", "test-key"),
-        patch.object(
-            db_session_module, "AsyncSessionLocal", return_value=_FakeSession(pool)
-        ),
-        patch.object(base_tool_executor, "BookingService", _FakeBookingService),
+        patch.object(db_session_module, "AsyncSessionLocal", return_value=_FakeSession(pool)),
+        patch("app.services.calendar.booking.BookingService", _FakeBookingService),
     ):
+        offered = await executor.execute("check_availability", {"start_date": "2099-01-15"})
+        assert offered["booking_state"] == "slot-offered"
+        held = await executor.execute(
+            "hold_booking_slot",
+            {
+                "date": "2099-01-15",
+                "time": "14:00",
+            },
+        )
+        assert held["booking_state"] == "collecting-name"
+        # Another caller advances round-robin; this call must stay on Bob's calendar.
+        pool[1].assignment_count = 10
         result = await executor.execute(
             "book_appointment",
             {
                 "date": "2099-01-15",
                 "time": "14:00",
                 "email": "caller@example.com",
+                "name": "Caller",
             },
         )
 
@@ -134,3 +182,5 @@ async def test_book_appointment_routes_to_selected_staff_event_type() -> None:
     assert executor.assigned_staff["name"] == "Bob"
     assert executor.assigned_staff["calcom_event_type_id"] == 555
     assert "Bob" in result["message"]
+    assert pool[1].assignment_count == 11
+    assert pool[0].assignment_count == 3

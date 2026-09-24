@@ -153,7 +153,27 @@ class SendApplicationLinkArguments(ToolArguments):
     pass
 
 
+class HoldBookingSlotArguments(ToolArguments):
+    date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    time: str = Field(pattern=r"^\d{2}:\d{2}$")
+
+
+class BookingRecoveryArguments(ToolArguments):
+    action: Literal["status", "off_script", "resume", "change_slot", "cancel"]
+
+
+class NavigateBookingMenuArguments(ToolArguments):
+    transcript: str = Field(min_length=1, max_length=4000)
+    goal: Literal["book", "human", "repeat", "back"] = "book"
+
+
 class BookAppointmentArguments(ToolArguments):
+    name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="The caller's stated name; required for voice booking.",
+    )
     date: str = Field(description="Appointment date in YYYY-MM-DD format", min_length=1)
     time: str = Field(
         description=(
@@ -557,6 +577,37 @@ _DEFINITIONS = (
             "follow-ups, or unrelated links."
         ),
         arguments=SendApplicationLinkArguments,
+        channels=frozenset(("voice",)),
+    ),
+    ToolDefinition(
+        name="hold_booking_slot",
+        description=(
+            "After the caller selects a returned slot, hold it before collecting their name and "
+            "email. A hold is not a confirmed booking. Never invent a slot."
+        ),
+        arguments=HoldBookingSlotArguments,
+        channels=frozenset(("voice",)),
+    ),
+    ToolDefinition(
+        name="booking_recovery",
+        description=(
+            "Inspect booking status after interruptions. "
+            "Use off_script for a tangent, then resume. "
+            "Only use change_slot or cancel when explicitly requested by the caller. "
+            "Never retry an uncertain calendar operation."
+        ),
+        arguments=BookingRecoveryArguments,
+        channels=frozenset(("voice",)),
+    ),
+    ToolDefinition(
+        name="navigate_booking_menu",
+        description=(
+            "Navigate an external phone menu from its latest heard transcript, "
+            "e.g. press 1 to book. "
+            "Send tones, not spoken digits. Wait for the next menu after each step. "
+            "This does not book or confirm an appointment."
+        ),
+        arguments=NavigateBookingMenuArguments,
         channels=frozenset(("voice",)),
     ),
     ToolDefinition(

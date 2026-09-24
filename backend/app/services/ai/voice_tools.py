@@ -90,7 +90,8 @@ APPLICATION_LINK_SMS_TOOL: dict[str, Any] = TOOL_DEFINITIONS["send_application_l
 # Static booking tool definitions (without date context)
 # Use get_booking_tools() for tools with embedded date context
 VOICE_BOOKING_TOOLS: list[dict[str, Any]] = [
-    TOOL_DEFINITIONS[name].render("grok") for name in ("book_appointment", "check_availability")
+    TOOL_DEFINITIONS[name].render("grok")
+    for name in ("book_appointment", "check_availability", "hold_booking_slot", "booking_recovery")
 ]
 
 
@@ -108,9 +109,19 @@ def _booking_tools(provider: ToolFormat, timezone: str) -> list[dict[str, Any]]:
         f"Convert relative dates to YYYY-MM-DD from today: 'today' = {today_iso}, "
         "'tomorrow' = the day after today, 'Friday' = the NEXT Friday from today."
     )
+    if provider != "openai":
+        context += (
+            " VOICE FLOW: check_availability -> hold_booking_slot -> collect name and email "
+            "-> book_appointment. After interruptions or tangents use booking_recovery to "
+            "resume; never start a second booking or claim a hold is confirmed."
+        )
     return [
         TOOL_DEFINITIONS[name].render(provider, date_context=context)
-        for name in ("book_appointment", "check_availability")
+        for name in (
+            ("book_appointment", "check_availability")
+            if provider == "openai"
+            else ("book_appointment", "check_availability", "hold_booking_slot", "booking_recovery")
+        )
     ]
 
 
@@ -180,6 +191,7 @@ def build_tools_list(
     # DTMF for IVR
     if enable_dtmf:
         tools.append(TOOL_DEFINITIONS["send_dtmf"].render("grok"))
+        tools.append(TOOL_DEFINITIONS["navigate_booking_menu"].render("grok"))
 
     # Live human transfer / handoff
     if enable_transfer:
