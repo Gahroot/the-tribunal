@@ -131,6 +131,7 @@ __all__ = [
     "WorkspaceIntegration",
     "WorkspaceInvitation",
     "Contact",
+    "ContactTimelineEvent",
     "Conversation",
     "Message",
     "DemoRequest",
