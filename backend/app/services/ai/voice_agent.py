@@ -989,8 +989,7 @@ class VoiceAgentSession(VoiceAgentBase):
             text: Operator guidance to fold into the AI's instructions.
         """
         if not self.ws:
-            self.logger.warning("cannot_inject_guidance_ws_not_connected")
-            return
+            raise ConnectionError("Voice session is not connected")
         guidance = (text or "").strip()
         if not guidance:
             return
@@ -1015,6 +1014,7 @@ class VoiceAgentSession(VoiceAgentBase):
             self.logger.info("operator_guidance_injected", chars=len(guidance))
         except Exception as e:
             self.logger.exception("inject_operator_guidance_error", error=str(e))
+            raise
 
     async def _send_event(self, event: dict[str, Any]) -> None:
         """Send event to WebSocket.

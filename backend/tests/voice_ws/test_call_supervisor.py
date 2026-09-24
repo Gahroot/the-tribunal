@@ -20,12 +20,14 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import status
 
+from app.services.ai.voice_agent import VoiceAgentSession
 from app.services.ai.voice_agent_base import VoiceAgentBase
 from app.services.calls.live_call_registry import (
     LiveCall,
     LiveCallRegistry,
 )
 from app.websockets import call_supervisor as cs
+from app.websockets.voice_bridge import _receive_from_provider_and_send_to_telnyx
 
 # ---------------------------------------------------------------------------
 # Fakes
@@ -213,6 +215,25 @@ class TestOperatorControls:
         assert await call.whisper("Offer the discount") is True
         session.inject_operator_guidance.assert_awaited_once_with("Offer the discount")
 
+    async def test_openai_guidance_send_failure_propagates(self) -> None:
+        session = object.__new__(VoiceAgentSession)
+        session.logger = MagicMock()
+        session.ws = MagicMock()
+        session._send_event = AsyncMock(side_effect=ConnectionError("provider closed"))
+        with pytest.raises(ConnectionError):
+            await session.inject_operator_guidance("Ask about timing")
+
+    async def test_whisper_provider_failure_is_not_acknowledged(self) -> None:
+        session = _make_voice_session()
+        session.inject_operator_guidance.side_effect = ConnectionError("provider closed")
+        call = _make_live_call(session=session)
+        ws = _make_supervisor_ws()
+        await cs._handle_control_message(
+            ws, call, {"type": "whisper", "text": "Ask about timing"},
+            operator_user_id=1, monitoring=True, log=MagicMock(),
+        )
+        assert ws.send_json.await_args.args[0]["type"] == "error"
+
     async def test_whisper_empty_text_is_noop(self) -> None:
         session = _make_voice_session()
         call = _make_live_call(session=session)
@@ -263,6 +284,30 @@ class TestOperatorControls:
         msg = json.loads(call._telnyx_ws.send_text.await_args.args[0])
         assert msg["event"] == "media"
         assert base64.b64decode(msg["media"]["payload"])
+
+    async def test_takeover_stops_queued_ai_audio(self) -> None:
+        from types import SimpleNamespace
+
+        async def frames():
+            yield b"\xff" * 480
+
+        session = SimpleNamespace(
+            OUTPUT_AUDIO_FORMAT="ulaw",
+            receive_audio_stream=frames,
+            is_connected=lambda: True,
+        )
+        call = _make_live_call(session=session)
+
+        async def take_over_after_first_frame(message: str) -> None:
+            call.ai_muted = True
+
+        call._telnyx_ws.send_text.side_effect = take_over_after_first_frame
+        ready = asyncio.Event()
+        ready.set()
+        await _receive_from_provider_and_send_to_telnyx(
+            call._telnyx_ws, session, MagicMock(), ready, {}, live_call=call
+        )
+        call._telnyx_ws.send_text.assert_awaited_once()
 
     async def test_send_to_telnyx_serializes_and_frames(self) -> None:
         call = _make_live_call()
@@ -375,6 +420,24 @@ class TestControlMessageDispatch:
         )
         assert call.barged_by == 1
         call._telnyx_ws.send_text.assert_not_awaited()
+
+    async def test_busy_socket_notified_when_call_ends(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        call = _make_live_call()
+        ws = _make_supervisor_ws()
+        ws.receive_text = AsyncMock(return_value='{"type":"pong"}')
+        registry = MagicMock()
+        registry.get.return_value = None
+        monkeypatch.setattr(cs, "get_live_call_registry", lambda: registry)
+        await asyncio.wait_for(
+            cs._supervise(
+                ws, call, operator_user_id=1, heartbeat=MagicMock(), log=MagicMock()
+            ),
+            timeout=1,
+        )
+        ws.send_json.assert_awaited_with({"type": "call_ended"})
+        ws.receive_text.assert_awaited_once()
 
     async def test_unknown_message_returns_error(self) -> None:
         call = _make_live_call()

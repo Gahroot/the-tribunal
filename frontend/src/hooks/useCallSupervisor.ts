@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { apiPost } from "@/lib/api";
+import { createPcmResampler } from "@/lib/audio/pcm-resampler";
 import { getBackendWsUrl } from "@/lib/utils/backend-url";
 
 /**
@@ -302,15 +303,18 @@ export function useCallSupervisor({
         setIsBarging(false);
         setError("Microphone disconnected. AI control restored.");
       }, { once: true });
-      const ctx = new AudioContext({ sampleRate: MIC_SAMPLE_RATE });
+      const ctx = new AudioContext();
       micCtxRef.current = ctx;
+      const resample = createPcmResampler(ctx.sampleRate, MIC_SAMPLE_RATE);
       micSourceRef.current = ctx.createMediaStreamSource(stream);
       micProcessorRef.current = ctx.createScriptProcessor(MIC_BUFFER_SIZE, 1, 1);
 
       micProcessorRef.current.onaudioprocess = (e) => {
         const sock = wsRef.current;
         if (!sock || sock !== ws || sock.readyState !== WebSocket.OPEN || sock.bufferedAmount > 65536) return;
-        const data = float32ToBase64Pcm16(e.inputBuffer.getChannelData(0));
+        const samples = resample(e.inputBuffer.getChannelData(0));
+        if (samples.length === 0) return;
+        const data = float32ToBase64Pcm16(samples);
         sock.send(JSON.stringify({ type: "barge_audio", data }));
       };
 

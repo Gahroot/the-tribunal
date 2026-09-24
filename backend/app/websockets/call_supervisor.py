@@ -202,6 +202,12 @@ async def _supervise(
                     await websocket.send_json({"type": "call_ended"})
                     break
                 continue
+            # A stream of microphone frames can keep receive_text busy forever;
+            # do not wait for an idle timeout to notice the call has ended.
+            active = get_live_call_registry().get(live_call.call_id, live_call.workspace_id)
+            if active is not live_call:
+                await websocket.send_json({"type": "call_ended"})
+                break
             heartbeat.mark_activity()
             try:
                 message = json.loads(raw)

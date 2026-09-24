@@ -1305,6 +1305,9 @@ async def _receive_from_provider_and_send_to_telnyx(  # noqa: PLR0912, PLR0915
                 # Send chunks when we have at least the minimum size
                 # Send in 160-byte chunks (20ms) for optimal latency
                 while len(audio_buffer) >= TELNYX_MIN_CHUNK_BYTES:
+                    if live_call is not None and live_call.ai_muted:
+                        audio_buffer.clear()
+                        break
                     chunk = bytes(audio_buffer[:TELNYX_MIN_CHUNK_BYTES])
                     del audio_buffer[:TELNYX_MIN_CHUNK_BYTES]
                     await send_audio_to_telnyx(chunk)
@@ -1329,7 +1332,7 @@ async def _receive_from_provider_and_send_to_telnyx(  # noqa: PLR0912, PLR0915
                 )
 
         # Flush any remaining audio in the buffer
-        if audio_buffer:
+        if audio_buffer and not (live_call is not None and live_call.ai_muted):
             log.debug("flushing_audio_buffer", remaining_bytes=len(audio_buffer))
             await send_audio_to_telnyx(bytes(audio_buffer))
 
