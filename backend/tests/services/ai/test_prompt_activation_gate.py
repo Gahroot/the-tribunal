@@ -80,7 +80,36 @@ async def test_tested_candidate_can_be_promoted():
         commit=AsyncMock(),
     )
     worker = PromptImprovementWorker()
-    with patch.object(worker, "_can_auto_activate", AsyncMock(return_value=True)):
+    with (
+        patch.object(worker, "_can_auto_activate", AsyncMock(return_value=True)),
+        patch(
+            "app.workers.prompt_improvement_worker.require_scenario_pass",
+            new_callable=AsyncMock,
+        ) as scenarios,
+    ):
         assert await worker._promote_tested_candidate(db, SimpleNamespace(id="agent")) is True
+    scenarios.assert_awaited_once_with(candidate)
     assert db.execute.await_count == 2
     db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_candidate_failing_scenarios_cannot_replace_live_version():
+    candidate = SimpleNamespace(id="candidate", version_number=2)
+    db = SimpleNamespace(
+        execute=AsyncMock(return_value=SimpleNamespace(scalars=lambda: [candidate])),
+        commit=AsyncMock(),
+    )
+    worker = PromptImprovementWorker()
+    with (
+        patch.object(worker, "_can_auto_activate", AsyncMock(return_value=True)),
+        patch(
+            "app.workers.prompt_improvement_worker.require_scenario_pass",
+            new_callable=AsyncMock,
+            side_effect=ValueError("scenario failed"),
+        ),
+        pytest.raises(ValueError, match="scenario failed"),
+    ):
+        await worker._promote_tested_candidate(db, SimpleNamespace(id="agent"))
+    db.execute.assert_awaited_once()
+    db.commit.assert_not_awaited()

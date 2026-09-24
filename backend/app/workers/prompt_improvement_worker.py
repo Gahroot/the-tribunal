@@ -17,6 +17,7 @@ from app.models.conversation import Message
 from app.models.improvement_suggestion import ImprovementSuggestion
 from app.models.prompt_version import PromptVersion
 from app.services.ai.prompt_improvement_service import PromptImprovementService
+from app.services.ai.prompt_scenario_suite import require_scenario_pass
 from app.workers.base import BaseWorker, WorkerRegistry
 from app.workers.retryable import RetryableWorker
 
@@ -142,6 +143,9 @@ class PromptImprovementWorker(RetryableWorker, BaseWorker):
         for candidate in result.scalars():
             if not await self._can_auto_activate(db, candidate):
                 continue
+            # Outcome evidence alone cannot promote a prompt: test the candidate
+            # itself before deactivating the current version.
+            await require_scenario_pass(candidate)
             updated = await db.execute(
                 update(PromptVersion)
                 .where(
