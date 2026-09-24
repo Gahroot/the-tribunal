@@ -35,6 +35,7 @@ from app.services.ai.model_config import resolve_model
 from app.services.ai.openai_credentials import is_openai_configured
 from app.services.ai.protocols import receives_mulaw, sends_mulaw, supports_tools
 from app.services.ai.tool_executor import create_tool_callback
+from app.services.ai.voice_health import VoiceProviderError
 from app.services.ai.voice_session_factory import (
     VoiceSessionType as FactoryVoiceSessionType,
 )
@@ -674,8 +675,10 @@ async def _voice_stream_bridge_body(  # noqa: PLR0912, PLR0915
             error=error,
             hint="Check API keys in environment variables",
         )
-        await websocket.send_json({"error": error})
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        await _degrade_voice_call(
+            call_id, workspace_id, voice_provider, "configuration_unavailable", log
+        )
+        await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
         return
 
     log.info(
@@ -695,7 +698,11 @@ async def _voice_stream_bridge_body(  # noqa: PLR0912, PLR0915
         )
         connect_start = time.time()
 
-        connected = await voice_session.connect()
+        try:
+            async with asyncio.timeout(20):
+                connected = await voice_session.connect()
+        except Exception as exc:
+            raise VoiceProviderError("connect_failed") from exc
         connect_elapsed = time.time() - connect_start
 
         if not connected:
@@ -705,11 +712,7 @@ async def _voice_stream_bridge_body(  # noqa: PLR0912, PLR0915
                 elapsed_secs=round(connect_elapsed, 2),
                 hint="Check API key validity and network connectivity",
             )
-            await websocket.send_json(
-                {"error": f"Failed to connect to {voice_provider} Realtime API"}
-            )
-            await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
-            return
+            raise VoiceProviderError("connect_failed")
 
         def _ws_status() -> str:
             """Check WebSocket connection status."""
@@ -801,6 +804,10 @@ async def _voice_stream_bridge_body(  # noqa: PLR0912, PLR0915
                 registry.unregister(call_id)
         log.info("relay_task_completed")
 
+    except VoiceProviderError as exc:
+        await _degrade_voice_call(call_id, workspace_id, voice_provider, str(exc), log)
+        with contextlib.suppress(Exception):
+            await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
     except WebSocketDisconnect:
         elapsed = time.time() - connection_start
         log.info(
@@ -868,6 +875,40 @@ async def _voice_stream_bridge_body(  # noqa: PLR0912, PLR0915
             "voice_bridge_session_ended",
             total_duration_secs=round(elapsed, 1),
         )
+
+
+async def _degrade_voice_call(
+    call_id: str, workspace_id: str, provider: str, reason: str, log: Any
+) -> None:
+    from app.services.campaigns.voice_recovery import recover_voice_call
+    from app.services.telephony.telnyx_voice import TelnyxVoiceService
+
+    try:
+        async with asyncio.timeout(15):
+            await recover_voice_call(call_id, uuid.UUID(workspace_id), provider, reason)
+    except Exception:
+        log.exception("voice_recovery_failed")
+    finally:
+        # Terminate the silent carrier leg only after durable recovery is attempted.
+        service = TelnyxVoiceService(settings.telnyx_api_key)
+        try:
+            async with asyncio.timeout(5):
+                await service.hangup_call(call_id)
+        except Exception:
+            log.exception("voice_recovery_hangup_failed")
+        finally:
+            await service.close()
+
+
+async def _watch_provider_health(voice_session: VoiceSessionType) -> None:
+    """Socket keepalive detects stalled peers; this also catches dead TTS tasks."""
+    while True:
+        await asyncio.sleep(2)
+        reason = getattr(voice_session, "provider_failure_reason", None)
+        if isinstance(reason, str) and reason:
+            raise VoiceProviderError(reason)
+        if not voice_session.is_connected():
+            raise VoiceProviderError("connection_lost")
 
 
 async def _relay_audio(
@@ -945,45 +986,32 @@ async def _relay_audio(
         )
     )
 
+    health_task = asyncio.create_task(_watch_provider_health(voice_session))
+    tasks = (send_task, recv_task, health_task)
     try:
-        # Wait for either task to complete or fail
-        done, pending = await asyncio.wait(
-            [send_task, recv_task],
-            return_when=asyncio.FIRST_COMPLETED,
-        )
-
-        # Log which task completed
-        for task in done:
-            if task == send_task:
-                log.info("telnyx_receive_task_completed")
-            else:
-                log.info("provider_receive_task_completed")
-
-        # Cancel remaining tasks gracefully
-        for task in pending:
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
-
-        # Check for exceptions in completed tasks
-        for task in done:
-            exc = task.exception()
+        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        # A carrier stop/hangup wins a simultaneous provider close. Never call
+        # back someone merely because they ended the call normally.
+        if send_task in done:
+            log.info("telnyx_receive_task_completed")
+            exc = send_task.exception()
             if exc:
-                log.error(
-                    "relay_task_failed",
-                    task="telnyx_receive" if task == send_task else "provider_receive",
-                    error=str(exc),
-                )
-
-    except asyncio.CancelledError:
-        log.info("relay_cancelled")
-        # Cancel both tasks
-        send_task.cancel()
-        recv_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await asyncio.gather(send_task, recv_task)
-    except Exception as e:
-        log.exception("relay_error", error=str(e))
+                raise exc
+            return
+        if health_task in done:
+            await health_task
+        if recv_task in done:
+            if isinstance(recv_task.exception(), WebSocketDisconnect):
+                return
+            reason = getattr(voice_session, "provider_failure_reason", None)
+            raise VoiceProviderError(
+                reason if isinstance(reason, str) and reason else "provider_stream_ended"
+            ) from recv_task.exception()
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def _receive_from_telnyx_and_send_to_provider(  # noqa: PLR0912, PLR0915
@@ -1362,6 +1390,8 @@ async def _receive_from_provider_and_send_to_telnyx(  # noqa: PLR0912, PLR0915
                         elapsed_secs=round(elapsed, 1),
                     )
 
+            except WebSocketDisconnect:
+                raise
             except Exception as e:
                 log.exception(
                     "provider_audio_conversion_error",
@@ -1383,6 +1413,7 @@ async def _receive_from_provider_and_send_to_telnyx(  # noqa: PLR0912, PLR0915
             total_chunks=audio_chunks_sent,
             duration_secs=round(elapsed, 1),
         )
+        raise
     except asyncio.CancelledError:
         log.info("provider_receive_cancelled")
         raise

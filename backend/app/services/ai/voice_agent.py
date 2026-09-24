@@ -660,6 +660,9 @@ class VoiceAgentSession(VoiceAgentBase):
                     )
                     continue
 
+                self.observe_provider_event(event)
+                if self.provider_failure_reason:
+                    return
                 event_type = event.get("type", "")
 
                 if event_type in {"response.output_audio.delta", "response.audio.delta"}:

@@ -269,7 +269,8 @@ class TestVoiceInitiateCallIdempotency:
 
         assert result is existing
 
-    async def test_fresh_call_sends_client_state_and_header(self) -> None:
+    @pytest.mark.parametrize("status_code", [200, 429])
+    async def test_fresh_call_sends_client_state_and_header(self, status_code: int) -> None:
         svc = TelnyxVoiceService(api_key="k")
         key = uuid.uuid4()
 
@@ -284,7 +285,7 @@ class TestVoiceInitiateCallIdempotency:
         db.flush = AsyncMock()
 
         # Fake the HTTP layer.
-        response = MagicMock(status_code=200, text="")
+        response = MagicMock(status_code=status_code, text="")
         response.json = MagicMock(return_value={"data": {"id": "c1", "call_control_id": "cc1"}})
         fake_client = MagicMock()
         fake_client.post = AsyncMock(return_value=response)
@@ -304,7 +305,7 @@ class TestVoiceInitiateCallIdempotency:
                 )
             ),
         ):
-            await svc.initiate_call(
+            message = await svc.initiate_call(
                 to_number="+12025551234",
                 from_number="+12025556789",
                 connection_id="conn-1",
@@ -321,3 +322,8 @@ class TestVoiceInitiateCallIdempotency:
         assert kwargs["json"]["client_state"] == expected_b64
         # ``X-Idempotency-Key`` header carries the raw UUID.
         assert kwargs["headers"] == {"X-Idempotency-Key": str(key)}
+        if status_code == 429:
+            assert message.status == MessageStatus.FAILED
+            assert message.error_code == "RATE_LIMITED"
+        else:
+            assert message.status == MessageStatus.RINGING

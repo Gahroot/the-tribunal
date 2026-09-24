@@ -74,6 +74,7 @@ class VoiceAgentBase(ABC):
         """
         self.agent = agent
         self.ws: ClientConnection | None = None
+        self.provider_failure_reason: str | None = None
         self.logger = logger.bind(service=self.SERVICE_NAME)
 
         # Prompt builder for system instructions
@@ -111,6 +112,14 @@ class VoiceAgentBase(ABC):
     # -------------------------------------------------------------------------
     # VoiceAgentProtocol implementations (shared logic)
     # -------------------------------------------------------------------------
+
+    def observe_provider_event(self, event: dict[str, Any]) -> None:
+        """Record fatal/rate-limit events without retaining provider payloads."""
+        from app.services.ai.voice_health import event_failure_reason
+
+        reason = event_failure_reason(event)
+        if reason:
+            self.provider_failure_reason = reason
 
     def is_connected(self) -> bool:
         """Check if WebSocket is connected.
@@ -602,6 +611,7 @@ class VoiceAgentBase(ABC):
             encoded = base64.b64encode(audio_data).decode("utf-8")
             await self._send_event({"type": event_type, "audio": encoded})
         except Exception as e:
+            self.provider_failure_reason = "audio_send_failed"
             self.logger.exception("send_audio_error", error=str(e))
 
     async def _disconnect_ws(self) -> None:

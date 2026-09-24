@@ -420,6 +420,9 @@ class GrokVoiceAgentSession(VoiceAgentBase):
         try:
             # Process events through the handler registry
             async for event in stream_manager.iter_events():
+                self.observe_provider_event(event)
+                if self.provider_failure_reason:
+                    return
                 if event.get("type") == "response.created":
                     responses.start(event.get("response"))
                 elif event.get("type") == "response.done":

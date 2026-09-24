@@ -398,7 +398,10 @@ class ElevenLabsTTSSession:
 
         # Handle errors
         if "error" in data:
+            from app.services.ai.voice_health import VoiceProviderError
+
             self.logger.error("elevenlabs_error", error=data["error"])
+            raise VoiceProviderError("tts_provider_error")
 
     async def _receive_audio_loop(self) -> None:
         """Background task to receive audio from ElevenLabs.

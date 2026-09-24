@@ -17,6 +17,7 @@ def _campaign() -> SimpleNamespace:
     return SimpleNamespace(
         id=uuid4(),
         workspace_id=uuid4(),
+        voice_agent=None,
         timezone="America/New_York",
         sending_days=list(range(7)),
         sending_hours_start=None,
@@ -103,6 +104,7 @@ async def test_new_voice_attempt_clears_previous_voicemail_outcome(
     voice = MagicMock()
     voice.initiate_call = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
     monkeypatch.setattr(module, "approved_best_hour", AsyncMock(return_value=None))
+    monkeypatch.setattr(module, "provider_cooling_down", AsyncMock(return_value=False))
 
     await module.VoiceCampaignWorker()._process_pending_calls(campaign, voice, db, MagicMock())
 

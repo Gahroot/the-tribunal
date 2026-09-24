@@ -414,7 +414,11 @@ class TelnyxVoiceService:
             else:
                 errors = response_data.get("errors", [])
                 first_error = errors[0] if errors else {}
-                error_code = str(first_error.get("code", "API_ERROR") or "API_ERROR")
+                error_code = (
+                    "RATE_LIMITED"
+                    if response.status_code == 429
+                    else str(first_error.get("code", "API_ERROR") or "API_ERROR")
+                )
                 error_msg = first_error.get("detail") or response.text
                 message.status, message.error_code = MessageStatus.FAILED, error_code
                 message.error_message = error_msg[:500] if error_msg else None

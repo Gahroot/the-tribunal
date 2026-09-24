@@ -537,6 +537,7 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
             self.logger.warning("grok_connection_closed", error=str(e))
             self.grok_ws = None
         except Exception as e:
+            self.provider_failure_reason = "audio_send_failed"
             self.logger.exception("send_audio_error", error=str(e))
 
     # Note: Can't use base _send_audio_base64 since this uses grok_ws not ws
@@ -573,6 +574,9 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
                     self.logger.warning("invalid_json_from_grok", error=str(e))
                     continue
 
+                self.observe_provider_event(event)
+                if self.provider_failure_reason:
+                    return
                 event_type = event.get("type", "")
 
                 # Intercept audio transcript and buffer for ElevenLabs
@@ -660,6 +664,7 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
             self.logger.exception("grok_receive_error", error=str(e))
         finally:
             responses.close()
+            await self._audio_queue.put(None)
 
     async def _receive_from_tts(self) -> None:
         """Receive audio from ElevenLabs TTS and queue for output."""
@@ -674,6 +679,8 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
             self.logger.info("tts_receive_cancelled")
         except Exception as e:
             self.logger.exception("tts_receive_error", error=str(e))
+        finally:
+            await self._audio_queue.put(None)
 
     async def _handle_function_call(self, item: dict[str, Any]) -> None:
         """Handle a function call from Grok."""

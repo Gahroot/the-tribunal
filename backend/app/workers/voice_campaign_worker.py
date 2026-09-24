@@ -32,7 +32,15 @@ from app.services.campaigns.cadence import (
     sms_touch_due_at,
     sms_touch_pending,
 )
+from app.services.campaigns.voice_recovery import (
+    RECOVERY,
+    SMS_PENDING,
+    notify_recovery,
+    provider_cooling_down,
+    retry_slot,
+)
 from app.services.idempotency import derive_outbound_key
+from app.services.rate_limiting.opt_out_manager import OptOutManager
 from app.services.telephony.telnyx_voice import TelnyxVoiceService
 from app.workers.base import WorkerRegistry
 from app.workers.base_campaign_worker import BaseCampaignWorker
@@ -96,12 +104,29 @@ class VoiceCampaignWorker(BaseCampaignWorker):
         try:
             await self._requeue_terminal_attempts(campaign, db)
             await self._cleanup_stuck_calls(campaign, db, log)
+            await self._process_recovery_sms(campaign, db)
             await self._process_scheduled_sms(campaign, db, log)
             await self._process_pending_calls(campaign, voice_service, db, log)
             await self._check_completion(campaign, db, log)
             await db.commit()
         finally:
             await voice_service.close()
+
+    async def _process_recovery_sms(self, campaign: Campaign, db: AsyncSession) -> None:
+        result = await db.execute(
+            select(CampaignContact)
+            .options(selectinload(CampaignContact.contact))
+            .where(
+                CampaignContact.campaign_id == campaign.id,
+                CampaignContact.status == CampaignContactStatus.PENDING,
+                CampaignContact.last_error == SMS_PENDING,
+                CampaignContact.opted_out.is_(False),
+            )
+            .limit(MAX_CALLS_PER_TICK)
+            .with_for_update(skip_locked=True)
+        )
+        for entry in result.scalars():
+            await notify_recovery(db, entry, campaign)
 
     async def _process_scheduled_sms(self, campaign: Campaign, db: AsyncSession, log: Any) -> None:
         """Send due SMS between calls, bounded by the campaign message caps."""
@@ -189,7 +214,10 @@ class VoiceCampaignWorker(BaseCampaignWorker):
             log.debug("Rate limit reached for this minute")
             return
 
-        calls_to_make = min(available_slots, MAX_CALLS_PER_TICK)
+        provider = campaign.voice_agent.voice_provider if campaign.voice_agent else "openai"
+        if await provider_cooling_down(campaign.workspace_id, provider):
+            log.warning("voice_campaign_provider_cooling_down", provider=provider)
+            return
 
         # Get pending contacts with row-level locking
         pending_result = await db.execute(
@@ -214,7 +242,7 @@ class VoiceCampaignWorker(BaseCampaignWorker):
                 CampaignContact.next_follow_up_at.asc().nulls_first(),
                 CampaignContact.created_at,
             )
-            .limit(calls_to_make)
+            .limit(min(available_slots, MAX_CALLS_PER_TICK))
             .with_for_update(skip_locked=True)
         )
         pending_contacts = pending_result.scalars().all()
@@ -245,6 +273,9 @@ class VoiceCampaignWorker(BaseCampaignWorker):
                 )
                 campaign_contact.status = CampaignContactStatus.FAILED
                 campaign_contact.last_error = "missing_phone_number"
+                continue
+
+            if not await self._recovery_allows_call(campaign, campaign_contact, contact, db):
                 continue
 
             local_best_hour = contact_best_hour(campaign, contact, best_hour)
@@ -282,19 +313,9 @@ class VoiceCampaignWorker(BaseCampaignWorker):
                     idempotency_key=idempotency_key,
                 )
 
-                # Update campaign contact
-                campaign_contact.status = CampaignContactStatus.CALLING
-                campaign_contact.last_call_status = None
-                campaign_contact.call_attempts += 1
-                campaign_contact.last_call_at = datetime.now(UTC)
-                campaign_contact.first_sent_at = (
-                    campaign_contact.first_sent_at or campaign_contact.last_call_at
-                )
-                campaign_contact.next_follow_up_at = None
-                campaign_contact.call_message_id = message.id
-
-                # Update campaign stats
-                campaign.calls_attempted += 1
+                if not self._record_started_call(campaign, campaign_contact, message):
+                    log.warning("voice_campaign_dial_failed", reason=campaign_contact.last_error)
+                    break
 
                 # Track rate limiting
                 self._track_call_made(str(campaign.id))
@@ -320,9 +341,51 @@ class VoiceCampaignWorker(BaseCampaignWorker):
                 campaign.last_error = str(e)
                 campaign.last_error_at = datetime.now(UTC)
 
+    @staticmethod
+    def _record_started_call(campaign: Campaign, entry: CampaignContact, message: Any) -> bool:
+        if getattr(message, "error_code", None) == "RATE_LIMITED":
+            entry.next_follow_up_at = retry_slot(campaign, datetime.now(UTC))
+            entry.last_error = "voice_recovery:rate_limited"
+            return False
+        if getattr(message, "status", None) == "failed":
+            entry.status = CampaignContactStatus.FAILED
+            entry.last_error = "voice_recovery:dial_failed"
+            return False
+        entry.status = CampaignContactStatus.CALLING
+        entry.last_call_status = None
+        entry.last_error = None
+        entry.call_attempts += 1
+        entry.last_call_at = datetime.now(UTC)
+        entry.first_sent_at = entry.first_sent_at or entry.last_call_at
+        entry.next_follow_up_at = None
+        entry.call_message_id = message.id
+        campaign.calls_attempted += 1
+        return True
+
+    @staticmethod
+    async def _recovery_allows_call(
+        campaign: Campaign, entry: CampaignContact, contact: Contact, db: AsyncSession
+    ) -> bool:
+        if entry.last_call_status != RECOVERY:
+            return True
+        if not contact.phone_number:
+            return False
+        if await OptOutManager().check_opt_out(campaign.workspace_id, contact.phone_number, db):
+            entry.opted_out = True
+            entry.status = CampaignContactStatus.OPTED_OUT
+            entry.next_follow_up_at = None
+            return False
+        if entry.last_reply_at and entry.last_call_at and entry.last_reply_at >= entry.last_call_at:
+            entry.status = CampaignContactStatus.COMPLETED
+            entry.next_follow_up_at = None
+            return False
+        return True
+
     def _defer_call_for_sms(
         self, campaign: Campaign, entry: CampaignContact, best_hour: int | None
     ) -> bool:
+        if entry.last_call_status == RECOVERY:
+            return False  # Recovery SMS is not a two-hour marketing cadence touch.
         if settings.telnyx_api_key and sms_touch_pending(campaign, entry):
             # The SMS slot comes before the next call, even when overdue.
             return True

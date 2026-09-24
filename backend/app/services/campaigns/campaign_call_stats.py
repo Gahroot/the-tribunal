@@ -45,6 +45,7 @@ async def update_campaign_call_stats(
         select(CampaignContact)
         .options(selectinload(CampaignContact.campaign), selectinload(CampaignContact.contact))
         .where(CampaignContact.call_message_id == message_id)
+        .with_for_update(of=CampaignContact)
     )
     campaign_contact = cc_result.scalar_one_or_none()
 

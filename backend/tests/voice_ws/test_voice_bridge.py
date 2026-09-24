@@ -702,11 +702,8 @@ class TestReceiveFromProvider:
         log.error.assert_called_with("greeting_trigger_timeout", timeout_secs=10)
         ws.send_text.assert_not_called()
 
-    async def test_disconnect_during_send_is_swallowed(self) -> None:
-        # The receive_audio_stream emits one chunk then send raises.
-        # The inner per-chunk try/except catches the disconnect as a
-        # provider_audio_conversion_error rather than the outer disconnect
-        # handler, so the function returns cleanly without bubbling.
+    async def test_disconnect_during_send_is_not_a_provider_failure(self) -> None:
+        # Preserve the carrier disconnect so the relay does not schedule a callback.
         chunks = [b"\xaa" * 160]
         session = _make_voice_session(ElevenLabsVoiceAgentSession, audio_chunks=chunks)
         ws = _make_websocket()
@@ -715,14 +712,11 @@ class TestReceiveFromProvider:
         greeting = asyncio.Event()
         greeting.set()
 
-        # Must not raise.
-        await vb._receive_from_provider_and_send_to_telnyx(
-            ws, session, log, greeting, {"stream_id": "s1"}
-        )
-
-        # The inner per-chunk handler logged the error and the iterator drained.
-        log.exception.assert_called()
-        assert log.exception.call_args.args[0] == "provider_audio_conversion_error"
+        with pytest.raises(WebSocketDisconnect):
+            await vb._receive_from_provider_and_send_to_telnyx(
+                ws, session, log, greeting, {"stream_id": "s1"}
+            )
+        log.exception.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -773,19 +767,32 @@ def _patch_bridge_db() -> Any:
         patch.object(vb, "_stamp_prompt_version_on_message", new=AsyncMock()),
         patch.object(vb, "_save_call_duration", new=AsyncMock()),
         patch.object(vb, "_save_call_transcript_wrapper", new=AsyncMock()),
+        patch.object(vb, "_degrade_voice_call", new=AsyncMock()) as degrade,
     ):
-        yield
+        yield degrade
 
 
 class TestVoiceStreamBridgeBody:
-    async def test_session_creation_failure_returns_policy_violation(
+    @pytest.fixture(autouse=True)
+    def isolate_external_services(self):
+        # Local bridge tests must never contact the DB, carrier, or summarizer.
+        with (
+            patch(
+                "app.services.ai.caller_memory_service.summarize_and_store_call",
+                new=AsyncMock(),
+            ),
+            patch.object(vb, "_degrade_voice_call", new=AsyncMock()),
+        ):
+            yield
+
+    async def test_session_creation_failure_degrades(
         self,
     ) -> None:
         ws = _make_websocket()
         log = MagicMock()
 
         with (
-            _patch_bridge_db(),
+            _patch_bridge_db() as degrade,
             patch.object(
                 vb,
                 "create_workspace_voice_session",
@@ -806,11 +813,9 @@ class TestVoiceStreamBridgeBody:
                 prompt_version_id=None,
             )
 
-        ws.send_json.assert_awaited_with({"error": "no api key"})
-        ws.close.assert_awaited()
-        # First close is the policy violation.
-        codes = [c.kwargs.get("code") for c in ws.close.await_args_list]
-        assert status.WS_1008_POLICY_VIOLATION in codes
+        degrade.assert_awaited_once()
+        assert degrade.await_args.args[3] == "configuration_unavailable"
+        ws.close.assert_awaited_with(code=status.WS_1011_INTERNAL_ERROR)
 
     async def test_openai_connect_failure_returns_internal_error(self) -> None:
         ws = _make_websocket()
@@ -818,7 +823,7 @@ class TestVoiceStreamBridgeBody:
         session = _make_voice_session(VoiceAgentSession, connect_result=False)
 
         with (
-            _patch_bridge_db(),
+            _patch_bridge_db() as degrade,
             patch.object(vb, "create_workspace_voice_session", return_value=(session, None)),
         ):
             await vb._voice_stream_bridge_body(
@@ -835,9 +840,8 @@ class TestVoiceStreamBridgeBody:
                 prompt_version_id=None,
             )
 
-        ws.send_json.assert_awaited()
-        err = ws.send_json.await_args_list[0].args[0]
-        assert "Failed to connect" in err["error"]
+        degrade.assert_awaited_once()
+        assert degrade.await_args.args[3] == "connect_failed"
         # disconnect() is called inside the finally even after connect failure.
         session.disconnect.assert_awaited()
 
@@ -847,7 +851,7 @@ class TestVoiceStreamBridgeBody:
         session = _make_voice_session(ElevenLabsVoiceAgentSession, connect_result=False)
 
         with (
-            _patch_bridge_db(),
+            _patch_bridge_db() as degrade,
             patch.object(vb, "create_workspace_voice_session", return_value=(session, None)),
         ):
             await vb._voice_stream_bridge_body(
@@ -864,7 +868,8 @@ class TestVoiceStreamBridgeBody:
                 prompt_version_id=None,
             )
 
-        ws.send_json.assert_awaited()
+        degrade.assert_awaited_once()
+        assert degrade.await_args.args[3] == "connect_failed"
         codes = [c.kwargs.get("code") for c in ws.close.await_args_list]
         assert status.WS_1011_INTERNAL_ERROR in codes
 
