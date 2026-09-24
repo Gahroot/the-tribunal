@@ -7,10 +7,12 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.agent import Agent
 from app.models.bandit_decision import BanditDecision
 from app.models.call_outcome import CallOutcome
+from app.models.conversation import Message
 from app.models.prompt_version import PromptVersion
-from app.services.ai.reward_config import RewardConfig, compute_reward
+from app.services.ai.reward_config import RewardConfig, compute_call_reward
 
 logger = structlog.get_logger()
 
@@ -49,7 +51,9 @@ class BanditRewardService:
 
         # Find the BanditDecision for this message
         decision_result = await db.execute(
-            select(BanditDecision).where(BanditDecision.message_id == outcome.message_id)
+            select(BanditDecision)
+            .where(BanditDecision.message_id == outcome.message_id)
+            .with_for_update()
         )
         decision = decision_result.scalar_one_or_none()
 
@@ -66,10 +70,28 @@ class BanditRewardService:
             )
             return decision.observed_reward
 
-        # Compute reward
-        reward = compute_reward(
+        # Wait for the terminal, evidence-backed evaluation on voice calls.
+        if (outcome.signals or {}).get("live_only"):
+            return None
+        message = await db.get(Message, outcome.message_id)
+        if message is None or (
+            message.channel == "voice" and "judge" not in (outcome.signals or {})
+        ):
+            return None
+        judge = (outcome.signals or {}).get("judge")
+        if (
+            isinstance(judge, dict)
+            and judge.get("error") == "evaluation_failed"
+            and (outcome.signals or {}).get("judge_attempts") in (1, 2)
+        ):
+            return None
+        agent = await db.get(Agent, decision.agent_id)
+        reward = compute_call_reward(
             outcome_type=outcome.outcome_type,
             signals=outcome.signals,
+            judge=judge if isinstance(judge, dict) else None,
+            duration_seconds=message.duration_seconds,
+            overrides=agent.bandit_reward_config if agent else None,
             config=self.reward_config,
         )
 
@@ -79,7 +101,7 @@ class BanditRewardService:
 
         # Update the prompt version's bandit statistics
         version_result = await db.execute(
-            select(PromptVersion).where(PromptVersion.id == decision.arm_id)
+            select(PromptVersion).where(PromptVersion.id == decision.arm_id).with_for_update()
         )
         version = version_result.scalar_one_or_none()
 
@@ -118,83 +140,11 @@ class BanditRewardService:
         outcome_type: str,
         signals: dict[str, object] | None = None,
     ) -> float | None:
-        """Record reward directly by message ID without requiring CallOutcome.
-
-        Useful for recording rewards when the outcome is known but CallOutcome
-        hasn't been created yet.
-
-        Args:
-            db: Database session
-            message_id: Message ID to record reward for
-            outcome_type: The call outcome type
-            signals: Optional outcome signals
-
-        Returns:
-            Computed reward value if a BanditDecision was found, None otherwise
-        """
-        log = logger.bind(
-            service="bandit_reward",
-            message_id=str(message_id),
-            outcome_type=outcome_type,
-        )
-
-        # Find the BanditDecision for this message
-        decision_result = await db.execute(
-            select(BanditDecision).where(BanditDecision.message_id == message_id)
-        )
-        decision = decision_result.scalar_one_or_none()
-
-        if decision is None:
-            log.debug("no_bandit_decision_found")
+        """Use the persisted outcome; never reward an unverified transient result."""
+        outcome = await db.scalar(select(CallOutcome).where(CallOutcome.message_id == message_id))
+        if outcome is None:
             return None
-
-        if decision.observed_reward is not None:
-            log.debug(
-                "reward_already_recorded",
-                existing_reward=decision.observed_reward,
-            )
-            return decision.observed_reward
-
-        # Compute reward
-        reward = compute_reward(
-            outcome_type=outcome_type,
-            signals=signals,
-            config=self.reward_config,
-        )
-
-        # Update the decision
-        decision.observed_reward = reward
-        decision.reward_observed_at = datetime.now(UTC)
-
-        # Update the prompt version's bandit statistics
-        version_result = await db.execute(
-            select(PromptVersion).where(PromptVersion.id == decision.arm_id)
-        )
-        version = version_result.scalar_one_or_none()
-
-        if version:
-            version.bandit_alpha += reward
-            version.bandit_beta += 1.0 - reward
-            version.total_reward += reward
-            version.reward_count += 1
-
-            log.info(
-                "bandit_stats_updated",
-                version_id=str(version.id),
-                reward=reward,
-                new_alpha=version.bandit_alpha,
-                new_beta=version.bandit_beta,
-            )
-
-        await db.commit()
-
-        log.info(
-            "reward_recorded",
-            decision_id=str(decision.id),
-            reward=reward,
-        )
-
-        return reward
+        return await self.record_reward(db, outcome)
 
 
 # Module-level singleton for convenience

@@ -4,11 +4,16 @@ Periodically analyzes agent performance and generates improvement
 suggestions for agents with auto_suggest or auto_activate enabled.
 """
 
-from sqlalchemy import select
+import math
+
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import AsyncSessionLocal
 from app.models.agent import Agent
+from app.models.appointment import Appointment, AppointmentStatus
+from app.models.call_outcome import CallOutcome
+from app.models.conversation import Message
 from app.models.improvement_suggestion import ImprovementSuggestion
 from app.models.prompt_version import PromptVersion
 from app.services.ai.prompt_improvement_service import PromptImprovementService
@@ -59,6 +64,48 @@ class PromptImprovementWorker(RetryableWorker, BaseWorker):
                 )
 
             await db.commit()
+
+    async def _can_auto_activate(self, db: AsyncSession, version: PromptVersion) -> bool:
+        """Require real booking evidence AND reliable quality across recent calls."""
+        result = await db.execute(
+            select(
+                CallOutcome.signals,
+                Message.booking_outcome,
+                exists().where(
+                    Appointment.message_id == Message.id,
+                    Appointment.status == AppointmentStatus.COMPLETED,
+                ),
+            )
+            .join(Message, Message.id == CallOutcome.message_id)
+            .where(
+                CallOutcome.prompt_version_id == version.id,
+                Message.channel == "voice",
+                Message.transcript.is_not(None),
+            )
+            .order_by(CallOutcome.created_at.desc())
+            .limit(100)
+        )
+        rows = result.all()
+        if len(rows) < 10:
+            return False
+        scores = []
+        positive_outcomes = 0
+        for signals, booking_outcome, shown in rows:
+            judge = (signals or {}).get("judge")
+            if not isinstance(judge, dict) or judge.get("human_review") is not False:
+                return False
+            score = judge.get("score")
+            if not isinstance(score, (int, float)) or isinstance(score, bool):
+                return False
+            if not math.isfinite(score) or not 0 <= score <= 1:
+                return False
+            scores.append(score)
+            positive_outcomes += booking_outcome == "success" or shown is True
+        return (
+            sum(scores) / len(scores) >= 0.8
+            and positive_outcomes >= 1
+            and positive_outcomes / len(rows) >= 0.1
+        )
 
     async def _process_agent(
         self,
@@ -112,12 +159,16 @@ class PromptImprovementWorker(RetryableWorker, BaseWorker):
             )
             return
 
-        # Initialize service
+        # No transcript-only auto-promotion: require judged calls AND real bookings.
+        can_activate = agent.auto_activate and await self._can_auto_activate(db, active_version)
         service = PromptImprovementService()
 
         # If auto_activate and there are pending suggestions, approve the first one
         if agent.auto_activate and pending_suggestions:
             top_suggestion = pending_suggestions[0]
+            if not can_activate or top_suggestion.source_version_id != active_version.id:
+                log.info("Auto-activation gated on judged quality and verified bookings")
+                return
             log.info("Auto-activating pending suggestion", suggestion_id=str(top_suggestion.id))
 
             try:
@@ -160,7 +211,7 @@ class PromptImprovementWorker(RetryableWorker, BaseWorker):
                 )
 
                 # If auto_activate, approve immediately
-                if agent.auto_activate:
+                if can_activate:
                     await service.approve_suggestion(
                         db=db,
                         suggestion_id=suggestion.id,

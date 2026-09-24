@@ -91,6 +91,8 @@ class CallOutcome(Base):
     # - "objections": list[str]
     # - "next_steps": list[str]
     # - "analyzed": true when analysis succeeded, "error" when it failed
+    # - "judge": rubric_version, per-category scores/evidence, overall score,
+    #   confidence and human_review (or a review-required error for missing evidence)
     signals: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict, nullable=False)
 
     # Classification metadata

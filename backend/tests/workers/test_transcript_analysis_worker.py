@@ -52,6 +52,8 @@ async def test_worker_analyzes_unanalyzed_messages() -> None:
             "analyze_transcript",
             AsyncMock(return_value=analysis_payload),
         ) as mocked_analyze,
+        patch.object(worker_module, "judge_call", AsyncMock(return_value={"score": 0.8})),
+        patch.object(worker_module, "record_bandit_reward", AsyncMock()),
     ):
         worker = worker_module.TranscriptAnalysisWorker()
         await worker._process_items()
@@ -59,6 +61,7 @@ async def test_worker_analyzes_unanalyzed_messages() -> None:
     mocked_analyze.assert_awaited_once_with(msg.transcript)
     assert outcome.signals["sentiment"] == "positive"
     assert outcome.signals["analyzed"] is True
+    assert outcome.signals["judge"]["score"] == 0.8
     assert outcome.signals["duration_seconds"] == 42
     session.commit.assert_awaited_once()
 
@@ -81,11 +84,14 @@ async def test_worker_marks_errors_without_infinite_retry() -> None:
             "analyze_transcript",
             AsyncMock(side_effect=RuntimeError("boom")),
         ),
+        patch.object(worker_module, "judge_call", AsyncMock(return_value={"score": 0.5})),
+        patch.object(worker_module, "record_bandit_reward", AsyncMock()),
     ):
         worker = worker_module.TranscriptAnalysisWorker()
         await worker._process_items()
 
     assert outcome.signals["analyzed"] == "error"
+    assert outcome.signals["judge"]["score"] == 0.5
     session.commit.assert_awaited_once()
 
 

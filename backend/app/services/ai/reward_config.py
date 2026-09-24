@@ -1,5 +1,6 @@
 """Reward configuration and computation for multi-armed bandit optimization."""
 
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -20,6 +21,12 @@ class RewardConfig:
     busy: float = 0.0
     rejected: float = 0.0
     failed: float = 0.0
+
+    # Composite weights. Missing evidence contributes zero, never an inferred success.
+    outcome_weight: float = 0.6
+    quality_weight: float = 0.3
+    duration_weight: float = 0.1
+    held_seconds: int = 120
 
     # Signal-based bonuses (added to base reward)
     signal_weights: dict[str, float] = field(
@@ -77,3 +84,45 @@ def compute_reward(
 
     # Clamp to [0.0, 1.0]
     return max(0.0, min(1.0, reward))
+
+
+def compute_call_reward(
+    outcome_type: str,
+    signals: dict[str, Any] | None,
+    judge: dict[str, Any] | None,
+    duration_seconds: int | None,
+    overrides: dict[str, Any] | None = None,
+    config: RewardConfig | None = None,
+) -> float:
+    """Combine verified outcome, rubric quality and measured time held."""
+    config = config or DEFAULT_REWARD_CONFIG
+    weights = {}
+    for key in ("outcome_weight", "quality_weight", "duration_weight"):
+        value = (overrides or {}).get(key, getattr(config, key))
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (float, int))
+            or not math.isfinite(value)
+            or not 0 <= value <= 1
+        ):
+            raise ValueError(f"Invalid bandit reward weight: {key}")
+        weights[key] = float(value)
+    total = sum(weights.values())
+    if total <= 0:
+        raise ValueError("Bandit reward weights must not all be zero")
+    score = judge.get("score") if isinstance(judge, dict) else None
+    quality = 0.0
+    if (
+        isinstance(score, (int, float))
+        and not isinstance(score, bool)
+        and math.isfinite(score)
+        and 0 <= score <= 1
+    ):
+        quality = float(score)
+    duration = duration_seconds if type(duration_seconds) is int and duration_seconds > 0 else 0
+    held = min(duration / config.held_seconds, 1.0)
+    return (
+        weights["outcome_weight"] * compute_reward(outcome_type, signals, config)
+        + weights["quality_weight"] * quality
+        + weights["duration_weight"] * held
+    ) / total

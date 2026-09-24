@@ -209,6 +209,11 @@ class Agent(Base):
     total_calls: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     total_messages: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
 
+    # Per-agent quality/duration weights for bandit reward (defaults in RewardConfig).
+    bandit_reward_config: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, nullable=False
+    )
+
     # Auto-improvement settings
     auto_suggest: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
