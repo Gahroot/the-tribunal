@@ -29,7 +29,6 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import httpx
 import structlog
 from openai.types.chat import ChatCompletionMessageToolCall
-from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,45 +39,29 @@ from app.models.conversation import Conversation
 from app.models.user import User
 from app.models.workspace import WorkspaceIntegration, WorkspaceMembership
 from app.services.ai.base_tool_executor import BaseToolExecutor
+from app.services.ai.tool_definition import ToolArguments
+from app.services.ai.tool_definitions import (
+    BookAppointmentArguments,
+    CheckAvailabilityArguments,
+    SearchKnowledgeArguments,
+    gate_exempt_tools,
+    tools_for_channel,
+)
 from app.services.approval.approval_gate_service import approval_gate_service
 from app.services.email import send_appointment_booked_notification
 from app.utils.background_tasks import spawn_background_task
 
 logger = structlog.get_logger()
 
-# Read-only tools that never mutate state and so bypass the HITL approval gate.
-GATE_EXEMPT_TOOLS: frozenset[str] = frozenset({"search_knowledge"})
+# Both validation and approval exemptions come from the advertised definitions.
+GATE_EXEMPT_TOOLS: frozenset[str] = gate_exempt_tools("text")
+# Compatibility aliases: the follow-up generator imports _KnowledgeArguments.
+_ToolArguments = ToolArguments
+_BookArguments = BookAppointmentArguments
+_AvailabilityArguments = CheckAvailabilityArguments
+_KnowledgeArguments = SearchKnowledgeArguments
 
-
-class _ToolArguments(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-
-class _BookArguments(_ToolArguments):
-    date: str = Field(min_length=1)
-    time: str = Field(min_length=1)
-    email: str = Field(min_length=1)
-    duration_minutes: int = Field(default=30, ge=1)
-    notes: str | None = None
-    skill: str | None = None
-
-
-class _AvailabilityArguments(_ToolArguments):
-    start_date: str = Field(min_length=1)
-    end_date: str | None = None
-    skill: str | None = None
-
-
-class _KnowledgeArguments(_ToolArguments):
-    query: str = Field(min_length=1)
-    top_k: int | None = Field(default=None, ge=1, le=10)
-
-
-_TOOL_SCHEMAS: dict[str, type[_ToolArguments]] = {
-    "book_appointment": _BookArguments,
-    "check_availability": _AvailabilityArguments,
-    "search_knowledge": _KnowledgeArguments,
-}
+_TOOL_SCHEMAS = {tool.name: tool.arguments for tool in tools_for_channel("text")}
 
 
 class TextToolExecutor(BaseToolExecutor):

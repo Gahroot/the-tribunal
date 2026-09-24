@@ -20,8 +20,8 @@ from app.services.ai.grok.constants import (
     GROK_VOICES,
 )
 from app.services.ai.prompt_builder import VoicePromptBuilder
+from app.services.ai.tool_definitions import TOOL_DEFINITIONS
 from app.services.ai.voice_tools import (
-    DTMF_TOOL,
     GROK_BUILTIN_TOOLS,
     get_booking_tools,
 )
@@ -170,7 +170,7 @@ class GrokSessionConfigBuilder:
 
         # Add DTMF tool for IVR navigation if enabled
         if self._should_enable_dtmf(agent_enabled_tools, ivr_detector_active):
-            self._tools.append(DTMF_TOOL)
+            self._tools.append(TOOL_DEFINITIONS["send_dtmf"].render("grok"))
             dtmf_reason = "ivr_detector_active" if ivr_detector_active else "explicit_config"
             self._logger.info("grok_dtmf_tool_enabled", reason=dtmf_reason)
 

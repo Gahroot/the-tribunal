@@ -22,22 +22,14 @@ import structlog
 
 from app.core.config import settings
 from app.services.ai.base_tool_executor import BaseToolExecutor
+from app.services.ai.tool_definitions import gate_exempt_tools
 from app.services.approval.approval_gate_service import approval_gate_service
 
 logger = structlog.get_logger()
 
-# Read-only tools that never mutate state and so bypass the HITL approval gate.
-# Gating a knowledge lookup behind operator approval would stall the live call
-# for a harmless retrieval, so it is always allowed to run.
-# ``take_message`` is included: it only captures a structured message + notifies
-# operators (no outbound action, no spend), and gating it behind approval would
-# stall the live call and risk losing the message the caller is dictating.
-# ``check_payment_status`` is included: it only reads the current call's most
-# recent payment status from Stripe (no spend, no mutation of external state),
-# so gating it behind approval would needlessly stall the live call.
-GATE_EXEMPT_TOOLS: frozenset[str] = frozenset(
-    {"search_knowledge", "lookup_caller_record", "take_message", "check_payment_status"}
-)
+# Exemptions are explicit metadata on the canonical definitions, never inferred
+# from a model-supplied argument or merely from a tool being read-only.
+GATE_EXEMPT_TOOLS: frozenset[str] = gate_exempt_tools("voice")
 
 _ALLOWED_MESSAGE_URGENCIES: frozenset[str] = frozenset({"low", "medium", "high"})
 

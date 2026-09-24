@@ -22,12 +22,9 @@ from websockets.exceptions import ConnectionClosed, ConnectionClosedError
 
 from app.models.agent import Agent
 from app.services.ai.elevenlabs_tts import ElevenLabsTTSSession, get_voice_id
+from app.services.ai.tool_definitions import TOOL_DEFINITIONS
 from app.services.ai.voice_agent_base import VoiceAgentBase
-from app.services.ai.voice_tools import (
-    CONFIRM_APPOINTMENT_TOOL,
-    GROK_BUILTIN_TOOLS,
-    VOICE_BOOKING_TOOLS,
-)
+from app.services.ai.voice_tools import GROK_BUILTIN_TOOLS
 
 logger = structlog.get_logger()
 _TOOL_ARGUMENTS = TypeAdapter(dict[str, Any])
@@ -389,7 +386,7 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
         }
 
         # Build tools list
-        tools: list[dict[str, Any]] = [CONFIRM_APPOINTMENT_TOOL]
+        tools: list[dict[str, Any]] = [TOOL_DEFINITIONS["confirm_appointment"].render("elevenlabs")]
 
         agent_enabled_tools = (
             self.agent.enabled_tools if self.agent and self.agent.enabled_tools else []
@@ -405,8 +402,12 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
 
         # Add Cal.com booking tools if enabled and configured
         if self._enable_tools:
-            tools.extend(VOICE_BOOKING_TOOLS)
-            self.logger.info("booking_tools_enabled", tool_count=len(VOICE_BOOKING_TOOLS))
+            booking_tools = [
+                TOOL_DEFINITIONS[name].render("elevenlabs")
+                for name in ("book_appointment", "check_availability")
+            ]
+            tools.extend(booking_tools)
+            self.logger.info("booking_tools_enabled", tool_count=len(booking_tools))
 
         if tools:
             session_config["tools"] = tools

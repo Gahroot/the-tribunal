@@ -20,6 +20,9 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
 
+from app.services.ai.tool_definition import ToolFormat
+from app.services.ai.tool_definitions import TOOL_DEFINITIONS
+
 logger = structlog.get_logger()
 
 # Grok built-in tools - these execute automatically on the provider side
@@ -33,157 +36,24 @@ GROK_BUILTIN_TOOLS: dict[str, dict[str, str]] = {
 }
 
 # Only a live, matching appointment reconfirmation call may execute this tool.
-CONFIRM_APPOINTMENT_TOOL: dict[str, Any] = {
-    "type": "function",
-    "name": "confirm_appointment",
-    "description": (
-        "Only on an appointment reconfirmation call, record the caller's explicit "
-        "yes to attending. Do not use for voicemail, uncertain answers, or rescheduling."
-    ),
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "caller_quote": {
-                "type": "string",
-                "description": "The caller's exact affirmative words (e.g. 'yes').",
-            },
-        },
-        "required": ["caller_quote"],
-    },
-}
+CONFIRM_APPOINTMENT_TOOL: dict[str, Any] = TOOL_DEFINITIONS["confirm_appointment"].render("grok")
 
 # DTMF tool for IVR menu navigation
 # Allows AI agent to send touch-tone digits during calls
-DTMF_TOOL: dict[str, Any] = {
-    "type": "function",
-    "name": "send_dtmf",
-    "description": (
-        "Send DTMF touch-tone digits to navigate automated phone menus (IVR systems). "
-        "CRITICAL: When you hear 'Press 1 for X, Press 2 for Y', you MUST use this tool "
-        "to send the appropriate digit - do NOT speak to the machine. "
-        "Choose the menu option that best matches your goal (e.g., '2' for 'new car sales'). "
-        "If the menu option for your goal isn't clear, try options 1-9 systematically. "
-        "Only try '0' or '#' as a last resort after other options have failed. "
-        "After sending DTMF, WAIT SILENTLY for either another menu or a human to answer. "
-        "Only speak when a real human responds to you."
-    ),
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "digits": {
-                "type": "string",
-                "description": (
-                    "The digit(s) to press. MUST include at least one digit (0-9, *, #). "
-                    "Examples: '1' (press 1), '2' (press 2), '0' (operator), '#' (pound key). "
-                    "For multiple digits with pauses: '1w2' (press 1, wait 0.5s, press 2). "
-                    "IMPORTANT: Do not send only 'w' - always include actual digits."
-                ),
-            },
-        },
-        "required": ["digits"],
-    },
-}
+DTMF_TOOL: dict[str, Any] = TOOL_DEFINITIONS["send_dtmf"].render("grok")
 
 # Live transfer / handoff tool.
 # Briefs a configured human closer on high intent. A live handoff additionally
 # requires the caller's explicit consent and the closer's keypad acceptance.
 # The execution layer always uses warm mode and resolves the destination.
-TRANSFER_CALL_TOOL: dict[str, Any] = {
-    "type": "function",
-    "name": "transfer_call",
-    "description": (
-        "Brief a human closer when the caller shows high intent or BANT-qualifies. "
-        "Ask if they want to speak to a human now before transferring. Set "
-        "caller_consented true ONLY after an explicit yes or direct request to "
-        "speak to the human. Otherwise this only briefs the closer and the AI "
-        "stays on the call. Never infer consent from intent or frustration. "
-        "While the human hears the briefing and confirms availability, keep "
-        "assisting the caller. The AI audio stops automatically when the human accepts."
-    ),
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "reason": {
-                "type": "string",
-                "description": (
-                    "Short reason for the handoff, e.g. 'caller asked for a human', "
-                    "'hot lead ready to buy', or 'frustrated about billing'."
-                ),
-            },
-            "intent": {
-                "type": "string",
-                "description": (
-                    "One short phrase describing what the caller wants \u2014 spoken "
-                    "to the human in warm mode (e.g. 'wants pricing on the premium plan')."
-                ),
-            },
-            "summary": {
-                "type": "string",
-                "description": "Brief factual summary of what the caller said on this call.",
-            },
-            "caller_consented": {
-                "type": "boolean",
-                "description": "True only after explicit agreement to speak with a human now.",
-            },
-            "consent_quote": {
-                "type": "string",
-                "description": "The caller's actual words agreeing to speak to a human now.",
-            },
-            "qualification": {
-                "type": "object",
-                "description": "Facts the caller gave during this call, not guesses.",
-                "properties": {
-                    "budget": {"type": "string"},
-                    "authority": {"type": "string"},
-                    "need": {"type": "string"},
-                    "timeline": {"type": "string"},
-                    "objections": {"type": "string"},
-                },
-            },
-        },
-        "required": ["reason", "caller_consented"],
-    },
-}
+TRANSFER_CALL_TOOL: dict[str, Any] = TOOL_DEFINITIONS["transfer_call"].render("grok")
 
 # On-demand knowledge retrieval tool.
 # Replaces static prompt-stuffing (the old ~4k-token CAG concat): instead of
 # dumping the whole knowledge base into the system prompt, the agent calls this
 # tool to pull only the passages it needs for the current question. Execution
 # runs hybrid (vector + keyword) retrieval scoped to the call's workspace + agent.
-SEARCH_KNOWLEDGE_TOOL: dict[str, Any] = {
-    "type": "function",
-    "name": "search_knowledge",
-    "description": (
-        "Search this business's knowledge base for facts you need to answer the "
-        "caller accurately \u2014 pricing, policies, FAQs, hours, product details, "
-        "or anything specific to this company. Call this BEFORE answering any "
-        "factual question instead of guessing. Pass a focused natural-language "
-        "query describing what you need to know. Returns ranked passages with the "
-        "document title each came from; ground your answer in those passages and "
-        "do NOT invent details that are not returned."
-    ),
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "query": {
-                "type": "string",
-                "description": (
-                    "What you need to find out, phrased as a focused question or "
-                    "keywords (e.g. 'cancellation policy for monthly plan', "
-                    "'weekend opening hours')."
-                ),
-            },
-            "top_k": {
-                "type": "integer",
-                "description": (
-                    "Optional number of passages to retrieve (1-10). Defaults to 5. "
-                    "Ask for more only when a broad question needs several sources."
-                ),
-            },
-        },
-        "required": ["query"],
-    },
-}
+SEARCH_KNOWLEDGE_TOOL: dict[str, Any] = TOOL_DEFINITIONS["search_knowledge"].render("grok")
 
 # Read-only caller account lookup tool.
 # Lets the receptionist answer account-specific questions about the *current
@@ -192,25 +62,7 @@ SEARCH_KNOWLEDGE_TOOL: dict[str, Any] = {
 # call's workspace + resolved contact, so it can never read another tenant's or
 # another person's data. Takes no arguments — the caller is implicit (the active
 # call), so the model cannot point it at a different contact.
-LOOKUP_CALLER_RECORD_TOOL: dict[str, Any] = {
-    "type": "function",
-    "name": "lookup_caller_record",
-    "description": (
-        "Look up the CURRENT caller's own account record to answer questions "
-        "about THEIR appointments, status, or deals — e.g. 'when is my "
-        "appointment?', 'what's my status?', 'do I have anything booked?'. "
-        "Returns the caller's upcoming appointments, open opportunities/deals, "
-        "contact status and notes, and a short summary of the last interaction. "
-        "This is READ-ONLY and only ever returns THIS caller's record — you "
-        "cannot look up anyone else. If the caller is not recognized it returns "
-        "no record; in that case, do NOT invent details — offer to take their "
-        "information instead. Takes no arguments."
-    ),
-    "parameters": {
-        "type": "object",
-        "properties": {},
-    },
-}
+LOOKUP_CALLER_RECORD_TOOL: dict[str, Any] = TOOL_DEFINITIONS["lookup_caller_record"].render("grok")
 
 # "Take a message" capture tool.
 # Lets the receptionist capture a structured message for a human when the
@@ -218,63 +70,7 @@ LOOKUP_CALLER_RECORD_TOOL: dict[str, Any] = {
 # transferring or booking. The execution layer persists the message and
 # notifies operators (push + email). Opt-in via ``take_message`` in the agent's
 # enabled_tools so it is only exposed on receptionist-style agents.
-TAKE_MESSAGE_TOOL: dict[str, Any] = {
-    "type": "function",
-    "name": "take_message",
-    "description": (
-        "Take a message for a human team member when the caller wants someone to "
-        "call them back or to relay information — and you cannot resolve it "
-        "yourself or transfer/book. Collect as much structure as the caller will "
-        "give: their name, the best callback number, the reason/topic, how urgent "
-        "it is, when they'd prefer to be called back, and the message itself. "
-        "Confirm the callback number back to the caller before sending. Call this "
-        "ONCE you have gathered the details; the team is notified immediately. "
-        "Do not invent details the caller did not give — leave fields out instead."
-    ),
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "caller_name": {
-                "type": "string",
-                "description": "The caller's name (who the message is from).",
-            },
-            "callback_number": {
-                "type": "string",
-                "description": (
-                    "The best phone number to call the caller back on. Read it "
-                    "back to confirm before sending."
-                ),
-            },
-            "reason": {
-                "type": "string",
-                "description": (
-                    "Short reason or topic for the message (e.g. 'billing "
-                    "question', 'wants a quote', 'following up on order')."
-                ),
-            },
-            "urgency": {
-                "type": "string",
-                "enum": ["low", "medium", "high"],
-                "description": (
-                    "How urgent the callback is. Use 'high' only when the caller "
-                    "says it's urgent/time-sensitive."
-                ),
-            },
-            "preferred_callback_time": {
-                "type": "string",
-                "description": (
-                    "When the caller would prefer to be called back, in their own "
-                    "words (e.g. 'tomorrow afternoon', 'after 5pm', 'anytime')."
-                ),
-            },
-            "message": {
-                "type": "string",
-                "description": "The full free-text message the caller wants relayed.",
-            },
-        },
-        "required": ["message"],
-    },
-}
+TAKE_MESSAGE_TOOL: dict[str, Any] = TOOL_DEFINITIONS["take_message"].render("grok")
 
 # In-call payment / deposit collection tool.
 # SECURE BY DESIGN: this NEVER reads raw card numbers over the AI channel. The
@@ -282,274 +78,45 @@ TAKE_MESSAGE_TOOL: dict[str, Any] = {
 # texts the hosted payment link to the caller, recording payment intent/status
 # against the contact/opportunity. Opt-in via ``collect_payment`` in the agent's
 # enabled_tools so only agents authorized to take money expose it.
-COLLECT_PAYMENT_TOOL: dict[str, Any] = {
-    "type": "function",
-    "name": "collect_payment",
-    "description": (
-        "Collect a payment or deposit from the CURRENT caller by texting them a "
-        "secure payment link. Use this ONLY after the caller explicitly agrees to "
-        "pay a specific amount (e.g. a booking deposit or invoice). "
-        "NEVER ask the caller to read out their card number, CVV, or expiry — you "
-        "do NOT take card details by voice. This tool sends a secure Stripe link "
-        "by SMS to the caller's phone; they complete payment there. "
-        "Confirm the amount and what it is for before calling this. After calling "
-        "it, tell the caller to check their phone for the payment link, and use "
-        "check_payment_status if they say they've paid."
-    ),
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "amount": {
-                "type": "number",
-                "description": (
-                    "The amount to charge in the major currency unit (e.g. dollars). "
-                    "For example 50 means $50.00. Must be a positive number you have "
-                    "confirmed with the caller."
-                ),
-            },
-            "description": {
-                "type": "string",
-                "description": (
-                    "Short description of what the payment is for, e.g. "
-                    "'booking deposit', 'invoice #1234'. Shown to the caller on the "
-                    "payment page."
-                ),
-            },
-            "currency": {
-                "type": "string",
-                "description": (
-                    "Optional ISO 4217 currency code (e.g. 'usd', 'gbp'). "
-                    "Defaults to USD when omitted."
-                ),
-            },
-        },
-        "required": ["amount"],
-    },
-}
+COLLECT_PAYMENT_TOOL: dict[str, Any] = TOOL_DEFINITIONS["collect_payment"].render("grok")
 
 # Companion read-only tool: lets the agent confirm whether the most recent
 # in-call payment link has been paid yet. Read-only (no spend, no mutation of
 # external state) so it is gate-exempt and safe to poll during the live call.
-CHECK_PAYMENT_STATUS_TOOL: dict[str, Any] = {
-    "type": "function",
-    "name": "check_payment_status",
-    "description": (
-        "Check whether the payment link you just texted the CURRENT caller has "
-        "been paid. Call this when the caller says they have completed (or are "
-        "having trouble with) the payment. Takes no arguments — it checks this "
-        "call's most recent payment request. Do not invent a result; report only "
-        "what this tool returns."
-    ),
-    "parameters": {
-        "type": "object",
-        "properties": {},
-    },
-}
+CHECK_PAYMENT_STATUS_TOOL: dict[str, Any] = TOOL_DEFINITIONS["check_payment_status"].render("grok")
 
-APPLICATION_LINK_SMS_TOOL: dict[str, Any] = {
-    "type": "function",
-    "name": "send_application_link",
-    "description": (
-        "Send the fixed Prestyj founding cohort application link by SMS to the current caller. "
-        "Use only after the person explicitly agrees to receive the link. The SMS body is fixed; "
-        "do not use this for general texting, custom follow-ups, or unrelated links."
-    ),
-    "parameters": {
-        "type": "object",
-        "properties": {},
-    },
-}
+APPLICATION_LINK_SMS_TOOL: dict[str, Any] = TOOL_DEFINITIONS["send_application_link"].render("grok")
 
 # Static booking tool definitions (without date context)
 # Use get_booking_tools() for tools with embedded date context
 VOICE_BOOKING_TOOLS: list[dict[str, Any]] = [
-    {
-        "type": "function",
-        "name": "book_appointment",
-        "description": (
-            "Book an appointment/meeting with the customer on Cal.com. "
-            "Use this when the customer agrees to schedule a call, meeting, "
-            "or appointment. You MUST collect the customer's email address first."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "date": {
-                    "type": "string",
-                    "description": "Appointment date in YYYY-MM-DD format",
-                },
-                "time": {
-                    "type": "string",
-                    "description": (
-                        "Appointment time in HH:MM 24-hour format "
-                        "(e.g., '14:00' for 2 PM, '09:30' for 9:30 AM). "
-                        "Always pass 24-hour format here even though you "
-                        "speak 12-hour format to the customer."
-                    ),
-                },
-                "email": {
-                    "type": "string",
-                    "description": "Customer's email address for booking confirmation",
-                },
-                "duration_minutes": {
-                    "type": "integer",
-                    "description": "Duration in minutes. Default is 30.",
-                },
-                "notes": {
-                    "type": "string",
-                    "description": "Optional notes about the appointment",
-                },
-                "skill": {
-                    "type": "string",
-                    "description": (
-                        "Optional skill, specialty, or service the appointment needs "
-                        "(e.g. 'spanish', 'mortgage', 'new car sales'). When set, the "
-                        "system routes the booking to an available staff member who has "
-                        "that skill. Only pass this if the caller's need clearly maps to "
-                        "a specialty; otherwise leave it out."
-                    ),
-                },
-            },
-            "required": ["date", "time", "email"],
-        },
-    },
-    {
-        "type": "function",
-        "name": "check_availability",
-        "description": (
-            "Check available time slots on Cal.com for a date range. "
-            "Use before booking to confirm slot availability."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "start_date": {
-                    "type": "string",
-                    "description": "Start date in YYYY-MM-DD format",
-                },
-                "end_date": {
-                    "type": "string",
-                    "description": "End date in YYYY-MM-DD (defaults to start)",
-                },
-                "skill": {
-                    "type": "string",
-                    "description": (
-                        "Optional skill/specialty needed; restricts availability to "
-                        "staff with that skill when skill-based routing is enabled."
-                    ),
-                },
-            },
-            "required": ["start_date"],
-        },
-    },
+    TOOL_DEFINITIONS[name].render("grok") for name in ("book_appointment", "check_availability")
 ]
 
 
-def get_booking_tools(timezone: str = "America/New_York") -> list[dict[str, Any]]:
-    """Generate booking tools with current date context embedded.
-
-    The date context helps the LLM correctly interpret relative dates
-    like "tomorrow" or "Friday" by providing the actual current date
-    in the tool descriptions.
-
-    Args:
-        timezone: Timezone for date context (IANA format)
-
-    Returns:
-        List of tool definitions with embedded date context
-    """
+def _booking_tools(provider: ToolFormat, timezone: str) -> list[dict[str, Any]]:
     try:
         tz = ZoneInfo(timezone)
     except ZoneInfoNotFoundError:
         logger.debug("invalid_timezone_fallback", timezone=timezone)
         tz = ZoneInfo("America/New_York")
-
     now = datetime.now(tz)
     today_str = now.strftime("%A, %B %d, %Y")
     today_iso = now.strftime("%Y-%m-%d")
-
+    context = (
+        f"TODAY IS {today_str} ({today_iso}). "
+        f"Convert relative dates to YYYY-MM-DD from today: 'today' = {today_iso}, "
+        "'tomorrow' = the day after today, 'Friday' = the NEXT Friday from today."
+    )
     return [
-        {
-            "type": "function",
-            "name": "book_appointment",
-            "description": (
-                f"Book an appointment on Cal.com. TODAY IS {today_str} ({today_iso}). "
-                f"When converting relative dates to YYYY-MM-DD: 'today' = {today_iso}, "
-                "'tomorrow' = the day after today, 'Friday' = the NEXT Friday from today. "
-                "You MUST collect the customer's email address first."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "date": {
-                        "type": "string",
-                        "description": (
-                            f"Appointment date in YYYY-MM-DD format. "
-                            f"TODAY IS {today_iso}. Convert relative dates from this date."
-                        ),
-                    },
-                    "time": {
-                        "type": "string",
-                        "description": (
-                            "Appointment time in HH:MM 24-hour format "
-                            "(e.g., '14:00' for 2 PM, '09:30' for 9:30 AM). "
-                            "Always pass 24-hour format here even though you "
-                            "speak 12-hour format to the customer."
-                        ),
-                    },
-                    "email": {
-                        "type": "string",
-                        "description": "Customer's email address for booking confirmation",
-                    },
-                    "duration_minutes": {
-                        "type": "integer",
-                        "description": "Duration in minutes. Default is 30.",
-                    },
-                    "notes": {
-                        "type": "string",
-                        "description": "Optional notes about the appointment",
-                    },
-                },
-                "required": ["date", "time", "email"],
-            },
-        },
-        {
-            "type": "function",
-            "name": "check_availability",
-            "description": (
-                f"Check available time slots on Cal.com. "
-                f"TODAY IS {today_str} ({today_iso}). "
-                f"When the user says 'Friday', 'tomorrow', or 'next week', "
-                f"convert to YYYY-MM-DD relative to today ({today_iso}). "
-                f"Example: if today is {today_iso} and user says 'Friday', "
-                "calculate the next Friday from this date."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "start_date": {
-                        "type": "string",
-                        "description": (
-                            f"Start date in YYYY-MM-DD format. TODAY IS {today_iso}. "
-                            "Convert relative dates like 'Friday' from this date."
-                        ),
-                    },
-                    "end_date": {
-                        "type": "string",
-                        "description": "End date in YYYY-MM-DD (defaults to start_date)",
-                    },
-                    "skill": {
-                        "type": "string",
-                        "description": (
-                            "Optional skill/specialty needed; restricts availability to "
-                            "staff with that skill when skill-based routing is enabled."
-                        ),
-                    },
-                },
-                "required": ["start_date"],
-            },
-        },
+        TOOL_DEFINITIONS[name].render(provider, date_context=context)
+        for name in ("book_appointment", "check_availability")
     ]
+
+
+def get_booking_tools(timezone: str = "America/New_York") -> list[dict[str, Any]]:
+    """Render shared booking schemas with timezone-aware date context."""
+    return _booking_tools("grok", timezone)
 
 
 def build_tools_list(
@@ -584,7 +151,7 @@ def build_tools_list(
     Returns:
         List of tool definitions for session configuration
     """
-    tools: list[dict[str, Any]] = [CONFIRM_APPOINTMENT_TOOL]
+    tools: list[dict[str, Any]] = [TOOL_DEFINITIONS["confirm_appointment"].render("grok")]
 
     # Built-in Grok tools
     if enable_web_search:
@@ -595,32 +162,32 @@ def build_tools_list(
 
     # On-demand knowledge retrieval (replaces static CAG prompt-stuffing)
     if enable_search_knowledge:
-        tools.append(SEARCH_KNOWLEDGE_TOOL)
+        tools.append(TOOL_DEFINITIONS["search_knowledge"].render("grok"))
 
     # Read-only lookup of the current caller's own CRM record
     if enable_lookup_caller_record:
-        tools.append(LOOKUP_CALLER_RECORD_TOOL)
+        tools.append(TOOL_DEFINITIONS["lookup_caller_record"].render("grok"))
 
     # Structured "take a message" capture for operator follow-up
     if enable_take_message:
-        tools.append(TAKE_MESSAGE_TOOL)
+        tools.append(TOOL_DEFINITIONS["take_message"].render("grok"))
 
     # In-call payment / deposit collection (secure SMS link + status check)
     if enable_collect_payment:
-        tools.append(COLLECT_PAYMENT_TOOL)
-        tools.append(CHECK_PAYMENT_STATUS_TOOL)
+        tools.append(TOOL_DEFINITIONS["collect_payment"].render("grok"))
+        tools.append(TOOL_DEFINITIONS["check_payment_status"].render("grok"))
 
     # DTMF for IVR
     if enable_dtmf:
-        tools.append(DTMF_TOOL)
+        tools.append(TOOL_DEFINITIONS["send_dtmf"].render("grok"))
 
     # Live human transfer / handoff
     if enable_transfer:
-        tools.append(TRANSFER_CALL_TOOL)
+        tools.append(TOOL_DEFINITIONS["transfer_call"].render("grok"))
 
     # Fixed Prestyj application-link SMS
     if enable_application_link_sms:
-        tools.append(APPLICATION_LINK_SMS_TOOL)
+        tools.append(TOOL_DEFINITIONS["send_application_link"].render("grok"))
 
     # Booking tools with date context
     if enable_booking:
@@ -782,138 +349,10 @@ def validate_grok_voice(voice_id: str) -> str | None:
 # OpenAI function calling format (for text agents)
 # These use the {"type": "function", "function": {...}} wrapper
 def get_text_search_knowledge_tool() -> dict[str, Any]:
-    """Knowledge retrieval tool in OpenAI function-calling format for text agents.
-
-    Mirrors :data:`SEARCH_KNOWLEDGE_TOOL` but wrapped in the
-    ``{"type": "function", "function": {...}}`` shape the chat completions API
-    expects. Lets the text/SMS agent pull only the passages it needs instead of
-    static prompt-stuffing the full knowledge base.
-    """
-    return {
-        "type": "function",
-        "function": {
-            "name": SEARCH_KNOWLEDGE_TOOL["name"],
-            "description": SEARCH_KNOWLEDGE_TOOL["description"],
-            "parameters": SEARCH_KNOWLEDGE_TOOL["parameters"],
-        },
-    }
+    """Render the shared knowledge tool for OpenAI chat completions."""
+    return TOOL_DEFINITIONS["search_knowledge"].render("openai")
 
 
 def get_text_booking_tools(timezone: str = "America/New_York") -> list[dict[str, Any]]:
-    """Get booking tools in OpenAI function calling format for text agents.
-
-    Text agents use the OpenAI chat completions API which requires tools
-    in the {"type": "function", "function": {...}} format.
-
-    Args:
-        timezone: Timezone for date context (IANA format)
-
-    Returns:
-        List of tool definitions in OpenAI function calling format
-    """
-    try:
-        tz = ZoneInfo(timezone)
-    except ZoneInfoNotFoundError:
-        logger.debug("invalid_timezone_fallback", timezone=timezone)
-        tz = ZoneInfo("America/New_York")
-
-    now = datetime.now(tz)
-    today_str = now.strftime("%A, %B %d, %Y")
-    today_iso = now.strftime("%Y-%m-%d")
-
-    return [
-        {
-            "type": "function",
-            "function": {
-                "name": "book_appointment",
-                "description": (
-                    f"Book an appointment/meeting with the customer on Cal.com. "
-                    f"TODAY IS {today_str} ({today_iso}). "
-                    f"Use this when the customer agrees to schedule a call, meeting, "
-                    f"or appointment. Parse relative dates like 'tomorrow at 2pm'. "
-                    f"IMPORTANT: You MUST collect the customer's email address and include "
-                    f"it in this call. Ask for email in the same message as confirming the booking."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "date": {
-                            "type": "string",
-                            "description": (
-                                f"Appointment date in YYYY-MM-DD format. TODAY IS {today_iso}."
-                            ),
-                        },
-                        "time": {
-                            "type": "string",
-                            "description": (
-                                "Appointment time in HH:MM 24-hour format "
-                                "(e.g., '14:00' for 2 PM, '09:30' for 9:30 AM). "
-                                "Always pass 24-hour format here even though you "
-                                "speak 12-hour format to the customer."
-                            ),
-                        },
-                        "email": {
-                            "type": "string",
-                            "description": (
-                                "Customer's email address for booking confirmation. "
-                                "REQUIRED - always ask for and include the email."
-                            ),
-                        },
-                        "duration_minutes": {
-                            "type": "integer",
-                            "description": "Duration in minutes. Default is 30.",
-                            "default": 30,
-                        },
-                        "notes": {
-                            "type": "string",
-                            "description": "Optional notes about the appointment",
-                        },
-                        "skill": {
-                            "type": "string",
-                            "description": (
-                                "Optional skill, specialty, or service the appointment "
-                                "needs (e.g. 'spanish', 'mortgage'). When set, routes the "
-                                "booking to a staff member with that skill. Leave out "
-                                "unless the need clearly maps to a specialty."
-                            ),
-                        },
-                    },
-                    "required": ["date", "time", "email"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "check_availability",
-                "description": (
-                    f"Check available time slots on Cal.com for a date range. "
-                    f"TODAY IS {today_str} ({today_iso}). "
-                    f"Use before booking to confirm slot availability."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "start_date": {
-                            "type": "string",
-                            "description": (
-                                f"Start date in YYYY-MM-DD format. TODAY IS {today_iso}."
-                            ),
-                        },
-                        "end_date": {
-                            "type": "string",
-                            "description": "End date in YYYY-MM-DD (defaults to start)",
-                        },
-                        "skill": {
-                            "type": "string",
-                            "description": (
-                                "Optional skill/specialty needed; restricts availability "
-                                "to staff with that skill when skill-based routing is on."
-                            ),
-                        },
-                    },
-                    "required": ["start_date"],
-                },
-            },
-        },
-    ]
+    """Render the shared booking schemas for OpenAI chat completions."""
+    return _booking_tools("openai", timezone)
