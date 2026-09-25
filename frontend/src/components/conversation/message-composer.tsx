@@ -27,6 +27,9 @@ interface MessageComposerProps {
   isGeneratingDraft?: boolean;
   /** Disable draft generation (e.g. no conversation exists yet). */
   draftDisabled?: boolean;
+  disabled?: boolean;
+  /** Inbox supports text replies only; don't advertise unimplemented media actions. */
+  textOnly?: boolean;
 }
 
 export function MessageComposer({
@@ -40,11 +43,13 @@ export function MessageComposer({
   onGenerateDraft,
   isGeneratingDraft,
   draftDisabled,
+  disabled = false,
+  textOnly = false,
 }: MessageComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && !disabled && !isSending) {
       e.preventDefault();
       onSend();
     }
@@ -72,15 +77,15 @@ export function MessageComposer({
         </div>
       )}
       <div className="flex items-end gap-2">
-        <Button
+        {!textOnly ? <Button
           size="icon"
           variant="ghost"
           className="h-9 w-9 shrink-0"
-          disabled={isSending}
+          disabled={isSending || disabled}
           aria-label="Attach file"
         >
           <Paperclip className="h-4 w-4" />
-        </Button>
+        </Button> : null}
         <div className="flex-1 relative">
           <Textarea
             ref={textareaRef}
@@ -88,19 +93,20 @@ export function MessageComposer({
             onChange={(e) => onMessageChange(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Type a message..."
+            aria-label="Message"
             className="min-h-[40px] max-h-[120px] resize-none pr-12"
             rows={1}
-            disabled={isSending}
+            disabled={isSending || disabled}
           />
-          <Button
+          {!textOnly ? <Button
             size="icon"
             variant="ghost"
             className="absolute right-1 bottom-1 h-8 w-8"
-            disabled={isSending}
+            disabled={isSending || disabled}
             aria-label="Voice message"
           >
             <Mic className="h-4 w-4" />
-          </Button>
+          </Button> : null}
         </div>
         {onGenerateDraft ? (
           <Button
@@ -108,7 +114,7 @@ export function MessageComposer({
             variant="outline"
             className="h-9 w-9 shrink-0"
             onClick={onGenerateDraft}
-            disabled={isGeneratingDraft || draftDisabled || isSending}
+            disabled={isGeneratingDraft || draftDisabled || isSending || disabled}
             aria-label="Generate AI draft reply"
             title="Generate AI draft"
           >
@@ -123,7 +129,7 @@ export function MessageComposer({
           size="icon"
           className="h-9 w-9 shrink-0"
           onClick={onSend}
-          disabled={!message.trim() || isSending}
+          disabled={!message.trim() || isSending || disabled}
           aria-label="Send message"
         >
           {isSending ? (

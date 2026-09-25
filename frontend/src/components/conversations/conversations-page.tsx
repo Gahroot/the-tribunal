@@ -1,442 +1,503 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, MessageSquare } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, Inbox, PanelRight } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { ConversationFeed } from "@/components/conversation/conversation-feed";
-import { ContactlessThread } from "@/components/conversations/contactless-thread";
 import { ConversationContextPanel } from "@/components/conversations/conversation-context-panel";
 import {
   ConversationList,
-  type BuiltInView,
-  type InboxRow,
-  type SavedView,
+  type BuiltInView as InboxFilter,
+  type SavedView as SavedInboxView,
 } from "@/components/conversations/conversation-list";
 import { Button } from "@/components/ui/button";
-import {
-  PageEmptyState,
-  PageErrorState,
-  PageLoadingState,
-} from "@/components/ui/page-state";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import { useContactsPaginated, useContactIds } from "@/hooks/useContacts";
+import { PageEmptyState, PageErrorState } from "@/components/ui/page-state";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useDebounce } from "@/hooks/useDebounce";
 import { useIsMobile } from "@/hooks/useMobile";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { contactsApi } from "@/lib/api/contacts";
-import { conversationsApi } from "@/lib/api/conversations";
-import { messages } from "@/lib/messages";
+import { conversationsApi, type InboxConversation } from "@/lib/api/conversations";
 import { queryKeys } from "@/lib/query-keys";
-import { POLL_30S } from "@/lib/query-options";
-import { normalizePhoneForComparison } from "@/lib/utils/phone";
-import { safeGetItem, safeSetItem } from "@/lib/utils/storage";
-import type { Conversation } from "@/types";
+import { REALTIME } from "@/lib/query-options";
+import { cn } from "@/lib/utils";
 
-const BUILT_IN_VIEW_IDS: BuiltInView[] = ["all", "waiting", "hot"];
+const VIEWS_STORAGE_PREFIX = "inbox:saved-views:";
+const ACTIVE_VIEW_PREFIX = "tribunal:inbox-active-view:";
+const isInboxFilter = (value: unknown): value is InboxFilter =>
+  value === "all" || value === "waiting" || value === "hot";
+const isUuid = (value: string) =>
+  /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(value);
 
-function isBuiltInView(value: string): value is BuiltInView {
-  return BUILT_IN_VIEW_IDS.includes(value as BuiltInView);
-}
-
-function isHotRow(row: InboxRow, hotContactIds: Set<number>): boolean {
-  const contactId = row.conversation.contact_id;
-  if (contactId == null) return false;
-  return (
-    hotContactIds.has(contactId) || (row.contact?.lead_score ?? 0) >= 80
-  );
-}
-
-function parseSavedViews(raw: string | null): SavedView[] {
-  if (!raw) return [];
+function readSavedViews(workspaceId: string): SavedInboxView[] {
   try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is SavedView => {
-      if (typeof item !== "object" || item === null) return false;
-      const candidate = item as SavedView;
-      return (
-        typeof candidate.id === "string" &&
-        typeof candidate.name === "string" &&
-        typeof candidate.search === "string" &&
-        typeof candidate.view === "string" &&
-        isBuiltInView(candidate.view)
-      );
-    });
+    const raw: unknown = JSON.parse(
+      localStorage.getItem(`${VIEWS_STORAGE_PREFIX}${workspaceId}`) ?? "[]",
+    );
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter(
+        (v): v is SavedInboxView =>
+          !!v &&
+          typeof v === "object" &&
+          typeof v.id === "string" &&
+          typeof v.name === "string" &&
+          typeof v.search === "string" &&
+          v.search.length <= 200 &&
+          isInboxFilter(v.view),
+      )
+      .slice(0, 30);
   } catch {
     return [];
   }
 }
 
-/**
- * Three-column conversations inbox.
- *
- * Column 1: filterable conversation list (waiting on me / hot leads) with
- * Missive-style named saved views. Column 2: thread + composer with an
- * AI-draft control (generate → fill → human review → send). Column 3: contact
- * details, opportunity state, and agent assignment.
- *
- * Switching threads is pure client state over React Query cache — no route
- * navigation, no page reload (reflow-not-reload). Status/assignment/send
- * mutations invalidate factory keys so every pane updates in place.
- */
 export function ConversationsPage() {
   const workspaceId = useWorkspaceId();
+  const router = useRouter();
+  const params = useSearchParams();
   const queryClient = useQueryClient();
-  const isMobile = useIsMobile();
-
-  const [activeViewId, setActiveViewId] = useState<string>("all");
+  const isDesktop = !useIsMobile();
+  const [localView, setLocalView] = useState<InboxFilter>("all");
+  const viewParam = params.get("view");
+  const filter = isInboxFilter(viewParam) ? viewParam : localView;
+  const selectedId = params.get("conversation");
+  const invalidSelection = !!selectedId && !isUuid(selectedId);
   const [search, setSearch] = useState("");
-  const [savedViews, setSavedViews] = useState<SavedView[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const debouncedSearch = useDebounce(search.trim(), 300);
+  const listIdentity = `${workspaceId}:${filter}:${debouncedSearch}`;
+  const [pagination, setPagination] = useState({ identity: "", page: 1 });
+  const page = pagination.identity === listIdentity ? pagination.page : 1;
+  const [savedViews, setSavedViews] = useState<SavedInboxView[]>([]);
+  const [activeSavedId, setActiveSavedId] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const previousWorkspace = useRef(workspaceId);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const acknowledgeRef = useRef("");
+  const [readError, setReadError] = useState<string | null>(null);
 
-  // Saved views are per-workspace localStorage UI state.
-  const storageKey = workspaceId ? `inbox:saved-views:${workspaceId}` : null;
-  useEffect(() => {
-    if (!storageKey) return;
-    setSavedViews(parseSavedViews(safeGetItem(storageKey)));
-  }, [storageKey]);
-
-  // Conversations: 30s poll keeps previews and unread counts fresh.
-  const {
-    data: conversationsData,
-    isPending: isConversationsPending,
-    isError: isConversationsError,
-    refetch: refetchConversations,
-  } = useQuery({
-    queryKey: queryKeys.conversations.list(workspaceId ?? "", {
-      page: 1,
-      page_size: 100,
-    }),
-    queryFn: () =>
-      conversationsApi.list(workspaceId ?? "", { page: 1, page_size: 100 }),
-    enabled: !!workspaceId,
-    ...POLL_30S,
-  });
-
-  // Contacts (names, statuses, lead scores) plus the authoritative hot set.
-  const { data: contactsData } = useContactsPaginated(workspaceId ?? "", {
-    page: 1,
-    page_size: 100,
-    sort_by: "last_conversation",
-  });
-  const { data: hotIdsData } = useContactIds(
-    workspaceId ?? "",
-    { lead_score_min: 80 },
-    !!workspaceId,
-  );
-  const hotContactIds = useMemo(
-    () => new Set(hotIdsData?.ids ?? []),
-    [hotIdsData?.ids],
-  );
-
-  const contactById = useMemo(
-    () =>
-      new Map(
-        (contactsData?.items ?? []).map((contact) => [
-          contact.id,
-          contact,
-        ] as const),
-      ),
-    [contactsData?.items],
-  );
-
-  const rows: InboxRow[] = useMemo(
-    () =>
-      (conversationsData?.items ?? []).map((conversation) => ({
-        conversation,
-        contact:
-          conversation.contact_id != null
-            ? contactById.get(conversation.contact_id)
-            : undefined,
-      })),
-    [conversationsData?.items, contactById],
-  );
-
-  const counts = useMemo(
-    () => ({
-      all: rows.length,
-      waiting: rows.filter((row) => row.conversation.unread_count > 0).length,
-      hot: rows.filter((row) => isHotRow(row, hotContactIds)).length,
-    }),
-    [rows, hotContactIds],
-  );
-
-  // Resolve the active saved view into a built-in filter + its search term.
-  const activeSavedView = activeViewId.startsWith("saved:")
-    ? savedViews.find((view) => `saved:${view.id}` === activeViewId)
-    : undefined;
-  const effectiveView: BuiltInView = activeSavedView
-    ? activeSavedView.view
-    : isBuiltInView(activeViewId)
-      ? activeViewId
-      : "all";
-
-  const filteredRows = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return rows.filter((row) => {
-      if (effectiveView === "waiting" && row.conversation.unread_count <= 0) {
-        return false;
-      }
-      if (effectiveView === "hot" && !isHotRow(row, hotContactIds)) {
-        return false;
-      }
-      if (!term) return true;
-
-      const { conversation, contact } = row;
-      const name = contact
-        ? `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.toLowerCase()
-        : "";
-      const phone = normalizePhoneForComparison(
-        conversation.contact_phone,
-      ).toLowerCase();
-      const rawPhone = (conversation.contact_phone ?? "").toLowerCase();
-      const email = (contact?.email ?? "").toLowerCase();
-      const preview = (conversation.last_message_preview ?? "").toLowerCase();
-      return (
-        name.includes(term) ||
-        phone.includes(term) ||
-        rawPhone.includes(term) ||
-        email.includes(term) ||
-        preview.includes(term)
-      );
-    });
-  }, [rows, effectiveView, search, hotContactIds]);
-
-  // Desktop auto-selects the most recent thread; mobile waits for a tap so the
-  // list stays the entry point. Either way this is state, not navigation.
-  const explicitlySelected = selectedId
-    ? (rows.find((row) => row.conversation.id === selectedId) ?? null)
-    : null;
-  const activeRow: InboxRow | null = isMobile
-    ? explicitlySelected
-    : (explicitlySelected ?? rows[0] ?? null);
-
-  // Resolve the contact behind the active thread (map hit is instant; a miss
-  // falls back to a detail fetch, cached per contact for instant reflow).
-  const activeContactId = activeRow?.conversation.contact_id ?? null;
-  const contactFromMap =
-    activeContactId != null ? contactById.get(activeContactId) : undefined;
-  const {
-    data: fetchedContact,
-    isError: isContactError,
-    refetch: refetchContact,
-  } = useQuery({
-    queryKey: queryKeys.contacts.detail(workspaceId ?? "", activeContactId),
-    queryFn: async () => {
-      if (!workspaceId || activeContactId == null) {
-        throw new Error("No contact selected");
-      }
-      return contactsApi.get(workspaceId, activeContactId);
+  const navigate = useCallback(
+    (view: InboxFilter, id: string | null, replace = false) => {
+      const next = new URLSearchParams({ view });
+      if (id) next.set("conversation", id);
+      const href = `/conversations?${next}`;
+      if (replace) router.replace(href, { scroll: false });
+      else router.push(href, { scroll: false });
     },
-    enabled: !!workspaceId && activeContactId != null,
-  });
-  const activeContact = contactFromMap ?? fetchedContact ?? null;
+    [router],
+  );
 
-  // Opening a thread (tap, click, or desktop auto-select) marks it read
-  // server-side, then refreshes the list so view counts update in place.
-  const activeConversationId = activeRow?.conversation.id ?? null;
-  const activeUnread = activeRow?.conversation.unread_count ?? 0;
   useEffect(() => {
-    if (!workspaceId || !activeConversationId || activeUnread <= 0) return;
-    void conversationsApi
-      .get(workspaceId, activeConversationId)
-      .then(() =>
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.conversations.all(workspaceId),
-        }),
-      )
-      .catch(() => {
-        // Keep the badge; switching threads retries the mark-read.
-      });
-  }, [workspaceId, activeConversationId, activeUnread, queryClient]);
-
-  // All hooks above. Narrow workspaceId before the render helpers so every
-  // child component receives a definite string.
-  if (!workspaceId) {
-    return <PageLoadingState className="h-full" message="Loading workspace…" />;
-  }
-
-  const handleSelect = (conversation: Conversation) => {
-    setSelectedId(conversation.id);
-  };
-
-  const persistSavedViews = (views: SavedView[]) => {
-    setSavedViews(views);
-    if (storageKey) safeSetItem(storageKey, JSON.stringify(views));
-  };
-
-  const handleSaveView = (name: string) => {
-    const view: SavedView = {
-      id: crypto.randomUUID(),
-      name,
-      view: effectiveView,
-      search,
-    };
-    persistSavedViews([...savedViews, view]);
-    setActiveViewId(`saved:${view.id}`);
-    toast.success(messages.conversations.viewSaved);
-  };
-
-  const handleDeleteSavedView = (id: string) => {
-    persistSavedViews(savedViews.filter((view) => view.id !== id));
-    if (activeViewId === `saved:${id}`) setActiveViewId("all");
-  };
-
-  const handleApplySavedView = (view: SavedView) => {
-    setActiveViewId(`saved:${view.id}`);
-    setSearch(view.search);
-  };
-
-  const renderToolbar = (showBack: boolean) => (
-    <div className="flex shrink-0 items-center justify-between border-b px-2 py-1.5 xl:hidden">
-      {showBack ? (
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          className="h-8 w-8"
-          aria-label="Back to conversation list"
-          onClick={() => setSelectedId(null)}
-        >
-          <ArrowLeft aria-hidden className="h-4 w-4" />
-        </Button>
-      ) : (
-        <span />
-      )}
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        className="h-8"
-        onClick={() => setDetailsOpen(true)}
-      >
-        Details
-      </Button>
-    </div>
-  );
-
-  const renderThread = () => {
-    if (!activeRow) {
-      return (
-        <PageEmptyState
-          className="h-full"
-          icon={<MessageSquare className="h-8 w-8" />}
-          title="Select a conversation"
-          description="Pick a thread from the list to read and reply."
-        />
-      );
-    }
-
-    const conversation = activeRow.conversation;
-    if (conversation.contact_id == null) {
-      return (
-        <ContactlessThread
-          workspaceId={workspaceId}
-          conversation={conversation}
-          className="h-full"
-        />
-      );
-    }
-
-    if (!activeContact) {
-      if (isContactError) {
-        return (
-          <PageErrorState
-            className="h-full"
-            message="We couldn't load this contact."
-            onRetry={() => void refetchContact()}
-          />
+    if (!workspaceId) return;
+    const changed = !!previousWorkspace.current && previousWorkspace.current !== workspaceId;
+    previousWorkspace.current = workspaceId;
+    const timer = window.setTimeout(() => {
+      setSavedViews(readSavedViews(workspaceId));
+      setSearch("");
+      try {
+        const saved: unknown = JSON.parse(
+          localStorage.getItem(`${ACTIVE_VIEW_PREFIX}${workspaceId}`) ?? "null",
         );
+        const restored = isInboxFilter(saved) ? saved : "all";
+        setLocalView(restored);
+        if (changed) navigate(restored, null, true);
+      } catch {
+        setLocalView("all");
+        if (changed) navigate("all", null, true);
       }
-      return (
-        <PageLoadingState className="h-full" message="Loading conversation…" />
-      );
-    }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [workspaceId, navigate]);
 
-    // Keyed per contact: switching swaps cached panes in place (reflow), and
-    // a fresh key drops any half-edited draft from the previous thread.
-    return (
-      <ConversationFeed
-        key={activeContact.id}
-        contact={activeContact}
-        enableAIDraft
-        className="h-full"
-      />
-    );
-  };
+  useEffect(() => {
+    if (!Object.keys(drafts).length) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    const leave = (event: MouseEvent) => {
+      if (!(event.target instanceof Element)) return;
+      const link = event.target.closest("a[href]");
+      if (
+        !(link instanceof HTMLAnchorElement) ||
+        link.target === "_blank" ||
+        event.metaKey ||
+        event.ctrlKey
+      )
+        return;
+      if (new URL(link.href).pathname === "/conversations") return;
+      if (!window.confirm("Leave the inbox and discard your unsent drafts?")) {
+        event.preventDefault();
+        event.stopPropagation();
+      } else setDrafts({});
+    };
+    window.addEventListener("beforeunload", warn);
+    document.addEventListener("click", leave, true);
+    return () => {
+      window.removeEventListener("beforeunload", warn);
+      document.removeEventListener("click", leave, true);
+    };
+  }, [drafts]);
 
-  const contextPanel = (
-    <ConversationContextPanel
-      workspaceId={workspaceId}
-      contact={activeContact}
-      conversation={activeRow?.conversation ?? null}
-    />
+  const inbox = useQuery({
+    queryKey: queryKeys.conversations.inbox(workspaceId ?? "", {
+      view: filter,
+      q: debouncedSearch,
+      page,
+      page_size: 50,
+    }),
+    queryFn: ({ signal }) =>
+      conversationsApi.inbox(
+        workspaceId!,
+        { view: filter, q: debouncedSearch, page, page_size: 50 },
+        signal,
+      ),
+    enabled: !!workspaceId,
+    retry: 1,
+    throwOnError: false,
+    ...REALTIME,
+    refetchIntervalInBackground: false,
+  });
+  const detail = useQuery({
+    queryKey: queryKeys.conversations.inboxDetail(workspaceId ?? "", selectedId ?? ""),
+    queryFn: ({ signal }) => conversationsApi.inboxDetail(workspaceId!, selectedId!, signal),
+    enabled: !!workspaceId && !!selectedId && !invalidSelection,
+    ...REALTIME,
+    retry: false,
+    throwOnError: false,
+    refetchIntervalInBackground: false,
+  });
+  const selected = invalidSelection || detail.isError ? undefined : detail.data;
+  const contact = useQuery({
+    queryKey: queryKeys.contacts.detail(workspaceId ?? "", String(selected?.contact_id ?? "")),
+    queryFn: () => contactsApi.get(workspaceId!, selected!.contact_id!),
+    enabled: !!workspaceId && selected?.contact != null,
+    retry: 1,
+    throwOnError: false,
+  });
+  const rows = useMemo(
+    () =>
+      (inbox.data?.items ?? []).map((conversation) => ({
+        conversation,
+        contact: conversation.contact ?? undefined,
+      })),
+    [inbox.data],
   );
 
-  const listElement = (
-    <ConversationList
-      rows={filteredRows}
-      counts={counts}
-      activeViewId={activeViewId}
-      savedViews={savedViews}
-      search={search}
-      selectedId={activeRow?.conversation.id ?? null}
-      isPending={isConversationsPending}
-      isError={isConversationsError}
-      onRetry={() => void refetchConversations()}
-      canSaveViews={!!storageKey}
-      onSelect={handleSelect}
-      onViewChange={setActiveViewId}
-      onSearchChange={setSearch}
-      onApplySavedView={handleApplySavedView}
-      onSaveView={handleSaveView}
-      onDeleteSavedView={handleDeleteSavedView}
-      className={isMobile ? "h-full" : "border-r"}
-    />
+  const visibleNext = rows.find(
+    (row) => row.conversation.needs_human_reply && row.conversation.id !== selectedId,
+  )?.conversation;
+  const nextReply = useQuery({
+    queryKey: queryKeys.conversations.inbox(workspaceId ?? "", {
+      view: "waiting",
+      q: "",
+      page: 1,
+      page_size: 1,
+    }),
+    queryFn: ({ signal }) =>
+      conversationsApi.inbox(
+        workspaceId!,
+        { view: "waiting", q: "", page: 1, page_size: 1 },
+        signal,
+      ),
+    enabled:
+      !!workspaceId &&
+      filter === "waiting" &&
+      !!selected &&
+      !selected.needs_human_reply &&
+      !visibleNext,
+    retry: 1,
+    throwOnError: false,
+  });
+  const nextWaiting = visibleNext ?? nextReply.data?.items.find((item) => item.id !== selectedId);
+
+  useEffect(() => {
+    if (isDesktop && !selectedId && rows.length) navigate(filter, rows[0].conversation.id, true);
+  }, [isDesktop, selectedId, rows, filter, navigate]);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => headingRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [selectedId, selected?.id]);
+
+  const changeFilter = (next: InboxFilter) => {
+    setLocalView(next);
+    setActiveSavedId(null);
+    navigate(next, selectedId);
+    try {
+      localStorage.setItem(`${ACTIVE_VIEW_PREFIX}${workspaceId}`, JSON.stringify(next));
+    } catch {
+      /* optional preference */
+    }
+  };
+  const saveView = (name: string) => {
+    if (!workspaceId) return;
+    const next = [...savedViews, { id: crypto.randomUUID(), name, search, view: filter }].slice(
+      -30,
+    );
+    setSavedViews(next);
+    try {
+      localStorage.setItem(`${VIEWS_STORAGE_PREFIX}${workspaceId}`, JSON.stringify(next));
+    } catch {
+      toast.error("This browser couldn't save the view.");
+    }
+  };
+  const deleteView = (id: string) => {
+    const next = savedViews.filter((v) => v.id !== id);
+    setSavedViews(next);
+    try {
+      localStorage.setItem(`${VIEWS_STORAGE_PREFIX}${workspaceId}`, JSON.stringify(next));
+    } catch {
+      toast.error("This browser couldn't update saved views.");
+    }
+  };
+
+  const acknowledge = useCallback(
+    async (snapshot: InboxConversation) => {
+      if (!workspaceId || !snapshot.unread_count || document.visibilityState === "hidden") return;
+      const key = `${workspaceId}:${snapshot.id}:${snapshot.last_message_at}:${snapshot.unread_count}`;
+      if (acknowledgeRef.current === key) return;
+      acknowledgeRef.current = key;
+      setReadError(null);
+      try {
+        await conversationsApi.markRead(workspaceId, snapshot);
+        void queryClient.invalidateQueries({ queryKey: queryKeys.conversations.all(workspaceId) });
+      } catch {
+        setReadError(`${workspaceId}:${snapshot.id}`);
+      }
+    },
+    [workspaceId, queryClient, setReadError],
+  );
+
+  if (!workspaceId)
+    return (
+      <div className="p-4 sm:p-6">
+        <PageEmptyState
+          title="Select a workspace"
+          description="Choose a workspace to view conversations."
+        />
+      </div>
+    );
+
+  const selectedName = selected?.contact
+    ? [selected.contact.first_name, selected.contact.last_name].filter(Boolean).join(" ")
+    : (selected?.contact_phone ?? "Conversation");
+  const draftKey = `${workspaceId}:${selectedId}`;
+  const updateDraft = (value: string) => {
+    if (value && !drafts[draftKey] && Object.keys(drafts).length >= 30) {
+      toast.error("Send or discard an existing draft before starting another.");
+      return;
+    }
+    setDrafts((current) => {
+      const next = { ...current };
+      if (value) next[draftKey] = value;
+      else delete next[draftKey];
+      return next;
+    });
+  };
+  const missing = invalidSelection || detail.isError;
+  const outsideView =
+    selected &&
+    !inbox.isPending &&
+    !inbox.isError &&
+    debouncedSearch === search.trim() &&
+    !rows.some((r) => r.conversation.id === selected.id);
+  const showThreadOnMobile = !!selectedId;
+  const activeSaved = savedViews.find(
+    (view) => view.id === activeSavedId && view.view === filter && view.search === search,
   );
 
   return (
-    <div className="h-full overflow-hidden">
-      {isMobile ? (
-        !activeRow ? (
-          listElement
-        ) : (
-          <div className="flex h-full flex-col overflow-hidden">
-            {renderToolbar(true)}
-            <div className="min-h-0 flex-1 overflow-hidden">
-              {renderThread()}
-            </div>
-          </div>
-        )
-      ) : (
-        <div className="grid h-full grid-cols-1 overflow-hidden md:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_340px]">
-          {listElement}
-          <div className="flex h-full min-w-0 flex-col overflow-hidden">
-            {renderToolbar(false)}
-            <div className="min-h-0 flex-1 overflow-hidden">
-              {renderThread()}
-            </div>
-          </div>
-          <div className="hidden border-l xl:block">{contextPanel}</div>
+    <div className="flex h-full min-h-0 flex-col">
+      <h1 className="sr-only">Conversations</h1>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="flex min-h-0 flex-1">
+          <aside
+            aria-label="Conversation list"
+            className={cn(
+              "flex min-h-0 w-full shrink-0 flex-col border-r md:w-80 lg:w-[22rem]",
+              showThreadOnMobile && "hidden md:flex",
+            )}
+          >
+            <ConversationList
+              rows={rows}
+              selectedId={selectedId}
+              onSelect={(conversation) => navigate(filter, conversation.id)}
+              search={search}
+              onSearchChange={setSearch}
+              activeViewId={activeSaved ? `saved:${activeSaved.id}` : filter}
+              onViewChange={(view) => {
+                if (isInboxFilter(view)) changeFilter(view);
+              }}
+              savedViews={savedViews}
+              canSaveViews={!!workspaceId}
+              onSaveView={saveView}
+              onApplySavedView={(view) => {
+                setSearch(view.search);
+                changeFilter(view.view);
+                setActiveSavedId(view.id);
+              }}
+              onDeleteSavedView={deleteView}
+              counts={inbox.data?.counts ?? { all: 0, waiting: 0, hot: 0 }}
+              countsLoading={inbox.isPending || inbox.isError || debouncedSearch !== search.trim()}
+              isPending={inbox.isPending || debouncedSearch !== search.trim()}
+              isError={inbox.isError}
+              onRetry={() => void inbox.refetch()}
+              page={page}
+              pages={inbox.data?.pages ?? 0}
+              total={inbox.data?.total ?? 0}
+              onPageChange={(next) => setPagination({ identity: listIdentity, page: next })}
+            />
+          </aside>
+          <section
+            aria-label="Selected conversation"
+            className={cn(
+              "flex min-h-0 min-w-0 flex-1 flex-col",
+              !showThreadOnMobile && "hidden md:flex",
+            )}
+          >
+            {selectedId ? (
+              <>
+                <div className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="md:hidden"
+                      onClick={() => navigate(filter, null)}
+                      aria-label="Back to inbox"
+                    >
+                      <ArrowLeft className="size-4" />
+                    </Button>
+                    <h2 ref={headingRef} tabIndex={-1} className="truncate text-sm font-medium">
+                      {selectedName}
+                    </h2>
+                  </div>
+                  {filter === "waiting" ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={!nextWaiting}
+                      onClick={() => {
+                        if (nextWaiting) {
+                          setSearch("");
+                          navigate("waiting", nextWaiting.id);
+                        }
+                      }}
+                    >
+                      Next waiting reply
+                    </Button>
+                  ) : null}
+                  {selected?.contact_id ? (
+                    <Sheet>
+                      <SheetTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="xl:hidden"
+                          aria-label="Open contact details"
+                        >
+                          <PanelRight className="size-4" />
+                        </Button>
+                      </SheetTrigger>
+                      <SheetContent side="right" className="flex w-[min(100vw,24rem)] flex-col p-0">
+                        <SheetHeader className="border-b px-4 py-3">
+                          <SheetTitle>Contact details</SheetTitle>
+                        </SheetHeader>
+                        {contact.isError ? (
+                          <PageErrorState
+                            message="Couldn't load contact details."
+                            onRetry={() => void contact.refetch()}
+                          />
+                        ) : (
+                          <ConversationContextPanel
+                            workspaceId={workspaceId}
+                            contact={contact.data ?? null}
+                            conversation={selected}
+                            className="min-h-0 flex-1"
+                          />
+                        )}
+                      </SheetContent>
+                    </Sheet>
+                  ) : null}
+                </div>
+                {outsideView ? (
+                  <div role="status" className="border-b px-4 py-2 text-sm text-muted-foreground">
+                    This conversation is outside the current results. Your selection is kept.
+                  </div>
+                ) : null}
+                {readError === draftKey ? (
+                  <div
+                    role="alert"
+                    className="flex items-center justify-between gap-2 border-b px-4 py-2 text-sm"
+                  >
+                    Couldn&apos;t mark this thread read.
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        acknowledgeRef.current = "";
+                        if (selected) void acknowledge(selected);
+                      }}
+                    >
+                      Retry
+                    </Button>
+                  </div>
+                ) : null}
+                {missing ? (
+                  <PageErrorState
+                    message="This conversation couldn't be opened. It may have been removed or be unavailable in this workspace."
+                    onRetry={() => void detail.refetch()}
+                  />
+                ) : !selected ? (
+                  <div className="space-y-4 p-4" aria-label="Loading conversation">
+                    <Skeleton className="h-16 w-2/3" />
+                    <Skeleton className="h-16 w-1/2" />
+                  </div>
+                ) : (
+                  <ConversationFeed
+                    key={draftKey}
+                    workspaceId={workspaceId}
+                    conversation={selected}
+                    draft={drafts[draftKey] ?? ""}
+                    draftLimitReached={!drafts[draftKey] && Object.keys(drafts).length >= 30}
+                    onDraftChange={updateDraft}
+                    onViewed={acknowledge}
+                    className="flex-1"
+                  />
+                )}
+              </>
+            ) : (
+              <PageEmptyState
+                className="flex-1"
+                title="Select a conversation"
+                description="Choose a thread from the inbox to read and reply."
+                icon={<Inbox className="size-5" />}
+              />
+            )}
+          </section>
+          {selected?.contact_id ? (
+            <aside aria-label="Contact details" className="hidden w-80 shrink-0 border-l xl:flex">
+              {contact.isError ? (
+                <PageErrorState
+                  message="Couldn't load contact details."
+                  onRetry={() => void contact.refetch()}
+                />
+              ) : (
+                <ConversationContextPanel
+                  workspaceId={workspaceId}
+                  contact={contact.data ?? null}
+                  conversation={selected}
+                  className="min-h-0 flex-1"
+                />
+              )}
+            </aside>
+          ) : null}
         </div>
-      )}
-
-      {/* Context as a sheet on mobile and md–xl (column shows at xl+). */}
-      <Sheet open={detailsOpen} onOpenChange={setDetailsOpen}>
-        <SheetContent side="right" className="w-full p-0 sm:w-[400px]">
-          <SheetHeader className="sr-only">
-            <SheetTitle>Conversation details</SheetTitle>
-          </SheetHeader>
-          {contextPanel}
-        </SheetContent>
-      </Sheet>
+      </div>
     </div>
   );
 }

@@ -127,7 +127,7 @@ interface AppSidebarProps {
 export function AppSidebar({ children }: AppSidebarProps) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
   const workspaceId = useWorkspaceId();
   const { needsSetup } = useSetupStatus();
   const { data: nudgeStats } = useQuery({
@@ -343,11 +343,12 @@ export function AppSidebar({ children }: AppSidebarProps) {
           </Breadcrumb>
           <button
             onClick={openCommandPalette}
+            aria-label="Search app"
             className="ml-auto flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted"
           >
             <Search className="size-3.5" />
-            <span>Search...</span>
-            <kbd className="ml-1 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[10px]">
+            <span className="hidden sm:inline">Search...</span>
+            <kbd className="ml-1 hidden rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[10px] sm:inline">
               ⌘K
             </kbd>
           </button>
@@ -355,14 +356,11 @@ export function AppSidebar({ children }: AppSidebarProps) {
             variant="ghost"
             size="icon"
             className="ml-2"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
             aria-label="Toggle theme"
           >
-            {theme === "dark" ? (
-              <Sun className="size-4" />
-            ) : (
-              <MoonStar className="size-4" />
-            )}
+            <Sun className="hidden size-4 dark:block" />
+            <MoonStar className="size-4 dark:hidden" />
           </Button>
         </header>
         {commandMounted && (

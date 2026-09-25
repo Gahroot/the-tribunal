@@ -1,17 +1,21 @@
 """Conversation service - business logic orchestration layer."""
 
+import math
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import structlog
 from fastapi import HTTPException, status
-from sqlalchemy import delete, select
+from sqlalchemy import ColumnElement, and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import Load, selectinload
 
+from app.core.encryption import hash_value
 from app.db.pagination import paginate
 from app.models.agent import Agent
 from app.models.campaign import CampaignContact
+from app.models.contact import Contact
 from app.models.conversation import Conversation, Message
 from app.schemas.conversation import (
     ConversationResponse,
@@ -19,12 +23,19 @@ from app.schemas.conversation import (
     FollowupGenerateResponse,
     FollowupSendResponse,
     FollowupSettingsResponse,
+    InboxContactSummary,
+    InboxConversationResponse,
+    InboxCounts,
+    InboxView,
+    MarkConversationReadResponse,
     MessageResponse,
     PaginatedConversations,
+    PaginatedInbox,
 )
 from app.services.ai.openai_credentials import get_openai_bearer_token
 from app.services.ai.text_response_generator import generate_followup_message
 from app.services.campaigns.conversation_syncer import CampaignConversationSyncer
+from app.services.conversations.conversation_filters import human_reply_needed_filters
 from app.services.telephony.text_provider import get_text_message_provider
 
 logger = structlog.get_logger()
@@ -35,6 +46,43 @@ def _preferred_provider_for_conversation(conversation: Conversation) -> str | No
     if conversation.channel == "imessage":
         return "mac_relay"
     return None
+
+
+def _inbox_search_filters(query: str) -> list[ColumnElement[bool]]:
+    """Literal substring search; encrypted email supports exact lookup only."""
+    term = query.strip()
+    if not term:
+        return []
+    escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    pattern = f"%{escaped}%"
+    name = func.concat(Contact.first_name, " ", Contact.last_name)
+    matches: list[ColumnElement[bool]] = [
+        name.ilike(pattern, escape="\\"),
+        Conversation.contact_phone.ilike(pattern, escape="\\"),
+        Conversation.last_message_preview.ilike(pattern, escape="\\"),
+    ]
+    if "@" in term:
+        matches.append(Contact.email_hash == hash_value(term))
+    # Only phone-shaped input gets punctuation normalization; text containing
+    # one digit must not turn into a workspace-wide phone match.
+    if re.fullmatch(r"[+\d\s().-]+", term):
+        digits = re.sub(r"\D", "", term)
+        if digits:
+            matches.append(
+                func.regexp_replace(Conversation.contact_phone, r"\D", "", "g").contains(digits)
+            )
+    return [or_(*matches)]
+
+
+def _inbox_response(
+    conversation: Conversation, contact: Contact | None, needs_human_reply: bool
+) -> InboxConversationResponse:
+    return InboxConversationResponse(
+        **ConversationResponse.model_validate(conversation).model_dump(),
+        last_message_direction=conversation.last_message_direction,
+        needs_human_reply=needs_human_reply,
+        contact=InboxContactSummary.model_validate(contact) if contact else None,
+    )
 
 
 class ConversationService:
@@ -64,6 +112,144 @@ class ConversationService:
                 detail="Conversation not found",
             )
         return conversation
+
+    async def list_inbox(
+        self,
+        workspace_id: uuid.UUID,
+        view: InboxView = "all",
+        q: str = "",
+        page: int = 1,
+        page_size: int = 50,
+    ) -> PaginatedInbox:
+        """Read-only, bounded inbox discovery. Never sync campaign AI settings."""
+        filters = [Conversation.workspace_id == workspace_id, *_inbox_search_filters(q)]
+        contact_join = and_(
+            Contact.id == Conversation.contact_id, Contact.workspace_id == workspace_id
+        )
+        waiting = and_(*human_reply_needed_filters(workspace_id)).is_(True)
+        hot = Contact.lead_score >= 80
+        # A one-to-one contact join keeps every aggregate at conversation grain.
+        counts_row = (
+            await self.db.execute(
+                select(func.count(), func.count().filter(waiting), func.count().filter(hot))
+                .select_from(Conversation)
+                .outerjoin(Contact, contact_join)
+                .where(*filters)
+            )
+        ).one()
+        counts = InboxCounts(all=counts_row[0], waiting=counts_row[1], hot=counts_row[2])
+        total = getattr(counts, view)
+        if view == "waiting":
+            filters.append(waiting)
+        elif view == "hot":
+            filters.append(hot)
+        stamp = Conversation.last_message_at
+        rows = await self.db.execute(
+            select(Conversation, Contact, waiting)
+            .outerjoin(Contact, contact_join)
+            .options(
+                Load(Contact).load_only(
+                    Contact.id,
+                    Contact.first_name,
+                    Contact.last_name,
+                    Contact.avatar_url,
+                    Contact.status,
+                    Contact.lead_score,
+                )
+            )
+            .where(*filters)
+            .order_by(
+                stamp.asc().nullslast() if view == "waiting" else stamp.desc().nullslast(),
+                Conversation.id.asc(),
+            )
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        return PaginatedInbox(
+            items=[
+                _inbox_response(conv, contact, needs_reply) for conv, contact, needs_reply in rows
+            ],
+            counts=counts,
+            total=total,
+            page=page,
+            page_size=page_size,
+            pages=math.ceil(total / page_size),
+        )
+
+    async def get_inbox_conversation(
+        self, conversation_id: uuid.UUID, workspace_id: uuid.UUID
+    ) -> InboxConversationResponse:
+        """Resolve an explicit selection regardless of its list page or view."""
+        row = (
+            await self.db.execute(
+                select(
+                    Conversation, Contact, and_(*human_reply_needed_filters(workspace_id)).is_(True)
+                )
+                .outerjoin(
+                    Contact,
+                    and_(
+                        Contact.id == Conversation.contact_id, Contact.workspace_id == workspace_id
+                    ),
+                )
+                .options(
+                    Load(Contact).load_only(
+                        Contact.id,
+                        Contact.first_name,
+                        Contact.last_name,
+                        Contact.avatar_url,
+                        Contact.status,
+                        Contact.lead_score,
+                    )
+                )
+                .where(
+                    Conversation.id == conversation_id, Conversation.workspace_id == workspace_id
+                )
+            )
+        ).one_or_none()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        return _inbox_response(*row)
+
+    async def list_messages(
+        self, conversation_id: uuid.UUID, workspace_id: uuid.UUID, limit: int = 100
+    ) -> list[Message]:
+        """Read recent messages without invoking legacy read-side AI synchronization."""
+        await self._get_conversation(conversation_id, workspace_id)
+        result = await self.db.execute(
+            select(Message)
+            .join(Conversation, Conversation.id == Message.conversation_id)
+            .where(
+                Message.conversation_id == conversation_id,
+                Conversation.workspace_id == workspace_id,
+            )
+            .order_by(Message.created_at.desc(), Message.id.desc())
+            .limit(limit)
+        )
+        return list(reversed(result.scalars().all()))
+
+    async def mark_read(
+        self,
+        conversation_id: uuid.UUID,
+        workspace_id: uuid.UUID,
+        last_message_at: datetime | None,
+        unread_count: int,
+    ) -> MarkConversationReadResponse:
+        """Atomic snapshot acknowledgment, not a stale ORM overwrite of new inbound."""
+        await self._get_conversation(conversation_id, workspace_id)
+        result = await self.db.execute(
+            update(Conversation)
+            .where(
+                Conversation.id == conversation_id,
+                Conversation.workspace_id == workspace_id,
+                Conversation.last_message_at == last_message_at,
+                Conversation.unread_count == unread_count,
+            )
+            .values(unread_count=0)
+            .returning(Conversation.id)
+        )
+        marked_read = result.scalar_one_or_none() is not None
+        await self.db.commit()
+        return MarkConversationReadResponse(marked_read=marked_read)
 
     async def list_conversations(
         self,

@@ -237,6 +237,10 @@ export const queryKeys = {
   },
   conversations: {
     ...conversations,
+    inbox: (workspaceId: string, params: { view: string; q: string; page: number; page_size: number }) =>
+      [...conversations.all(workspaceId), "inbox", params] as const,
+    inboxDetail: (workspaceId: string, conversationId: string) =>
+      [...conversations.all(workspaceId), "inbox-detail", conversationId] as const,
     byContact: (workspaceId: string, contactId: number | string | undefined | null) =>
       conversations.list(workspaceId, {
         contact_id: contactId ?? null,
@@ -245,6 +249,8 @@ export const queryKeys = {
       }),
     messages: (workspaceId: string, conversationId: string) =>
       [...conversations.detail(workspaceId, conversationId), "messages"] as const,
+    messageSnapshot: (workspaceId: string, conversationId: string, stamp: string | null, unread: number) =>
+      [...conversations.detail(workspaceId, conversationId), "messages", stamp, unread] as const,
     followupSettings: (workspaceId: string, conversationId: string) =>
       [...conversations.detail(workspaceId, conversationId), "followup-settings"] as const,
   },

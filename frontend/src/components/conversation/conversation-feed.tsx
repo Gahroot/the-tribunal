@@ -6,6 +6,7 @@ import { AnimatePresence } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { InboxThread, type InboxThreadProps } from "@/components/conversation/inbox-thread";
 import { PageEmptyState, PageErrorState } from "@/components/ui/page-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -66,7 +67,13 @@ function LoadingSkeleton() {
   );
 }
 
-export function ConversationFeed({
+export function ConversationFeed(props: ConversationFeedProps | InboxThreadProps) {
+  // The inbox owns an exact thread. Contact pages retain their unified timeline.
+  if ("conversation" in props) return <InboxThread {...props} />;
+  return <ContactConversationFeed {...props} />;
+}
+
+function ContactConversationFeed({
   className,
   contact,
   enableAIDraft,

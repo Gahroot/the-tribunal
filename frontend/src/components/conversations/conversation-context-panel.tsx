@@ -23,6 +23,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { useAgents } from "@/hooks/useAgents";
 import { useAssignContactAgent, useUpdateContact } from "@/hooks/useContacts";
 import { useAssignAgent } from "@/hooks/useConversations";
+import type { InboxConversation } from "@/lib/api/conversations";
 import { opportunitiesApi } from "@/lib/api/opportunities";
 import { messages } from "@/lib/messages";
 import { queryKeys } from "@/lib/query-keys";
@@ -61,7 +62,7 @@ const OPPORTUNITY_STATUSES: OpportunityStatus[] = [
 interface ConversationContextPanelProps {
   workspaceId: string;
   contact: Contact | null;
-  conversation: Conversation | null;
+  conversation: Conversation | InboxConversation | null;
   className?: string;
 }
 
@@ -83,7 +84,7 @@ export function ConversationContextPanel({
 
   const updateContactMutation = useUpdateContact(workspaceId);
   const assignContactAgentMutation = useAssignContactAgent(workspaceId);
-  const assignConversationAgentMutation = useAssignAgent(workspaceId);
+  const assignConversationAgentMutation = useAssignAgent(workspaceId, true);
 
   // The opportunities list has no contact filter, so fetch a page and filter
   // client-side by primary contact (v1 scale: one page of open deals is plenty
@@ -151,7 +152,11 @@ export function ConversationContextPanel({
     updateContactMutation.mutate(
       { id: contact.id, data: { status: value as ContactStatus } },
       {
-        onSuccess: () => toast.success(messages.contacts.updated),
+        onSuccess: () => {
+          void queryClient.invalidateQueries({ queryKey: queryKeys.conversations.all(workspaceId) });
+          void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.todayQueue(workspaceId) });
+          toast.success(messages.contacts.updated);
+        },
         onError: (error) =>
           toast.error(getApiErrorMessage(error, messages.contacts.updateFailed)),
       },
@@ -171,15 +176,13 @@ export function ConversationContextPanel({
         toast.error(getApiErrorMessage(error, messages.conversations.assignFailed)),
     };
 
-    if (contact) {
-      assignContactAgentMutation.mutate(
-        { contactId: contact.id, agentId },
-        callbacks,
-      );
-    } else if (conversation) {
+    if (conversation) {
       assignConversationAgentMutation.mutate(
-        { conversationId: conversation.id, agentId },
-        callbacks,
+        { conversationId: conversation.id, agentId }, callbacks,
+      );
+    } else if (contact) {
+      assignContactAgentMutation.mutate(
+        { contactId: contact.id, agentId }, callbacks,
       );
     }
   };

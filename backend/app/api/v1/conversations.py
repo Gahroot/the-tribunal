@@ -18,9 +18,16 @@ from app.schemas.conversation import (
     FollowupSendResponse,
     FollowupSettingsResponse,
     FollowupSettingsUpdate,
+    InboxConversationResponse,
+    InboxMessageResponse,
+    InboxSearch,
+    InboxView,
+    MarkConversationRead,
+    MarkConversationReadResponse,
     MessageCreate,
     MessageResponse,
     PaginatedConversations,
+    PaginatedInbox,
 )
 from app.schemas.message_trace import MessageTraceResponse
 from app.services.conversations import ConversationService
@@ -81,6 +88,62 @@ async def list_conversations(
     )
 
 
+@router.get("/inbox", response_model=PaginatedInbox)
+async def list_inbox(
+    workspace_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+    view: InboxView = "all",
+    q: str = Query("", max_length=200),
+    page: int = Query(1, ge=1, le=100000),
+    page_size: int = Query(50, ge=1, le=100),
+) -> PaginatedInbox:
+    """Read-only conversation discovery with search-relative view counts."""
+    return await ConversationService(db).list_inbox(workspace_id, view, q, page, page_size)
+
+
+@router.post("/inbox/search", response_model=PaginatedInbox)
+async def search_inbox(
+    workspace_id: uuid.UUID,
+    request: InboxSearch,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> PaginatedInbox:
+    """Read-only search with no operator-entered text in the request URL."""
+    return await ConversationService(db).list_inbox(
+        workspace_id, request.view, request.q, request.page, request.page_size
+    )
+
+
+@router.get("/{conversation_id}/inbox-detail", response_model=InboxConversationResponse)
+async def get_inbox_conversation(
+    workspace_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> InboxConversationResponse:
+    """Fetch selected thread metadata without marking read or synchronizing AI."""
+    return await ConversationService(db).get_inbox_conversation(conversation_id, workspace_id)
+
+
+@router.post("/{conversation_id}/read", response_model=MarkConversationReadResponse)
+async def mark_conversation_read(
+    workspace_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    request: MarkConversationRead,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> MarkConversationReadResponse:
+    """Acknowledge a displayed snapshot; leave newer arrivals unread."""
+    return await ConversationService(db).mark_read(
+        conversation_id, workspace_id, request.last_message_at, request.unread_count
+    )
+
+
 @router.get(
     "/{conversation_id}/traces",
     response_model=list[MessageTraceResponse],
@@ -119,6 +182,19 @@ async def get_conversation(
         workspace_id=workspace_id,
         limit=limit,
     )
+
+
+@router.get("/{conversation_id}/messages", response_model=list[InboxMessageResponse])
+async def list_conversation_messages(
+    workspace_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+    limit: int = Query(100, ge=1, le=200),
+) -> list[Message]:
+    """Read recent messages, oldest first, without changing AI ownership."""
+    return await ConversationService(db).list_messages(conversation_id, workspace_id, limit)
 
 
 @router.post("/{conversation_id}/messages", response_model=MessageResponse)

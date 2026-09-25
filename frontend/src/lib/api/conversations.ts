@@ -1,4 +1,5 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api";
+import type { components } from "@/lib/api/_generated";
 import { createApiClient } from "@/lib/api/create-api-client";
 import type {
   Conversation,
@@ -7,6 +8,19 @@ import type {
   FollowupSettings,
   Message,
 } from "@/types";
+
+
+export type InboxView = keyof components["schemas"]["InboxCounts"];
+export type InboxConversation = components["schemas"]["InboxConversationResponse"];
+export type InboxResponse = components["schemas"]["PaginatedInbox"];
+export type InboxContact = components["schemas"]["InboxContactSummary"];
+export type InboxMessage = components["schemas"]["InboxMessageResponse"];
+export interface InboxParams {
+  view: InboxView;
+  q: string;
+  page: number;
+  page_size: number;
+}
 
 export interface ConversationsListParams {
   page?: number;
@@ -50,9 +64,25 @@ const baseConversationsApiWithGet = baseConversationsApi as {
 export const conversationsApi = {
   ...baseConversationsApiWithGet,
 
-  getMessages: async (workspaceId: string, conversationId: string): Promise<Message[]> => {
-    return apiGet<Message[]>(
-      `/api/v1/workspaces/${workspaceId}/conversations/${conversationId}/messages`
+  inbox: (workspaceId: string, params: InboxParams, signal?: AbortSignal) =>
+    params.q
+      ? apiPost<InboxResponse>(`/api/v1/workspaces/${workspaceId}/conversations/inbox/search`, params, { signal })
+      : apiGet<InboxResponse>(`/api/v1/workspaces/${workspaceId}/conversations/inbox`, { params, signal }),
+
+  inboxDetail: (workspaceId: string, conversationId: string, signal?: AbortSignal) =>
+    apiGet<InboxConversation>(
+      `/api/v1/workspaces/${workspaceId}/conversations/${conversationId}/inbox-detail`, { signal },
+    ),
+
+  markRead: (workspaceId: string, conversation: InboxConversation) =>
+    apiPost<components["schemas"]["MarkConversationReadResponse"]>(
+      `/api/v1/workspaces/${workspaceId}/conversations/${conversation.id}/read`,
+      { last_message_at: conversation.last_message_at, unread_count: conversation.unread_count },
+    ),
+
+  getMessages: async (workspaceId: string, conversationId: string, signal?: AbortSignal): Promise<InboxMessage[]> => {
+    return apiGet<InboxMessage[]>(
+      `/api/v1/workspaces/${workspaceId}/conversations/${conversationId}/messages`, { signal },
     );
   },
 
@@ -142,11 +172,13 @@ export const conversationsApi = {
   generateFollowup: async (
     workspaceId: string,
     conversationId: string,
-    customInstructions?: string
+    customInstructions?: string,
+    signal?: AbortSignal
   ): Promise<FollowupGenerateResponse> => {
     return apiPost<FollowupGenerateResponse>(
       `/api/v1/workspaces/${workspaceId}/conversations/${conversationId}/followup/generate`,
-      { custom_instructions: customInstructions }
+      { custom_instructions: customInstructions },
+      { signal }
     );
   },
 

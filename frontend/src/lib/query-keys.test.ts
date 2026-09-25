@@ -6,6 +6,20 @@ import {
   queryKeys,
 } from "./query-keys";
 
+describe("inbox query isolation", () => {
+  const base = { view: "waiting", q: "Lead", page: 1, page_size: 50 };
+  it("keys every list by workspace, view, search and page", () => {
+    const key = queryKeys.conversations.inbox("a", base);
+    expect(key.slice(0, 2)).toEqual(queryKeys.conversations.all("a"));
+    expect(key).not.toEqual(queryKeys.conversations.inbox("b", base));
+    for (const change of [{ view: "hot" }, { q: "Other" }, { page: 2 }, { page_size: 25 }]) {
+      expect(key).not.toEqual(queryKeys.conversations.inbox("a", { ...base, ...change }));
+    }
+    expect(queryKeys.conversations.inboxDetail("a", "one")).not.toEqual(queryKeys.conversations.inboxDetail("b", "one"));
+    expect(queryKeys.conversations.inboxDetail("a", "one")).not.toEqual(queryKeys.conversations.inboxDetail("a", "two"));
+  });
+});
+
 describe("createResourceQueryKeys", () => {
   const keys = createResourceQueryKeys("widgets");
 

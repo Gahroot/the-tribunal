@@ -3180,6 +3180,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/conversations/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Inbox
+         * @description Read-only conversation discovery with search-relative view counts.
+         */
+        get: operations["list_inbox_api_v1_workspaces__workspace_id__conversations_inbox_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/conversations/inbox/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search Inbox
+         * @description Read-only search with no operator-entered text in the request URL.
+         */
+        post: operations["search_inbox_api_v1_workspaces__workspace_id__conversations_inbox_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/conversations/messages/{message_id}/trace": {
         parameters: {
             query?: never;
@@ -3404,6 +3444,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/conversations/{conversation_id}/inbox-detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Inbox Conversation
+         * @description Fetch selected thread metadata without marking read or synchronizing AI.
+         */
+        get: operations["get_inbox_conversation_api_v1_workspaces__workspace_id__conversations__conversation_id__inbox_detail_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/conversations/{conversation_id}/messages": {
         parameters: {
             query?: never;
@@ -3411,7 +3471,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Conversation Messages
+         * @description Read recent messages, oldest first, without changing AI ownership.
+         */
+        get: operations["list_conversation_messages_api_v1_workspaces__workspace_id__conversations__conversation_id__messages_get"];
         put?: never;
         /**
          * Send Message
@@ -3423,6 +3487,26 @@ export interface paths {
          * @description Clear all messages in a conversation.
          */
         delete: operations["clear_conversation_history_api_v1_workspaces__workspace_id__conversations__conversation_id__messages_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/conversations/{conversation_id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Conversation Read
+         * @description Acknowledge a displayed snapshot; leave newer arrivals unread.
+         */
+        post: operations["mark_conversation_read_api_v1_workspaces__workspace_id__conversations__conversation_id__read_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -12072,6 +12156,151 @@ export interface components {
             suggested_prompt: string;
         };
         /**
+         * InboxContactSummary
+         * @description Only the contact fields needed to render an inbox row.
+         */
+        InboxContactSummary: {
+            /** Avatar Url */
+            avatar_url: string | null;
+            /** First Name */
+            first_name: string;
+            /** Id */
+            id: number;
+            /** Last Name */
+            last_name: string | null;
+            /** Lead Score */
+            lead_score: number;
+            /** Status */
+            status: string;
+        };
+        /**
+         * InboxConversationResponse
+         * @description Read-only conversation summary, independent of campaign synchronization.
+         */
+        InboxConversationResponse: {
+            /** Ai Enabled */
+            ai_enabled: boolean;
+            /** Ai Paused */
+            ai_paused: boolean;
+            /** Assigned Agent Id */
+            assigned_agent_id: string | null;
+            /** Channel */
+            channel: string;
+            contact: components["schemas"]["InboxContactSummary"] | null;
+            /** Contact Id */
+            contact_id: number | null;
+            /** Contact Phone */
+            contact_phone: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Message At */
+            last_message_at: string | null;
+            /** Last Message Direction */
+            last_message_direction: string | null;
+            /** Last Message Preview */
+            last_message_preview: string | null;
+            /** Needs Human Reply */
+            needs_human_reply: boolean;
+            /** Status */
+            status: string;
+            /** Unread Count */
+            unread_count: number;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+            /** Workspace Phone */
+            workspace_phone: string;
+        };
+        /** InboxCounts */
+        InboxCounts: {
+            /** All */
+            all: number;
+            /** Hot */
+            hot: number;
+            /** Waiting */
+            waiting: number;
+        };
+        /**
+         * InboxMessageResponse
+         * @description Retain call playback/transcript metadata in the exact-thread inbox.
+         */
+        InboxMessageResponse: {
+            /** Agent Id */
+            agent_id: string | null;
+            /** Body */
+            body: string;
+            /** Booking Outcome */
+            booking_outcome?: string | null;
+            /** Channel */
+            channel: string;
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Direction */
+            direction: string;
+            /** Duration Seconds */
+            duration_seconds: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Ai */
+            is_ai: boolean;
+            /** Recording Url */
+            recording_url: string | null;
+            /** Sent At */
+            sent_at: string | null;
+            /** Status */
+            status: string;
+            /** Transcript */
+            transcript: string | null;
+        };
+        /**
+         * InboxSearch
+         * @description Body-based discovery keeps operator search text out of access-log URLs.
+         */
+        InboxSearch: {
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Page Size
+             * @default 50
+             */
+            page_size: number;
+            /**
+             * Q
+             * @default
+             */
+            q: string;
+            /**
+             * View
+             * @default all
+             * @enum {string}
+             */
+            view: "all" | "waiting" | "hot";
+        };
+        /**
          * IntegrationCreate
          * @description Schema for creating/updating an integration.
          */
@@ -12895,6 +13124,21 @@ export interface components {
         LiveCallsResponse: {
             /** Items */
             items: components["schemas"]["LiveCallResponse"][];
+        };
+        /**
+         * MarkConversationRead
+         * @description Acknowledge only the message snapshot actually displayed to the operator.
+         */
+        MarkConversationRead: {
+            /** Last Message At */
+            last_message_at: string | null;
+            /** Unread Count */
+            unread_count: number;
+        };
+        /** MarkConversationReadResponse */
+        MarkConversationReadResponse: {
+            /** Marked Read */
+            marked_read: boolean;
         };
         /**
          * MemberResponse
@@ -14916,6 +15160,20 @@ export interface components {
         PaginatedConversations: {
             /** Items */
             items: components["schemas"]["ConversationResponse"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Pages */
+            pages: number;
+            /** Total */
+            total: number;
+        };
+        /** PaginatedInbox */
+        PaginatedInbox: {
+            counts: components["schemas"]["InboxCounts"];
+            /** Items */
+            items: components["schemas"]["InboxConversationResponse"][];
             /** Page */
             page: number;
             /** Page Size */
@@ -24962,6 +25220,77 @@ export interface operations {
             };
         };
     };
+    list_inbox_api_v1_workspaces__workspace_id__conversations_inbox_get: {
+        parameters: {
+            query?: {
+                view?: "all" | "waiting" | "hot";
+                q?: string;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedInbox"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_inbox_api_v1_workspaces__workspace_id__conversations_inbox_search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InboxSearch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedInbox"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_message_trace_api_v1_workspaces__workspace_id__conversations_messages__message_id__trace_get: {
         parameters: {
             query?: never;
@@ -25346,6 +25675,72 @@ export interface operations {
             };
         };
     };
+    get_inbox_conversation_api_v1_workspaces__workspace_id__conversations__conversation_id__inbox_detail_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboxConversationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_conversation_messages_api_v1_workspaces__workspace_id__conversations__conversation_id__messages_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboxMessageResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     send_message_api_v1_workspaces__workspace_id__conversations__conversation_id__messages_post: {
         parameters: {
             query?: never;
@@ -25400,6 +25795,42 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_conversation_read_api_v1_workspaces__workspace_id__conversations__conversation_id__read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarkConversationRead"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarkConversationReadResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

@@ -13451,6 +13451,384 @@
         "title": "ImprovementSuggestionResponse",
         "type": "object"
       },
+      "InboxContactSummary": {
+        "description": "Only the contact fields needed to render an inbox row.",
+        "properties": {
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "first_name": {
+            "title": "First Name",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "last_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Name"
+          },
+          "lead_score": {
+            "title": "Lead Score",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "first_name",
+          "last_name",
+          "avatar_url",
+          "status",
+          "lead_score"
+        ],
+        "title": "InboxContactSummary",
+        "type": "object"
+      },
+      "InboxConversationResponse": {
+        "description": "Read-only conversation summary, independent of campaign synchronization.",
+        "properties": {
+          "ai_enabled": {
+            "title": "Ai Enabled",
+            "type": "boolean"
+          },
+          "ai_paused": {
+            "title": "Ai Paused",
+            "type": "boolean"
+          },
+          "assigned_agent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned Agent Id"
+          },
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "contact": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InboxContactSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id"
+          },
+          "contact_phone": {
+            "title": "Contact Phone",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_message_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Message At"
+          },
+          "last_message_direction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Message Direction"
+          },
+          "last_message_preview": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Message Preview"
+          },
+          "needs_human_reply": {
+            "title": "Needs Human Reply",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "unread_count": {
+            "title": "Unread Count",
+            "type": "integer"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          },
+          "workspace_phone": {
+            "title": "Workspace Phone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "contact_id",
+          "workspace_phone",
+          "contact_phone",
+          "status",
+          "channel",
+          "assigned_agent_id",
+          "ai_enabled",
+          "ai_paused",
+          "unread_count",
+          "last_message_preview",
+          "last_message_at",
+          "created_at",
+          "last_message_direction",
+          "needs_human_reply",
+          "contact"
+        ],
+        "title": "InboxConversationResponse",
+        "type": "object"
+      },
+      "InboxCounts": {
+        "properties": {
+          "all": {
+            "title": "All",
+            "type": "integer"
+          },
+          "hot": {
+            "title": "Hot",
+            "type": "integer"
+          },
+          "waiting": {
+            "title": "Waiting",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "all",
+          "waiting",
+          "hot"
+        ],
+        "title": "InboxCounts",
+        "type": "object"
+      },
+      "InboxMessageResponse": {
+        "description": "Retain call playback/transcript metadata in the exact-thread inbox.",
+        "properties": {
+          "agent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Id"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "booking_outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booking Outcome"
+          },
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "direction": {
+            "title": "Direction",
+            "type": "string"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_ai": {
+            "title": "Is Ai",
+            "type": "boolean"
+          },
+          "recording_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recording Url"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "transcript": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transcript"
+          }
+        },
+        "required": [
+          "id",
+          "conversation_id",
+          "direction",
+          "channel",
+          "body",
+          "status",
+          "is_ai",
+          "agent_id",
+          "sent_at",
+          "created_at",
+          "duration_seconds",
+          "recording_url",
+          "transcript"
+        ],
+        "title": "InboxMessageResponse",
+        "type": "object"
+      },
+      "InboxSearch": {
+        "description": "Body-based discovery keeps operator search text out of access-log URLs.",
+        "properties": {
+          "page": {
+            "default": 1,
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "default": 50,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "q": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Q",
+            "type": "string"
+          },
+          "view": {
+            "default": "all",
+            "enum": [
+              "all",
+              "waiting",
+              "hot"
+            ],
+            "title": "View",
+            "type": "string"
+          }
+        },
+        "title": "InboxSearch",
+        "type": "object"
+      },
       "IntegrationCreate": {
         "description": "Schema for creating/updating an integration.",
         "properties": {
@@ -15538,6 +15916,47 @@
           "items"
         ],
         "title": "LiveCallsResponse",
+        "type": "object"
+      },
+      "MarkConversationRead": {
+        "description": "Acknowledge only the message snapshot actually displayed to the operator.",
+        "properties": {
+          "last_message_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Message At"
+          },
+          "unread_count": {
+            "minimum": 0.0,
+            "title": "Unread Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "last_message_at",
+          "unread_count"
+        ],
+        "title": "MarkConversationRead",
+        "type": "object"
+      },
+      "MarkConversationReadResponse": {
+        "properties": {
+          "marked_read": {
+            "title": "Marked Read",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "marked_read"
+        ],
+        "title": "MarkConversationReadResponse",
         "type": "object"
       },
       "MemberResponse": {
@@ -21590,6 +22009,46 @@
           "pages"
         ],
         "title": "PaginatedConversations",
+        "type": "object"
+      },
+      "PaginatedInbox": {
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/InboxCounts"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InboxConversationResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "pages": {
+            "title": "Pages",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "counts",
+          "total",
+          "page",
+          "page_size",
+          "pages"
+        ],
+        "title": "PaginatedInbox",
         "type": "object"
       },
       "PaginatedLeadDiscoveryJobs": {
@@ -42976,6 +43435,164 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/conversations/inbox": {
+      "get": {
+        "description": "Read-only conversation discovery with search-relative view counts.",
+        "operationId": "list_inbox_api_v1_workspaces__workspace_id__conversations_inbox_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "waiting",
+                "hot"
+              ],
+              "title": "View",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 200,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 100000,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedInbox"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Inbox",
+        "tags": [
+          "Conversations"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/conversations/inbox/search": {
+      "post": {
+        "description": "Read-only search with no operator-entered text in the request URL.",
+        "operationId": "search_inbox_api_v1_workspaces__workspace_id__conversations_inbox_search_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboxSearch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedInbox"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Search Inbox",
+        "tags": [
+          "Conversations"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/conversations/messages/{message_id}/trace": {
       "get": {
         "description": "Fetch the decision/trace for one autonomously-sent message.\n\nAnswers \"why did the agent send that?\" — returns the opener/prompt version,\nretrieved knowledge snippets, model params, conversation state plus last\ninbound, and which autonomy-mandate rule authorized the send.",
@@ -43715,6 +44332,65 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/conversations/{conversation_id}/inbox-detail": {
+      "get": {
+        "description": "Fetch selected thread metadata without marking read or synchronizing AI.",
+        "operationId": "get_inbox_conversation_api_v1_workspaces__workspace_id__conversations__conversation_id__inbox_detail_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxConversationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Inbox Conversation",
+        "tags": [
+          "Conversations"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/conversations/{conversation_id}/messages": {
       "delete": {
         "description": "Clear all messages in a conversation.",
@@ -43762,6 +44438,79 @@
           }
         ],
         "summary": "Clear Conversation History",
+        "tags": [
+          "Conversations"
+        ]
+      },
+      "get": {
+        "description": "Read recent messages, oldest first, without changing AI ownership.",
+        "operationId": "list_conversation_messages_api_v1_workspaces__workspace_id__conversations__conversation_id__messages_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/InboxMessageResponse"
+                  },
+                  "title": "Response List Conversation Messages Api V1 Workspaces  Workspace Id  Conversations  Conversation Id  Messages Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Conversation Messages",
         "tags": [
           "Conversations"
         ]
@@ -43829,6 +44578,75 @@
           }
         ],
         "summary": "Send Message",
+        "tags": [
+          "Conversations"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/conversations/{conversation_id}/read": {
+      "post": {
+        "description": "Acknowledge a displayed snapshot; leave newer arrivals unread.",
+        "operationId": "mark_conversation_read_api_v1_workspaces__workspace_id__conversations__conversation_id__read_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkConversationRead"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarkConversationReadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Mark Conversation Read",
         "tags": [
           "Conversations"
         ]

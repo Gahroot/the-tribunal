@@ -2,8 +2,9 @@
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 
 class MessageCreate(BaseModel):
@@ -28,6 +29,14 @@ class MessageResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class InboxMessageResponse(MessageResponse):
+    """Retain call playback/transcript metadata in the exact-thread inbox."""
+
+    duration_seconds: int | None
+    recording_url: str | None
+    transcript: str | None
 
 
 class ConversationResponse(BaseModel):
@@ -65,6 +74,65 @@ class PaginatedConversations(BaseModel):
     page: int
     page_size: int
     pages: int
+
+
+InboxView = Literal["all", "waiting", "hot"]
+
+
+class InboxSearch(BaseModel):
+    """Body-based discovery keeps operator search text out of access-log URLs."""
+
+    view: InboxView = "all"
+    q: str = Field("", max_length=200)
+    page: int = Field(1, ge=1, le=100000)
+    page_size: int = Field(50, ge=1, le=100)
+
+
+class InboxContactSummary(BaseModel):
+    """Only the contact fields needed to render an inbox row."""
+
+    id: int
+    first_name: str
+    last_name: str | None
+    avatar_url: str | None
+    status: str
+    lead_score: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class InboxConversationResponse(ConversationResponse):
+    """Read-only conversation summary, independent of campaign synchronization."""
+
+    last_message_direction: str | None
+    needs_human_reply: bool
+    contact: InboxContactSummary | None
+
+
+class InboxCounts(BaseModel):
+    all: int
+    waiting: int
+    hot: int
+
+
+class PaginatedInbox(BaseModel):
+    items: list[InboxConversationResponse]
+    counts: InboxCounts
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+class MarkConversationRead(BaseModel):
+    """Acknowledge only the message snapshot actually displayed to the operator."""
+
+    last_message_at: AwareDatetime | None
+    unread_count: int = Field(ge=0)
+
+
+class MarkConversationReadResponse(BaseModel):
+    marked_read: bool
 
 
 class AIToggle(BaseModel):

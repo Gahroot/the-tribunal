@@ -11,17 +11,18 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import structlog
-from sqlalchemy import case, func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.appointment import Appointment, AppointmentStatus
 from app.models.campaign import Campaign, CampaignContact, CampaignStatus
 from app.models.contact import Contact
-from app.models.conversation import Conversation, ConversationStatus
+from app.models.conversation import Conversation
 from app.models.human_nudge import HumanNudge
 from app.models.pending_action import PendingAction
 from app.models.tag import ContactTag, Tag
 from app.schemas.today_queue import TodayQueueItem, TodayQueueResponse
+from app.services.conversations.conversation_filters import human_reply_needed_filters
 from app.services.dashboard.setup_prerequisites import SetupPrerequisiteService
 
 logger = structlog.get_logger()
@@ -96,12 +97,7 @@ class TodayQueueService:
         stays silent), so each row here is literal dead air until a human
         replies.
         """
-        base_filter = (
-            Conversation.workspace_id == workspace_id,
-            Conversation.status == ConversationStatus.ACTIVE,
-            Conversation.last_message_direction == "inbound",
-            (Conversation.ai_paused.is_(True)) | (Conversation.ai_enabled.is_(False)),
-        )
+        base_filter = human_reply_needed_filters(workspace_id)
 
         count_result = await self.db.execute(
             select(func.count()).select_from(Conversation).where(*base_filter)
@@ -112,23 +108,28 @@ class TodayQueueService:
 
         top_result = await self.db.execute(
             select(
+                Conversation.id,
                 Conversation.contact_id,
                 Contact.first_name,
                 Contact.last_name,
                 Conversation.last_message_preview,
             )
-            .join(Contact, Contact.id == Conversation.contact_id, isouter=True)
+            .outerjoin(
+                Contact,
+                and_(Contact.id == Conversation.contact_id, Contact.workspace_id == workspace_id),
+            )
             .where(*base_filter)
-            .order_by(Conversation.last_message_at.asc())
+            .order_by(Conversation.last_message_at.asc().nullslast(), Conversation.id.asc())
             .limit(_TOP_DESCRIPTIONS)
         )
         rows = top_result.all()
         names = [
             " ".join(part for part in (first, last) if part) or "Unknown contact"
-            for _, first, last, _ in rows
+            for _, _, first, last, _ in rows
         ]
         previews = [p for *_, p in rows if p]
-        contact_ids = [cid for cid, *_ in rows if cid is not None]
+        contact_ids = [cid for _, cid, *_ in rows if cid is not None]
+        conversation_ids = [str(row[0]) for row in rows]
 
         body_parts: list[str] = []
         if names:
@@ -136,7 +137,9 @@ class TodayQueueService:
         if previews:
             body_parts.append(_truncate(previews[0]))
 
-        href = f"/contacts/{contact_ids[0]}" if count == 1 and contact_ids else "/contacts"
+        href = "/conversations?view=waiting"
+        if count == 1 and conversation_ids:
+            href += f"&conversation={conversation_ids[0]}"
         return TodayQueueItem(
             id=f"replies_waiting:{workspace_id}",
             kind="replies_waiting",
@@ -146,7 +149,11 @@ class TodayQueueService:
             count=count,
             cta_label="Reply now",
             href=href,
-            payload={"contact_ids": contact_ids, "names": names},
+            payload={
+                "contact_ids": contact_ids,
+                "conversation_ids": conversation_ids,
+                "names": names,
+            },
         )
 
     # ── appointments today ────────────────────────────────────────────

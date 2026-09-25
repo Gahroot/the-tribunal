@@ -127,8 +127,10 @@ async def test_queue_is_ordered_and_complete() -> None:
         waiting_contact = _contact(ws.id, phone="+15125550198", first_name="Hot", last_name="Lead")
         db.add(waiting_contact)
         await db.flush()
+        waiting_conversation_id = uuid.uuid4()
         db.add(
             Conversation(
+                id=waiting_conversation_id,
                 workspace_id=ws.id,
                 contact_id=waiting_contact.id,
                 workspace_phone="+15125550100",
@@ -240,7 +242,11 @@ async def test_queue_is_ordered_and_complete() -> None:
         replies, appointments, approvals, nudges, batch, draft = queue.items
         assert replies.count == 1
         assert "Hot Lead" in replies.body
-        assert replies.href == f"/contacts/{waiting_contact.id}"
+        assert replies.href == f"/conversations?view=waiting&conversation={waiting_conversation_id}"
+        assert (replies.payload["conversation_ids"], replies.payload["contact_ids"]) == (
+            [str(waiting_conversation_id)],
+            [waiting_contact.id],
+        )
 
         assert appointments.count == 1
         assert "Hot Lead" in appointments.body

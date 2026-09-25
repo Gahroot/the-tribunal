@@ -1,24 +1,21 @@
 "use client";
 
-import { BookmarkPlus, MessageSquare, Search, X } from "lucide-react";
+import { BookmarkPlus, ChevronLeft, ChevronRight, MessageSquare, Search, X } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  PageEmptyState,
-  PageErrorState,
-} from "@/components/ui/page-state";
+import { PageEmptyState, PageErrorState } from "@/components/ui/page-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
+import type { InboxContact, InboxConversation } from "@/lib/api/conversations";
 import { contactStatusDotColors } from "@/lib/status-colors";
 import { cn } from "@/lib/utils";
 import { formatRelative } from "@/lib/utils/date";
 import { getContactInitials } from "@/lib/utils/initials";
 import { formatPhoneNumber } from "@/lib/utils/phone";
-import type { Contact, Conversation } from "@/types";
 
 /** Built-in views: every thread, threads waiting on me, hot leads. */
 export type BuiltInView = "all" | "waiting" | "hot";
@@ -33,8 +30,8 @@ export interface SavedView {
 
 /** One list row: a conversation joined with its contact when known. */
 export interface InboxRow {
-  conversation: Conversation;
-  contact?: Contact;
+  conversation: InboxConversation;
+  contact?: InboxContact;
 }
 
 const BUILT_IN_VIEWS: { id: BuiltInView; label: string }[] = [
@@ -50,11 +47,16 @@ interface ConversationListProps {
   savedViews: SavedView[];
   search: string;
   selectedId: string | null;
+  countsLoading: boolean;
+  page: number;
+  pages: number;
+  total: number;
+  onPageChange: (page: number) => void;
   isPending: boolean;
   isError: boolean;
   onRetry: () => void;
   canSaveViews: boolean;
-  onSelect: (conversation: Conversation) => void;
+  onSelect: (conversation: InboxConversation) => void;
   onViewChange: (viewId: string) => void;
   onSearchChange: (search: string) => void;
   onApplySavedView: (view: SavedView) => void;
@@ -74,6 +76,11 @@ export function ConversationList({
   savedViews,
   search,
   selectedId,
+  countsLoading,
+  page,
+  pages,
+  total,
+  onPageChange,
   isPending,
   isError,
   onRetry,
@@ -113,16 +120,11 @@ export function ConversationList({
   };
 
   return (
-    <div
-      className={cn(
-        "flex h-full min-h-0 flex-col overflow-hidden bg-background",
-        className,
-      )}
-    >
+    <div className={cn("flex h-full min-h-0 flex-col overflow-hidden bg-background", className)}>
       <div className="flex shrink-0 items-center justify-between border-b px-3 py-2.5">
-        <h1 className="text-sm font-semibold">Conversations</h1>
+        <h2 className="text-sm font-semibold">Conversations</h2>
         <span className="text-xs tabular-nums text-muted-foreground">
-          {counts.all} total
+          {isError ? "Counts unavailable" : countsLoading ? "Loading" : `${counts.all} total`}
         </span>
       </div>
 
@@ -135,7 +137,8 @@ export function ConversationList({
           <Input
             value={search}
             onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="Search name, number, message…"
+            placeholder="Name, number or latest message"
+            maxLength={200}
             aria-label="Search conversations"
             className="h-9 pl-8 pr-8"
           />
@@ -172,7 +175,9 @@ export function ConversationList({
                 )}
               >
                 {view.label}
-                <span className="tabular-nums opacity-80">{count}</span>
+                <span className="tabular-nums opacity-80">
+                  {isError ? "?" : countsLoading ? "…" : count}
+                </span>
               </button>
             );
           })}
@@ -200,9 +205,7 @@ export function ConversationList({
                     className={cn(
                       "px-2.5 py-1 text-xs font-medium transition-colors",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-                      isActive
-                        ? "text-foreground"
-                        : "text-muted-foreground hover:text-foreground",
+                      isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground",
                     )}
                   >
                     {view.name}
@@ -226,10 +229,7 @@ export function ConversationList({
 
         {canSave ? (
           isNaming ? (
-            <form
-              onSubmit={handleSaveSubmit}
-              className="flex items-center gap-1.5"
-            >
+            <form onSubmit={handleSaveSubmit} className="flex items-center gap-1.5">
               <Input
                 ref={nameInputRef}
                 value={viewName}
@@ -242,12 +242,7 @@ export function ConversationList({
                 className="h-8 flex-1"
                 maxLength={40}
               />
-              <Button
-                type="submit"
-                size="sm"
-                className="h-8"
-                disabled={!viewName.trim()}
-              >
+              <Button type="submit" size="sm" className="h-8" disabled={!viewName.trim()}>
                 Save
               </Button>
               <Button
@@ -297,11 +292,7 @@ export function ConversationList({
         ) : rows.length === 0 ? (
           <PageEmptyState
             icon={<MessageSquare className="h-8 w-8" />}
-            title={
-              hasActiveFilter
-                ? "No matching conversations"
-                : "You're all caught up"
-            }
+            title={hasActiveFilter ? "No matching conversations" : "You're all caught up"}
             description={
               hasActiveFilter
                 ? "No threads match this view or search."
@@ -328,9 +319,7 @@ export function ConversationList({
             {rows.map(({ conversation, contact }) => {
               const isSelected = selectedId === conversation.id;
               const displayName = contact
-                ? [contact.first_name, contact.last_name]
-                    .filter(Boolean)
-                    .join(" ")
+                ? [contact.first_name, contact.last_name].filter(Boolean).join(" ")
                 : "";
               const title =
                 displayName ||
@@ -357,7 +346,7 @@ export function ConversationList({
                       <Avatar className="h-9 w-9">
                         {contact ? (
                           <AvatarImage
-                            src={contact.avatar_url}
+                            src={contact.avatar_url ?? undefined}
                             alt={displayName || "Contact"}
                             size={72}
                           />
@@ -382,7 +371,9 @@ export function ConversationList({
                           aria-hidden
                           className={cn(
                             "absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-background",
-                            contactStatusDotColors[contact.status],
+                            contactStatusDotColors[
+                              contact.status as keyof typeof contactStatusDotColors
+                            ],
                           )}
                         />
                       ) : null}
@@ -407,10 +398,14 @@ export function ConversationList({
                       </span>
                       <span className="mt-0.5 flex items-center justify-between gap-2">
                         <span className="min-w-0 truncate text-xs text-muted-foreground">
-                          {conversation.last_message_preview ||
-                            "No messages yet"}
+                          {conversation.last_message_preview || "No messages yet"}
                         </span>
                         <span className="flex shrink-0 items-center gap-1">
+                          {conversation.needs_human_reply ? (
+                            <Badge variant="outline" className="text-[10px]">
+                              Needs reply
+                            </Badge>
+                          ) : null}
                           {score != null && score > 0 ? (
                             <span title={`Lead score: ${score}`}>
                               <StatusBadge
@@ -443,6 +438,36 @@ export function ConversationList({
           </ul>
         )}
       </div>
+      <nav
+        aria-label="Inbox pages"
+        className="flex shrink-0 items-center justify-between gap-2 border-t px-3 py-2"
+      >
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Previous inbox page"
+          disabled={page <= 1 || isPending}
+          onClick={() => onPageChange(page - 1)}
+        >
+          <ChevronLeft className="size-4" />
+        </Button>
+        <span role="status" aria-live="polite" className="text-xs text-muted-foreground">
+          {isError
+            ? "Results unavailable"
+            : countsLoading
+              ? "Loading results"
+              : `${total} ${total === 1 ? "conversation" : "conversations"} · Page ${page} of ${Math.max(1, pages)}`}
+        </span>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Next inbox page"
+          disabled={page >= pages || isPending}
+          onClick={() => onPageChange(page + 1)}
+        >
+          <ChevronRight className="size-4" />
+        </Button>
+      </nav>
     </div>
   );
 }

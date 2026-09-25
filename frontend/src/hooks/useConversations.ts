@@ -34,6 +34,7 @@ export function useSendMessage(workspaceId: string) {
       conversationsApi.sendMessage(workspaceId, data.conversationId, data.body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.conversations.all(workspaceId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.todayQueue(workspaceId) });
     },
   });
 }
@@ -41,14 +42,16 @@ export function useSendMessage(workspaceId: string) {
 /**
  * Toggle AI for a conversation
  */
-export function useToggleConversationAI(workspaceId: string) {
+export function useToggleConversationAI(workspaceId: string, handleErrorsLocally = false) {
   const queryClient = useQueryClient();
 
   return useMutation({
+    ...(handleErrorsLocally ? { throwOnError: false } : {}),
     mutationFn: (data: { conversationId: string; enabled: boolean }) =>
       conversationsApi.toggleAI(workspaceId, data.conversationId, data.enabled),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.conversations.all(workspaceId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.todayQueue(workspaceId) });
     },
   });
 }
@@ -56,14 +59,16 @@ export function useToggleConversationAI(workspaceId: string) {
 /**
  * Assign an agent to a conversation
  */
-export function useAssignAgent(workspaceId: string) {
+export function useAssignAgent(workspaceId: string, handleErrorsLocally = false) {
   const queryClient = useQueryClient();
 
   return useMutation({
+    ...(handleErrorsLocally ? { throwOnError: false } : {}),
     mutationFn: (data: { conversationId: string; agentId: string | null }) =>
       conversationsApi.assignAgent(workspaceId, data.conversationId, data.agentId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.conversations.all(workspaceId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.todayQueue(workspaceId) });
     },
   });
 }
@@ -79,6 +84,7 @@ export function useClearConversationHistory(workspaceId: string) {
       conversationsApi.clearHistory(workspaceId, conversationId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.conversations.all(workspaceId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.todayQueue(workspaceId) });
     },
   });
 }
