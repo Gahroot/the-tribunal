@@ -96,10 +96,10 @@ def _trigger_issues(
             )
         )
     elif trigger == "never_booked" and "inactivity_days" in trigger_config:
-        raw = trigger_config.get("inactivity_days")
+        raw = trigger_config["inactivity_days"]
         try:
-            days = int(raw)  # type: ignore[arg-type]
-        except (TypeError, ValueError):
+            days = int(raw) if isinstance(raw, int | str) else 0
+        except ValueError:
             days = 0
         if isinstance(raw, bool) or not MIN_INACTIVITY_DAYS <= days <= MAX_INACTIVITY_DAYS:
             issues.append(
@@ -115,9 +115,7 @@ def _trigger_issues(
     return issues
 
 
-def _action_issues(  # noqa: PLR0912 - one branch per supported action type
-    index: int, action: dict[str, Any], trigger: str
-) -> list[AutomationConfigIssue]:
+def _action_issues(index: int, action: dict[str, Any], trigger: str) -> list[AutomationConfigIssue]:
     action_type = str(action.get("type", "")).lower()
     raw_config = action.get("config")
     config: dict[str, Any] = raw_config if isinstance(raw_config, dict) else {}
