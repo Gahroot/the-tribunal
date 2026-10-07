@@ -2,7 +2,7 @@ import { Clock } from "lucide-react";
 import type React from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DAYS_OF_WEEK } from "@/lib/constants";
+import { formatSendingDays } from "@/lib/constants";
 
 interface ReviewScheduleCardProps {
   sendingHoursEnabled: boolean;
@@ -43,9 +43,7 @@ export function ReviewScheduleCard({
         <div className="flex items-center gap-2 text-sm">
           <span className="text-muted-foreground">Days:</span>
           <span>
-            {sendingDays
-              .map((d) => DAYS_OF_WEEK.find((day) => day.value === d)?.label)
-              .join(", ")}
+            {formatSendingDays(sendingDays)}
           </span>
         </div>
         <div className="flex items-center gap-2 text-sm">

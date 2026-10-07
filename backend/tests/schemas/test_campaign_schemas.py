@@ -153,6 +153,11 @@ class TestCampaignResponse:
         assert response.name == "Test Campaign"
         assert response.messages_sent == 0
 
+    @pytest.mark.parametrize("legacy", [[], [1, 2, 3, 4, 5], [6, 0]])
+    def test_legacy_sending_days_are_returned_unchanged(self, legacy: list[int]) -> None:
+        """Responses never rewrite or reject stored legacy schedules (RF-006)."""
+        assert self._make_response(sending_days=legacy).sending_days == legacy
+
     def test_from_attributes_config(self) -> None:
         """model_config has from_attributes=True."""
         assert CampaignResponse.model_config.get("from_attributes") is True

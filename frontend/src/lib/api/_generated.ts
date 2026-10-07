@@ -10049,7 +10049,10 @@ export interface components {
             qualification_criteria?: string | null;
             /** Scheduled Start */
             scheduled_start?: string | null;
-            /** Sending Days */
+            /**
+             * Sending Days
+             * @description Days of the week sending is allowed, evaluated in the campaign timezone. Python weekday encoding: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6 (Mon-Fri = [0,1,2,3,4]); NOT JavaScript getDay(). null means every day.
+             */
             sending_days?: number[] | null;
             /** Sending Hours End */
             sending_hours_end?: string | null;
@@ -10242,7 +10245,10 @@ export interface components {
             replies_received: number;
             /** Scheduled Start */
             scheduled_start: string | null;
-            /** Sending Days */
+            /**
+             * Sending Days
+             * @description Days of the week sending is allowed, evaluated in the campaign timezone. Python weekday encoding: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6 (Mon-Fri = [0,1,2,3,4]); NOT JavaScript getDay(). null means every day.
+             */
             sending_days: number[] | null;
             /** Sending Hours End */
             sending_hours_end: string | null;
@@ -10320,7 +10326,10 @@ export interface components {
             qualification_criteria?: string | null;
             /** Scheduled Start */
             scheduled_start?: string | null;
-            /** Sending Days */
+            /**
+             * Sending Days
+             * @description Days of the week sending is allowed, evaluated in the campaign timezone. Python weekday encoding: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6 (Mon-Fri = [0,1,2,3,4]); NOT JavaScript getDay(). null means every day.
+             */
             sending_days?: number[] | null;
             /** Sending Hours End */
             sending_hours_end?: string | null;
@@ -13545,7 +13554,10 @@ export interface components {
             name: string;
             /** Qualification Criteria */
             qualification_criteria?: string | null;
-            /** Sending Days */
+            /**
+             * Sending Days
+             * @description Days of the week sending is allowed, evaluated in the campaign timezone. Python weekday encoding: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6 (Mon-Fri = [0,1,2,3,4]); NOT JavaScript getDay(). null means every day.
+             */
             sending_days?: number[] | null;
             /** Sending Hours End */
             sending_hours_end?: string | null;
@@ -13603,7 +13615,10 @@ export interface components {
             qualification_criteria: string | null;
             /** Replies Received */
             replies_received: number;
-            /** Sending Days */
+            /**
+             * Sending Days
+             * @description Days of the week sending is allowed, evaluated in the campaign timezone. Python weekday encoding: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6 (Mon-Fri = [0,1,2,3,4]); NOT JavaScript getDay(). null means every day.
+             */
             sending_days: number[] | null;
             /** Sending Hours End */
             sending_hours_end: string | null;
@@ -13653,7 +13668,10 @@ export interface components {
             name?: string | null;
             /** Qualification Criteria */
             qualification_criteria?: string | null;
-            /** Sending Days */
+            /**
+             * Sending Days
+             * @description Days of the week sending is allowed, evaluated in the campaign timezone. Python weekday encoding: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6 (Mon-Fri = [0,1,2,3,4]); NOT JavaScript getDay(). null means every day.
+             */
             sending_days?: number[] | null;
             /** Sending Hours End */
             sending_hours_end?: string | null;
@@ -13703,7 +13721,10 @@ export interface components {
             qualification_criteria: string | null;
             /** Replies Received */
             replies_received: number;
-            /** Sending Days */
+            /**
+             * Sending Days
+             * @description Days of the week sending is allowed, evaluated in the campaign timezone. Python weekday encoding: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6 (Mon-Fri = [0,1,2,3,4]); NOT JavaScript getDay(). null means every day.
+             */
             sending_days: number[] | null;
             /** Sending Hours End */
             sending_hours_end: string | null;
@@ -18848,7 +18869,10 @@ export interface components {
             scheduled_end?: string | null;
             /** Scheduled Start */
             scheduled_start?: string | null;
-            /** Sending Days */
+            /**
+             * Sending Days
+             * @description Days of the week sending is allowed, evaluated in the campaign timezone. Python weekday encoding: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6 (Mon-Fri = [0,1,2,3,4]); NOT JavaScript getDay(). null means every day.
+             */
             sending_days?: number[] | null;
             /** Sending Hours End */
             sending_hours_end?: string | null;
@@ -18954,7 +18978,10 @@ export interface components {
             scheduled_end: string | null;
             /** Scheduled Start */
             scheduled_start: string | null;
-            /** Sending Days */
+            /**
+             * Sending Days
+             * @description Days of the week sending is allowed, evaluated in the campaign timezone. Python weekday encoding: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6 (Mon-Fri = [0,1,2,3,4]); NOT JavaScript getDay(). null means every day.
+             */
             sending_days: number[] | null;
             /** Sending Hours End */
             sending_hours_end: string | null;
@@ -19021,7 +19048,10 @@ export interface components {
             scheduled_end?: string | null;
             /** Scheduled Start */
             scheduled_start?: string | null;
-            /** Sending Days */
+            /**
+             * Sending Days
+             * @description Days of the week sending is allowed, evaluated in the campaign timezone. Python weekday encoding: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6 (Mon-Fri = [0,1,2,3,4]); NOT JavaScript getDay(). null means every day.
+             */
             sending_days?: number[] | null;
             /** Sending Hours End */
             sending_hours_end?: string | null;

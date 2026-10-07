@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.sending_days import is_sending_day
 from app.models.campaign import Campaign, CampaignContact, CampaignContactStatus
 from app.models.contact import Contact
 from app.models.pending_action import PendingAction
@@ -94,7 +95,7 @@ def next_local_slot(campaign: Campaign, earliest: datetime, *, hour: int | None 
         hours = [start]
     for day_offset in range(16):
         day = local.date() + timedelta(days=day_offset)
-        if campaign.sending_days and day.weekday() not in campaign.sending_days:
+        if not is_sending_day(campaign.sending_days, day):
             continue
         for candidate_time in hours:
             if not start <= candidate_time <= end:
@@ -158,7 +159,7 @@ def sms_touch_due_at(campaign: Campaign, contact: CampaignContact) -> datetime:
     end = campaign.sending_hours_end or time(17)
     for day_offset in range(16):
         day = local.date() + timedelta(days=day_offset)
-        if campaign.sending_days and day.weekday() not in campaign.sending_days:
+        if not is_sending_day(campaign.sending_days, day):
             continue
         if day_offset == 0 and start <= local.time() <= end:
             return earliest

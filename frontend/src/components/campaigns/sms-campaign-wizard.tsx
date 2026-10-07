@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { assistantApi } from "@/lib/api/assistant";
 import type { CreateSMSCampaignRequest } from "@/lib/api/sms-campaigns";
-import { DAYS_OF_WEEK, TIMEZONE_OPTIONS } from "@/lib/constants";
+import { formatSendingDays, TIMEZONE_OPTIONS } from "@/lib/constants";
 import { messages } from "@/lib/messages";
 import { formatDateTime } from "@/lib/utils/date";
 import { getApiErrorMessage } from "@/lib/utils/errors";
@@ -504,10 +504,7 @@ export function SMSCampaignWizard({
     const selectedPhone = phoneNumbers.find(
       (p) => p.phone_number === formData.from_phone_number
     );
-    const days = formData.sending_days
-      .map((d) => DAYS_OF_WEEK.find((day) => day.value === d)?.label)
-      .filter(Boolean)
-      .join(", ");
+    const days = formatSendingDays(formData.sending_days);
     const hours = formData.sending_hours_enabled
       ? `${formatHour(formData.sending_hours_start)} – ${formatHour(formData.sending_hours_end)}`
       : "Any hour";

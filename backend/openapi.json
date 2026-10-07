@@ -7221,6 +7221,7 @@
                 "type": "null"
               }
             ],
+            "description": "Days of the week sending is allowed, evaluated in the campaign timezone. Python weekday encoding: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6 (Mon-Fri = [0,1,2,3,4]); NOT JavaScript getDay(). null means every day.",
             "title": "Sending Days"
           },
           "sending_hours_end": {
@@ -7783,6 +7784,7 @@
                 "type": "null"
               }
             ],
+            "description": "Days of the week sending is allowed, evaluated in the campaign timezone. Python weekday encoding: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6 (Mon-Fri = [0,1,2,3,4]); NOT JavaScript getDay(). null means every day.",
             "title": "Sending Days"
           },
           "sending_hours_end": {
@@ -8093,6 +8095,7 @@
                 "type": "null"
               }
             ],
+            "description": "Days of the week sending is allowed, evaluated in the campaign timezone. Python weekday encoding: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6 (Mon-Fri = [0,1,2,3,4]); NOT JavaScript getDay(). null means every day.",
             "title": "Sending Days"
           },
           "sending_hours_end": {
@@ -16427,6 +16430,7 @@
                 "type": "null"
               }
             ],
+            "description": "Days of the week sending is allowed, evaluated in the campaign timezone. Python weekday encoding: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6 (Mon-Fri = [0,1,2,3,4]); NOT JavaScript getDay(). null means every day.",
             "title": "Sending Days"
           },
           "sending_hours_end": {
@@ -16594,6 +16598,7 @@
                 "type": "null"
               }
             ],
+            "description": "Days of the week sending is allowed, evaluated in the campaign timezone. Python weekday encoding: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6 (Mon-Fri = [0,1,2,3,4]); NOT JavaScript getDay(). null means every day.",
             "title": "Sending Days"
           },
           "sending_hours_end": {
@@ -16797,6 +16802,7 @@
                 "type": "null"
               }
             ],
+            "description": "Days of the week sending is allowed, evaluated in the campaign timezone. Python weekday encoding: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6 (Mon-Fri = [0,1,2,3,4]); NOT JavaScript getDay(). null means every day.",
             "title": "Sending Days"
           },
           "sending_hours_end": {
@@ -16958,6 +16964,7 @@
                 "type": "null"
               }
             ],
+            "description": "Days of the week sending is allowed, evaluated in the campaign timezone. Python weekday encoding: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6 (Mon-Fri = [0,1,2,3,4]); NOT JavaScript getDay(). null means every day.",
             "title": "Sending Days"
           },
           "sending_hours_end": {
@@ -30863,6 +30870,7 @@
                 "type": "null"
               }
             ],
+            "description": "Days of the week sending is allowed, evaluated in the campaign timezone. Python weekday encoding: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6 (Mon-Fri = [0,1,2,3,4]); NOT JavaScript getDay(). null means every day.",
             "title": "Sending Days"
           },
           "sending_hours_end": {
@@ -31161,6 +31169,7 @@
                 "type": "null"
               }
             ],
+            "description": "Days of the week sending is allowed, evaluated in the campaign timezone. Python weekday encoding: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6 (Mon-Fri = [0,1,2,3,4]); NOT JavaScript getDay(). null means every day.",
             "title": "Sending Days"
           },
           "sending_hours_end": {
@@ -31472,6 +31481,7 @@
                 "type": "null"
               }
             ],
+            "description": "Days of the week sending is allowed, evaluated in the campaign timezone. Python weekday encoding: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6 (Mon-Fri = [0,1,2,3,4]); NOT JavaScript getDay(). null means every day.",
             "title": "Sending Days"
           },
           "sending_hours_end": {

@@ -1,3 +1,5 @@
+import { normalizeSendingDays, WEEKDAY_SENDING_DAYS } from "@/lib/constants";
+
 /**
  * Field fragments and initial values shared by SMS and Voice campaign
  * wizards. The wizards extend these with channel-specific fields.
@@ -29,7 +31,8 @@ export const initialScheduleFields: ScheduleFields = {
   sending_hours_enabled: false,
   sending_hours_start: "09:00",
   sending_hours_end: "17:00",
-  sending_days: [1, 2, 3, 4, 5],
+  // Mon–Fri in the shared Monday=0 encoding (see WEEKDAY_SENDING_DAYS).
+  sending_days: [...WEEKDAY_SENDING_DAYS],
   timezone: "America/New_York",
 };
 
@@ -59,7 +62,7 @@ export function mapScheduleToRequest(
     sending_hours_end: data.sending_hours_enabled
       ? data.sending_hours_end
       : "23:59",
-    sending_days: data.sending_days,
+    sending_days: normalizeSendingDays(data.sending_days),
     timezone: data.timezone,
   };
 }

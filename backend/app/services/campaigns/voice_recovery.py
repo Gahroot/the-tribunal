@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.sending_days import is_sending_day
 from app.db.redis import get_redis
 from app.db.session import AsyncSessionLocal
 from app.models.campaign import Campaign, CampaignContact, CampaignContactStatus, CampaignStatus
@@ -40,7 +41,7 @@ def retry_slot(campaign: Campaign, now: datetime) -> datetime:
     """Two minutes, unless sending windows require a later legal slot."""
     earliest = now + timedelta(seconds=RETRY_SECONDS)
     local = earliest.astimezone(ZoneInfo(campaign.timezone or "UTC"))
-    if (not campaign.sending_days or local.weekday() in campaign.sending_days) and (
+    if is_sending_day(campaign.sending_days, local) and (
         campaign.sending_hours_start or local_time(9)
     ) <= local.time() <= (campaign.sending_hours_end or local_time(17)):
         return earliest

@@ -8,6 +8,8 @@ tuned for realtors reactivating cold leads with a value-first approach.
 from datetime import time
 from typing import Any
 
+from app.core.sending_days import WEEKDAYS
+
 REALTOR_SYSTEM_PROMPT = (
     "You are a helpful real estate agent texting leads from your personal contact list. "
     "You're not a bot — you're a real person checking in. Keep every message SHORT "
@@ -86,7 +88,7 @@ def get_realtor_campaign_defaults() -> dict[str, Any]:
         "ai_enabled": True,
         "sending_hours_start": time(9, 0),
         "sending_hours_end": time(19, 0),
-        "sending_days": [0, 1, 2, 3, 4],
+        "sending_days": list(WEEKDAYS),  # Mon-Fri (Monday=0)
         "timezone": "America/New_York",
         "messages_per_minute": 10,
         "max_messages_per_contact": 5,

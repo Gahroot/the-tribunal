@@ -5,6 +5,8 @@ from datetime import datetime, time
 
 from pydantic import BaseModel, ConfigDict, field_serializer, field_validator
 
+from app.core.sending_days import SendingDaysInput, SendingDaysOutput
+
 # === Variant Schemas ===
 
 
@@ -90,7 +92,7 @@ class MessageTestCreate(BaseModel):
     qualification_criteria: str | None = None
     sending_hours_start: str | None = None  # "09:00"
     sending_hours_end: str | None = None  # "17:00"
-    sending_days: list[int] | None = None  # [0,1,2,3,4] = Mon-Fri
+    sending_days: SendingDaysInput = None  # Monday=0 … Sunday=6
     timezone: str = "America/New_York"
     messages_per_minute: int = 10
     # Initial variants (optional, can add separately)
@@ -109,7 +111,7 @@ class MessageTestUpdate(BaseModel):
     qualification_criteria: str | None = None
     sending_hours_start: str | None = None
     sending_hours_end: str | None = None
-    sending_days: list[int] | None = None
+    sending_days: SendingDaysInput = None  # Monday=0 … Sunday=6
     timezone: str | None = None
     messages_per_minute: int | None = None
 
@@ -129,7 +131,7 @@ class MessageTestResponse(BaseModel):
     qualification_criteria: str | None
     sending_hours_start: str | None
     sending_hours_end: str | None
-    sending_days: list[int] | None
+    sending_days: SendingDaysOutput
     timezone: str
     messages_per_minute: int
     total_contacts: int

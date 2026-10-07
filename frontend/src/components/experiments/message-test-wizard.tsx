@@ -33,6 +33,7 @@ import { WizardContainer } from "@/components/wizard";
 import { useWizard } from "@/hooks/useWizard";
 import type { CreateMessageTestRequest } from "@/lib/api/message-tests";
 import { segmentsApi } from "@/lib/api/segments";
+import { WEEKDAY_SENDING_DAYS } from "@/lib/constants";
 import type { Contact, Agent, PhoneNumber, MessageTest } from "@/types";
 
 import { AgentSelector } from "../campaigns/agent-selector";
@@ -89,7 +90,8 @@ const initialFormData: FormData = {
   qualification_criteria: "",
   sending_hours_start: "09:00",
   sending_hours_end: "17:00",
-  sending_days: [1, 2, 3, 4, 5],
+  // Mon–Fri in the shared Monday=0 encoding (backend weekday()).
+  sending_days: [...WEEKDAY_SENDING_DAYS],
   timezone: "America/New_York",
   messages_per_minute: 10,
 };

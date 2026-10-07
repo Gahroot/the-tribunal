@@ -5,6 +5,7 @@ from datetime import datetime, time
 
 from pydantic import BaseModel, ConfigDict, field_serializer, field_validator
 
+from app.core.sending_days import SendingDaysInput, SendingDaysOutput
 from app.schemas.voice_experiment import VoiceExperiment, VoiceExperimentResults
 
 
@@ -21,7 +22,7 @@ class CampaignCreate(BaseModel):
     scheduled_start: datetime | None = None
     sending_hours_start: str | None = None  # "09:00"
     sending_hours_end: str | None = None  # "17:00"
-    sending_days: list[int] | None = None  # [0,1,2,3,4] = Mon-Fri
+    sending_days: SendingDaysInput = None  # Monday=0 … Sunday=6
     timezone: str = "America/New_York"
     messages_per_minute: int = 10
     follow_up_enabled: bool = False
@@ -45,7 +46,7 @@ class CampaignUpdate(BaseModel):
     scheduled_start: datetime | None = None
     sending_hours_start: str | None = None
     sending_hours_end: str | None = None
-    sending_days: list[int] | None = None
+    sending_days: SendingDaysInput = None  # Monday=0 … Sunday=6
     timezone: str | None = None
     messages_per_minute: int | None = None
     follow_up_enabled: bool | None = None
@@ -73,7 +74,7 @@ class CampaignResponse(BaseModel):
     scheduled_start: datetime | None
     sending_hours_start: str | None
     sending_hours_end: str | None
-    sending_days: list[int] | None
+    sending_days: SendingDaysOutput
     timezone: str
     messages_per_minute: int
     follow_up_enabled: bool
@@ -196,7 +197,7 @@ class VoiceCampaignCreate(BaseModel):
     scheduled_end: datetime | None = None
     sending_hours_start: str | None = None  # "09:00"
     sending_hours_end: str | None = None  # "17:00"
-    sending_days: list[int] | None = None  # [0,1,2,3,4] = Mon-Fri
+    sending_days: SendingDaysInput = None  # Monday=0 … Sunday=6
     timezone: str = "America/New_York"
     calls_per_minute: int = 5
     guarantee_target: int | None = None
@@ -231,7 +232,7 @@ class VoiceCampaignUpdate(BaseModel):
     scheduled_end: datetime | None = None
     sending_hours_start: str | None = None
     sending_hours_end: str | None = None
-    sending_days: list[int] | None = None
+    sending_days: SendingDaysInput = None  # Monday=0 … Sunday=6
     timezone: str | None = None
     calls_per_minute: int | None = None
     guarantee_target: int | None = None
@@ -273,7 +274,7 @@ class VoiceCampaignResponse(BaseModel):
     scheduled_end: datetime | None
     sending_hours_start: str | None
     sending_hours_end: str | None
-    sending_days: list[int] | None
+    sending_days: SendingDaysOutput
     timezone: str
 
     # Statistics

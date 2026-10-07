@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import QueryableAttribute, selectinload
 
 from app.core.config import settings
+from app.core.sending_days import is_sending_day
 from app.models.campaign import (
     Campaign,
     CampaignContact,
@@ -73,10 +74,10 @@ class VoiceCampaignWorker(BaseCampaignWorker):
     def eager_loads(self) -> list[QueryableAttribute[Any]]:
         return [Campaign.voice_agent, Campaign.sms_fallback_agent]
 
-    def _is_within_sending_hours(self, campaign: Campaign) -> bool:
+    def _is_within_sending_hours(self, campaign: Campaign, now: datetime | None = None) -> bool:
         """Never dial outside the local daytime window, even on a late tick."""
-        now = datetime.now(ZoneInfo(campaign.timezone or "UTC"))
-        if campaign.sending_days and now.weekday() not in campaign.sending_days:
+        now = (now or datetime.now(UTC)).astimezone(ZoneInfo(campaign.timezone or "UTC"))
+        if not is_sending_day(campaign.sending_days, now):
             return False
         start = campaign.sending_hours_start or time(9)
         end = campaign.sending_hours_end or time(17)

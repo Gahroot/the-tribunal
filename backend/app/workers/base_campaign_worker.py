@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import QueryableAttribute, selectinload
 
 from app.core.config import settings
+from app.core.sending_days import is_sending_day
 from app.db.session import AsyncSessionLocal
 from app.models.campaign import (
     Campaign,
@@ -130,8 +131,12 @@ class BaseCampaignWorker(RetryableWorker, BaseWorker):
 
         await self._process_campaign_contacts(campaign, db, log)
 
-    def _is_within_sending_hours(self, campaign: Campaign) -> bool:
-        """Check if current time is within campaign sending hours."""
+    def _is_within_sending_hours(self, campaign: Campaign, now: datetime | None = None) -> bool:
+        """Check if current time is within campaign sending hours.
+
+        ``sending_days`` follows ``app.core.sending_days`` (Monday=0 … Sunday=6),
+        evaluated on the campaign's local date.
+        """
         if campaign.sending_hours_start is None or campaign.sending_hours_end is None:
             self.logger.debug(
                 "Sending hours not set, allowing",
@@ -141,9 +146,9 @@ class BaseCampaignWorker(RetryableWorker, BaseWorker):
             return True
 
         tz = ZoneInfo(campaign.timezone or "UTC")
-        now = datetime.now(tz)
+        now = (now or datetime.now(UTC)).astimezone(tz)
 
-        if campaign.sending_days and now.weekday() not in campaign.sending_days:
+        if not is_sending_day(campaign.sending_days, now):
             self.logger.debug(
                 "Not a sending day",
                 sending_days=campaign.sending_days,

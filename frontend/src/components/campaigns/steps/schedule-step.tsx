@@ -16,7 +16,11 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-import { DAYS_OF_WEEK, TIMEZONES } from "@/lib/constants";
+import {
+  DAYS_OF_WEEK,
+  normalizeSendingDays,
+  TIMEZONES,
+} from "@/lib/constants";
 
 interface ScheduleStepProps {
   scheduledStart?: string;
@@ -163,6 +167,7 @@ export function ScheduleStep({
                 variant={isSelected ? "default" : "outline"}
                 size="sm"
                 className="w-12"
+                aria-pressed={isSelected}
                 onClick={() => {
                   if (isSelected) {
                     onSendingDaysChange(
@@ -170,7 +175,7 @@ export function ScheduleStep({
                     );
                   } else {
                     onSendingDaysChange(
-                      [...sendingDays, day.value].sort()
+                      normalizeSendingDays([...sendingDays, day.value])
                     );
                   }
                 }}
