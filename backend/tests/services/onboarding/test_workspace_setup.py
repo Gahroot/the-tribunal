@@ -182,8 +182,10 @@ async def test_complete_realtor_onboarding_stores_credentials_and_purchases_phon
     db.execute.side_effect = [
         _ExecuteResult(membership),
         _ExecuteResult(workspace),
-        _ExecuteResult(None),
-        _ExecuteResult(None),
+        _ExecuteResult(None),  # no existing realtor agent
+        _ExecuteResult(None),  # no Cal.com integration yet
+        _ExecuteResult(None),  # no FUB integration yet
+        _ExecuteResult(None),  # no existing SMS number
     ]
     available_number = PhoneNumberInfo(id="", phone_number="+15555550123")
     purchased_number = PhoneNumberInfo(id="telnyx-123", phone_number="+15555550123")
@@ -219,6 +221,7 @@ async def test_complete_realtor_onboarding_stores_credentials_and_purchases_phon
 
 async def test_provision_realtor_phone_number_is_best_effort_on_telnyx_error() -> None:
     db = _db()
+    db.execute.side_effect = [_ExecuteResult(None)]
     workspace_id = uuid.uuid4()
     available_number = PhoneNumberInfo(id="", phone_number="+15555550123")
     telnyx = _MockTelnyxService([available_number], raises_on_purchase=True)
@@ -291,6 +294,7 @@ async def test_launch_realtor_campaign_imports_contacts_and_starts_campaign() ->
     assert result.phone_number_used == phone.phone_number
     assert result.agent_id == agent.id
     assert result.started_at == datetime(2026, 6, 1, 14, 30, tzinfo=UTC)
+    assert result.workspace_id == workspace.id
     campaigns = [
         call.args[0] for call in db.add.call_args_list if isinstance(call.args[0], Campaign)
     ]
@@ -307,7 +311,12 @@ async def test_launch_realtor_campaign_imports_contacts_and_starts_campaign() ->
 async def test_launch_realtor_campaign_rejects_empty_import() -> None:
     db = _db()
     membership, workspace = _workspace(user_id=7)
-    db.execute.side_effect = [_ExecuteResult(membership), _ExecuteResult(workspace)]
+    db.execute.side_effect = [
+        _ExecuteResult(membership),
+        _ExecuteResult(workspace),
+        _ExecuteResult(_agent(workspace.id)),
+        _ExecuteResult(_phone(workspace.id)),
+    ]
     import_result = ImportResult(
         total_rows=3,
         successful=0,
@@ -332,3 +341,157 @@ async def test_launch_realtor_campaign_rejects_empty_import() -> None:
 
     assert "No contacts were imported from the CSV" in exc_info.value.message
     db.commit.assert_not_awaited()
+
+
+# --- Explicit workspace handoff (RF-005) -----------------------------------
+
+
+def _compiled(statement: Any) -> str:
+    return str(statement.compile(compile_kwargs={"literal_binds": True})).lower()
+
+
+async def test_onboarding_explicit_workspace_never_resolves_default() -> None:
+    """A second, selected workspace gets the agent, credentials, and phone."""
+    db = _db()
+    default_membership, default_workspace = _workspace(user_id=7)
+    selected_id = uuid.uuid4()
+    assert selected_id != default_workspace.id
+    db.execute.side_effect = [
+        _ExecuteResult(None),  # realtor agent lookup
+        _ExecuteResult(None),  # Cal.com integration lookup
+        _ExecuteResult(None),  # FUB integration lookup
+        _ExecuteResult(None),  # existing SMS number lookup
+    ]
+    purchased = PhoneNumberInfo(id="telnyx-9", phone_number="+15555550999")
+    telnyx = _MockTelnyxService([purchased], purchased)
+
+    result = await complete_realtor_onboarding(
+        db=db,
+        current_user_id=7,
+        workspace_id=selected_id,
+        request=RealtorOnboardingInput(
+            calcom_api_key="cal_key",
+            calcom_event_type_id=55,
+            fub_api_key="fub_key",
+        ),
+        telnyx_api_key="test-key",
+        telnyx_service_factory=lambda api_key: telnyx,
+    )
+
+    assert result.workspace_id == selected_id
+    statements = [_compiled(call.args[0]) for call in db.execute.await_args_list]
+    assert not any("workspace_memberships" in sql for sql in statements)
+    assert all(selected_id.hex in sql for sql in statements)
+    added = [call.args[0] for call in db.add.call_args_list]
+    assert {obj.workspace_id for obj in added} == {selected_id}
+    assert {type(obj) for obj in added} >= {Agent, PhoneNumber}
+
+
+async def test_onboarding_retry_reuses_agent_and_phone_without_purchase() -> None:
+    """Retrying after a partial setup must not duplicate the agent or buy a number."""
+    db = _db()
+    selected_id = uuid.uuid4()
+    agent = _agent(selected_id)
+    agent.calcom_event_type_id = 1
+    phone = _phone(selected_id)
+    db.execute.side_effect = [
+        _ExecuteResult(agent),  # existing realtor agent
+        _ExecuteResult(None),  # Cal.com integration (upsert creates)
+        _ExecuteResult(phone),  # existing SMS number
+    ]
+    telnyx = _MockTelnyxService([], None)
+
+    result = await complete_realtor_onboarding(
+        db=db,
+        current_user_id=7,
+        workspace_id=selected_id,
+        request=RealtorOnboardingInput(calcom_api_key="cal_key", calcom_event_type_id=42),
+        telnyx_api_key="test-key",
+        telnyx_service_factory=lambda api_key: telnyx,
+    )
+
+    assert result.agent_id == agent.id
+    assert result.phone_number_id == phone.id
+    assert result.phone_number == phone.phone_number
+    assert agent.calcom_event_type_id == 42
+    assert telnyx.search_calls == []
+    assert telnyx.purchase_calls == []
+    added_types = [type(call.args[0]) for call in db.add.call_args_list]
+    assert Agent not in added_types
+    assert PhoneNumber not in added_types
+    db.commit.assert_awaited_once()
+
+
+async def test_campaign_launch_targets_selected_workspace_not_default() -> None:
+    db = _db()
+    selected_id = uuid.uuid4()
+    agent = _agent(selected_id)
+    phone = _phone(selected_id)
+    db.execute.side_effect = [_ExecuteResult(agent), _ExecuteResult(phone)]
+    import_service = MagicMock()
+    import_service.import_csv = AsyncMock(
+        return_value=ImportResult(
+            total_rows=1,
+            successful=1,
+            failed=0,
+            skipped_duplicates=0,
+            created_contacts=[_contact(selected_id, 101)],
+        )
+    )
+    drip_bootstrapper = AsyncMock()
+
+    result = await launch_realtor_campaign_from_csv(
+        db=db,
+        current_user_id=7,
+        workspace_id=selected_id,
+        request=RealtorCampaignInput(file_content=b"csv", skip_duplicates=True),
+        import_service_factory=lambda session: import_service,
+        drip_bootstrapper=drip_bootstrapper,
+    )
+
+    assert result.workspace_id == selected_id
+    assert import_service.import_csv.await_args.kwargs["workspace_id"] == selected_id
+    drip_bootstrapper.assert_awaited_once_with(db, selected_id, [101])
+    statements = [_compiled(call.args[0]) for call in db.execute.await_args_list]
+    assert not any("workspace_memberships" in sql for sql in statements)
+    campaigns = [
+        call.args[0] for call in db.add.call_args_list if isinstance(call.args[0], Campaign)
+    ]
+    assert [c.workspace_id for c in campaigns] == [selected_id]
+
+
+async def test_campaign_launch_without_phone_fails_before_importing_contacts() -> None:
+    """No SMS number must fail before contacts commit so a retry still launches."""
+    db = _db()
+    selected_id = uuid.uuid4()
+    db.execute.side_effect = [_ExecuteResult(_agent(selected_id)), _ExecuteResult(None)]
+    import_service = MagicMock()
+    import_service.import_csv = AsyncMock()
+
+    with pytest.raises(OnboardingValidationError) as exc_info:
+        await launch_realtor_campaign_from_csv(
+            db=db,
+            current_user_id=7,
+            workspace_id=selected_id,
+            request=RealtorCampaignInput(file_content=b"csv", skip_duplicates=True),
+            import_service_factory=lambda session: import_service,
+            drip_bootstrapper=AsyncMock(),
+        )
+
+    assert "SMS-enabled phone number" in exc_info.value.message
+    import_service.import_csv.assert_not_awaited()
+    db.commit.assert_not_awaited()
+
+
+async def test_legacy_default_resolution_tolerates_multiple_default_memberships() -> None:
+    """Legacy callers must not 500 when several memberships are flagged default."""
+    db = _db()
+    membership, workspace = _workspace(user_id=7)
+    db.execute.side_effect = [_ExecuteResult(membership), _ExecuteResult(workspace)]
+
+    resolved = await get_user_workspace(7, db)
+
+    assert resolved is workspace
+    default_query = _compiled(db.execute.await_args_list[0].args[0])
+    assert "order by workspace_memberships.created_at asc" in default_query
+    assert "limit 1" in default_query

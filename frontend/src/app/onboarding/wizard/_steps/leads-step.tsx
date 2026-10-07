@@ -20,15 +20,18 @@ import { Label } from "@/components/ui/label";
 import { importFubContacts } from "@/lib/api/realtor";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 import { formatNumber } from "@/lib/utils/number";
-import { useWorkspace } from "@/providers/workspace-provider";
 
 import type { OnboardingFormValues } from "../_state";
 
 import { useOnboardingExtras } from "./onboarding-context";
 
-export function LeadsStep() {
+export interface LeadsStepProps {
+  /** The workspace this guided setup targets; never re-resolved here. */
+  workspaceId: string | null;
+}
+
+export function LeadsStep({ workspaceId }: LeadsStepProps) {
   const form = useFormContext<OnboardingFormValues>();
-  const { currentWorkspaceId } = useWorkspace();
   const {
     csvFile,
     csvRowCount,
@@ -58,13 +61,20 @@ export function LeadsStep() {
   );
 
   const handleFubImport = useCallback(async () => {
-    if (!currentWorkspaceId) {
+    if (!workspaceId) {
       toast.error("No workspace found. Please log in again.");
       return;
     }
     setFubImporting(true);
     try {
-      const result = await importFubContacts(currentWorkspaceId, true);
+      // Pass the key from the CRM step so it's stored on the target workspace
+      // before importing; the onboard call runs later, at launch.
+      const result = await importFubContacts(
+        workspaceId,
+        true,
+        undefined,
+        form.getValues("fub_api_key").trim() || undefined
+      );
       setFubImportCount(result.imported);
       setLeadsError(null);
       toast.success(
@@ -75,7 +85,7 @@ export function LeadsStep() {
     } finally {
       setFubImporting(false);
     }
-  }, [currentWorkspaceId, setFubImportCount, setLeadsError]);
+  }, [workspaceId, form, setFubImportCount, setLeadsError]);
 
   const areaCode = form.watch("area_code");
 

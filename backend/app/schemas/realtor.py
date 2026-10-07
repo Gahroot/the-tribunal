@@ -55,6 +55,7 @@ class RealtorCampaignResponse(BaseModel):
     phone_number_used: str
     agent_id: uuid.UUID
     started_at: datetime | None
+    workspace_id: uuid.UUID = Field(..., description="Workspace the campaign was launched in")
 
 
 # ---------------------------------------------------------------------------

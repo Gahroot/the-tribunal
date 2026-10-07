@@ -6,6 +6,8 @@ export interface RealtorOnboardRequest {
   calcom_api_key: string;
   calcom_event_type_id: number;
   area_code?: string;
+  /** Stored on the target workspace so later FUB syncs use its credentials. */
+  fub_api_key?: string;
 }
 
 export interface RealtorOnboardResponse {
@@ -29,6 +31,8 @@ export interface RealtorCampaignResponse {
   phone_number_used: string;
   agent_id: string;
   started_at: string | null;
+  /** Workspace the campaign was launched in (echoes the explicit target). */
+  workspace_id: string;
 }
 
 export interface VerifyCalcomResponse {
@@ -81,21 +85,27 @@ export function getFubContacts(
   limit = 100,
   offset = 0
 ): Promise<FubContactsResponse> {
-  return apiGet<FubContactsResponse>("/api/v1/realtor/fub-contacts", {
-    params: { workspace_id: workspaceId, limit, offset },
-  });
+  return apiGet<FubContactsResponse>(
+    `/api/v1/workspaces/${workspaceId}/realtor/fub-contacts`,
+    { params: { limit, offset } }
+  );
 }
 
 export function importFubContacts(
   workspaceId: string,
   importAll: boolean,
-  contactIds?: number[]
+  contactIds?: number[],
+  /** When set, stored on this workspace before importing (guided setup). */
+  apiKey?: string
 ): Promise<ImportFubContactsResponse> {
-  return apiPost<ImportFubContactsResponse>("/api/v1/realtor/import-fub-contacts", {
-    workspace_id: workspaceId,
-    import_all: importAll,
-    contact_ids: contactIds,
-  });
+  return apiPost<ImportFubContactsResponse>(
+    `/api/v1/workspaces/${workspaceId}/realtor/import-fub-contacts`,
+    {
+      import_all: importAll,
+      contact_ids: contactIds,
+      api_key: apiKey || undefined,
+    }
+  );
 }
 
 export function getRealtorStats(workspaceId: string): Promise<RealtorStats> {
@@ -109,17 +119,25 @@ export function verifyCalcom(apiKey: string): Promise<VerifyCalcomResponse> {
 }
 
 export function parseCalcomUrl(
+  workspaceId: string,
   url: string,
   apiKey?: string
 ): Promise<ParseCalcomUrlResponse> {
-  return apiPost<ParseCalcomUrlResponse>("/api/v1/realtor/parse-calcom-url", {
-    url,
-    api_key: apiKey,
-  });
+  return apiPost<ParseCalcomUrlResponse>(
+    `/api/v1/workspaces/${workspaceId}/realtor/parse-calcom-url`,
+    { url, api_key: apiKey }
+  );
 }
 
-export function onboard(data: RealtorOnboardRequest): Promise<RealtorOnboardResponse> {
-  return apiPost<RealtorOnboardResponse>("/api/v1/realtor/onboard", data);
+/** Idempotent: retries reuse the workspace's realtor agent and SMS number. */
+export function onboard(
+  workspaceId: string,
+  data: RealtorOnboardRequest
+): Promise<RealtorOnboardResponse> {
+  return apiPost<RealtorOnboardResponse>(
+    `/api/v1/workspaces/${workspaceId}/realtor/onboard`,
+    data
+  );
 }
 
 export function createCampaignFromCsv(

@@ -4758,6 +4758,36 @@
         "title": "Body_create_realtor_campaign_api_v1_realtor_campaigns_post",
         "type": "object"
       },
+      "Body_create_realtor_campaign_workspace_api_v1_workspaces__workspace_id__realtor_campaigns_post": {
+        "properties": {
+          "campaign_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Name"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "skip_duplicates": {
+            "default": true,
+            "title": "Skip Duplicates",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_create_realtor_campaign_workspace_api_v1_workspaces__workspace_id__realtor_campaigns_post",
+        "type": "object"
+      },
       "Body_import_contacts_csv_api_v1_workspaces__workspace_id__contacts_import_post": {
         "properties": {
           "column_mapping": {
@@ -4829,6 +4859,43 @@
           "workspace_id"
         ],
         "title": "Body_import_fub_contacts_api_v1_realtor_import_fub_contacts_post",
+        "type": "object"
+      },
+      "Body_import_fub_contacts_workspace_api_v1_workspaces__workspace_id__realtor_import_fub_contacts_post": {
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          },
+          "contact_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Ids"
+          },
+          "import_all": {
+            "default": false,
+            "title": "Import All",
+            "type": "boolean"
+          }
+        },
+        "title": "Body_import_fub_contacts_workspace_api_v1_workspaces__workspace_id__realtor_import_fub_contacts_post",
         "type": "object"
       },
       "Body_login_api_v1_auth_login_post": {
@@ -25875,6 +25942,12 @@
               }
             ],
             "title": "Started At"
+          },
+          "workspace_id": {
+            "description": "Workspace the campaign was launched in",
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
           }
         },
         "required": [
@@ -25886,7 +25959,8 @@
           "contacts_failed",
           "phone_number_used",
           "agent_id",
-          "started_at"
+          "started_at",
+          "workspace_id"
         ],
         "title": "RealtorCampaignResponse",
         "type": "object"
@@ -33443,7 +33517,8 @@
     },
     "/api/v1/realtor/campaigns": {
       "post": {
-        "description": "Upload a CSV and launch a realtor lead-reactivation campaign.",
+        "deprecated": true,
+        "description": "Legacy: launch a realtor campaign in the caller's default workspace.\n\nUse ``POST /workspaces/{workspace_id}/realtor/campaigns`` to target a workspace.",
         "operationId": "create_realtor_campaign_api_v1_realtor_campaigns_post",
         "requestBody": {
           "content": {
@@ -33490,19 +33565,10 @@
     },
     "/api/v1/realtor/fub-contacts": {
       "get": {
-        "description": "Fetch contacts from Follow Up Boss using stored credentials.",
+        "deprecated": true,
+        "description": "Legacy: fetch FUB contacts for the ``workspace_id`` query parameter.",
         "operationId": "get_fub_contacts_api_v1_realtor_fub_contacts_get",
         "parameters": [
-          {
-            "in": "query",
-            "name": "workspace_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Workspace Id",
-              "type": "string"
-            }
-          },
           {
             "in": "query",
             "name": "limit",
@@ -33524,6 +33590,16 @@
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
             }
           }
         ],
@@ -33562,7 +33638,8 @@
     },
     "/api/v1/realtor/import-fub-contacts": {
       "post": {
-        "description": "Import contacts from Follow Up Boss into the CRM.",
+        "deprecated": true,
+        "description": "Legacy: import FUB contacts into the body ``workspace_id``.\n\nMembership is enforced with the same check as workspace-scoped routes.",
         "operationId": "import_fub_contacts_api_v1_realtor_import_fub_contacts_post",
         "requestBody": {
           "content": {
@@ -33609,7 +33686,8 @@
     },
     "/api/v1/realtor/onboard": {
       "post": {
-        "description": "Complete realtor onboarding in a single call.",
+        "deprecated": true,
+        "description": "Legacy: onboard the caller's default workspace.\n\nUse ``POST /workspaces/{workspace_id}/realtor/onboard`` to target a workspace.",
         "operationId": "realtor_onboard_api_v1_realtor_onboard_post",
         "requestBody": {
           "content": {
@@ -33656,7 +33734,8 @@
     },
     "/api/v1/realtor/parse-calcom-url": {
       "post": {
-        "description": "Parse a Cal.com booking URL and resolve the event_type_id.",
+        "deprecated": true,
+        "description": "Legacy: parse a Cal.com booking URL using the default workspace's key.",
         "operationId": "parse_calcom_url_api_v1_realtor_parse_calcom_url_post",
         "requestBody": {
           "content": {
@@ -54300,6 +54379,313 @@
         "summary": "Reveal Phone",
         "tags": [
           "Prospects"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/realtor/campaigns": {
+      "post": {
+        "description": "Upload a CSV and launch a realtor campaign in an explicitly selected workspace.",
+        "operationId": "create_realtor_campaign_workspace_api_v1_workspaces__workspace_id__realtor_campaigns_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_realtor_campaign_workspace_api_v1_workspaces__workspace_id__realtor_campaigns_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RealtorCampaignResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Create Realtor Campaign Workspace",
+        "tags": [
+          "Realtor Onboarding"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/realtor/fub-contacts": {
+      "get": {
+        "description": "Fetch Follow Up Boss contacts using the selected workspace's credentials.",
+        "operationId": "get_fub_contacts_workspace_api_v1_workspaces__workspace_id__realtor_fub_contacts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FUBPeopleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Fub Contacts Workspace",
+        "tags": [
+          "Follow Up Boss"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/realtor/import-fub-contacts": {
+      "post": {
+        "description": "Import Follow Up Boss contacts into the selected workspace.\n\nWhen ``api_key`` is supplied (guided setup), it is stored on this workspace\nfirst so the import and later syncs use the selected workspace's credentials.",
+        "operationId": "import_fub_contacts_workspace_api_v1_workspaces__workspace_id__realtor_import_fub_contacts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_fub_contacts_workspace_api_v1_workspaces__workspace_id__realtor_import_fub_contacts_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FUBImportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Import Fub Contacts Workspace",
+        "tags": [
+          "Follow Up Boss"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/realtor/onboard": {
+      "post": {
+        "description": "Complete realtor onboarding for an explicitly selected workspace.\n\nIdempotent: retrying reuses the workspace's realtor agent and SMS number.",
+        "operationId": "realtor_onboard_workspace_api_v1_workspaces__workspace_id__realtor_onboard_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RealtorOnboardRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RealtorOnboardResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Realtor Onboard Workspace",
+        "tags": [
+          "Realtor Onboarding"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/realtor/parse-calcom-url": {
+      "post": {
+        "description": "Resolve a Cal.com booking URL using the selected workspace's credentials.\n\nAn in-form ``api_key`` wins because it is the key onboarding will store for\nthis workspace; the workspace's saved key is the fallback.",
+        "operationId": "parse_calcom_url_workspace_api_v1_workspaces__workspace_id__realtor_parse_calcom_url_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ParseCalcomUrlRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParseCalcomUrlResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Parse Calcom Url Workspace",
+        "tags": [
+          "Realtor Onboarding"
         ]
       }
     },

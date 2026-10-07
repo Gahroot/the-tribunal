@@ -50,8 +50,22 @@ const STEPS = [
 function OnboardingFlow() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { currentWorkspaceId } = useWorkspace();
+  const { currentWorkspaceId, workspaces } = useWorkspace();
   const extras = useOnboardingExtras();
+
+  // Pin the workspace selected when guided setup started. Every call below
+  // targets it explicitly, so agent, credentials, phone, leads and campaign
+  // all land in the same workspace even if the selection changes elsewhere
+  // mid-flow (finding RF-005).
+  const [targetWorkspaceId, setTargetWorkspaceId] = useState<string | null>(
+    currentWorkspaceId
+  );
+  if (targetWorkspaceId === null && currentWorkspaceId) {
+    setTargetWorkspaceId(currentWorkspaceId);
+  }
+  const targetWorkspaceName =
+    workspaces?.find((w) => w.workspace.id === targetWorkspaceId)?.workspace
+      .name ?? null;
 
   const form = useForm<OnboardingFormValues>({
     resolver: zodResolver(onboardingSchema),
@@ -64,9 +78,9 @@ function OnboardingFlow() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [launchSummary, setLaunchSummary] =
     useState<OnboardingLaunchSummary | null>(null);
-  // Onboarding (agent + credentials + best-effort phone purchase) is idempotent
-  // only on the client side via this ref, so a retry after the no-phone warning
-  // doesn't create a second agent.
+  // Skip re-running onboarding on a retry after the no-phone warning. The
+  // backend is also idempotent per workspace (it reuses the realtor agent and
+  // an existing SMS number), so a retry after a partial failure is safe.
   const onboardedRef = useRef(false);
   const phoneProvisionedRef = useRef(false);
   const [showPhoneWarning, setShowPhoneWarning] = useState(false);
@@ -133,7 +147,8 @@ function OnboardingFlow() {
   }, [currentStepIndex]);
 
   const handleLaunch = useCallback(async () => {
-    if (!currentWorkspaceId) {
+    const workspaceId = targetWorkspaceId;
+    if (!workspaceId) {
       toast.error("No workspace found. Please log in again.");
       return;
     }
@@ -147,14 +162,16 @@ function OnboardingFlow() {
     try {
       if (!onboardedRef.current) {
         const { event_type_id } = await parseCalcomUrl(
+          workspaceId,
           values.calcom_booking_url,
           values.calcom_api_key
         );
 
-        const onboardResult = await onboard({
+        const onboardResult = await onboard(workspaceId, {
           calcom_api_key: values.calcom_api_key,
           calcom_event_type_id: event_type_id,
           area_code: values.area_code || undefined,
+          fub_api_key: values.fub_api_key.trim() || undefined,
         });
         onboardedRef.current = true;
         phoneProvisionedRef.current = onboardResult.phone_provisioned;
@@ -163,7 +180,7 @@ function OnboardingFlow() {
         // setup probe immediately — otherwise the cold-start card/nav linger on
         // the cached "zero agents" result (finding RF-002).
         await queryClient.invalidateQueries({
-          queryKey: queryKeys.agents.all(currentWorkspaceId),
+          queryKey: queryKeys.agents.all(workspaceId),
         });
       }
 
@@ -186,7 +203,7 @@ function OnboardingFlow() {
       let summary: OnboardingLaunchSummary;
       if (extras.csvFile) {
         const result = await createCampaignFromCsv(
-          currentWorkspaceId,
+          workspaceId,
           extras.csvFile,
           {
             skipDuplicates: true,
@@ -199,6 +216,7 @@ function OnboardingFlow() {
           skipped: result.contacts_skipped,
           failed: result.contacts_failed,
           estimated: extras.csvRowCount,
+          workspaceName: targetWorkspaceName,
         };
       } else {
         summary = {
@@ -207,6 +225,7 @@ function OnboardingFlow() {
           skipped: 0,
           failed: 0,
           estimated: extras.fubImportCount,
+          workspaceName: targetWorkspaceName,
         };
       }
 
@@ -246,7 +265,8 @@ function OnboardingFlow() {
       setIsSubmitting(false);
     }
   }, [
-    currentWorkspaceId,
+    targetWorkspaceId,
+    targetWorkspaceName,
     extras.csvFile,
     extras.csvRowCount,
     extras.fubImportCount,
@@ -298,9 +318,14 @@ function OnboardingFlow() {
           >
             {currentStepId === "fub" && <FubStep onSkip={goNext} />}
             {currentStepId === "calcom" && <CalcomStep />}
-            {currentStepId === "leads" && <LeadsStep />}
+            {currentStepId === "leads" && (
+              <LeadsStep workspaceId={targetWorkspaceId} />
+            )}
             {currentStepId === "review" && (
-              <ReviewStep showPhoneWarning={showPhoneWarning} />
+              <ReviewStep
+                showPhoneWarning={showPhoneWarning}
+                workspaceName={targetWorkspaceName}
+              />
             )}
           </WizardContainer>
         </div>

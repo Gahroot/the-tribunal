@@ -13,6 +13,8 @@ export interface OnboardingLaunchSummary {
   failed: number;
   /** Pre-launch estimate from the leads step, used to flag a large divergence. */
   estimated: number | null;
+  /** Name of the workspace the campaign launched in. */
+  workspaceName?: string | null;
 }
 
 interface LaunchResultViewProps {
@@ -24,7 +26,8 @@ export function LaunchResultView({
   summary,
   onGoToDashboard,
 }: LaunchResultViewProps) {
-  const { source, imported, skipped, failed, estimated } = summary;
+  const { source, imported, skipped, failed, estimated, workspaceName } =
+    summary;
   const hasFailures = failed > 0;
   const importedNone = imported === 0;
 
@@ -64,6 +67,14 @@ export function LaunchResultView({
                   imported !== 1 ? "s" : ""
                 } are now being contacted.`}
           </p>
+          {workspaceName && (
+            <p className="text-sm text-muted-foreground mt-1">
+              Workspace:{" "}
+              <span className="font-medium text-foreground">
+                {workspaceName}
+              </span>
+            </p>
+          )}
         </div>
       </div>
 

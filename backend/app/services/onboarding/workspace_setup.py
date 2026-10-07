@@ -79,6 +79,7 @@ class RealtorCampaignResult:
     phone_number_used: str
     agent_id: uuid.UUID
     started_at: datetime | None
+    workspace_id: uuid.UUID
 
 
 @dataclass(slots=True, frozen=True)
@@ -95,12 +96,20 @@ DripBootstrapper = Callable[[AsyncSession, uuid.UUID, list[int]], Awaitable[None
 
 
 async def get_user_workspace(current_user_id: int, db: AsyncSession) -> Workspace:
-    """Resolve a user's default workspace, falling back to their first membership."""
+    """Resolve a user's default workspace, falling back to their first membership.
+
+    Legacy-only: workspace-targeted routes pass an explicit, authorized
+    workspace instead. Several memberships can carry ``is_default``, so pick
+    the oldest deterministically rather than failing on multiple rows.
+    """
     result = await db.execute(
-        select(WorkspaceMembership).where(
+        select(WorkspaceMembership)
+        .where(
             WorkspaceMembership.user_id == current_user_id,
             WorkspaceMembership.is_default.is_(True),
         )
+        .order_by(WorkspaceMembership.created_at.asc())
+        .limit(1)
     )
     membership = result.scalar_one_or_none()
 
@@ -130,25 +139,48 @@ async def get_user_workspace(current_user_id: int, db: AsyncSession) -> Workspac
     return workspace
 
 
+async def _resolve_target_workspace_id(
+    *,
+    db: AsyncSession,
+    current_user_id: int,
+    workspace_id: uuid.UUID | None,
+) -> uuid.UUID:
+    """Return the explicit workspace, or the user's default for legacy callers.
+
+    An explicit ``workspace_id`` must already be authorized by a workspace-aware
+    route dependency (``get_workspace``); it is never swapped for the default.
+    """
+    if workspace_id is not None:
+        return workspace_id
+    workspace = await get_user_workspace(current_user_id, db)
+    return workspace.id
+
+
 async def complete_realtor_onboarding(
     *,
     db: AsyncSession,
     current_user_id: int,
     request: RealtorOnboardingInput,
+    workspace_id: uuid.UUID | None = None,
     telnyx_api_key: str | None = None,
     telnyx_service_factory: TelnyxServiceFactory = TelnyxSMSService,
 ) -> RealtorOnboardingResult:
-    """Create the realtor agent, store credentials, and best-effort provision SMS."""
-    workspace = await get_user_workspace(current_user_id, db)
-    workspace_id = workspace.id
+    """Create the realtor agent, store credentials, and best-effort provision SMS.
 
-    agent = await create_realtor_agent(
+    Safe to retry: an existing realtor agent and active SMS number in the
+    target workspace are reused instead of duplicated or re-purchased.
+    """
+    workspace_id = await _resolve_target_workspace_id(
+        db=db, current_user_id=current_user_id, workspace_id=workspace_id
+    )
+
+    agent, created = await get_or_create_realtor_agent(
         db=db,
         workspace_id=workspace_id,
         calcom_event_type_id=request.calcom_event_type_id,
     )
     logger.info(
-        "realtor_agent_created",
+        "realtor_agent_created" if created else "realtor_agent_reused",
         workspace_id=str(workspace_id),
         agent_id=str(agent.id),
         user_id=current_user_id,
@@ -188,6 +220,32 @@ async def complete_realtor_onboarding(
     )
 
 
+async def get_or_create_realtor_agent(
+    *,
+    db: AsyncSession,
+    workspace_id: uuid.UUID,
+    calcom_event_type_id: int,
+) -> tuple[Agent, bool]:
+    """Reuse the workspace's realtor template agent, creating it when absent."""
+    result = await db.execute(
+        apply_workspace_scope(select(Agent), Agent, workspace_id)
+        .where(Agent.name == REALTOR_AGENT_NAME)
+        .order_by(Agent.created_at.asc())
+        .limit(1)
+    )
+    existing = result.scalar_one_or_none()
+    if existing is not None:
+        existing.calcom_event_type_id = calcom_event_type_id
+        return existing, False
+
+    agent = await create_realtor_agent(
+        db=db,
+        workspace_id=workspace_id,
+        calcom_event_type_id=calcom_event_type_id,
+    )
+    return agent, True
+
+
 async def create_realtor_agent(
     *,
     db: AsyncSession,
@@ -215,7 +273,18 @@ async def provision_realtor_phone_number(
     telnyx_api_key: str | None,
     telnyx_service_factory: TelnyxServiceFactory = TelnyxSMSService,
 ) -> PhoneProvisioningResult:
-    """Best-effort purchase and persist a Telnyx phone number for onboarding."""
+    """Best-effort purchase and persist a Telnyx phone number for onboarding.
+
+    Reuses an existing active SMS number in the workspace so retries never buy
+    a second number.
+    """
+    existing = await find_realtor_sms_phone_number(db=db, workspace_id=workspace_id)
+    if existing is not None:
+        return PhoneProvisioningResult(
+            phone_number_id=existing.id,
+            phone_number=existing.phone_number,
+        )
+
     if not telnyx_api_key:
         logger.warning(
             "telnyx_not_configured_skipping_phone_purchase",
@@ -281,13 +350,21 @@ async def launch_realtor_campaign_from_csv(
     db: AsyncSession,
     current_user_id: int,
     request: RealtorCampaignInput,
+    workspace_id: uuid.UUID | None = None,
     import_service_factory: ContactImportServiceFactory = ContactImportService,
     drip_bootstrapper: DripBootstrapper = auto_create_drip_for_imports,
     now: Callable[[], datetime] | None = None,
 ) -> RealtorCampaignResult:
     """Import contacts from CSV, create a campaign, enroll contacts, and start it."""
-    workspace = await get_user_workspace(current_user_id, db)
-    workspace_id = workspace.id
+    workspace_id = await _resolve_target_workspace_id(
+        db=db, current_user_id=current_user_id, workspace_id=workspace_id
+    )
+
+    # Check the agent and SMS number before importing: the import commits
+    # contacts, so failing afterwards would make a retry (skip_duplicates)
+    # see zero new contacts and never launch the campaign.
+    agent = await get_realtor_agent(db=db, workspace_id=workspace_id)
+    phone_record = await get_realtor_sms_phone_number(db=db, workspace_id=workspace_id)
 
     import_result = await import_realtor_contacts(
         db=db,
@@ -297,8 +374,6 @@ async def launch_realtor_campaign_from_csv(
         import_service_factory=import_service_factory,
     )
 
-    agent = await get_realtor_agent(db=db, workspace_id=workspace_id)
-    phone_record = await get_realtor_sms_phone_number(db=db, workspace_id=workspace_id)
     clock = now or (lambda: datetime.now(UTC))
     campaign = await create_realtor_campaign(
         db=db,
@@ -337,6 +412,7 @@ async def launch_realtor_campaign_from_csv(
         phone_number_used=phone_record.phone_number,
         agent_id=agent.id,
         started_at=campaign.started_at,
+        workspace_id=workspace_id,
     )
 
 
@@ -398,8 +474,10 @@ async def get_realtor_agent(*, db: AsyncSession, workspace_id: uuid.UUID) -> Age
     return agent
 
 
-async def get_realtor_sms_phone_number(*, db: AsyncSession, workspace_id: uuid.UUID) -> PhoneNumber:
-    """Return the first active SMS-enabled phone number in the workspace."""
+async def find_realtor_sms_phone_number(
+    *, db: AsyncSession, workspace_id: uuid.UUID
+) -> PhoneNumber | None:
+    """Return the first active SMS-enabled phone number in the workspace, if any."""
     phone_result = await db.execute(
         apply_workspace_scope(select(PhoneNumber), PhoneNumber, workspace_id)
         .where(
@@ -409,7 +487,12 @@ async def get_realtor_sms_phone_number(*, db: AsyncSession, workspace_id: uuid.U
         .order_by(PhoneNumber.created_at.asc())
         .limit(1)
     )
-    phone_record = phone_result.scalar_one_or_none()
+    return phone_result.scalar_one_or_none()
+
+
+async def get_realtor_sms_phone_number(*, db: AsyncSession, workspace_id: uuid.UUID) -> PhoneNumber:
+    """Return the first active SMS-enabled phone number in the workspace."""
+    phone_record = await find_realtor_sms_phone_number(db=db, workspace_id=workspace_id)
 
     if phone_record is None:
         raise OnboardingValidationError(

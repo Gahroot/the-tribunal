@@ -15,9 +15,14 @@ import { useOnboardingExtras } from "./onboarding-context";
 export interface ReviewStepProps {
   /** Set after launch when Telnyx auto-purchase produced no SMS number. */
   showPhoneWarning?: boolean;
+  /** Name of the workspace this setup targets, shown so the target is explicit. */
+  workspaceName?: string | null;
 }
 
-export function ReviewStep({ showPhoneWarning = false }: ReviewStepProps) {
+export function ReviewStep({
+  showPhoneWarning = false,
+  workspaceName = null,
+}: ReviewStepProps) {
   const form = useFormContext<OnboardingFormValues>();
   const {
     fubConnected,
@@ -41,6 +46,12 @@ export function ReviewStep({ showPhoneWarning = false }: ReviewStepProps) {
         <p className="text-muted-foreground mt-1">
           Review your setup and launch your lead reactivation campaign.
         </p>
+        {workspaceName && (
+          <p className="text-sm text-muted-foreground mt-2">
+            Setting up workspace{" "}
+            <span className="font-medium text-foreground">{workspaceName}</span>
+          </p>
+        )}
       </div>
 
       {showPhoneWarning && (

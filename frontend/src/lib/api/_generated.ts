@@ -676,7 +676,10 @@ export interface paths {
         put?: never;
         /**
          * Create Realtor Campaign
-         * @description Upload a CSV and launch a realtor lead-reactivation campaign.
+         * @deprecated
+         * @description Legacy: launch a realtor campaign in the caller's default workspace.
+         *
+         *     Use ``POST /workspaces/{workspace_id}/realtor/campaigns`` to target a workspace.
          */
         post: operations["create_realtor_campaign_api_v1_realtor_campaigns_post"];
         delete?: never;
@@ -694,7 +697,8 @@ export interface paths {
         };
         /**
          * Get Fub Contacts
-         * @description Fetch contacts from Follow Up Boss using stored credentials.
+         * @deprecated
+         * @description Legacy: fetch FUB contacts for the ``workspace_id`` query parameter.
          */
         get: operations["get_fub_contacts_api_v1_realtor_fub_contacts_get"];
         put?: never;
@@ -716,7 +720,10 @@ export interface paths {
         put?: never;
         /**
          * Import Fub Contacts
-         * @description Import contacts from Follow Up Boss into the CRM.
+         * @deprecated
+         * @description Legacy: import FUB contacts into the body ``workspace_id``.
+         *
+         *     Membership is enforced with the same check as workspace-scoped routes.
          */
         post: operations["import_fub_contacts_api_v1_realtor_import_fub_contacts_post"];
         delete?: never;
@@ -736,7 +743,10 @@ export interface paths {
         put?: never;
         /**
          * Realtor Onboard
-         * @description Complete realtor onboarding in a single call.
+         * @deprecated
+         * @description Legacy: onboard the caller's default workspace.
+         *
+         *     Use ``POST /workspaces/{workspace_id}/realtor/onboard`` to target a workspace.
          */
         post: operations["realtor_onboard_api_v1_realtor_onboard_post"];
         delete?: never;
@@ -756,7 +766,8 @@ export interface paths {
         put?: never;
         /**
          * Parse Calcom Url
-         * @description Parse a Cal.com booking URL and resolve the event_type_id.
+         * @deprecated
+         * @description Legacy: parse a Cal.com booking URL using the default workspace's key.
          */
         post: operations["parse_calcom_url_api_v1_realtor_parse_calcom_url_post"];
         delete?: never;
@@ -5769,6 +5780,114 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/realtor/campaigns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Realtor Campaign Workspace
+         * @description Upload a CSV and launch a realtor campaign in an explicitly selected workspace.
+         */
+        post: operations["create_realtor_campaign_workspace_api_v1_workspaces__workspace_id__realtor_campaigns_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/realtor/fub-contacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Fub Contacts Workspace
+         * @description Fetch Follow Up Boss contacts using the selected workspace's credentials.
+         */
+        get: operations["get_fub_contacts_workspace_api_v1_workspaces__workspace_id__realtor_fub_contacts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/realtor/import-fub-contacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Fub Contacts Workspace
+         * @description Import Follow Up Boss contacts into the selected workspace.
+         *
+         *     When ``api_key`` is supplied (guided setup), it is stored on this workspace
+         *     first so the import and later syncs use the selected workspace's credentials.
+         */
+        post: operations["import_fub_contacts_workspace_api_v1_workspaces__workspace_id__realtor_import_fub_contacts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/realtor/onboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Realtor Onboard Workspace
+         * @description Complete realtor onboarding for an explicitly selected workspace.
+         *
+         *     Idempotent: retrying reuses the workspace's realtor agent and SMS number.
+         */
+        post: operations["realtor_onboard_workspace_api_v1_workspaces__workspace_id__realtor_onboard_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/realtor/parse-calcom-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Parse Calcom Url Workspace
+         * @description Resolve a Cal.com booking URL using the selected workspace's credentials.
+         *
+         *     An in-form ``api_key`` wins because it is the key onboarding will store for
+         *     this workspace; the workspace's saved key is the fallback.
+         */
+        post: operations["parse_calcom_url_workspace_api_v1_workspaces__workspace_id__realtor_parse_calcom_url_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/realtor/stats": {
         parameters: {
             query?: never;
@@ -8833,6 +8952,18 @@ export interface components {
              */
             skip_duplicates: boolean;
         };
+        /** Body_create_realtor_campaign_workspace_api_v1_workspaces__workspace_id__realtor_campaigns_post */
+        Body_create_realtor_campaign_workspace_api_v1_workspaces__workspace_id__realtor_campaigns_post: {
+            /** Campaign Name */
+            campaign_name?: string | null;
+            /** File */
+            file: string;
+            /**
+             * Skip Duplicates
+             * @default true
+             */
+            skip_duplicates: boolean;
+        };
         /** Body_import_contacts_csv_api_v1_workspaces__workspace_id__contacts_import_post */
         Body_import_contacts_csv_api_v1_workspaces__workspace_id__contacts_import_post: {
             /** Column Mapping */
@@ -8869,6 +9000,18 @@ export interface components {
              * Format: uuid
              */
             workspace_id: string;
+        };
+        /** Body_import_fub_contacts_workspace_api_v1_workspaces__workspace_id__realtor_import_fub_contacts_post */
+        Body_import_fub_contacts_workspace_api_v1_workspaces__workspace_id__realtor_import_fub_contacts_post: {
+            /** Api Key */
+            api_key?: string | null;
+            /** Contact Ids */
+            contact_ids?: number[] | null;
+            /**
+             * Import All
+             * @default false
+             */
+            import_all: boolean;
         };
         /** Body_login_api_v1_auth_login_post */
         Body_login_api_v1_auth_login_post: {
@@ -16639,6 +16782,12 @@ export interface components {
             phone_number_used: string;
             /** Started At */
             started_at: string | null;
+            /**
+             * Workspace Id
+             * Format: uuid
+             * @description Workspace the campaign was launched in
+             */
+            workspace_id: string;
         };
         /**
          * RealtorOnboardRequest
@@ -20069,9 +20218,9 @@ export interface operations {
     get_fub_contacts_api_v1_realtor_fub_contacts_get: {
         parameters: {
             query: {
-                workspace_id: string;
                 limit?: number;
                 offset?: number;
+                workspace_id: string;
             };
             header?: never;
             path?: never;
@@ -30712,6 +30861,180 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RevealPhoneResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_realtor_campaign_workspace_api_v1_workspaces__workspace_id__realtor_campaigns_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_create_realtor_campaign_workspace_api_v1_workspaces__workspace_id__realtor_campaigns_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RealtorCampaignResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_fub_contacts_workspace_api_v1_workspaces__workspace_id__realtor_fub_contacts_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FUBPeopleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_fub_contacts_workspace_api_v1_workspaces__workspace_id__realtor_import_fub_contacts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["Body_import_fub_contacts_workspace_api_v1_workspaces__workspace_id__realtor_import_fub_contacts_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FUBImportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    realtor_onboard_workspace_api_v1_workspaces__workspace_id__realtor_onboard_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RealtorOnboardRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RealtorOnboardResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    parse_calcom_url_workspace_api_v1_workspaces__workspace_id__realtor_parse_calcom_url_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ParseCalcomUrlRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParseCalcomUrlResponse"];
                 };
             };
             /** @description Validation Error */

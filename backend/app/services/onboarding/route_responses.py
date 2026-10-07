@@ -70,6 +70,7 @@ def realtor_campaign_response(result: RealtorCampaignResult) -> RealtorCampaignR
         phone_number_used=result.phone_number_used,
         agent_id=result.agent_id,
         started_at=result.started_at,
+        workspace_id=result.workspace_id,
     )
 
 

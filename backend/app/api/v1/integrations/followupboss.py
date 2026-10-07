@@ -6,16 +6,17 @@ These routes were previously colocated with the realtor onboarding flow in
 """
 
 import uuid
+from typing import Annotated
 
 import httpx
 import structlog
-from fastapi import APIRouter, Body, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import DB, CurrentUser
+from app.api.deps import DB, CurrentUser, get_workspace
 from app.models.contact import Contact
-from app.models.workspace import WorkspaceIntegration
+from app.models.workspace import Workspace, WorkspaceIntegration
 from app.schemas.followupboss import (
     FUBContact,
     FUBImportResponse,
@@ -27,6 +28,7 @@ from app.services.onboarding.credentials import store_followupboss_credentials
 from app.services.reactivation.drip_bootstrap import auto_create_drip_for_imports
 
 router = APIRouter()
+workspace_router = APIRouter()
 logger = structlog.get_logger()
 
 
@@ -146,15 +148,9 @@ async def verify_fub(
         await client.close()
 
 
-@router.get("/fub-contacts", response_model=FUBPeopleResponse)
-async def get_fub_contacts(
-    workspace_id: uuid.UUID,
-    current_user: CurrentUser,
-    db: DB,
-    limit: int = Query(default=100, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
+async def _list_fub_contacts(
+    workspace_id: uuid.UUID, db: AsyncSession, limit: int, offset: int
 ) -> FUBPeopleResponse:
-    """Fetch contacts from Follow Up Boss using stored credentials."""
     integration = await _get_fub_integration(workspace_id, db)
 
     client = FollowUpBossClient(integration.credentials["api_key"])
@@ -191,15 +187,13 @@ async def get_fub_contacts(
         await client.close()
 
 
-@router.post("/import-fub-contacts", response_model=FUBImportResponse)
-async def import_fub_contacts(
-    current_user: CurrentUser,
-    db: DB,
-    workspace_id: uuid.UUID = Body(...),
-    contact_ids: list[int] | None = Body(None),
-    import_all: bool = Body(False),
+async def _import_fub_contacts(
+    *,
+    workspace_id: uuid.UUID,
+    db: AsyncSession,
+    contact_ids: list[int] | None,
+    import_all: bool,
 ) -> FUBImportResponse:
-    """Import contacts from Follow Up Boss into the CRM."""
     integration = await _get_fub_integration(workspace_id, db)
 
     client = FollowUpBossClient(integration.credentials["api_key"])
@@ -229,3 +223,74 @@ async def import_fub_contacts(
         return FUBImportResponse(**counts)
     finally:
         await client.close()
+
+
+@workspace_router.get("/fub-contacts", response_model=FUBPeopleResponse)
+async def get_fub_contacts_workspace(
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+) -> FUBPeopleResponse:
+    """Fetch Follow Up Boss contacts using the selected workspace's credentials."""
+    return await _list_fub_contacts(workspace.id, db, limit, offset)
+
+
+@workspace_router.post("/import-fub-contacts", response_model=FUBImportResponse)
+async def import_fub_contacts_workspace(
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+    contact_ids: list[int] | None = Body(None),
+    import_all: bool = Body(False),
+    api_key: str | None = Body(None, min_length=1),
+) -> FUBImportResponse:
+    """Import Follow Up Boss contacts into the selected workspace.
+
+    When ``api_key`` is supplied (guided setup), it is stored on this workspace
+    first so the import and later syncs use the selected workspace's credentials.
+    """
+    if api_key:
+        await upsert_fub_integration(db, workspace.id, api_key)
+        await db.flush()
+    return await _import_fub_contacts(
+        workspace_id=workspace.id,
+        db=db,
+        contact_ids=contact_ids,
+        import_all=import_all,
+    )
+
+
+@router.get("/fub-contacts", response_model=FUBPeopleResponse, deprecated=True)
+async def get_fub_contacts(
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+) -> FUBPeopleResponse:
+    """Legacy: fetch FUB contacts for the ``workspace_id`` query parameter."""
+    return await _list_fub_contacts(workspace.id, db, limit, offset)
+
+
+@router.post("/import-fub-contacts", response_model=FUBImportResponse, deprecated=True)
+async def import_fub_contacts(
+    http_request: Request,
+    current_user: CurrentUser,
+    db: DB,
+    workspace_id: uuid.UUID = Body(...),
+    contact_ids: list[int] | None = Body(None),
+    import_all: bool = Body(False),
+) -> FUBImportResponse:
+    """Legacy: import FUB contacts into the body ``workspace_id``.
+
+    Membership is enforced with the same check as workspace-scoped routes.
+    """
+    workspace = await get_workspace(http_request, workspace_id, current_user, db)
+    return await _import_fub_contacts(
+        workspace_id=workspace.id,
+        db=db,
+        contact_ids=contact_ids,
+        import_all=import_all,
+    )

@@ -333,3 +333,8 @@ api_router.include_router(
     prefix="/workspaces/{workspace_id}/realtor",
     tags=["Realtor Onboarding"],
 )
+api_router.include_router(
+    fub_integration.workspace_router,
+    prefix="/workspaces/{workspace_id}/realtor",
+    tags=["Follow Up Boss"],
+)

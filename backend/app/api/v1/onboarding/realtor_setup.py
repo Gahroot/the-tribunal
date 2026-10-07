@@ -122,21 +122,18 @@ async def get_realtor_stats(
     )
 
 
-@router.post(
-    "/onboard",
-    response_model=RealtorOnboardResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def realtor_onboard(
+async def _run_realtor_onboarding(
+    *,
     request: RealtorOnboardRequest,
     current_user: CurrentUser,
     db: DB,
+    workspace_id: uuid.UUID | None,
 ) -> RealtorOnboardResponse:
-    """Complete realtor onboarding in a single call."""
     try:
         result = await complete_realtor_onboarding(
             db=db,
             current_user_id=current_user.id,
+            workspace_id=workspace_id,
             request=RealtorOnboardingInput(
                 calcom_api_key=request.calcom_api_key,
                 calcom_event_type_id=request.calcom_event_type_id,
@@ -149,19 +146,47 @@ async def realtor_onboard(
     return realtor_onboard_response(result)
 
 
-@router.post(
-    "/campaigns",
-    response_model=RealtorCampaignResponse,
+@workspace_router.post(
+    "/onboard",
+    response_model=RealtorOnboardResponse,
     status_code=status.HTTP_201_CREATED,
 )
-async def create_realtor_campaign(
+async def realtor_onboard_workspace(
+    request: RealtorOnboardRequest,
     current_user: CurrentUser,
     db: DB,
-    file: UploadFile,
-    skip_duplicates: bool = Form(default=True),
-    campaign_name: str | None = Form(default=None),
-) -> RealtorCampaignResponse:
-    """Upload a CSV and launch a realtor lead-reactivation campaign."""
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> RealtorOnboardResponse:
+    """Complete realtor onboarding for an explicitly selected workspace.
+
+    Idempotent: retrying reuses the workspace's realtor agent and SMS number.
+    """
+    return await _run_realtor_onboarding(
+        request=request, current_user=current_user, db=db, workspace_id=workspace.id
+    )
+
+
+@router.post(
+    "/onboard",
+    response_model=RealtorOnboardResponse,
+    status_code=status.HTTP_201_CREATED,
+    deprecated=True,
+)
+async def realtor_onboard(
+    request: RealtorOnboardRequest,
+    current_user: CurrentUser,
+    db: DB,
+) -> RealtorOnboardResponse:
+    """Legacy: onboard the caller's default workspace.
+
+    Use ``POST /workspaces/{workspace_id}/realtor/onboard`` to target a workspace.
+    """
+    return await _run_realtor_onboarding(
+        request=request, current_user=current_user, db=db, workspace_id=None
+    )
+
+
+async def _read_csv_upload(file: UploadFile) -> bytes:
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -169,17 +194,29 @@ async def create_realtor_campaign(
         )
 
     try:
-        content = await file.read()
+        return await file.read()
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to read file: {exc!s}",
         ) from exc
 
+
+async def _run_realtor_campaign(
+    *,
+    current_user: CurrentUser,
+    db: DB,
+    file: UploadFile,
+    skip_duplicates: bool,
+    campaign_name: str | None,
+    workspace_id: uuid.UUID | None,
+) -> RealtorCampaignResponse:
+    content = await _read_csv_upload(file)
     try:
         result = await launch_realtor_campaign_from_csv(
             db=db,
             current_user_id=current_user.id,
+            workspace_id=workspace_id,
             request=RealtorCampaignInput(
                 file_content=content,
                 skip_duplicates=skip_duplicates,
@@ -191,26 +228,103 @@ async def create_realtor_campaign(
     return realtor_campaign_response(result)
 
 
-@router.post("/parse-calcom-url", response_model=ParseCalcomUrlResponse)
+@workspace_router.post(
+    "/campaigns",
+    response_model=RealtorCampaignResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_realtor_campaign_workspace(
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+    file: UploadFile,
+    skip_duplicates: bool = Form(default=True),
+    campaign_name: str | None = Form(default=None),
+) -> RealtorCampaignResponse:
+    """Upload a CSV and launch a realtor campaign in an explicitly selected workspace."""
+    return await _run_realtor_campaign(
+        current_user=current_user,
+        db=db,
+        file=file,
+        skip_duplicates=skip_duplicates,
+        campaign_name=campaign_name,
+        workspace_id=workspace.id,
+    )
+
+
+@router.post(
+    "/campaigns",
+    response_model=RealtorCampaignResponse,
+    status_code=status.HTTP_201_CREATED,
+    deprecated=True,
+)
+async def create_realtor_campaign(
+    current_user: CurrentUser,
+    db: DB,
+    file: UploadFile,
+    skip_duplicates: bool = Form(default=True),
+    campaign_name: str | None = Form(default=None),
+) -> RealtorCampaignResponse:
+    """Legacy: launch a realtor campaign in the caller's default workspace.
+
+    Use ``POST /workspaces/{workspace_id}/realtor/campaigns`` to target a workspace.
+    """
+    return await _run_realtor_campaign(
+        current_user=current_user,
+        db=db,
+        file=file,
+        skip_duplicates=skip_duplicates,
+        campaign_name=campaign_name,
+        workspace_id=None,
+    )
+
+
+def _missing_calcom_key() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=(
+            "No Cal.com API key found for this workspace. "
+            "Provide one via the api_key field or connect Cal.com in Settings first."
+        ),
+    )
+
+
+@workspace_router.post("/parse-calcom-url", response_model=ParseCalcomUrlResponse)
+async def parse_calcom_url_workspace(
+    request: ParseCalcomUrlRequest,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> ParseCalcomUrlResponse:
+    """Resolve a Cal.com booking URL using the selected workspace's credentials.
+
+    An in-form ``api_key`` wins because it is the key onboarding will store for
+    this workspace; the workspace's saved key is the fallback.
+    """
+    try:
+        api_key = request.api_key or await get_workspace_calcom_api_key(workspace.id, db)
+        if not api_key:
+            raise _missing_calcom_key()
+        result = await resolve_calcom_event_type_id(url=request.url, api_key=api_key)
+    except OnboardingServiceError as exc:
+        raise_onboarding_http_error(exc)
+    return parse_calcom_url_response(result)
+
+
+@router.post("/parse-calcom-url", response_model=ParseCalcomUrlResponse, deprecated=True)
 async def parse_calcom_url(
     request: ParseCalcomUrlRequest,
     current_user: CurrentUser,
     db: DB,
 ) -> ParseCalcomUrlResponse:
-    """Parse a Cal.com booking URL and resolve the event_type_id."""
+    """Legacy: parse a Cal.com booking URL using the default workspace's key."""
     try:
         workspace = await get_user_workspace(current_user.id, db)
         api_key = await get_workspace_calcom_api_key(workspace.id, db)
         if api_key is None:
             api_key = request.api_key
         if not api_key:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=(
-                    "No Cal.com API key found for this workspace. "
-                    "Provide one via the api_key field or connect Cal.com in Settings first."
-                ),
-            )
+            raise _missing_calcom_key()
         result = await resolve_calcom_event_type_id(url=request.url, api_key=api_key)
     except OnboardingServiceError as exc:
         raise_onboarding_http_error(exc)
