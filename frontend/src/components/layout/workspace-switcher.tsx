@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronsUpDown, Plus, Building2, Check } from "lucide-react";
+import { ChevronsUpDown, Plus, Building2, Check, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -20,7 +20,8 @@ import { CreateWorkspaceDialog } from "@/components/workspaces/create-workspace-
 import { useWorkspace } from "@/providers/workspace-provider";
 
 export function WorkspaceSwitcher() {
-  const { workspaces, currentWorkspace, setCurrentWorkspace, isPending } = useWorkspace();
+  const { workspaces, currentWorkspace, setCurrentWorkspace, isPending, status, isFetching, retry } =
+    useWorkspace();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   if (isPending) {
@@ -33,6 +34,26 @@ export function WorkspaceSwitcher() {
             </div>
             <div className="grid flex-1 text-left text-sm leading-tight">
               <span className="truncate font-semibold">Loading...</span>
+            </div>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    );
+  }
+
+  if (status === "unavailable") {
+    return (
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton size="lg" onClick={retry} disabled={isFetching}>
+            <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-muted">
+              <RefreshCw className={isFetching ? "size-4 animate-spin" : "size-4"} />
+            </div>
+            <div className="grid flex-1 text-left text-sm leading-tight">
+              <span className="truncate font-semibold">Workspaces unavailable</span>
+              <span className="truncate text-xs text-muted-foreground">
+                {isFetching ? "Retrying…" : "Click to try again"}
+              </span>
             </div>
           </SidebarMenuButton>
         </SidebarMenuItem>

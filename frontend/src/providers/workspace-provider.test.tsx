@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { NoWorkspaceGate } from "@/components/workspaces/no-workspace-gate";
 import type { WorkspaceWithMembership } from "@/lib/api/workspaces";
 import { WorkspaceProvider, useWorkspace } from "@/providers/workspace-provider";
 
@@ -75,19 +76,29 @@ const WORKSPACES: WorkspaceWithMembership[] = [
 // --- Harness -------------------------------------------------------------
 
 function Probe() {
-  const { currentWorkspaceId, workspaces, setCurrentWorkspace, isPending } =
-    useWorkspace();
+  const {
+    currentWorkspaceId,
+    workspaces,
+    setCurrentWorkspace,
+    isPending,
+    status,
+    refreshFailed,
+    retry,
+  } = useWorkspace();
   return (
     <div>
       <div data-testid="pending">{isPending ? "yes" : "no"}</div>
+      <div data-testid="status">{status}</div>
+      <div data-testid="refresh-failed">{refreshFailed ? "yes" : "no"}</div>
       <div data-testid="current">{currentWorkspaceId ?? "none"}</div>
       <div data-testid="count">{workspaces.length}</div>
       <button onClick={() => setCurrentWorkspace("ws_c")}>switch</button>
+      <button onClick={retry}>probe-retry</button>
     </div>
   );
 }
 
-function renderWithProviders(client?: QueryClient) {
+function renderWithProviders(client?: QueryClient, { gated = false } = {}) {
   const queryClient =
     client ??
     new QueryClient({
@@ -99,7 +110,13 @@ function renderWithProviders(client?: QueryClient) {
   const utils = render(
     <QueryClientProvider client={queryClient}>
       <WorkspaceProvider>
-        <Probe />
+        {gated ? (
+          <NoWorkspaceGate>
+            <Probe />
+          </NoWorkspaceGate>
+        ) : (
+          <Probe />
+        )}
       </WorkspaceProvider>
     </QueryClientProvider>,
   );
@@ -206,6 +223,98 @@ describe("WorkspaceProvider", () => {
     expect(screen.getByTestId("current").textContent).toBe("ws_c");
     expect(window.localStorage.getItem("current_workspace_id")).toBe("ws_c");
     expect(clearSpy).toHaveBeenCalled();
+  });
+
+  it("shows an outage with retry, not a create prompt, when the initial list request fails", async () => {
+    window.localStorage.setItem("current_workspace_id", "ws_c");
+    useAuthMock.mockReturnValue({ isAuthenticated: true, user: null });
+    listMock.mockRejectedValue(new Error("Network Error"));
+
+    renderWithProviders(undefined, { gated: true });
+
+    expect(
+      await screen.findByRole("heading", { name: /couldn.t load your workspaces/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
+    expect(screen.queryByText(/create your workspace/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /create workspace/i })).not.toBeInTheDocument();
+    // The stored selection is not discarded by an outage.
+    expect(window.localStorage.getItem("current_workspace_id")).toBe("ws_c");
+  });
+
+  it("recovers to the loaded workspace when retry succeeds", async () => {
+    useAuthMock.mockReturnValue({ isAuthenticated: true, user: null });
+    listMock
+      .mockRejectedValueOnce(new Error("Network Error"))
+      .mockResolvedValue(WORKSPACES);
+
+    renderWithProviders(undefined, { gated: true });
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /try again/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("status").textContent).toBe("ready");
+    });
+    expect(screen.getByTestId("current").textContent).toBe("ws_b");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(listMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("offers workspace creation only after a successful empty response", async () => {
+    useAuthMock.mockReturnValue({ isAuthenticated: true, user: null });
+    let resolveList: (value: WorkspaceWithMembership[]) => void = () => {};
+    listMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveList = resolve;
+      }),
+    );
+
+    renderWithProviders(undefined, { gated: true });
+
+    // Loading: children (and their own skeletons) render, no create prompt.
+    expect(screen.getByTestId("status").textContent).toBe("loading");
+    expect(screen.queryByText(/create your workspace/i)).not.toBeInTheDocument();
+
+    resolveList([]);
+
+    expect(
+      await screen.findByRole("heading", { name: /create your workspace/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /create workspace/i })).toBeInTheDocument();
+    expect(screen.queryByText(/couldn.t load your workspaces/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps the selected workspace when a later refresh fails", async () => {
+    useAuthMock.mockReturnValue({ isAuthenticated: true, user: null });
+    listMock.mockResolvedValueOnce(WORKSPACES).mockRejectedValue(new Error("503"));
+
+    renderWithProviders(undefined, { gated: true });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("current").textContent).toBe("ws_b");
+    });
+
+    // Switching wipes the query cache and refetches the list; that refetch fails.
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "switch" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("refresh-failed").textContent).toBe("yes");
+    });
+    expect(listMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId("status").textContent).toBe("ready");
+    expect(screen.getByTestId("current").textContent).toBe("ws_c");
+    expect(screen.getByTestId("count").textContent).toBe("3");
+    expect(window.localStorage.getItem("current_workspace_id")).toBe("ws_c");
+    expect(screen.getByRole("alert")).toHaveTextContent(/couldn.t refresh your workspaces/i);
+    expect(screen.queryByText(/create your workspace/i)).not.toBeInTheDocument();
+
+    // A plain retry that also fails still keeps the selection.
+    await user.click(screen.getByRole("button", { name: "probe-retry" }));
+    await waitFor(() => expect(listMock).toHaveBeenCalledTimes(3));
+    expect(screen.getByTestId("current").textContent).toBe("ws_c");
+    expect(screen.getByTestId("status").textContent).toBe("ready");
   });
 
   it("throws when useWorkspace is called outside the provider", () => {
