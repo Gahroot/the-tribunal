@@ -306,7 +306,7 @@ export function AppSidebar({ children }: AppSidebarProps) {
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={logout}>
+                  <DropdownMenuItem onClick={() => logout()}>
                     <LogOut className="mr-2 size-4" />
                     Sign out
                   </DropdownMenuItem>

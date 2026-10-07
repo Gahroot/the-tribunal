@@ -183,6 +183,39 @@ describe("api response interceptor", () => {
     expect(hrefSetter).toHaveBeenCalledWith("/login");
   });
 
+  it("rejects without redirecting when skipAuthRedirect is set and refresh fails", async () => {
+    const calls: string[] = [];
+    installAdapter((config) => {
+      calls.push(config.url ?? "");
+      throw makeAxiosError(config, 401);
+    });
+
+    const hrefSetter = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: new Proxy(window.location, {
+        set(target, prop, value) {
+          if (prop === "href") {
+            hrefSetter(value);
+            return true;
+          }
+          (target as unknown as Record<string | symbol, unknown>)[prop] = value;
+          return true;
+        },
+      }),
+    });
+
+    await expect(
+      apiGet("/api/v1/auth/me", { skipAuthRedirect: true }),
+    ).rejects.toThrow();
+
+    // The refresh is still attempted, but a failed one neither logs out nor
+    // bounces the visitor off a public page.
+    expect(calls.some((c) => c.includes("/api/v1/auth/refresh"))).toBe(true);
+    expect(calls.some((c) => c.includes("/api/v1/auth/logout"))).toBe(false);
+    expect(hrefSetter).not.toHaveBeenCalled();
+  });
+
   it("does not attempt to refresh when the refresh endpoint itself returns 401", async () => {
     const calls: string[] = [];
     installAdapter((config) => {

@@ -11,8 +11,14 @@ import {
 import { PageLoadingState } from "@/components/ui/page-state";
 import { useAuth } from "@/providers/auth-provider";
 
-export function LoginClient() {
+interface LoginClientProps {
+  /** Already-validated local path to return to after sign-in. */
+  redirectTo?: string | null;
+}
+
+export function LoginClient({ redirectTo = null }: LoginClientProps) {
   const { isLoading } = useAuth();
+  const isInvitation = redirectTo?.startsWith("/invite/") ?? false;
 
   if (isLoading) {
     return <PageLoadingState className="min-h-screen" />;
@@ -24,11 +30,13 @@ export function LoginClient() {
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">Welcome back</CardTitle>
           <CardDescription>
-            Sign in to your account to continue
+            {isInvitation
+              ? "Sign in to accept your workspace invitation"
+              : "Sign in to your account to continue"}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <LoginForm />
+          <LoginForm redirectTo={redirectTo} />
         </CardContent>
       </Card>
     </div>

@@ -28,9 +28,11 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 
 interface LoginFormProps {
   className?: string;
+  /** Local path to return to after sign-in; re-validated by the auth provider. */
+  redirectTo?: string | null;
 }
 
-export function LoginForm({ className }: LoginFormProps) {
+export function LoginForm({ className, redirectTo = null }: LoginFormProps) {
   const { login } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +50,7 @@ export function LoginForm({ className }: LoginFormProps) {
     setError(null);
 
     try {
-      await login(data);
+      await login(data, { redirectTo });
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message);

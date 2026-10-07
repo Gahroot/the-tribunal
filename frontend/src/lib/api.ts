@@ -2,6 +2,17 @@ import axios, { type AxiosRequestConfig } from "axios";
 
 import { getBackendUrl } from "@/lib/utils/backend-url";
 
+declare module "axios" {
+  interface AxiosRequestConfig {
+    /**
+     * Still try a token refresh on 401, but if the session cannot be restored
+     * just reject instead of hard-redirecting to /login. For optional-auth
+     * public pages (e.g. /invite/) that must stay usable when signed out.
+     */
+    skipAuthRedirect?: boolean;
+  }
+}
+
 // Use relative URL so requests are proxied through Next.js rewrites (no CORS issues)
 // Fallback to direct backend URL for non-browser environments (SSR, tests)
 const API_URL =
@@ -108,10 +119,12 @@ api.interceptors.response.use(
         // (it promotes console.error to a visible overlay).
         processQueue(error);
         isRefreshing = false;
-        if (process.env.NODE_ENV !== "production") {
-          console.warn("[auth] token refresh failed — redirecting to /login");
+        if (!originalRequest?.skipAuthRedirect) {
+          if (process.env.NODE_ENV !== "production") {
+            console.warn("[auth] token refresh failed — redirecting to /login");
+          }
+          logout();
         }
-        logout();
         return Promise.reject(refreshError);
       }
     }

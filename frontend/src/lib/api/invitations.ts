@@ -85,16 +85,20 @@ export const invitationsApi = {
    */
   getByToken: async (token: string): Promise<InvitationPublicResponse> => {
     return apiGet<InvitationPublicResponse>(
-      `/api/v1/invitations/${token}`
+      `/api/v1/invitations/${encodeURIComponent(token)}`
     );
   },
 
   /**
-   * Accept an invitation (must be logged in - NOT workspace-scoped)
+   * Accept an invitation (must be logged in - NOT workspace-scoped).
+   * A lapsed session rejects with 401 instead of hard-redirecting to /login,
+   * so the invite page can send the user to sign in and come back.
    */
   accept: async (token: string): Promise<InvitationAcceptResponse> => {
     return apiPost<InvitationAcceptResponse>(
-      `/api/v1/invitations/${token}/accept`
+      `/api/v1/invitations/${encodeURIComponent(token)}/accept`,
+      undefined,
+      { skipAuthRedirect: true }
     );
   },
 };
