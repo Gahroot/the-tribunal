@@ -33,11 +33,45 @@ from app.services.automations.events import (
     EVENT_OPPORTUNITY_CREATED,
     emit_automation_event,
 )
-from app.services.exceptions import NotFoundError
+from app.services.exceptions import NotFoundError, ValidationError
 from app.services.opportunities.default_pipeline import DEFAULT_PIPELINE_STAGES
 from app.services.opportunities.opportunity_filters import apply_opportunity_filters
 
 logger = structlog.get_logger()
+
+# Stage types whose column *is* the deal outcome. ``active`` stages carry no
+# outcome, so moving into one reopens a deal that a won/lost stage had closed.
+_OUTCOME_STAGE_TYPES = frozenset({"won", "lost"})
+_CLOSED_STATUSES = frozenset({"won", "lost", "abandoned"})
+
+
+def resolve_stage_move_status(
+    stage_type: str,
+    current_status: str,
+    requested_status: str | None,
+) -> str:
+    """Return the status an opportunity must have after moving into a stage.
+
+    - won/lost stage -> that outcome; an explicit conflicting status is rejected.
+    - active stage   -> an explicit open/abandoned status wins; otherwise a deal
+      closed as won/lost is reopened and any other status is kept.
+    """
+    if stage_type in _OUTCOME_STAGE_TYPES:
+        if requested_status is not None and requested_status != stage_type:
+            raise ValidationError(
+                f"Status '{requested_status}' conflicts with a {stage_type} stage"
+            )
+        return stage_type
+    if requested_status in _OUTCOME_STAGE_TYPES:
+        raise ValidationError(
+            f"Status '{requested_status}' requires moving to a {requested_status} stage"
+        )
+    if requested_status is not None:
+        return requested_status
+    if current_status in _OUTCOME_STAGE_TYPES:
+        return "open"
+    return current_status
+
 
 _DEFAULT_STAGES = DEFAULT_PIPELINE_STAGES
 
@@ -319,12 +353,28 @@ class OpportunityService:
             self.db, Opportunity, opportunity_id, workspace_id=workspace_id
         )
 
-        # Stage change — update probability and log activity
+        target_status: str | None = opportunity_in.status
+
+        # Stage change — update probability, derive outcome, and log activity
         if opportunity_in.stage_id and opportunity_in.stage_id != opportunity.stage_id:
-            stage_query = select(PipelineStage).where(PipelineStage.id == opportunity_in.stage_id)
+            # The stage must belong to this opportunity's own pipeline, inside
+            # this workspace; anything else is reported as not found.
+            stage_query = (
+                select(PipelineStage)
+                .join(Pipeline, Pipeline.id == PipelineStage.pipeline_id)
+                .where(
+                    PipelineStage.id == opportunity_in.stage_id,
+                    PipelineStage.pipeline_id == opportunity.pipeline_id,
+                    Pipeline.workspace_id == workspace_id,
+                )
+            )
             stage = (await self.db.execute(stage_query)).scalar_one_or_none()
             if not stage:
-                raise NotFoundError("Stage not found")
+                raise NotFoundError("Stage not found in this opportunity's pipeline")
+
+            target_status = resolve_stage_move_status(
+                stage.stage_type, opportunity.status, opportunity_in.status
+            )
 
             old_stage_query = select(PipelineStage).where(PipelineStage.id == opportunity.stage_id)
             old_stage = (await self.db.execute(old_stage_query)).scalar_one_or_none()
@@ -376,22 +426,20 @@ class OpportunityService:
             if value is not None:
                 setattr(opportunity, field, value)
 
-        # Status change — log activity
-        if opportunity_in.status is not None and opportunity_in.status != opportunity.status:
+        # Status change (explicit or stage-derived) — log activity, set close metadata
+        if target_status is not None and target_status != opportunity.status:
             self.db.add(
                 OpportunityActivity(
                     opportunity_id=opportunity_id,
                     user_id=user_id,
                     activity_type="status_changed",
                     old_value=opportunity.status,
-                    new_value=opportunity_in.status,
-                    description=(
-                        f"Status changed from {opportunity.status} to {opportunity_in.status}"
-                    ),
+                    new_value=target_status,
+                    description=(f"Status changed from {opportunity.status} to {target_status}"),
                 )
             )
-            opportunity.status = opportunity_in.status
-            is_closed = opportunity_in.status in ("won", "lost", "abandoned")
+            opportunity.status = target_status
+            is_closed = target_status in _CLOSED_STATUSES
             opportunity.closed_date = datetime.now(UTC).date() if is_closed else None
             opportunity.closed_by_id = user_id if is_closed else None
 

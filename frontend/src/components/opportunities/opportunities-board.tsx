@@ -51,7 +51,10 @@ import {
 } from "@/components/ui/table";
 import { useDebouncedSearch } from "@/hooks/useDebouncedSearch";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
-import { opportunitiesApi } from "@/lib/api/opportunities";
+import {
+  opportunitiesApi,
+  type UpdateOpportunityRequest,
+} from "@/lib/api/opportunities";
 import { queryKeys } from "@/lib/query-keys";
 import { opportunityStatusDotColors } from "@/lib/status-colors";
 import { cn } from "@/lib/utils";
@@ -60,6 +63,7 @@ import { getApiErrorMessage } from "@/lib/utils/errors";
 import { formatCompactCurrency, formatCurrency } from "@/lib/utils/number";
 import type {
   Opportunity,
+  OpportunityStatus,
   Pipeline,
   PipelineStage,
 } from "@/types";
@@ -85,6 +89,50 @@ interface StageTotal {
   count: number;
   total: number;
   currency: string;
+}
+
+const STATUS_CHANGE_LABELS: Record<OpportunityStatus, string> = {
+  open: "reopened",
+  won: "marked won",
+  lost: "marked lost",
+  abandoned: "marked abandoned",
+};
+
+const CLOSED_STATUSES = new Set<OpportunityStatus>(["won", "lost", "abandoned"]);
+
+/**
+ * Optimistic copy of the backend stage/status contract
+ * (`resolve_stage_move_status`): won/lost stages set that outcome, moving into
+ * an active stage reopens a won/lost deal. The server response replaces this.
+ */
+function projectStageMove(
+  opp: Opportunity,
+  stageId: string,
+  stage: PipelineStage | undefined,
+  requestedStatus?: OpportunityStatus,
+): Opportunity {
+  let status: OpportunityStatus = opp.status;
+  if (stage?.stage_type === "won" || stage?.stage_type === "lost") {
+    status = stage.stage_type;
+  } else if (requestedStatus) {
+    status = requestedStatus;
+  } else if (opp.status === "won" || opp.status === "lost") {
+    status = "open";
+  }
+  const statusChanged = status !== opp.status;
+  const closed = CLOSED_STATUSES.has(status);
+  return {
+    ...opp,
+    stage_id: stageId,
+    probability: stage?.probability ?? opp.probability,
+    status,
+    closed_date: !statusChanged
+      ? opp.closed_date
+      : closed
+        ? new Date().toISOString().slice(0, 10)
+        : undefined,
+    closed_by_id: !statusChanged || closed ? opp.closed_by_id : undefined,
+  };
 }
 
 export function OpportunitiesBoard() {
@@ -207,36 +255,42 @@ function PipelineBoard({
     mutationFn: ({
       opportunityId,
       stageId,
+      status,
     }: {
       opportunityId: string;
       stageId: string;
+      /** Explicit status to restore (Undo of a move out of an open/abandoned deal). */
+      status?: UpdateOpportunityRequest["status"];
       /** True when this mutation came from the toast's Undo action. */
       isUndo?: boolean;
     }) =>
-      opportunitiesApi.update(workspaceId, opportunityId, { stage_id: stageId }),
-    onMutate: async ({ opportunityId, stageId }) => {
+      opportunitiesApi.update(
+        workspaceId,
+        opportunityId,
+        status ? { stage_id: stageId, status } : { stage_id: stageId },
+      ),
+    onMutate: async ({ opportunityId, stageId, status }) => {
       await queryClient.cancelQueries({ queryKey: listKey });
       const previous = queryClient.getQueryData<{ items: Opportunity[] }>(listKey);
       const stage = stages.find((s) => s.id === stageId);
       // Remember where the deal came from so success can offer a one-click undo.
-      const fromStageId = previous?.items.find((o) => o.id === opportunityId)
-        ?.stage_id;
+      const fromOpportunity = previous?.items.find((o) => o.id === opportunityId);
       queryClient.setQueryData<typeof previous>(listKey, (current) => {
         if (!current) return current;
         return {
           ...current,
           items: current.items.map((opp) =>
             opp.id === opportunityId
-              ? {
-                  ...opp,
-                  stage_id: stageId,
-                  probability: stage?.probability ?? opp.probability,
-                }
+              ? projectStageMove(opp, stageId, stage, status)
               : opp
           ),
         };
       });
-      return { previous, fromStageId };
+      return {
+        previous,
+        fromStageId: fromOpportunity?.stage_id,
+        fromStatus: fromOpportunity?.status,
+      };
     },
     onError: (err, _vars, context) => {
       if (context?.previous) {
@@ -244,21 +298,45 @@ function PipelineBoard({
       }
       toast.error(getApiErrorMessage(err, "Failed to move opportunity"));
     },
-    onSuccess: (_data, { opportunityId, stageId, isUndo }, context) => {
-      const stageName = stages.find((s) => s.id === stageId)?.name ?? "stage";
+    onSuccess: (updated, { opportunityId, stageId, isUndo }, context) => {
+      // The server owns the outcome (won/lost/open + closing date); replace the
+      // optimistic guess with what was actually persisted.
+      if (updated) {
+        queryClient.setQueryData<{ items: Opportunity[] }>(listKey, (current) =>
+          current
+            ? {
+                ...current,
+                items: current.items.map((opp) =>
+                  opp.id === opportunityId ? { ...opp, ...updated } : opp
+                ),
+              }
+            : current
+        );
+      }
+      const persistedStageId = updated?.stage_id ?? stageId;
+      const stageName =
+        stages.find((s) => s.id === persistedStageId)?.name ?? "stage";
       const opportunity = context?.previous?.items.find(
         (o) => o.id === opportunityId
       );
       const fromStageId = context?.fromStageId;
+      const fromStatus = context?.fromStatus;
+      const statusNote =
+        updated && fromStatus && updated.status !== fromStatus
+          ? ` · ${STATUS_CHANGE_LABELS[updated.status]}`
+          : "";
 
-      if (isUndo || !fromStageId || fromStageId === stageId) {
-        toast.success(`Moved to ${stageName}`);
+      if (isUndo || !fromStageId || fromStageId === persistedStageId) {
+        toast.success(`Moved to ${stageName}${statusNote}`);
         return;
       }
 
       const fromStageName =
         stages.find((s) => s.id === fromStageId)?.name ?? "stage";
-      toast(`Moved to ${stageName}`, {
+      // Moving back to an active stage reopens won/lost deals by default, and
+      // won/lost come from the stage itself; only "abandoned" needs restating.
+      const restoreStatus = fromStatus === "abandoned" ? fromStatus : undefined;
+      toast(`Moved to ${stageName}${statusNote}`, {
         description: `${opportunity?.name ?? "Opportunity"} · from ${fromStageName}`,
         duration: 6000,
         action: {
@@ -267,6 +345,7 @@ function PipelineBoard({
             moveMutation.mutate({
               opportunityId,
               stageId: fromStageId,
+              status: restoreStatus,
               isUndo: true,
             }),
         },
@@ -320,9 +399,6 @@ function PipelineBoard({
 
   // One quiet summary line for the toolbar / list footer (no metric tiles).
   const summary = useMemo(() => {
-    const wonStageIds = new Set(
-      stages.filter((s) => s.stage_type === "won").map((s) => s.id)
-    );
     let count = 0;
     let total = 0;
     let wonTotal = 0;
@@ -332,11 +408,12 @@ function PipelineBoard({
       if (opp.amount != null && Number.isFinite(opp.amount)) {
         if (!currency) currency = opp.currency;
         total += opp.amount;
-        if (opp.stage_id && wonStageIds.has(opp.stage_id)) wonTotal += opp.amount;
+        // Won revenue follows the persisted outcome, the same field reporting uses.
+        if (opp.status === "won") wonTotal += opp.amount;
       }
     }
     return { count, total, wonTotal, currency };
-  }, [opportunities, stages]);
+  }, [opportunities]);
 
   const screenReaderInstructions = useMemo(
     () => ({
@@ -941,7 +1018,10 @@ function OpportunitiesList({
             </TableCell>
             <TableCell colSpan={4} className="text-right text-muted-foreground">
               Won{" "}
-              <span className={cn("font-semibold", MONEY)}>
+              <span
+                data-testid="opportunities-won-total"
+                className={cn("font-semibold", MONEY)}
+              >
                 {formatCompactCurrency(
                   summary.wonTotal,
                   summary.currency || "USD"

@@ -231,6 +231,127 @@ describe("OpportunitiesBoard search", () => {
   });
 });
 
+describe("OpportunitiesBoard outcome sync", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    listPipelinesMock.mockResolvedValue([pipeline]);
+  });
+
+  async function moveToWon(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(
+      screen.getByRole("button", { name: "Actions for Acme Corp Deal" }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Won" }));
+  }
+
+  it("shows the persisted won status, closing date and won total after a move", async () => {
+    const user = userEvent.setup();
+    listMock.mockResolvedValue(listResponse([makeOpp({ amount: 4000 })]));
+    let resolveUpdate: (value: Opportunity) => void = () => {};
+    updateMock.mockImplementation(
+      () => new Promise<Opportunity>((resolve) => (resolveUpdate = resolve)),
+    );
+    renderBoard();
+    await screen.findByText("Acme Corp Deal");
+    await user.click(screen.getByRole("button", { name: "List" }));
+    expect(screen.getByTestId("opportunity-row-opp-1")).toHaveTextContent("Open");
+    expect(screen.getByTestId("opportunities-won-total")).toHaveTextContent(
+      "$0",
+    );
+
+    await moveToWon(user);
+
+    // Optimistic state already reflects the won outcome before the server replies.
+    await waitFor(() =>
+      expect(screen.getByTestId("opportunity-row-opp-1")).toHaveTextContent("Won"),
+    );
+    listMock.mockResolvedValue(
+      listResponse([
+        makeOpp({
+          amount: 4000,
+          stage_id: "stage-2",
+          probability: 100,
+          status: "won",
+          closed_date: "2026-10-07",
+        }),
+      ]),
+    );
+    resolveUpdate(
+      makeOpp({
+        amount: 4000,
+        stage_id: "stage-2",
+        probability: 100,
+        status: "won",
+        closed_date: "2026-10-07",
+      }),
+    );
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalled());
+    const [title] = toastMock.mock.calls.at(-1) as [string];
+    expect(title).toBe("Moved to Won · marked won");
+    expect(screen.getByTestId("opportunity-row-opp-1")).toHaveTextContent("Won");
+    // Won total follows the persisted status (the same field reporting uses).
+    expect(screen.getByTestId("opportunities-won-total")).toHaveTextContent(
+      "$4K",
+    );
+  });
+
+  it("undo restores an abandoned deal's original status, not just its stage", async () => {
+    const user = userEvent.setup();
+    listMock.mockResolvedValue(
+      listResponse([makeOpp({ status: "abandoned", closed_date: "2026-09-01" })]),
+    );
+    updateMock.mockResolvedValueOnce(
+      makeOpp({ stage_id: "stage-2", status: "won", closed_date: "2026-10-07" }),
+    );
+    updateMock.mockResolvedValueOnce(
+      makeOpp({ status: "abandoned", closed_date: "2026-10-07" }),
+    );
+    renderBoard();
+    await screen.findByText("Acme Corp Deal");
+
+    // After the move the refetched list reflects the persisted won deal.
+    listMock.mockResolvedValue(
+      listResponse([
+        makeOpp({ stage_id: "stage-2", status: "won", closed_date: "2026-10-07" }),
+      ]),
+    );
+    await moveToWon(user);
+    await waitFor(() => expect(toastMock).toHaveBeenCalled());
+    const toastCall = toastMock.mock.calls.at(-1) as [
+      string,
+      { action?: { label: string; onClick: () => void } },
+    ];
+    toastCall[1].action?.onClick();
+
+    await waitFor(() =>
+      expect(updateMock).toHaveBeenLastCalledWith("ws_1", "opp-1", {
+        stage_id: "stage-1",
+        status: "abandoned",
+      }),
+    );
+    await waitFor(() =>
+      expect(toastMock.success).toHaveBeenCalledWith(
+        "Moved to Prospecting · marked abandoned",
+      ),
+    );
+  });
+
+  it("rolls back optimistic outcome when the server rejects the move", async () => {
+    const user = userEvent.setup();
+    listMock.mockResolvedValue(listResponse([makeOpp({})]));
+    updateMock.mockRejectedValue(new Error("Stage not found"));
+    renderBoard();
+    await screen.findByText("Acme Corp Deal");
+
+    await moveToWon(user);
+
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalled());
+    await user.click(screen.getByRole("button", { name: "List" }));
+    expect(screen.getByTestId("opportunity-row-opp-1")).toHaveTextContent("Open");
+  });
+});
+
 describe("OpportunitiesBoard empty state", () => {
   beforeEach(() => {
     vi.clearAllMocks();
