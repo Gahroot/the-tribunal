@@ -4070,7 +4070,12 @@ export interface paths {
         put?: never;
         /**
          * Create Invitation
-         * @description Create and send an invitation to join the workspace.
+         * @description Create an invitation, then attempt to email it.
+         *
+         *     The invitation is persisted before delivery so a provider outage never
+         *     loses it. The response reports the real delivery outcome in
+         *     ``email_status``; anything other than ``"sent"`` should be retried via
+         *     ``POST /{invitation_id}/resend`` rather than by creating a new invitation.
          */
         post: operations["create_invitation_api_v1_workspaces__workspace_id__invitations_post"];
         delete?: never;
@@ -4094,6 +4099,30 @@ export interface paths {
          * @description Cancel a pending invitation.
          */
         delete: operations["cancel_invitation_api_v1_workspaces__workspace_id__invitations__invitation_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/invitations/{invitation_id}/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resend Invitation
+         * @description Re-attempt email delivery for an existing pending invitation.
+         *
+         *     Reuses the same invitation (no duplicate is created). If it has expired,
+         *     a fresh token and expiry are issued, but only persisted once the new email
+         *     was actually sent, so a failed resend never invalidates a working link.
+         */
+        post: operations["resend_invitation_api_v1_workspaces__workspace_id__invitations__invitation_id__resend_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -13032,6 +13061,11 @@ export interface components {
         /**
          * InvitationResponse
          * @description Schema for invitation response.
+         *
+         *     ``status`` is the invitation lifecycle (pending/accepted/...). Email
+         *     delivery is reported separately: ``email_status == "sent"`` means the
+         *     email provider accepted the message; ``failed``/``not_configured`` mean
+         *     the invitation exists but the recipient has not been emailed.
          */
         InvitationResponse: {
             /** Accepted At */
@@ -13043,6 +13077,21 @@ export interface components {
             created_at: string;
             /** Email */
             email: string;
+            /**
+             * Email Attempt Count
+             * @default 0
+             */
+            email_attempt_count: number;
+            /** Email Last Attempt At */
+            email_last_attempt_at?: string | null;
+            /** Email Sent At */
+            email_sent_at?: string | null;
+            /**
+             * Email Status
+             * @default unknown
+             * @enum {string}
+             */
+            email_status: "sent" | "failed" | "not_configured" | "unknown";
             /**
              * Expires At
              * Format: date-time
@@ -13057,6 +13106,11 @@ export interface components {
             invited_by_email?: string | null;
             /** Invited By Name */
             invited_by_name?: string | null;
+            /**
+             * Is Expired
+             * @default false
+             */
+            is_expired: boolean;
             /** Message */
             message: string | null;
             /** Role */
@@ -27625,6 +27679,38 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resend_invitation_api_v1_workspaces__workspace_id__invitations__invitation_id__resend_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                invitation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

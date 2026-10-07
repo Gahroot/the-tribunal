@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Clock, Loader2, Mail, X } from "lucide-react";
+import { Clock, Loader2, Mail, RotateCw, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -13,10 +13,27 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { invitationsApi } from "@/lib/api/invitations";
+import { invitationsApi, type InvitationResponse } from "@/lib/api/invitations";
+import { useResendInvitation } from "@/lib/invitations/delivery";
 import { queryKeys } from "@/lib/query-keys";
 import { formatDate } from "@/lib/utils/date";
 import { getApiErrorMessage } from "@/lib/utils/errors";
+
+function DeliveryBadge({ invitation }: { invitation: InvitationResponse }) {
+  if (invitation.is_expired) {
+    return <Badge variant="destructive">Expired</Badge>;
+  }
+  switch (invitation.email_status) {
+    case "sent":
+      return <Badge variant="secondary">Email sent</Badge>;
+    case "failed":
+      return <Badge variant="destructive">Email failed</Badge>;
+    case "not_configured":
+      return <Badge variant="destructive">Email not sent</Badge>;
+    default:
+      return null;
+  }
+}
 
 interface TeamInviteFormProps {
   workspaceId: string | null;
@@ -26,7 +43,8 @@ interface TeamInviteFormProps {
  * Pending invitations card.
  *
  * Renders the list of outstanding workspace invitations and exposes a per-row
- * cancel action. The "send invitation" form itself lives in
+ * resend/cancel actions with each invitation's real email delivery status.
+ * The "send invitation" form itself lives in
  * `InviteMemberDialog` (already RHF-driven); this component focuses purely on
  * the pending-list surface so TeamSettingsTab stays small.
  */
@@ -38,6 +56,8 @@ export function TeamInviteForm({ workspaceId }: TeamInviteFormProps) {
     queryFn: () => invitationsApi.list(workspaceId!),
     enabled: !!workspaceId,
   });
+
+  const resendInvitationMutation = useResendInvitation(workspaceId);
 
   const cancelInvitationMutation = useMutation({
     mutationFn: (invitationId: string) =>
@@ -82,17 +102,36 @@ export function TeamInviteForm({ workspaceId }: TeamInviteFormProps) {
                   <p className="text-sm text-muted-foreground">
                     Invited {formatDate(invitation.created_at)}
                     {" · "}
-                    Expires {formatDate(invitation.expires_at)}
+                    {invitation.is_expired ? "Expired" : "Expires"}{" "}
+                    {formatDate(invitation.expires_at)}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
+                <DeliveryBadge invitation={invitation} />
                 <Badge variant="outline" className="capitalize">
                   {invitation.role}
                 </Badge>
                 <Button
                   variant="ghost"
                   size="sm"
+                  aria-label={`Resend invitation to ${invitation.email}`}
+                  title="Resend invitation email"
+                  onClick={() => resendInvitationMutation.mutate(invitation.id)}
+                  disabled={resendInvitationMutation.isPending}
+                >
+                  {resendInvitationMutation.isPending &&
+                  resendInvitationMutation.variables === invitation.id ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <RotateCw className="size-4" />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Cancel invitation to ${invitation.email}`}
+                  title="Cancel invitation"
                   onClick={() => cancelInvitationMutation.mutate(invitation.id)}
                   disabled={cancelInvitationMutation.isPending}
                 >

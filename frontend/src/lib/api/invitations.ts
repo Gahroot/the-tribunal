@@ -1,5 +1,13 @@
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 
+/**
+ * Email delivery outcome, separate from the invitation lifecycle `status`.
+ * "sent" = the email provider accepted the message. "failed" and
+ * "not_configured" mean the invitation exists but was never emailed.
+ * "unknown" = created before delivery was tracked.
+ */
+export type InvitationEmailStatus = "sent" | "failed" | "not_configured" | "unknown";
+
 export interface InvitationResponse {
   id: string;
   workspace_id: string;
@@ -12,6 +20,11 @@ export interface InvitationResponse {
   expires_at: string;
   created_at: string;
   accepted_at: string | null;
+  is_expired: boolean;
+  email_status: InvitationEmailStatus;
+  email_attempt_count: number;
+  email_last_attempt_at: string | null;
+  email_sent_at: string | null;
 }
 
 export interface InvitationPublicResponse {
@@ -61,7 +74,8 @@ export const invitationsApi = {
   },
 
   /**
-   * Create and send an invitation
+   * Create an invitation and attempt to email it. Check `email_status` on the
+   * result: a 201 does not by itself mean the email was sent.
    */
   create: async (
     workspaceId: string,
@@ -70,6 +84,16 @@ export const invitationsApi = {
     return apiPost<InvitationResponse>(
       `/api/v1/workspaces/${workspaceId}/invitations`,
       data
+    );
+  },
+
+  /**
+   * Retry email delivery for an existing pending invitation (no duplicate is
+   * created). Check `email_status` on the result.
+   */
+  resend: async (workspaceId: string, invitationId: string): Promise<InvitationResponse> => {
+    return apiPost<InvitationResponse>(
+      `/api/v1/workspaces/${workspaceId}/invitations/${invitationId}/resend`
     );
   },
 

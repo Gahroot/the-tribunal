@@ -22,8 +22,17 @@ class InvitationCreate(BaseModel):
     )
 
 
+InvitationEmailStatus = Literal["sent", "failed", "not_configured", "unknown"]
+
+
 class InvitationResponse(BaseModel):
-    """Schema for invitation response."""
+    """Schema for invitation response.
+
+    ``status`` is the invitation lifecycle (pending/accepted/...). Email
+    delivery is reported separately: ``email_status == "sent"`` means the
+    email provider accepted the message; ``failed``/``not_configured`` mean
+    the invitation exists but the recipient has not been emailed.
+    """
 
     id: uuid.UUID
     workspace_id: uuid.UUID
@@ -36,6 +45,11 @@ class InvitationResponse(BaseModel):
     expires_at: datetime
     created_at: datetime
     accepted_at: datetime | None = None
+    is_expired: bool = False
+    email_status: InvitationEmailStatus = "unknown"
+    email_attempt_count: int = 0
+    email_last_attempt_at: datetime | None = None
+    email_sent_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

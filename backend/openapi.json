@@ -14682,7 +14682,7 @@
         "type": "object"
       },
       "InvitationResponse": {
-        "description": "Schema for invitation response.",
+        "description": "Schema for invitation response.\n\n``status`` is the invitation lifecycle (pending/accepted/...). Email\ndelivery is reported separately: ``email_status == \"sent\"`` means the\nemail provider accepted the message; ``failed``/``not_configured`` mean\nthe invitation exists but the recipient has not been emailed.",
         "properties": {
           "accepted_at": {
             "anyOf": [
@@ -14703,6 +14703,46 @@
           },
           "email": {
             "title": "Email",
+            "type": "string"
+          },
+          "email_attempt_count": {
+            "default": 0,
+            "title": "Email Attempt Count",
+            "type": "integer"
+          },
+          "email_last_attempt_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Last Attempt At"
+          },
+          "email_sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Sent At"
+          },
+          "email_status": {
+            "default": "unknown",
+            "enum": [
+              "sent",
+              "failed",
+              "not_configured",
+              "unknown"
+            ],
+            "title": "Email Status",
             "type": "string"
           },
           "expires_at": {
@@ -14736,6 +14776,11 @@
               }
             ],
             "title": "Invited By Name"
+          },
+          "is_expired": {
+            "default": false,
+            "title": "Is Expired",
+            "type": "boolean"
           },
           "message": {
             "anyOf": [
@@ -47373,7 +47418,7 @@
         ]
       },
       "post": {
-        "description": "Create and send an invitation to join the workspace.",
+        "description": "Create an invitation, then attempt to email it.\n\nThe invitation is persisted before delivery so a provider outage never\nloses it. The response reports the real delivery outcome in\n``email_status``; anything other than ``\"sent\"`` should be retried via\n``POST /{invitation_id}/resend`` rather than by creating a new invitation.",
         "operationId": "create_invitation_api_v1_workspaces__workspace_id__invitations_post",
         "parameters": [
           {
@@ -47477,6 +47522,65 @@
           }
         ],
         "summary": "Cancel Invitation",
+        "tags": [
+          "Invitations"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/invitations/{invitation_id}/resend": {
+      "post": {
+        "description": "Re-attempt email delivery for an existing pending invitation.\n\nReuses the same invitation (no duplicate is created). If it has expired,\na fresh token and expiry are issued, but only persisted once the new email\nwas actually sent, so a failed resend never invalidates a working link.",
+        "operationId": "resend_invitation_api_v1_workspaces__workspace_id__invitations__invitation_id__resend_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "invitation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Invitation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Resend Invitation",
         "tags": [
           "Invitations"
         ]

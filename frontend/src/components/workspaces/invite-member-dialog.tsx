@@ -28,6 +28,7 @@ import {
   type CreateInvitationRequest,
 } from "@/lib/api/invitations";
 import { useFormDialog } from "@/lib/forms/use-form-dialog";
+import { showInvitationDeliveryToast, useResendInvitation } from "@/lib/invitations/delivery";
 import { queryKeys } from "@/lib/query-keys";
 
 const inviteFormSchema = z.object({
@@ -52,17 +53,21 @@ interface InviteMemberDialogProps {
 export function InviteMemberDialog({ open, onOpenChange }: InviteMemberDialogProps) {
   const workspaceId = useWorkspaceId();
   const queryClient = useQueryClient();
+  const resendInvitation = useResendInvitation(workspaceId);
 
   const createInvitationMutation = useMutation({
     mutationFn: (data: CreateInvitationRequest) => invitationsApi.create(workspaceId!, data),
-    onSuccess: () => {
+    onSuccess: (invitation) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.invitations.all(workspaceId ?? ""),
       });
       queryClient.invalidateQueries({
         queryKey: queryKeys.settings.team(workspaceId ?? ""),
       });
-      toast.success("Invitation sent successfully!");
+      // The invitation exists either way; report whether the email went out.
+      showInvitationDeliveryToast(invitation, () => {
+        resendInvitation.mutate(invitation.id);
+      });
     },
   });
 
@@ -71,20 +76,21 @@ export function InviteMemberDialog({ open, onOpenChange }: InviteMemberDialogPro
     onOpenChange,
     schema: inviteFormSchema,
     defaultValues,
-    errorFallback: "Failed to send invitation. Please try again.",
+    errorFallback: "Failed to create invitation. Please try again.",
     // Map known collision messages to a field error; otherwise toast.
     onTopLevelError: (message) => {
       if (message.includes("already a member")) {
         dialog.form.setError("email", { message: "This user is already a member" });
         return;
       }
-      if (message.includes("already been sent")) {
+      if (message.includes("already pending")) {
         dialog.form.setError("email", {
-          message: "An invitation has already been sent to this email",
+          message:
+            "An invitation is already pending for this email. Use Resend in Pending Invitations.",
         });
         return;
       }
-      toast.error("Failed to send invitation. Please try again.");
+      toast.error("Failed to create invitation. Please try again.");
     },
     onSubmit: async (data) => {
       if (!workspaceId) return;

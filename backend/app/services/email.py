@@ -41,6 +41,11 @@ def _from_address() -> str:
     return f"{name} <{email}>"
 
 
+def email_delivery_configured() -> bool:
+    """Return whether transactional email can be attempted at all."""
+    return RESEND_AVAILABLE and bool(settings.resend_api_key)
+
+
 async def _send(
     params: dict[str, Any],
     *,

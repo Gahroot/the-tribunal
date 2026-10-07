@@ -60,6 +60,20 @@ class WorkspaceInvitation(Base):
     )
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Email delivery tracking, kept separate from the invitation lifecycle:
+    # an invitation can exist (pending) while its email was never sent.
+    # NULL status = legacy row created before delivery was tracked.
+    email_status: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )  # sent, failed, not_configured
+    email_attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    email_last_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    email_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # Relationships
     workspace: Mapped["Workspace"] = relationship("Workspace")
     invited_by: Mapped["User | None"] = relationship("User")
