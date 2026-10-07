@@ -15,18 +15,19 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
 from fastapi import APIRouter, FastAPI
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 from tribunal_lead_capture import service as lead_magnet_delivery
 from tribunal_offers.router import get_public_router as get_block_public_router
 
-from app.api.deps import get_db
 from app.api.v1 import offers as live_offers
 from app.core.encryption import hash_phone, hash_value
+from app.db.session import get_db
 from app.models.contact import Contact
 from app.models.lead_magnet import DeliveryMethod, LeadMagnet, LeadMagnetType
 from app.models.lead_magnet_lead import LeadMagnetLead
@@ -202,7 +203,8 @@ def make_client(request: pytest.FixtureRequest) -> Any:
     return _make
 
 
-async def _opt_in(client: AsyncClient, slug: str, body: dict[str, Any]) -> Any:
+async def _opt_in(client: AsyncClient, slug: str | None, body: dict[str, Any]) -> Any:
+    assert slug, "fixture offers always have a public slug"
     async with client:
         return await client.post(f"/api/v1/p/offers/{slug}/opt-in", json=body)
 
@@ -433,7 +435,7 @@ def test_normalize_lead_identity_rejects_malformed_values() -> None:
 async def test_find_or_create_requires_an_identifier() -> None:
     with pytest.raises(LeadIdentityError, match="Email or phone number is required"):
         await find_or_create_lead_contact(
-            FakeSession(),  # type: ignore[arg-type]
+            cast(AsyncSession, FakeSession()),
             workspace_id=WS_A,
             identity=LeadIdentity(email=None, phone_number=None, name="Name Only"),
             source="offer_optin",
@@ -453,7 +455,7 @@ async def test_find_or_create_matches_phone_when_email_is_new() -> None:
     session.contacts.append(existing)
 
     result = await find_or_create_lead_contact(
-        session,  # type: ignore[arg-type]
+        cast(AsyncSession, session),
         workspace_id=WS_A,
         identity=LeadIdentity(email="new@example.test", phone_number="+14155550100", name="Jo"),
         source="offer_optin",
