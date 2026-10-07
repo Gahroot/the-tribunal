@@ -11,12 +11,15 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.models.conversation import MessageStatus
+from app.models.appointment import Appointment
+from app.models.contact import Contact
+from app.models.conversation import Message, MessageStatus
+from app.models.workspace import Workspace
 from app.services.calendar import reminder_service
 from app.services.calendar.reminder_service import (
     MANUAL_REMINDER_MAX_ATTEMPTS,
@@ -69,7 +72,7 @@ class FakeProvider:
 
     @property
     def accepted_count(self) -> int:
-        return sum(1 for m in self.store.values() if is_provider_accepted(m))  # type: ignore[arg-type]
+        return sum(1 for m in self.store.values() if is_provider_accepted(cast(Message, m)))
 
 
 def _contact() -> SimpleNamespace:
@@ -98,7 +101,7 @@ def _workspace() -> SimpleNamespace:
     ],
 )
 def test_is_provider_accepted(status: MessageStatus, accepted: bool) -> None:
-    assert is_provider_accepted(SimpleNamespace(status=status)) is accepted  # type: ignore[arg-type]
+    assert is_provider_accepted(cast(Message, SimpleNamespace(status=status))) is accepted
 
 
 def test_first_attempt_key_is_unchanged_and_retries_are_distinct() -> None:
@@ -135,9 +138,9 @@ class ManualHarness:
         ):
             return await send_appointment_reminder(
                 db=self.db,
-                appointment=self.appointment,  # type: ignore[arg-type]
-                workspace=_workspace(),  # type: ignore[arg-type]
-                contact=_contact(),  # type: ignore[arg-type]
+                appointment=cast(Appointment, self.appointment),
+                workspace=cast(Workspace, _workspace()),
+                contact=cast(Contact, _contact()),
                 agent=None,
             )
 
@@ -284,7 +287,7 @@ class WorkerHarness:
             patch.object(self.worker, "_mark_offset_sent", self.mark),
             patch.object(self.worker, "_dead_letter", self.dead_letter),
         ):
-            await self.worker._send_reminder(self.appt, offset, self.db)  # type: ignore[arg-type]
+            await self.worker._send_reminder(cast(Appointment, self.appt), offset, self.db)
 
 
 @pytest.mark.asyncio
@@ -333,8 +336,10 @@ async def test_worker_repeated_failures_dead_letter_then_stop() -> None:
     assert len(provider.provider_calls) == SCHEDULED_REMINDER_MAX_ATTEMPTS
     h.mark.assert_not_awaited()
     h.dead_letter.assert_awaited_once()
-    assert h.dead_letter.await_args.kwargs["item_key"] == "reminder:4242:offset:60"
-    assert "rejected by provider" in str(h.dead_letter.await_args.args[3])
+    call = h.dead_letter.await_args
+    assert call is not None
+    assert call.kwargs["item_key"] == "reminder:4242:offset:60"
+    assert "rejected by provider" in str(call.args[3])
 
 
 @pytest.mark.asyncio
@@ -354,9 +359,8 @@ async def test_worker_recovers_on_retry_after_failure() -> None:
 async def test_worker_opt_out_still_short_circuits_before_send() -> None:
     provider = FakeProvider([])
     h = WorkerHarness(provider)
-    h.worker.opt_out_manager.check_opt_out = AsyncMock(return_value=True)
-
-    await h.tick()
+    with patch.object(h.worker.opt_out_manager, "check_opt_out", AsyncMock(return_value=True)):
+        await h.tick()
 
     assert provider.provider_calls == []
     h.mark.assert_awaited_once()
