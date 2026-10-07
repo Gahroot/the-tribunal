@@ -83,6 +83,19 @@ const baseApi = createApiClient<
   resourcePath: "appointments",
 }) as FullApiClient<Appointment, CreateAppointmentRequest, UpdateAppointmentRequest>;
 
+/**
+ * Result of a manual reminder send. `success` means the SMS provider accepted
+ * the message (or already had) — not that the carrier delivered it.
+ */
+export interface SendReminderResult {
+  success: boolean;
+  status?: "sent" | "already_sent" | "failed" | "not_sent";
+  message: string;
+  sent_to: string | null;
+  /** True when pressing send again can make a fresh attempt. */
+  retryable?: boolean;
+}
+
 export const appointmentsApi = {
   ...baseApi,
 
@@ -116,11 +129,9 @@ export const appointmentsApi = {
   sendReminder: async (
     workspaceId: string,
     appointmentId: number
-  ): Promise<{ success: boolean; message: string; sent_to: string | null }> => {
-    return apiPost<{
-      success: boolean;
-      message: string;
-      sent_to: string | null;
-    }>(`/api/v1/workspaces/${workspaceId}/appointments/${appointmentId}/send-reminder`);
+  ): Promise<SendReminderResult> => {
+    return apiPost<SendReminderResult>(
+      `/api/v1/workspaces/${workspaceId}/appointments/${appointmentId}/send-reminder`
+    );
   },
 };

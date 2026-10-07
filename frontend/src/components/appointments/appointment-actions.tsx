@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { appointmentsApi } from "@/lib/api/appointments";
+import { notifyReminderResult } from "@/lib/appointments/notify-reminder-result";
 import { offsetToLabel } from "@/lib/calendar/calendar-derivations";
 import type { Appointment } from "@/types";
 
@@ -137,22 +138,22 @@ export function SendReminderButton({
 
   if (appointment.status !== "scheduled") return null;
 
-  const handleSend = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const send = async () => {
     setIsSending(true);
     try {
       const result = await appointmentsApi.sendReminder(workspaceId, appointment.id);
-      if (result.success) {
-        toast.success(`Reminder sent to ${result.sent_to ?? "contact"}`);
-        onSent();
-      } else {
-        toast.error(result.message || "Failed to send reminder");
-      }
+      notifyReminderResult(result, () => void send());
+      if (result.success) onSent();
     } catch {
       toast.error("Failed to send reminder");
     } finally {
       setIsSending(false);
     }
+  };
+
+  const handleSend = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    void send();
   };
 
   return (

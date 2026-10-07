@@ -32,7 +32,13 @@ from app.models.contact import Contact
 from app.models.conversation import Conversation, MessageStatus
 from app.models.phone_number import PhoneNumber
 from app.models.workspace import Workspace
-from app.services.calendar.reminder_service import resolve_from_number
+from app.services.calendar.reminder_service import (
+    SCHEDULED_REMINDER_MAX_ATTEMPTS,
+    ReminderSendResult,
+    ReminderSendStatus,
+    resolve_from_number,
+    send_reminder_sms,
+)
 from app.services.idempotency import derive_outbound_key, derive_worker_retry_key
 from app.services.rate_limiting.opt_out_manager import OptOutManager
 from app.services.telephony.telnyx import TelnyxSMSService
@@ -309,23 +315,35 @@ class ReminderWorker(RetryableWorker, BaseWorker):
 
         sms_service = TelnyxSMSService(telnyx_key)
         try:
-            # Stable per-(appointment, offset) key so a worker crash between
-            # the Message insert and the Telnyx POST is recoverable on the
-            # next tick without sending the reminder twice.
-            idempotency_key = derive_outbound_key(
-                "reminder", appt.id, appt.scheduled_at, offset_minutes
-            )
-            message = await sms_service.send_message(
+            # Stable per-(appointment, offset) attempt keys so a worker crash
+            # between the Message insert and the Telnyx POST is recoverable on
+            # the next tick without sending the reminder twice, while a
+            # provider-rejected attempt can be retried under a new key.
+            result = await send_reminder_sms(
+                db=db,
+                sms_service=sms_service,
+                scope_parts=("reminder", appt.id, appt.scheduled_at, offset_minutes),
                 to_number=contact_phone,
                 from_number=from_number,
                 body=body,
-                db=db,
                 workspace_id=workspace.id,
                 agent_id=agent_id,
-                idempotency_key=idempotency_key,
+                max_attempts=SCHEDULED_REMINDER_MAX_ATTEMPTS,
             )
 
-            log.info("Appointment reminder sent", message_id=str(message.id))
+            if not result.accepted:
+                # Leave the offset unmarked so it is never reported as sent.
+                # EXHAUSTED was already dead-lettered when its last attempt failed.
+                if result.status is ReminderSendStatus.FAILED:
+                    await self._handle_rejected_reminder(appt, offset_minutes, result)
+                return
+
+            log.info(
+                "Appointment reminder accepted by provider",
+                message_id=str(result.message.id) if result.message else None,
+                attempt=result.attempt + 1,
+                already_accepted=result.status is ReminderSendStatus.ALREADY_ACCEPTED,
+            )
 
             # Mark this offset as fired and update legacy reminder_sent_at
             await self._mark_offset_sent(appt, offset_minutes, db)
@@ -355,6 +373,40 @@ class ReminderWorker(RetryableWorker, BaseWorker):
             log.exception("Failed to send reminder SMS", error=str(e))
         finally:
             await sms_service.close()
+
+    async def _handle_rejected_reminder(
+        self,
+        appt: Appointment,
+        offset_minutes: int,
+        result: ReminderSendResult,
+    ) -> None:
+        """Log a provider-rejected reminder; dead-letter it after the last attempt.
+
+        The offset is not marked sent, so the next poll retries under a fresh
+        attempt key until ``SCHEDULED_REMINDER_MAX_ATTEMPTS`` is reached.
+        """
+        message_id = str(result.message.id) if result.message else None
+        self.logger.warning(
+            "Appointment reminder rejected by provider",
+            appointment_id=appt.id,
+            offset_minutes=offset_minutes,
+            message_id=message_id,
+            attempt=result.attempt + 1,
+            max_attempts=result.max_attempts,
+            error=result.error,
+        )
+        if not result.is_final_failure:
+            return
+        await self._dead_letter(
+            self._send_reminder,
+            (appt.id, offset_minutes),
+            {"message_id": message_id},
+            RuntimeError(
+                f"Reminder rejected by provider after {result.max_attempts} attempts: "
+                f"{result.error}"
+            ),
+            item_key=derive_worker_retry_key("reminder", appt.id, "offset", offset_minutes),
+        )
 
     async def _process_value_reinforcement(
         self,

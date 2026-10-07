@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { appointmentsApi } from "@/lib/api/appointments";
+import { notifyReminderResult } from "@/lib/appointments/notify-reminder-result";
 import { queryKeys } from "@/lib/query-keys";
 import { formatDate } from "@/lib/utils/date";
 import { getApiErrorMessage } from "@/lib/utils/errors";
@@ -40,13 +41,11 @@ export function ContactAppointments({
         workspaceId,
         appointmentId,
       );
+      notifyReminderResult(result, () => void handleSendReminder(appointmentId));
       if (result.success) {
-        toast.success(`Reminder sent to ${result.sent_to ?? "contact"}`);
         void queryClient.invalidateQueries({
           queryKey: queryKeys.appointments.byContact(workspaceId, contactId),
         });
-      } else {
-        toast.error(result.message || "Failed to send reminder");
       }
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Failed to send reminder"));

@@ -136,12 +136,17 @@ class TestReminderWorkerKey:
             patch.object(worker, "_mark_offset_sent", AsyncMock()),
         ):
             sms_instance = sms_cls.return_value
-            sms_instance.send_message = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
+            sms_instance.send_message = AsyncMock(
+                return_value=SimpleNamespace(id=uuid4(), status="sent", error_message=None)
+            )
             sms_instance.close = AsyncMock()
 
             db = MagicMock()
             db.execute = AsyncMock(
-                return_value=MagicMock(scalars=lambda: MagicMock(first=lambda: None))
+                return_value=MagicMock(
+                    scalars=lambda: MagicMock(first=lambda: None),
+                    scalar_one_or_none=lambda: None,
+                )
             )
             db.commit = AsyncMock()
 
@@ -149,7 +154,8 @@ class TestReminderWorkerKey:
 
         sms_instance.send_message.assert_awaited_once()
         call_kwargs = sms_instance.send_message.call_args.kwargs
-        assert call_kwargs["idempotency_key"] == derive("reminder", 4242, 60)
+        # First attempt keeps the historical (appointment, scheduled_at, offset) key.
+        assert call_kwargs["idempotency_key"] == derive("reminder", 4242, appt.scheduled_at, 60)
 
     async def test_value_reinforcement_passes_per_appointment_key(self) -> None:
         from app.workers.reminder_worker import ReminderWorker
