@@ -1,6 +1,16 @@
 "use client";
 
-import { ArrowRight, CheckCircle2, Circle, PartyPopper, Rocket, X } from "lucide-react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  Circle,
+  CircleHelp,
+  PartyPopper,
+  RefreshCw,
+  Rocket,
+  TriangleAlert,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
@@ -27,14 +37,25 @@ interface SetupChecklistProps {
  * as a dismissible banner at the top of the app shell via `SetupGate`.
  */
 export function SetupChecklist({ onDismiss, className }: SetupChecklistProps) {
-  const { isLoading, isError, steps, completedCount, total, allComplete } =
-    useSetupChecklist();
+  const {
+    isLoading,
+    isError,
+    isRetrying,
+    retry,
+    steps,
+    completedCount,
+    unknownCount,
+    total,
+    allComplete,
+  } = useSetupChecklist();
 
   // Fire the celebration toast only when the count actually advances to the
   // finish line while mounted — not on every mount of an already-complete card.
+  // Counts are only compared once every step is known, so a retry that merely
+  // reveals already-finished steps is not mistaken for finishing setup.
   const previousCompletedCount = useRef<number | null>(null);
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || unknownCount > 0) return;
     if (previousCompletedCount.current === null) {
       previousCompletedCount.current = completedCount;
       return;
@@ -43,11 +64,7 @@ export function SetupChecklist({ onDismiss, className }: SetupChecklistProps) {
       toast.success("Setup complete, you're all set!", { id: "setup-complete" });
     }
     previousCompletedCount.current = completedCount;
-  }, [isLoading, completedCount, allComplete]);
-
-  // Failed probes mean we cannot prove which steps are done — show nothing
-  // rather than mis-state progress (callers hide on error too).
-  if (isError) return null;
+  }, [isLoading, unknownCount, completedCount, allComplete]);
 
   if (isLoading) {
     return (
@@ -69,6 +86,10 @@ export function SetupChecklist({ onDismiss, className }: SetupChecklistProps) {
   }
 
   const percentage = total > 0 ? Math.round((completedCount / total) * 100) : 0;
+  const progressLabel =
+    unknownCount > 0
+      ? `${completedCount} of ${total} complete, ${unknownCount} not checked`
+      : `${completedCount} of ${total} complete`;
 
   return (
     <section
@@ -111,16 +132,52 @@ export function SetupChecklist({ onDismiss, className }: SetupChecklistProps) {
 
         <div className="mt-4 space-y-1.5">
           <div className="flex items-center justify-between text-xs">
-            <span className="font-medium">
-              {completedCount} of {total} complete
-            </span>
+            <span className="font-medium">{progressLabel}</span>
             <span className="text-muted-foreground">{percentage}%</span>
           </div>
           <Progress
             value={percentage}
-            aria-label={`Setup progress: ${completedCount} of ${total} complete`}
+            aria-label={`Setup progress: ${progressLabel}`}
           />
         </div>
+
+        {isError && (
+          <div
+            role="alert"
+            className="mt-4 flex flex-col gap-3 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 sm:flex-row sm:items-center"
+          >
+            <TriangleAlert className="hidden size-4 shrink-0 text-warning sm:block" aria-hidden="true" />
+            <div className="min-w-0 flex-1 text-sm">
+              <p className="font-medium">
+                {unknownCount === total
+                  ? "We couldn't check your setup"
+                  : unknownCount > 0
+                    ? `We couldn't check ${unknownCount} of ${total} steps`
+                    : "We couldn't refresh your setup progress"}
+              </p>
+              <p className="text-muted-foreground">
+                {unknownCount === total
+                  ? "Some of these may already be done. Each step still links to where it happens."
+                  : unknownCount > 0
+                    ? "Those steps are marked below and may already be done. Everything else is up to date."
+                    : "Showing your last known progress."}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={retry}
+              disabled={isRetrying}
+              className="self-start sm:self-auto"
+            >
+              <RefreshCw
+                className={cn("mr-2 size-3.5", isRetrying && "animate-spin")}
+                aria-hidden="true"
+              />
+              {isRetrying ? "Checking…" : "Retry check"}
+            </Button>
+          </div>
+        )}
       </div>
 
       <ul className="divide-y divide-border px-2 py-1">
@@ -130,11 +187,13 @@ export function SetupChecklist({ onDismiss, className }: SetupChecklistProps) {
               href={step.href}
               className="group flex items-center gap-3 rounded-lg px-4 py-3 transition-colors hover:bg-muted/50"
             >
-              {step.done ? (
+              {step.state === "done" ? (
                 <CheckCircle2
                   className="size-5 shrink-0 text-success"
                   aria-hidden="true"
                 />
+              ) : step.state === "unknown" ? (
+                <CircleHelp className="size-5 shrink-0 text-warning" aria-hidden="true" />
               ) : (
                 <Circle className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
               )}
@@ -146,8 +205,19 @@ export function SetupChecklist({ onDismiss, className }: SetupChecklistProps) {
                   )}
                 >
                   {step.title}
-                  <span className="sr-only">{step.done ? " (complete)" : " (todo)"}</span>
+                  <span className="sr-only">
+                    {step.state === "done"
+                      ? " (complete)"
+                      : step.state === "unknown"
+                        ? " (couldn't check)"
+                        : " (todo)"}
+                  </span>
                 </span>
+                {step.state === "unknown" && (
+                  <span className="block text-xs font-medium text-warning" aria-hidden="true">
+                    Couldn&apos;t check
+                  </span>
+                )}
                 <span className="block text-xs text-muted-foreground">
                   {step.description}
                 </span>

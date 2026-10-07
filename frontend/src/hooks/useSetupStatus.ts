@@ -1,9 +1,10 @@
 "use client";
 
-import { useSetupChecklist } from "@/hooks/useSetupChecklist";
+import { type SetupChecklistPhase, useSetupChecklist } from "@/hooks/useSetupChecklist";
 
 export interface SetupStatus {
   isLoading: boolean;
+  status: SetupChecklistPhase;
   needsSetup: boolean;
   workspaceId: string | null;
 }
@@ -16,16 +17,18 @@ export interface SetupStatus {
  * sidebar's "Finish setup" entry (`setupNavItem` → `/onboarding`) stays visible
  * for as long as setup has work left — not just until the first agent exists.
  *
- * Conservative on errors: if any probe fails we treat the workspace as
- * configured (`needsSetup: false`) rather than nagging on unknown state.
+ * Unknown status (a probe failed and no step is proven missing) also keeps the
+ * entry visible: `/onboarding` is where the user can see what could not be
+ * checked and retry, and a failure is never read as "setup complete".
  */
 export function useSetupStatus(): SetupStatus {
-  const { workspaceId, isLoading, isError, allComplete } = useSetupChecklist();
+  const { workspaceId, isLoading, status } = useSetupChecklist();
 
-  const needsSetup = !!workspaceId && !isLoading && !isError && !allComplete;
+  const needsSetup = !!workspaceId && (status === "incomplete" || status === "unknown");
 
   return {
     isLoading,
+    status,
     needsSetup,
     workspaceId,
   };

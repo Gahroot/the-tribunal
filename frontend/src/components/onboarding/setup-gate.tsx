@@ -18,7 +18,7 @@ import { dismissSetupCard, isSetupCardDismissed } from "@/lib/onboarding-status"
  * which is what the sidebar's `setupNavItem` entry point now points at.
  */
 export function SetupGate() {
-  const { workspaceId, isLoading, isError } = useSetupChecklist();
+  const { workspaceId, isLoading } = useSetupChecklist();
   const pathname = usePathname();
   const [hidden, setHidden] = useState(false);
 
@@ -26,9 +26,12 @@ export function SetupGate() {
   // /onboarding already renders the checklist full-page — never stack a
   // second copy on top of it.
   if (pathname.startsWith("/onboarding")) return null;
-  // While probes are in flight (or failing) we can't prove real state, so we
-  // render nothing rather than a misleading card.
-  if (isLoading || isError || !workspaceId) return null;
+  // While the first probes are in flight we can't prove real state, so we
+  // render nothing rather than a misleading card. A failed probe does NOT hide
+  // the card: it renders the steps it can, marks the rest as "couldn't check"
+  // and offers a retry, so a newcomer is never left without guidance. The card
+  // is a dismissible banner, so it never blocks the page beneath it.
+  if (isLoading || !workspaceId) return null;
   if (hidden || isSetupCardDismissed(workspaceId)) return null;
   // Once every step is done the same card keeps rendering as the completion
   // celebration ("You're all set!") until the user dismisses it.
