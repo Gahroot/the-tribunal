@@ -17,6 +17,22 @@ class FUBVerifyResponse(BaseModel):
     email: str | None = None
 
 
+class FUBConnectRequest(BaseModel):
+    """Request body for verifying and saving a FUB key on a workspace."""
+
+    api_key: str = Field(..., min_length=1)
+
+
+class FUBConnectionStatus(BaseModel):
+    """Whether a workspace has a saved, usable Follow Up Boss connection.
+
+    Never carries the API key (or any fragment of it).
+    """
+
+    connected: bool
+    account_name: str | None = None
+
+
 class FUBContact(BaseModel):
     """A contact from Follow Up Boss."""
 
@@ -47,9 +63,22 @@ class FUBImportRequest(BaseModel):
     import_all: bool = False
 
 
+class FUBImportFailure(BaseModel):
+    """Why one FUB person was not imported (no PII)."""
+
+    fub_id: int | None = None
+    reason: str
+
+
 class FUBImportResponse(BaseModel):
-    """Result of importing FUB contacts."""
+    """Result of importing FUB contacts.
+
+    ``skipped`` counts people already present in the workspace (a re-run of the
+    same import skips everything it imported before). ``failures`` lists up to
+    the first 50 failed rows with a reason.
+    """
 
     imported: int
     skipped: int
     failed: int
+    failures: list[FUBImportFailure] = []

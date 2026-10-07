@@ -1,4 +1,4 @@
-import api, { apiGet, apiPost } from "@/lib/api";
+import api, { apiGet, apiPost, apiPut } from "@/lib/api";
 
 // ---- Request / Response Types ----
 
@@ -69,15 +69,53 @@ export interface FubContactsResponse {
   total: number;
 }
 
+/** Saved Follow Up Boss connection for a workspace (never includes the key). */
+export interface FubConnectionStatus {
+  connected: boolean;
+  account_name?: string | null;
+}
+
+export interface FubImportFailure {
+  fub_id?: number | null;
+  reason: string;
+}
+
 export interface ImportFubContactsResponse {
   imported: number;
-  message: string;
+  /** Already in the workspace (re-running an import skips these). */
+  skipped: number;
+  failed: number;
+  failures?: FubImportFailure[];
 }
 
 // ---- API Functions ----
 
 export function verifyFub(apiKey: string): Promise<VerifyFubResponse> {
   return apiPost<VerifyFubResponse>("/api/v1/realtor/verify-fub", { api_key: apiKey });
+}
+
+/** Read the workspace's saved FUB connection (no call to Follow Up Boss). */
+export function getFubConnection(
+  workspaceId: string
+): Promise<FubConnectionStatus> {
+  return apiGet<FubConnectionStatus>(
+    `/api/v1/workspaces/${workspaceId}/realtor/fub-connection`
+  );
+}
+
+/**
+ * Verify the key with Follow Up Boss, then save it (encrypted) on this
+ * workspace. Resolves only after the connection is persisted; a rejected or
+ * unreachable check leaves any existing connection untouched.
+ */
+export function connectFub(
+  workspaceId: string,
+  apiKey: string
+): Promise<FubConnectionStatus> {
+  return apiPut<FubConnectionStatus>(
+    `/api/v1/workspaces/${workspaceId}/realtor/fub-connection`,
+    { api_key: apiKey }
+  );
 }
 
 export function getFubContacts(

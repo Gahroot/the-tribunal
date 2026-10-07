@@ -111,7 +111,7 @@ function OnboardingFlow() {
         if (!ok) return false;
       }
       if (stepId === "leads") {
-        if (!extras.csvFile && extras.fubImportCount === null) {
+        if (!extras.csvFile && extras.fubImportResult === null) {
           extras.setLeadsError(
             "Import leads from Follow Up Boss or upload a CSV file."
           );
@@ -152,7 +152,7 @@ function OnboardingFlow() {
       toast.error("No workspace found. Please log in again.");
       return;
     }
-    if (!extras.csvFile && extras.fubImportCount === null) {
+    if (!extras.csvFile && extras.fubImportResult === null) {
       toast.error("Please import leads first.");
       return;
     }
@@ -171,7 +171,9 @@ function OnboardingFlow() {
           calcom_api_key: values.calcom_api_key,
           calcom_event_type_id: event_type_id,
           area_code: values.area_code || undefined,
-          fub_api_key: values.fub_api_key.trim() || undefined,
+          // The Follow Up Boss key is verified and saved on this workspace in
+          // the CRM step; re-sending the raw field here would overwrite that
+          // saved connection with an unverified value.
         });
         onboardedRef.current = true;
         phoneProvisionedRef.current = onboardResult.phone_provisioned;
@@ -219,12 +221,15 @@ function OnboardingFlow() {
           workspaceName: targetWorkspaceName,
         };
       } else {
+        const fubResult = extras.fubImportResult;
         summary = {
           source: "fub",
-          imported: extras.fubImportCount ?? 0,
-          skipped: 0,
-          failed: 0,
-          estimated: extras.fubImportCount,
+          imported: fubResult?.imported ?? 0,
+          skipped: fubResult?.skipped ?? 0,
+          failed: fubResult?.failed ?? 0,
+          estimated: fubResult
+            ? fubResult.imported + fubResult.skipped + fubResult.failed
+            : null,
           workspaceName: targetWorkspaceName,
         };
       }
@@ -269,7 +274,7 @@ function OnboardingFlow() {
     targetWorkspaceName,
     extras.csvFile,
     extras.csvRowCount,
-    extras.fubImportCount,
+    extras.fubImportResult,
     form,
     queryClient,
     showPhoneWarning,
@@ -316,7 +321,9 @@ function OnboardingFlow() {
             submittingLabel="Launching..."
             submitIcon={Rocket}
           >
-            {currentStepId === "fub" && <FubStep onSkip={goNext} />}
+            {currentStepId === "fub" && (
+              <FubStep workspaceId={targetWorkspaceId} onSkip={goNext} />
+            )}
             {currentStepId === "calcom" && <CalcomStep />}
             {currentStepId === "leads" && (
               <LeadsStep workspaceId={targetWorkspaceId} />
@@ -325,6 +332,7 @@ function OnboardingFlow() {
               <ReviewStep
                 showPhoneWarning={showPhoneWarning}
                 workspaceName={targetWorkspaceName}
+                workspaceId={targetWorkspaceId}
               />
             )}
           </WizardContainer>

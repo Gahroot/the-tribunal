@@ -69,13 +69,22 @@ async def store_followupboss_credentials(
     db: AsyncSession,
     workspace_id: uuid.UUID,
     api_key: str,
+    account_name: str | None = None,
 ) -> WorkspaceIntegration:
-    """Store or update the Follow Up Boss API key for a workspace."""
+    """Store or update the Follow Up Boss API key for a workspace.
+
+    ``account_name`` (from FUB ``/me``) is stored alongside the key so the
+    connection can be shown as "Connected as …" after a reload without
+    re-calling Follow Up Boss.
+    """
+    credentials: dict[str, Any] = {"api_key": api_key}
+    if account_name:
+        credentials["account_name"] = account_name
     return await upsert_workspace_integration_credentials(
         db=db,
         workspace_id=workspace_id,
         integration_type=FOLLOWUPBOSS_INTEGRATION_TYPE,
-        credentials={"api_key": api_key},
+        credentials=credentials,
     )
 
 

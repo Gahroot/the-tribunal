@@ -11452,6 +11452,46 @@
         "title": "EscalationRuleMandate",
         "type": "object"
       },
+      "FUBConnectRequest": {
+        "description": "Request body for verifying and saving a FUB key on a workspace.",
+        "properties": {
+          "api_key": {
+            "minLength": 1,
+            "title": "Api Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "api_key"
+        ],
+        "title": "FUBConnectRequest",
+        "type": "object"
+      },
+      "FUBConnectionStatus": {
+        "description": "Whether a workspace has a saved, usable Follow Up Boss connection.\n\nNever carries the API key (or any fragment of it).",
+        "properties": {
+          "account_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Name"
+          },
+          "connected": {
+            "title": "Connected",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "connected"
+        ],
+        "title": "FUBConnectionStatus",
+        "type": "object"
+      },
       "FUBContact": {
         "description": "A contact from Follow Up Boss.",
         "properties": {
@@ -11551,12 +11591,45 @@
         "title": "FUBContact",
         "type": "object"
       },
+      "FUBImportFailure": {
+        "description": "Why one FUB person was not imported (no PII).",
+        "properties": {
+          "fub_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fub Id"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "FUBImportFailure",
+        "type": "object"
+      },
       "FUBImportResponse": {
-        "description": "Result of importing FUB contacts.",
+        "description": "Result of importing FUB contacts.\n\n``skipped`` counts people already present in the workspace (a re-run of the\nsame import skips everything it imported before). ``failures`` lists up to\nthe first 50 failed rows with a reason.",
         "properties": {
           "failed": {
             "title": "Failed",
             "type": "integer"
+          },
+          "failures": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/FUBImportFailure"
+            },
+            "title": "Failures",
+            "type": "array"
           },
           "imported": {
             "title": "Imported",
@@ -54438,6 +54511,112 @@
         "summary": "Create Realtor Campaign Workspace",
         "tags": [
           "Realtor Onboarding"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/realtor/fub-connection": {
+      "get": {
+        "description": "Report whether the selected workspace has a saved FUB connection.\n\nReads only the stored encrypted integration (no call to Follow Up Boss), so\na FUB outage can't make a previously valid connection look disconnected.",
+        "operationId": "get_fub_connection_api_v1_workspaces__workspace_id__realtor_fub_connection_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FUBConnectionStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Fub Connection",
+        "tags": [
+          "Follow Up Boss"
+        ]
+      },
+      "put": {
+        "description": "Verify a FUB API key, then save it (encrypted) on the selected workspace.\n\nThe key is only written after Follow Up Boss accepts it. A rejected key\n(422) or an unreachable FUB (502) writes nothing, so an existing valid\nconnection is preserved. Returns ``connected`` only after the commit.",
+        "operationId": "connect_fub_api_v1_workspaces__workspace_id__realtor_fub_connection_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FUBConnectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FUBConnectionStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Connect Fub",
+        "tags": [
+          "Follow Up Boss"
         ]
       }
     },

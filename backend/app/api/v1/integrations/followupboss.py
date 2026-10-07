@@ -6,19 +6,24 @@ These routes were previously colocated with the realtor onboarding flow in
 """
 
 import uuid
-from typing import Annotated
+from typing import Annotated, NoReturn
 
 import httpx
 import structlog
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from sqlalchemy import or_, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import DB, CurrentUser, get_workspace
+from app.api.deps import DB, CurrentUser, WorkspaceAdminAccess, get_workspace
+from app.core.encryption import hash_phone, hash_value
 from app.models.contact import Contact
 from app.models.workspace import Workspace, WorkspaceIntegration
 from app.schemas.followupboss import (
+    FUBConnectionStatus,
+    FUBConnectRequest,
     FUBContact,
+    FUBImportFailure,
     FUBImportResponse,
     FUBPeopleResponse,
     FUBVerifyResponse,
@@ -26,10 +31,44 @@ from app.schemas.followupboss import (
 from app.services.followupboss import FollowUpBossClient
 from app.services.onboarding.credentials import store_followupboss_credentials
 from app.services.reactivation.drip_bootstrap import auto_create_drip_for_imports
+from app.utils.phone import normalize_phone_safe
 
 router = APIRouter()
 workspace_router = APIRouter()
 logger = structlog.get_logger()
+
+# Cap on per-row failure details returned to the client.
+MAX_REPORTED_FAILURES = 50
+
+
+def _fub_source(fub_id: object) -> str:
+    """Stable per-person source marker; also the primary re-import dedupe key."""
+    return f"Follow Up Boss (ID: {fub_id})"
+
+
+def _raise_for_fub_error(exc: httpx.HTTPError, *, stored_key: bool) -> NoReturn:
+    """Translate a Follow Up Boss transport/HTTP error into a client error.
+
+    Never mutates the saved connection: a rejected or unreachable key leaves the
+    workspace's existing integration exactly as it was.
+    """
+    if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (401, 403):
+        if stored_key:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Follow Up Boss rejected the saved API key. "
+                    "Reconnect Follow Up Boss and try again."
+                ),
+            ) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Follow Up Boss rejected this API key. Double-check it and try again.",
+        ) from exc
+    raise HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail="Couldn't reach Follow Up Boss. Nothing was changed; please try again.",
+    ) from exc
 
 
 async def upsert_fub_integration(
@@ -81,51 +120,98 @@ async def _fetch_all_fub_people(
     return all_people
 
 
+def _first_value(items: object) -> str | None:
+    """Return the first non-empty ``value`` of a FUB phones/emails list."""
+    if not isinstance(items, list):
+        return None
+    for item in items:
+        if isinstance(item, dict):
+            value = item.get("value")
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return None
+
+
 async def _import_single_fub_contact(
     db: AsyncSession,
     workspace_id: uuid.UUID,
     fub_person: dict,  # type: ignore[type-arg]
-) -> tuple[str, int | None]:
+) -> tuple[str, int | None, str | None]:
     """Import a single FUB contact.
 
-    Returns ``(status, contact_id)`` where status is one of
+    Returns ``(status, contact_id, failure_reason)`` where status is one of
     ``"imported"``, ``"skipped"`` or ``"failed"``.
-    """
-    phones: list[dict[str, str]] = fub_person.get("phones", [])
-    emails: list[dict[str, str]] = fub_person.get("emails", [])
-    phone = phones[0]["value"] if phones else None
-    email = emails[0]["value"] if emails else None
 
-    if not phone and not email:
-        return "failed", None
+    Dedupe uses the FUB-ID source marker plus the deterministic lookup hashes
+    (``phone``/``email`` are Fernet-encrypted, so comparing them directly never
+    matches). That makes re-running the same import a no-op instead of
+    duplicating every lead.
+    """
+    fub_id = fub_person.get("id")
+    raw_phone = _first_value(fub_person.get("phones"))
+    email = _first_value(fub_person.get("emails"))
+    phone = normalize_phone_safe(raw_phone) if raw_phone else None
 
     conditions = []
+    if fub_id is not None:
+        conditions.append(Contact.source == _fub_source(fub_id))
     if phone:
-        conditions.append(Contact.phone_number == phone)
+        conditions.append(Contact.phone_hash == hash_phone(phone))
     if email:
-        conditions.append(Contact.email == email)
+        conditions.append(Contact.email_hash == hash_value(email))
 
-    existing = await db.execute(
-        select(Contact).where(
-            Contact.workspace_id == workspace_id,
-            or_(*conditions),
+    if conditions:
+        existing = await db.execute(
+            select(Contact.id)
+            .where(Contact.workspace_id == workspace_id, or_(*conditions))
+            .limit(1)
         )
-    )
-    if existing.scalar_one_or_none():
-        return "skipped", None
+        if existing.scalar_one_or_none() is not None:
+            return "skipped", None, None
+
+    # Contacts require a phone number (SMS reactivation is the whole point).
+    if not phone:
+        reason = "invalid_phone" if raw_phone else "missing_phone"
+        return "failed", None, reason
 
     contact = Contact(
         workspace_id=workspace_id,
-        first_name=fub_person.get("firstName", ""),
-        last_name=fub_person.get("lastName"),
-        phone_number=phone or "",
+        first_name=(fub_person.get("firstName") or "")[:100],
+        last_name=(fub_person.get("lastName") or "")[:100] or None,
+        phone_number=phone,
+        phone_hash=hash_phone(phone),
         email=email,
-        source=f"Follow Up Boss (ID: {fub_person.get('id', 'unknown')})",
+        email_hash=hash_value(email) if email else None,
+        source=_fub_source(fub_id if fub_id is not None else "unknown"),
         notes=fub_person.get("background"),
     )
-    db.add(contact)
-    await db.flush()
-    return "imported", contact.id
+    try:
+        # One bad row rolls back only its savepoint, not the whole import.
+        async with db.begin_nested():
+            db.add(contact)
+            await db.flush()
+    except Exception as exc:
+        logger.warning(
+            "fub_contact_import_failed",
+            workspace_id=str(workspace_id),
+            fub_id=fub_id,
+            error_type=type(exc).__name__,
+        )
+        return "failed", None, "save_failed"
+    return "imported", contact.id, None
+
+
+def _connection_status(integration: WorkspaceIntegration | None) -> FUBConnectionStatus:
+    if integration is None or not integration.is_active:
+        return FUBConnectionStatus(connected=False)
+    credentials = integration.safe_credentials()
+    if not credentials or not credentials.get("api_key"):
+        return FUBConnectionStatus(connected=False)
+    account_name = credentials.get("account_name")
+    return FUBConnectionStatus(
+        connected=True,
+        account_name=account_name if isinstance(account_name, str) else None,
+    )
 
 
 @router.post("/verify-fub", response_model=FUBVerifyResponse)
@@ -200,29 +286,135 @@ async def _import_fub_contacts(
     try:
         people_to_import: list[dict] = []  # type: ignore[type-arg]
 
-        if import_all:
-            people_to_import = await _fetch_all_fub_people(client)
-        elif contact_ids:
-            for cid in contact_ids:
-                data = await client.get_person(cid)
-                people_to_import.append(data.get("person", data))
+        # Fetch everything before writing anything: a FUB failure mid-fetch
+        # imports nothing, so a retry starts clean.
+        try:
+            if import_all:
+                people_to_import = await _fetch_all_fub_people(client)
+            elif contact_ids:
+                for cid in contact_ids:
+                    data = await client.get_person(cid)
+                    people_to_import.append(data.get("person", data))
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "fub_import_fetch_failed",
+                workspace_id=str(workspace_id),
+                error_type=type(exc).__name__,
+            )
+            _raise_for_fub_error(exc, stored_key=True)
 
         counts = {"imported": 0, "skipped": 0, "failed": 0}
+        failures: list[FUBImportFailure] = []
         imported_contact_ids: list[int] = []
         for p in people_to_import:
-            result, contact_id = await _import_single_fub_contact(db, workspace_id, p)
+            result, contact_id, reason = await _import_single_fub_contact(db, workspace_id, p)
             counts[result] += 1
             if result == "imported" and contact_id is not None:
                 imported_contact_ids.append(contact_id)
+            elif result == "failed" and len(failures) < MAX_REPORTED_FAILURES:
+                fub_id = p.get("id")
+                failures.append(
+                    FUBImportFailure(
+                        fub_id=fub_id if isinstance(fub_id, int) else None,
+                        reason=reason or "unknown",
+                    )
+                )
 
         # Auto-create drip campaign for imported contacts
         if imported_contact_ids:
             await auto_create_drip_for_imports(db, workspace_id, imported_contact_ids)
 
         await db.commit()
-        return FUBImportResponse(**counts)
+        logger.info(
+            "fub_import_completed",
+            workspace_id=str(workspace_id),
+            **counts,
+        )
+        return FUBImportResponse(**counts, failures=failures)
     finally:
         await client.close()
+
+
+@workspace_router.get("/fub-connection", response_model=FUBConnectionStatus)
+async def get_fub_connection(
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> FUBConnectionStatus:
+    """Report whether the selected workspace has a saved FUB connection.
+
+    Reads only the stored encrypted integration (no call to Follow Up Boss), so
+    a FUB outage can't make a previously valid connection look disconnected.
+    """
+    result = await db.execute(
+        select(WorkspaceIntegration).where(
+            WorkspaceIntegration.workspace_id == workspace.id,
+            WorkspaceIntegration.integration_type == "followupboss",
+        )
+    )
+    return _connection_status(result.scalar_one_or_none())
+
+
+@workspace_router.put("/fub-connection", response_model=FUBConnectionStatus)
+async def connect_fub(
+    body: FUBConnectRequest,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: WorkspaceAdminAccess,
+) -> FUBConnectionStatus:
+    """Verify a FUB API key, then save it (encrypted) on the selected workspace.
+
+    The key is only written after Follow Up Boss accepts it. A rejected key
+    (422) or an unreachable FUB (502) writes nothing, so an existing valid
+    connection is preserved. Returns ``connected`` only after the commit.
+    """
+    api_key = body.api_key.strip()
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Paste your Follow Up Boss API key first.",
+        )
+
+    client = FollowUpBossClient(api_key)
+    try:
+        me = await client.verify()
+    except httpx.HTTPError as exc:
+        logger.info(
+            "fub_connect_verify_failed",
+            workspace_id=str(workspace.id),
+            error_type=type(exc).__name__,
+        )
+        _raise_for_fub_error(exc, stored_key=False)
+    finally:
+        await client.close()
+
+    name = me.get("name") if isinstance(me, dict) else None
+    account_name = name if isinstance(name, str) and name else None
+    try:
+        integration = await store_followupboss_credentials(
+            db, workspace.id, api_key, account_name=account_name
+        )
+        await db.commit()
+    except SQLAlchemyError as exc:
+        await db.rollback()
+        logger.error(
+            "fub_integration_save_failed",
+            workspace_id=str(workspace.id),
+            error_type=type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Your key works, but we couldn't save the connection. Please try again.",
+        ) from exc
+    logger.info(
+        "fub_integration_connected",
+        workspace_id=str(workspace.id),
+        user_id=current_user.id,
+    )
+    return FUBConnectionStatus(
+        connected=bool(integration.is_active),
+        account_name=account_name,
+    )
 
 
 @workspace_router.get("/fub-contacts", response_model=FUBPeopleResponse)

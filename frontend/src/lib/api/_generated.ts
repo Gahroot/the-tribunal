@@ -5800,6 +5800,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/realtor/fub-connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Fub Connection
+         * @description Report whether the selected workspace has a saved FUB connection.
+         *
+         *     Reads only the stored encrypted integration (no call to Follow Up Boss), so
+         *     a FUB outage can't make a previously valid connection look disconnected.
+         */
+        get: operations["get_fub_connection_api_v1_workspaces__workspace_id__realtor_fub_connection_get"];
+        /**
+         * Connect Fub
+         * @description Verify a FUB API key, then save it (encrypted) on the selected workspace.
+         *
+         *     The key is only written after Follow Up Boss accepts it. A rejected key
+         *     (422) or an unreachable FUB (502) writes nothing, so an existing valid
+         *     connection is preserved. Returns ``connected`` only after the commit.
+         */
+        put: operations["connect_fub_api_v1_workspaces__workspace_id__realtor_fub_connection_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/realtor/fub-contacts": {
         parameters: {
             query?: never;
@@ -11477,6 +11508,26 @@ export interface components {
             label: string;
         };
         /**
+         * FUBConnectRequest
+         * @description Request body for verifying and saving a FUB key on a workspace.
+         */
+        FUBConnectRequest: {
+            /** Api Key */
+            api_key: string;
+        };
+        /**
+         * FUBConnectionStatus
+         * @description Whether a workspace has a saved, usable Follow Up Boss connection.
+         *
+         *     Never carries the API key (or any fragment of it).
+         */
+        FUBConnectionStatus: {
+            /** Account Name */
+            account_name?: string | null;
+            /** Connected */
+            connected: boolean;
+        };
+        /**
          * FUBContact
          * @description A contact from Follow Up Boss.
          */
@@ -11504,12 +11555,31 @@ export interface components {
             tags: string[];
         };
         /**
+         * FUBImportFailure
+         * @description Why one FUB person was not imported (no PII).
+         */
+        FUBImportFailure: {
+            /** Fub Id */
+            fub_id?: number | null;
+            /** Reason */
+            reason: string;
+        };
+        /**
          * FUBImportResponse
          * @description Result of importing FUB contacts.
+         *
+         *     ``skipped`` counts people already present in the workspace (a re-run of the
+         *     same import skips everything it imported before). ``failures`` lists up to
+         *     the first 50 failed rows with a reason.
          */
         FUBImportResponse: {
             /** Failed */
             failed: number;
+            /**
+             * Failures
+             * @default []
+             */
+            failures: components["schemas"]["FUBImportFailure"][];
             /** Imported */
             imported: number;
             /** Skipped */
@@ -30896,6 +30966,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RealtorCampaignResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_fub_connection_api_v1_workspaces__workspace_id__realtor_fub_connection_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FUBConnectionStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connect_fub_api_v1_workspaces__workspace_id__realtor_fub_connection_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FUBConnectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FUBConnectionStatus"];
                 };
             };
             /** @description Validation Error */

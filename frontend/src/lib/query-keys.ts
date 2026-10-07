@@ -341,6 +341,8 @@ export const queryKeys = {
   realtor: {
     all: (workspaceId: string) => ["realtor", workspaceId] as const,
     onboarding: (workspaceId: string) => ["realtor", workspaceId, "onboarding"] as const,
+    fubConnection: (workspaceId: string) =>
+      ["realtor", workspaceId, "fub-connection"] as const,
     stats: (workspaceId: string) => ["realtor-stats", workspaceId] as const,
     appointments: (workspaceId: string) => ["realtor-appointments", workspaceId] as const,
   },

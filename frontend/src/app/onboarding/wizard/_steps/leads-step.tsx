@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
   Database,
@@ -18,12 +19,19 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { importFubContacts } from "@/lib/api/realtor";
+import { queryKeys } from "@/lib/query-keys";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 import { formatNumber } from "@/lib/utils/number";
 
 import type { OnboardingFormValues } from "../_state";
 
-import { useOnboardingExtras } from "./onboarding-context";
+import { useFubConnection, useOnboardingExtras } from "./onboarding-context";
+
+const FAILURE_LABELS: Record<string, string> = {
+  missing_phone: "no phone number",
+  invalid_phone: "phone number couldn't be read",
+  save_failed: "couldn't be saved",
+};
 
 export interface LeadsStepProps {
   /** The workspace this guided setup targets; never re-resolved here. */
@@ -36,14 +44,17 @@ export function LeadsStep({ workspaceId }: LeadsStepProps) {
     csvFile,
     csvRowCount,
     setCsvFile,
-    fubConnected,
-    fubImportCount,
-    setFubImportCount,
+    fubImportResult,
+    setFubImportResult,
     leadsError,
     setLeadsError,
   } = useOnboardingExtras();
+  const queryClient = useQueryClient();
+  const connection = useFubConnection(workspaceId);
+  const fubConnected = connection.connected;
 
   const [fubImporting, setFubImporting] = useState(false);
+  const [fubImportError, setFubImportError] = useState<string | null>(null);
   const areaCodeId = useId();
 
   const processFile = useCallback(
@@ -66,26 +77,27 @@ export function LeadsStep({ workspaceId }: LeadsStepProps) {
       return;
     }
     setFubImporting(true);
+    setFubImportError(null);
     try {
-      // Pass the key from the CRM step so it's stored on the target workspace
-      // before importing; the onboard call runs later, at launch.
-      const result = await importFubContacts(
-        workspaceId,
-        true,
-        undefined,
-        form.getValues("fub_api_key").trim() || undefined
-      );
-      setFubImportCount(result.imported);
+      // Uses the connection already saved on this workspace. Re-running is
+      // safe: leads already in the workspace are skipped, not duplicated.
+      const result = await importFubContacts(workspaceId, true);
+      setFubImportResult(result);
       setLeadsError(null);
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.contacts.all(workspaceId),
+      });
       toast.success(
         `Imported ${formatNumber(result.imported)} leads from Follow Up Boss`
       );
     } catch (err) {
-      toast.error(getApiErrorMessage(err, "Failed to import leads."));
+      const message = getApiErrorMessage(err, "Failed to import leads.");
+      setFubImportError(message);
+      toast.error(message);
     } finally {
       setFubImporting(false);
     }
-  }, [workspaceId, form, setFubImportCount, setLeadsError]);
+  }, [workspaceId, queryClient, setFubImportResult, setLeadsError]);
 
   const areaCode = form.watch("area_code");
 
@@ -108,15 +120,39 @@ export function LeadsStep({ workspaceId }: LeadsStepProps) {
             </div>
             <div>
               <p className="font-semibold text-sm">Pull from Follow Up Boss</p>
-              {fubImportCount !== null && (
-                <p className="text-xs text-success mt-1">
-                  {formatNumber(fubImportCount)} lead
-                  {fubImportCount !== 1 ? "s" : ""} imported
+              {fubImportResult !== null && (
+                <div className="text-xs mt-1 space-y-0.5" role="status">
+                  <p className="text-success">
+                    {formatNumber(fubImportResult.imported)} lead
+                    {fubImportResult.imported !== 1 ? "s" : ""} imported
+                  </p>
+                  {fubImportResult.skipped > 0 && (
+                    <p className="text-muted-foreground">
+                      {formatNumber(fubImportResult.skipped)} already in this
+                      workspace
+                    </p>
+                  )}
+                  {fubImportResult.failed > 0 && (
+                    <p className="text-destructive">
+                      {formatNumber(fubImportResult.failed)} couldn&apos;t be
+                      imported
+                    </p>
+                  )}
+                </div>
+              )}
+              {fubImportError && (
+                <p className="text-xs text-destructive mt-1">{fubImportError}</p>
+              )}
+              {connection.isChecking && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Checking Follow Up Boss connection...
                 </p>
               )}
-              {!fubConnected && (
+              {!fubConnected && !connection.isChecking && (
                 <p className="text-xs text-muted-foreground mt-1">
-                  Connect Follow Up Boss in Step 1 first
+                  {connection.checkFailed
+                    ? "Couldn't check the Follow Up Boss connection. Go back to Step 1 to retry."
+                    : "Connect Follow Up Boss in Step 1 first"}
                 </p>
               )}
             </div>
@@ -124,7 +160,7 @@ export function LeadsStep({ workspaceId }: LeadsStepProps) {
               type="button"
               variant="outline"
               size="sm"
-              disabled={!fubConnected || fubImporting}
+              disabled={!fubConnected || !workspaceId || fubImporting}
               onClick={handleFubImport}
             >
               {fubImporting ? (
@@ -132,8 +168,22 @@ export function LeadsStep({ workspaceId }: LeadsStepProps) {
               ) : (
                 <Users className="size-4 mr-2" />
               )}
-              Import All Leads
+              {fubImporting
+                ? "Importing..."
+                : fubImportResult !== null || fubImportError
+                  ? "Import Again"
+                  : "Import All Leads"}
             </Button>
+            {fubImportResult && (fubImportResult.failures?.length ?? 0) > 0 && (
+              <ul className="text-xs text-muted-foreground text-left w-full space-y-0.5">
+                {fubImportResult.failures?.slice(0, 5).map((f, i) => (
+                  <li key={`${f.fub_id ?? "x"}-${i}`}>
+                    Follow Up Boss lead {f.fub_id ?? "(unknown)"}:{" "}
+                    {FAILURE_LABELS[f.reason] ?? f.reason}
+                  </li>
+                ))}
+              </ul>
+            )}
           </CardContent>
         </Card>
 

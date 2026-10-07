@@ -10,24 +10,28 @@ import { formatNumber } from "@/lib/utils/number";
 
 import type { OnboardingFormValues } from "../_state";
 
-import { useOnboardingExtras } from "./onboarding-context";
+import { useFubConnection, useOnboardingExtras } from "./onboarding-context";
 
 export interface ReviewStepProps {
   /** Set after launch when Telnyx auto-purchase produced no SMS number. */
   showPhoneWarning?: boolean;
   /** Name of the workspace this setup targets, shown so the target is explicit. */
   workspaceName?: string | null;
+  /** The workspace this setup targets; FUB status is read from it. */
+  workspaceId?: string | null;
 }
 
 export function ReviewStep({
   showPhoneWarning = false,
   workspaceName = null,
+  workspaceId = null,
 }: ReviewStepProps) {
   const form = useFormContext<OnboardingFormValues>();
+  const fub = useFubConnection(workspaceId);
+  const fubConnected = fub.connected;
+  const fubName = fub.accountName;
   const {
-    fubConnected,
-    fubName,
-    fubImportCount,
+    fubImportResult,
     calcomConnected,
     calcomUsername,
     csvFile,
@@ -37,6 +41,7 @@ export function ReviewStep({
   const bookingUrl = form.watch("calcom_booking_url");
   const areaCode = form.watch("area_code");
 
+  const fubImportCount = fubImportResult?.imported ?? null;
   const totalLeads = (fubImportCount ?? 0) + (csvRowCount ?? 0);
 
   return (
