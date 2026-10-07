@@ -28,7 +28,9 @@ import logging
 import sys
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from pathlib import Path
+from typing import Protocol
 
 # --- harness bootstrap: locate ``backend/`` so ``app`` + ``scripts`` import ----
 _BACKEND_DIR = next(
@@ -105,15 +107,28 @@ async def _collect() -> list[Finding]:
     return findings
 
 
-def _finding(table: str, row: object, kind: str) -> Finding:
-    days = list(row.sending_days)  # type: ignore[attr-defined]
+class _ScheduledRow(Protocol):
+    @property
+    def id(self) -> object: ...
+    @property
+    def workspace_id(self) -> object: ...
+    @property
+    def status(self) -> object: ...
+    @property
+    def created_at(self) -> datetime: ...
+    @property
+    def sending_days(self) -> list[int] | None: ...
+
+
+def _finding(table: str, row: _ScheduledRow, kind: str) -> Finding:
+    days = list(row.sending_days or [])
     return Finding(
         table=table,
-        id=str(row.id),  # type: ignore[attr-defined]
-        workspace_id=str(row.workspace_id),  # type: ignore[attr-defined]
+        id=str(row.id),
+        workspace_id=str(row.workspace_id),
         kind=kind,
-        status=str(row.status),  # type: ignore[attr-defined]
-        created_at=row.created_at.isoformat(),  # type: ignore[attr-defined]
+        status=str(row.status),
+        created_at=row.created_at.isoformat(),
         stored=days,
         as_contract=describe(days),
         if_legacy_ui=describe(legacy_ui_to_contract(days)),
