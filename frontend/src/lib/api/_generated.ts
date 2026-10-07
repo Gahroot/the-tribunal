@@ -210,6 +210,11 @@ export interface paths {
         /**
          * Get Billing Status
          * @description Return the subscription status for the current workspace.
+         *
+         *     Also reports which billing actions can actually work so clients never show
+         *     a checkout/portal control that is guaranteed to fail. A Stripe lookup
+         *     failure is surfaced as a 502 rather than reported as "not subscribed",
+         *     which would wrongly invite a paying customer to subscribe again.
          */
         get: operations["get_billing_status_api_v1_billing_status_get"];
         put?: never;
@@ -8989,10 +8994,25 @@ export interface components {
         };
         /** BillingStatus */
         BillingStatus: {
+            /**
+             * Checkout Available
+             * @default false
+             */
+            checkout_available: boolean;
+            /**
+             * Configured
+             * @default false
+             */
+            configured: boolean;
             /** Current Period End */
             current_period_end?: string | null;
             /** Plan */
             plan?: string | null;
+            /**
+             * Portal Available
+             * @default false
+             */
+            portal_available: boolean;
             /** Status */
             status?: string | null;
             /** Subscribed */

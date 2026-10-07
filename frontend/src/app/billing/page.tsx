@@ -1,18 +1,18 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { CreditCard, CheckCircle2, Zap, Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { CheckCircle2, Zap } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
+import { SubscriptionSummary } from "@/components/shared/billing/subscription-summary";
+import { useBillingStatus } from "@/components/shared/billing/use-billing";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { StatusBadge } from "@/components/ui/status-badge";
-import { createCheckout, createPortal, getBillingStatus, type BillingStatus } from "@/lib/api/billing";
+import { PageLoadingState } from "@/components/ui/page-state";
 import { queryKeys } from "@/lib/query-keys";
-import { getApiErrorMessage } from "@/lib/utils/errors";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -39,39 +39,37 @@ function PlanFeature({ text }: { text: string }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
+/**
+ * Stripe Checkout returns here with `?checkout=success|canceled`. Confirm the
+ * outcome once, refresh subscription state, and clear the query param.
+ */
+function useCheckoutReturnNotice() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
+  const outcome = searchParams.get("checkout");
+  const handled = useRef(false);
+
+  useEffect(() => {
+    if (handled.current || (outcome !== "success" && outcome !== "canceled")) return;
+    handled.current = true;
+    if (outcome === "success") {
+      toast.success(
+        "Thanks! Your subscription is being activated. It can take a few seconds to show here.",
+      );
+      void queryClient.invalidateQueries({ queryKey: queryKeys.billing.status() });
+    } else {
+      toast("Checkout canceled. You weren't charged.");
+    }
+    router.replace("/billing");
+  }, [outcome, queryClient, router]);
+}
+
 function BillingContent() {
   const router = useRouter();
-  const [isRedirecting, setIsRedirecting] = useState(false);
-
-  const { data: billingStatus, isPending } = useQuery<BillingStatus>({
-    queryKey: queryKeys.billing.status(),
-    queryFn: getBillingStatus,
-    retry: false,
-  });
-
+  useCheckoutReturnNotice();
+  const { data: billingStatus } = useBillingStatus();
   const subscribed = billingStatus?.subscribed ?? false;
-
-  async function handleGetStarted() {
-    setIsRedirecting(true);
-    try {
-      const { checkout_url } = await createCheckout();
-      window.location.href = checkout_url;
-    } catch (err) {
-      toast.error(getApiErrorMessage(err, "Failed to start checkout. Please try again."));
-      setIsRedirecting(false);
-    }
-  }
-
-  async function handleManageSubscription() {
-    setIsRedirecting(true);
-    try {
-      const { portal_url } = await createPortal();
-      window.location.href = portal_url;
-    } catch (err) {
-      toast.error(getApiErrorMessage(err, "Failed to open billing portal. Please try again."));
-      setIsRedirecting(false);
-    }
-  }
 
   return (
     <div className="flex flex-col items-center gap-8 p-6 md:p-12 max-w-2xl mx-auto w-full">
@@ -94,10 +92,7 @@ function BillingContent() {
       {/* Pricing Card */}
       <Card className="w-full border-2 border-primary/20">
         <CardHeader className="pb-4">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-xl">Monthly Subscription</CardTitle>
-            {subscribed && <StatusBadge dotClass="bg-success">Active</StatusBadge>}
-          </div>
+          <CardTitle className="text-xl">Monthly Subscription</CardTitle>
           <div className="flex items-baseline gap-1 mt-1">
             <span className="text-4xl font-bold">{PLAN_PRICE.split("/")[0]}</span>
             {PLAN_PRICE.includes("/") && (
@@ -116,56 +111,21 @@ function BillingContent() {
             ))}
           </ul>
 
-          {/* CTA button */}
-          {isPending ? (
-            <Button className="w-full" disabled>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Loading…
-            </Button>
-          ) : subscribed ? (
-            <div className="space-y-3">
-              <p className="text-sm text-center text-muted-foreground">
-                You have an active subscription.
-              </p>
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={handleManageSubscription}
-                disabled={isRedirecting}
-              >
-                {isRedirecting ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <CreditCard className="mr-2 h-4 w-4" />
-                )}
-                Manage Subscription
-              </Button>
-              <Button
-                className="w-full"
-                variant="secondary"
-                onClick={() => router.push("/dashboard")}
-              >
-                Go to Dashboard
-              </Button>
-            </div>
-          ) : (
+          {/* Live subscription state + working actions (shared with Settings → Billing) */}
+          <SubscriptionSummary subscribeMode="checkout" />
+
+          {subscribed && (
             <Button
               className="w-full"
-              size="lg"
-              onClick={handleGetStarted}
-              disabled={isRedirecting}
+              variant="secondary"
+              onClick={() => router.push("/dashboard")}
             >
-              {isRedirecting ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <CreditCard className="mr-2 h-4 w-4" />
-              )}
-              Get Started
+              Go to Dashboard
             </Button>
           )}
 
-          {/* Fine print */}
-          {!subscribed && (
+          {/* Fine print — only when checkout is actually offered */}
+          {billingStatus && !billingStatus.subscribed && billingStatus.checkout_available && (
             <p className="text-xs text-center text-muted-foreground">
               Secure payment via Stripe. Cancel anytime.
             </p>
@@ -179,7 +139,10 @@ function BillingContent() {
 export default function BillingPage() {
   return (
     <AppSidebar>
-      <BillingContent />
+      {/* Suspense: BillingContent reads useSearchParams (?checkout=...). */}
+      <Suspense fallback={<PageLoadingState message="Loading billing…" />}>
+        <BillingContent />
+      </Suspense>
     </AppSidebar>
   );
 }

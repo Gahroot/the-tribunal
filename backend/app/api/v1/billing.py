@@ -46,11 +46,27 @@ class BillingStatus(BaseModel):
     plan: str | None = None
     status: str | None = None
     current_period_end: datetime | None = None
+    # Whether Stripe billing is configured on this deployment at all. When
+    # False, neither checkout nor the customer portal can work, and the UI
+    # explains that instead of offering dead controls.
+    configured: bool = False
+    # Whether ``POST /checkout`` can start a new subscription (secret key and a
+    # default price are both configured).
+    checkout_available: bool = False
+    # Whether ``POST /portal`` can open the Stripe customer portal (this
+    # workspace already has a Stripe customer on file).
+    portal_available: bool = False
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _billing_return_url(outcome: str | None = None) -> str:
+    """Frontend billing page URL used for Stripe checkout/portal returns."""
+    base = f"{settings.frontend_url}/billing"
+    return f"{base}?checkout={outcome}" if outcome else base
 
 
 def _stripe_client() -> stripe.StripeClient:
@@ -59,12 +75,19 @@ def _stripe_client() -> stripe.StripeClient:
 
 
 async def _get_user_workspace_id(current_user: CurrentUser, db: DB) -> uuid.UUID:
-    """Resolve the user's default (or first) workspace ID."""
+    """Resolve the user's default (or first) workspace ID.
+
+    Several memberships can carry ``is_default``, so pick the oldest
+    deterministically rather than failing with a 500 on multiple rows.
+    """
     result = await db.execute(
-        select(WorkspaceMembership).where(
+        select(WorkspaceMembership)
+        .where(
             WorkspaceMembership.user_id == current_user.id,
             WorkspaceMembership.is_default.is_(True),
         )
+        .order_by(WorkspaceMembership.created_at.asc())
+        .limit(1)
     )
     membership = result.scalar_one_or_none()
 
@@ -168,8 +191,8 @@ async def create_checkout(
     params: dict[str, Any] = {
         "mode": "subscription",
         "line_items": [{"price": price_id, "quantity": 1}],
-        "success_url": f"{settings.frontend_url}/realtor-dashboard?subscribed=true",
-        "cancel_url": f"{settings.frontend_url}/onboarding",
+        "success_url": _billing_return_url("success"),
+        "cancel_url": _billing_return_url("canceled"),
         "metadata": {"workspace_id": str(workspace_id)},
     }
     if customer_id:
@@ -224,7 +247,7 @@ async def create_portal(
     client = _stripe_client()
 
     try:
-        return_url = f"{settings.frontend_url}/realtor-dashboard"
+        return_url = _billing_return_url()
         session = client.billing_portal.sessions.create(
             params={"customer": customer_id, "return_url": return_url},
         )
@@ -253,16 +276,27 @@ async def get_billing_status(
     current_user: CurrentUser,
     db: DB,
 ) -> BillingStatus:
-    """Return the subscription status for the current workspace."""
+    """Return the subscription status for the current workspace.
+
+    Also reports which billing actions can actually work so clients never show
+    a checkout/portal control that is guaranteed to fail. A Stripe lookup
+    failure is surfaced as a 502 rather than reported as "not subscribed",
+    which would wrongly invite a paying customer to subscribe again.
+    """
     if not settings.stripe_secret_key:
         return BillingStatus(subscribed=False)
 
+    checkout_available = bool(settings.stripe_price_id)
     workspace_id = await _get_user_workspace_id(current_user, db)
     existing = await _get_stripe_integration(workspace_id, db)
     customer_id = _get_customer_id(existing)
 
     if not customer_id:
-        return BillingStatus(subscribed=False)
+        return BillingStatus(
+            subscribed=False,
+            configured=True,
+            checkout_available=checkout_available,
+        )
 
     client = _stripe_client()
 
@@ -276,10 +310,18 @@ async def get_billing_status(
             error=str(exc),
             workspace_id=str(workspace_id),
         )
-        return BillingStatus(subscribed=False)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Couldn't reach the billing provider. Please try again.",
+        ) from exc
 
     if not subscriptions.data:
-        return BillingStatus(subscribed=False)
+        return BillingStatus(
+            subscribed=False,
+            configured=True,
+            checkout_available=checkout_available,
+            portal_available=True,
+        )
 
     sub = subscriptions.data[0]
     is_active = sub.status in ("active", "trialing")
@@ -304,6 +346,9 @@ async def get_billing_status(
         plan=plan_name,
         status=sub.status,
         current_period_end=period_end,
+        configured=True,
+        checkout_available=checkout_available,
+        portal_available=True,
     )
 
 

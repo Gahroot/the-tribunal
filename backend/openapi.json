@@ -4683,6 +4683,16 @@
       },
       "BillingStatus": {
         "properties": {
+          "checkout_available": {
+            "default": false,
+            "title": "Checkout Available",
+            "type": "boolean"
+          },
+          "configured": {
+            "default": false,
+            "title": "Configured",
+            "type": "boolean"
+          },
           "current_period_end": {
             "anyOf": [
               {
@@ -4705,6 +4715,11 @@
               }
             ],
             "title": "Plan"
+          },
+          "portal_available": {
+            "default": false,
+            "title": "Portal Available",
+            "type": "boolean"
           },
           "status": {
             "anyOf": [
@@ -32647,7 +32662,7 @@
     },
     "/api/v1/billing/status": {
       "get": {
-        "description": "Return the subscription status for the current workspace.",
+        "description": "Return the subscription status for the current workspace.\n\nAlso reports which billing actions can actually work so clients never show\na checkout/portal control that is guaranteed to fail. A Stripe lookup\nfailure is surfaced as a 502 rather than reported as \"not subscribed\",\nwhich would wrongly invite a paying customer to subscribe again.",
         "operationId": "get_billing_status_api_v1_billing_status_get",
         "responses": {
           "200": {

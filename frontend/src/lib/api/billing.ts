@@ -7,6 +7,12 @@ export interface BillingStatus {
   plan: string | null;
   status: string | null;
   current_period_end: string | null;
+  /** Stripe billing is configured on this deployment. */
+  configured: boolean;
+  /** A new subscription can be started via checkout. */
+  checkout_available: boolean;
+  /** The Stripe customer portal can be opened for this workspace. */
+  portal_available: boolean;
 }
 
 // ---- API Functions ----
