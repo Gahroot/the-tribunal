@@ -19,16 +19,45 @@ from app.models.workspace import Workspace
 from app.schemas.appointment import (
     AppointmentAgentStat,
     AppointmentCampaignStat,
+    AppointmentCancelResponse,
     AppointmentCreate,
     AppointmentOverallStats,
     AppointmentResponse,
     AppointmentStatsResponse,
     AppointmentUpdate,
+    CancelProviderResult,
     PaginatedAppointments,
 )
 from app.services.tags import TagService
 
 logger = structlog.get_logger()
+
+# sync_status for a CRM-cancelled appointment whose external booking was
+# intentionally left active (crm_only). A later cancel retries the provider.
+SYNC_STATUS_LOCAL_ONLY = "local_only"
+
+_CANCEL_MESSAGES: dict[str, str] = {
+    "cancelled": (
+        "Cancelled in the CRM and on Cal.com. Cal.com sends its own cancellation "
+        "notice to attendees per your Cal.com event settings; the CRM sent no message."
+    ),
+    "already_cancelled": (
+        "Cancelled in the CRM. The Cal.com booking was already cancelled, so Cal.com "
+        "sent no new notice and the CRM sent no message."
+    ),
+    "not_found": (
+        "Cancelled in the CRM. Cal.com has no matching booking (it may have been "
+        "deleted), so no one was notified."
+    ),
+    "skipped": (
+        "Marked cancelled in the CRM only. The Cal.com booking is still active and "
+        "the contact was not notified. Retry the Cal.com cancellation or cancel it in Cal.com."
+    ),
+    "not_applicable": (
+        "Cancelled in the CRM. This appointment has no external calendar booking, "
+        "and the contact was not notified."
+    ),
+}
 
 
 def _calc_show_up_rate(completed: int, no_show: int) -> float:
@@ -209,6 +238,20 @@ class AppointmentService:
 
         previous_status = appointment.status
         update_data = appointment_in.model_dump(exclude_unset=True)
+        if (
+            update_data.get("status") == AppointmentStatus.CANCELLED
+            and previous_status == AppointmentStatus.SCHEDULED
+        ):
+            # Never report a cancellation while the external booking stays
+            # live: route through the provider-first cancel flow. Other field
+            # edits commit atomically with it (or roll back with a failure).
+            # Re-labelling a completed/no-show record stays a status-only edit.
+            update_data.pop("status")
+            for field, value in update_data.items():
+                setattr(appointment, field, value)
+            await self.cancel_appointment(workspace_id, appointment_id)
+            return await self.get_appointment(workspace_id, appointment_id)
+
         for field, value in update_data.items():
             setattr(appointment, field, value)
 
@@ -277,6 +320,194 @@ class AppointmentService:
                 self.log.warning("review_request_enqueue_failed", error=str(exc))
 
         return appointment
+
+    async def cancel_appointment(
+        self,
+        workspace_id: uuid.UUID,
+        appointment_id: int,
+        *,
+        reason: str | None = None,
+        crm_only: bool = False,
+    ) -> AppointmentCancelResponse:
+        """Cancel an appointment, cancelling its Cal.com booking first.
+
+        The row is locked (``FOR UPDATE``) for the whole flow so a repeat
+        click or the Cal.com ``BOOKING_CANCELLED`` webhook (which locks the
+        same row) serializes behind it instead of double-processing.
+
+        Raises:
+            HTTPException 409: appointment is completed / no-show.
+            HTTPException 502 ``calendar_cancel_failed``: the provider could
+                not cancel the booking; nothing was changed locally.
+        """
+        result = await self.db.execute(
+            select(Appointment)
+            .options(selectinload(Appointment.contact))
+            .where(
+                Appointment.id == appointment_id,
+                Appointment.workspace_id == workspace_id,
+            )
+            .with_for_update(of=Appointment)
+            .execution_options(populate_existing=True)
+        )
+        appointment = result.scalar_one_or_none()
+        if appointment is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Appointment not found"
+            )
+
+        reason = (reason or "").strip() or None
+        booking_uid = appointment.calcom_booking_uid
+        log = self.log.bind(appointment_id=appointment_id, workspace_id=str(workspace_id))
+
+        if appointment.status == AppointmentStatus.CANCELLED:
+            pending_external = (
+                bool(booking_uid) and appointment.sync_status == SYNC_STATUS_LOCAL_ONLY
+            )
+            if crm_only or not pending_external:
+                # Repeat cancel: nothing left to do, no provider call.
+                log.info("appointment_cancel_noop_already_cancelled")
+                response = AppointmentCancelResponse(
+                    appointment=AppointmentResponse.model_validate(appointment),
+                    outcome="already_cancelled",
+                    provider="calcom" if booking_uid else "none",
+                    provider_result="skipped"
+                    if pending_external
+                    else ("already_cancelled" if booking_uid else "not_applicable"),
+                    attendee_notice="none",
+                    message="This appointment was already cancelled. Nothing changed."
+                    + (" " + _CANCEL_MESSAGES["skipped"] if pending_external else ""),
+                )
+                await self.db.rollback()  # release the row lock
+                return response
+        elif appointment.status != AppointmentStatus.SCHEDULED:
+            await self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"A {appointment.status} appointment cannot be cancelled.",
+            )
+
+        was_cancelled = appointment.status == AppointmentStatus.CANCELLED
+        provider_result: CancelProviderResult
+        if not booking_uid:
+            provider_result = "not_applicable"
+        elif crm_only:
+            provider_result = "skipped"
+        else:
+            provider_result = await self._cancel_calcom_booking(
+                appointment,
+                reason or appointment.cancellation_reason,
+                crm_already_cancelled=was_cancelled,
+            )
+
+        now = datetime.now(UTC)
+        appointment.status = AppointmentStatus.CANCELLED
+        if reason:
+            appointment.cancellation_reason = reason
+        if provider_result == "skipped":
+            appointment.sync_status = SYNC_STATUS_LOCAL_ONLY
+        elif booking_uid:
+            appointment.sync_status = "synced"
+            appointment.last_synced_at = now
+            appointment.sync_error = None
+
+        if not was_cancelled:
+            contact = appointment.contact
+            if contact is not None:
+                contact.last_appointment_status = "cancelled"
+                await TagService(self.db).add_tag_to_contact(
+                    workspace_id=workspace_id,
+                    contact_id=contact.id,
+                    name="appointment-cancelled",
+                )
+
+        await self.db.commit()
+        appointment = await self.get_appointment(workspace_id, appointment_id)
+        log.info("appointment_cancelled", provider_result=provider_result)
+
+        return AppointmentCancelResponse(
+            appointment=AppointmentResponse.model_validate(appointment),
+            outcome="cancelled",
+            provider="calcom" if booking_uid else "none",
+            provider_result=provider_result,
+            attendee_notice="provider" if provider_result == "cancelled" else "none",
+            message=_CANCEL_MESSAGES[provider_result],
+        )
+
+    async def _cancel_calcom_booking(
+        self,
+        appointment: Appointment,
+        reason: str | None,
+        *,
+        crm_already_cancelled: bool,
+    ) -> CancelProviderResult:
+        """Cancel the Cal.com booking; map idempotent outcomes, raise on failure."""
+        from app.services.calendar.calcom import (
+            CalComBookingAlreadyCancelledError,
+            CalComError,
+            CalComNotFoundError,
+            CalComService,
+        )
+        from app.services.calendar.calcom_credentials import (
+            CalComCredentialError,
+            resolve_calcom_credentials,
+        )
+
+        booking_uid = appointment.calcom_booking_uid or ""
+        log = self.log.bind(appointment_id=appointment.id, booking_uid=booking_uid)
+
+        def _fail(message: str, *, retryable: bool, error_code: str) -> HTTPException:
+            return HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "code": "calendar_cancel_failed",
+                    "message": message,
+                    "details": {
+                        "provider": "calcom",
+                        "retryable": retryable,
+                        "error_code": error_code,
+                        "crm_only_available": True,
+                    },
+                },
+            )
+
+        try:
+            credentials = await resolve_calcom_credentials(self.db, appointment.workspace_id)
+        except CalComCredentialError as exc:
+            await self.db.rollback()
+            log.warning("calcom_cancel_no_credentials", error_code=exc.code)
+            raise _fail(
+                f"Could not cancel the Cal.com booking: {exc.message} Nothing was changed.",
+                retryable=False,
+                error_code=exc.code,
+            ) from exc
+
+        calcom = CalComService(credentials.api_key)
+        try:
+            await calcom.cancel_booking(booking_uid, reason=reason or "Cancelled by the business")
+            return "cancelled"
+        except CalComBookingAlreadyCancelledError:
+            return "already_cancelled"
+        except CalComNotFoundError:
+            log.warning("calcom_cancel_booking_not_found")
+            return "not_found"
+        except CalComError as exc:
+            await self.db.rollback()
+            log.warning("calcom_cancel_failed", error=str(exc))
+            state = (
+                "The appointment stays cancelled in the CRM only and the Cal.com booking is "
+                "still active. Try again, or cancel it in Cal.com yourself."
+                if crm_already_cancelled
+                else "The appointment is still scheduled in the CRM and on Cal.com. Try "
+                "again, or mark it cancelled in the CRM only and cancel it in Cal.com yourself."
+            )
+            raise _fail(
+                f"Cal.com could not cancel the booking. {state}",
+                retryable=True,
+                error_code=type(exc).__name__,
+            ) from exc
+        finally:
+            await calcom.close()
 
     async def delete_appointment(
         self,

@@ -12,6 +12,8 @@ from app.api.deps import DB, CurrentUser, get_workspace
 from app.models.appointment import Appointment
 from app.models.workspace import Workspace, WorkspaceMembership
 from app.schemas.appointment import (
+    AppointmentCancelRequest,
+    AppointmentCancelResponse,
     AppointmentCreate,
     AppointmentResponse,
     AppointmentStatsResponse,
@@ -251,6 +253,34 @@ async def update_appointment(
     """Update an appointment."""
     service = AppointmentService(db)
     return await service.update_appointment(workspace_id, appointment_id, appointment_in)
+
+
+@router.post(
+    "/{appointment_id}/cancel",
+    response_model=AppointmentCancelResponse,
+    summary="Cancel an appointment and its external calendar booking",
+    responses={502: {"description": "calendar_cancel_failed: provider did not cancel"}},
+)
+async def cancel_appointment(
+    workspace_id: uuid.UUID,
+    appointment_id: int,
+    body: AppointmentCancelRequest,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> AppointmentCancelResponse:
+    """Cancel an appointment.
+
+    For Cal.com-backed appointments the Cal.com booking is cancelled first;
+    the CRM is only updated once Cal.com confirms (or reports the booking
+    already cancelled / missing). On provider failure nothing changes and a
+    502 ``calendar_cancel_failed`` is returned. ``crm_only`` deliberately
+    leaves the external booking active. Repeat calls are no-ops.
+    """
+    service = AppointmentService(db)
+    return await service.cancel_appointment(
+        workspace_id, appointment_id, reason=body.reason, crm_only=body.crm_only
+    )
 
 
 @router.delete("/{appointment_id}", status_code=status.HTTP_204_NO_CONTENT)

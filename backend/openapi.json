@@ -3178,6 +3178,89 @@
         "title": "AppointmentCampaignStat",
         "type": "object"
       },
+      "AppointmentCancelRequest": {
+        "description": "Cancel an appointment, including its external calendar booking.",
+        "properties": {
+          "crm_only": {
+            "default": false,
+            "description": "Mark cancelled in the CRM without touching the external booking. The external booking stays active (sync_status='local_only').",
+            "title": "Crm Only",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "AppointmentCancelRequest",
+        "type": "object"
+      },
+      "AppointmentCancelResponse": {
+        "description": "Outcome of a cancellation, honest about what happened externally.",
+        "properties": {
+          "appointment": {
+            "$ref": "#/components/schemas/AppointmentResponse"
+          },
+          "attendee_notice": {
+            "description": "'provider' when Cal.com processed the cancellation on this request and sends its own cancellation notice per the event's settings; 'none' otherwise. The CRM itself never messages the contact on cancellation.",
+            "enum": [
+              "provider",
+              "none"
+            ],
+            "title": "Attendee Notice",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "cancelled",
+              "already_cancelled"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "provider": {
+            "enum": [
+              "calcom",
+              "none"
+            ],
+            "title": "Provider",
+            "type": "string"
+          },
+          "provider_result": {
+            "enum": [
+              "cancelled",
+              "already_cancelled",
+              "not_found",
+              "skipped",
+              "not_applicable"
+            ],
+            "title": "Provider Result",
+            "type": "string"
+          }
+        },
+        "required": [
+          "appointment",
+          "outcome",
+          "provider",
+          "provider_result",
+          "attendee_notice",
+          "message"
+        ],
+        "title": "AppointmentCancelResponse",
+        "type": "object"
+      },
       "AppointmentCreate": {
         "description": "Schema for creating an appointment.",
         "properties": {
@@ -3337,6 +3420,17 @@
               }
             ],
             "title": "Campaign Id"
+          },
+          "cancellation_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancellation Reason"
           },
           "contact": {
             "anyOf": [
@@ -9284,16 +9378,22 @@
             "title": "Last Name"
           },
           "phone_number": {
-            "title": "Phone Number",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone Number"
           }
         },
         "required": [
           "id",
           "first_name",
           "last_name",
-          "email",
-          "phone_number"
+          "email"
         ],
         "title": "ContactSummary",
         "type": "object"
@@ -39694,6 +39794,77 @@
           }
         ],
         "summary": "Update Appointment",
+        "tags": [
+          "Appointments"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/appointments/{appointment_id}/cancel": {
+      "post": {
+        "description": "Cancel an appointment.\n\nFor Cal.com-backed appointments the Cal.com booking is cancelled first;\nthe CRM is only updated once Cal.com confirms (or reports the booking\nalready cancelled / missing). On provider failure nothing changes and a\n502 ``calendar_cancel_failed`` is returned. ``crm_only`` deliberately\nleaves the external booking active. Repeat calls are no-ops.",
+        "operationId": "cancel_appointment_api_v1_workspaces__workspace_id__appointments__appointment_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "appointment_id",
+            "required": true,
+            "schema": {
+              "title": "Appointment Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppointmentCancelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppointmentCancelResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "description": "calendar_cancel_failed: provider did not cancel"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Cancel an appointment and its external calendar booking",
         "tags": [
           "Appointments"
         ]

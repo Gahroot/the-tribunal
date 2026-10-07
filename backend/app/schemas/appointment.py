@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -38,7 +39,8 @@ class ContactSummary(BaseModel):
     first_name: str
     last_name: str | None
     email: str | None
-    phone_number: str
+    # Contacts may have no phone (email-only leads); see 20260925 migration.
+    phone_number: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -57,6 +59,7 @@ class AppointmentResponse(AppointmentBase):
     campaign_id: uuid.UUID | None = None
     scheduled_at: datetime
     status: str
+    cancellation_reason: str | None = None
     calcom_booking_uid: str | None
     calcom_booking_id: int | None
     calcom_event_type_id: int | None
@@ -70,6 +73,45 @@ class AppointmentResponse(AppointmentBase):
     reminders_sent: list[int] = []
     created_at: datetime
     updated_at: datetime
+
+
+class AppointmentCancelRequest(BaseModel):
+    """Cancel an appointment, including its external calendar booking."""
+
+    reason: str | None = Field(default=None, max_length=500)
+    crm_only: bool = Field(
+        default=False,
+        description=(
+            "Mark cancelled in the CRM without touching the external booking. "
+            "The external booking stays active (sync_status='local_only')."
+        ),
+    )
+
+
+CancelProviderResult = Literal[
+    "cancelled",  # provider cancelled the booking on this request
+    "already_cancelled",  # provider reported it was already cancelled
+    "not_found",  # provider has no booking with this UID
+    "skipped",  # crm_only: external booking left active
+    "not_applicable",  # appointment has no external booking
+]
+
+
+class AppointmentCancelResponse(BaseModel):
+    """Outcome of a cancellation, honest about what happened externally."""
+
+    appointment: AppointmentResponse
+    outcome: Literal["cancelled", "already_cancelled"]
+    provider: Literal["calcom", "none"]
+    provider_result: CancelProviderResult
+    attendee_notice: Literal["provider", "none"] = Field(
+        description=(
+            "'provider' when Cal.com processed the cancellation on this request and sends "
+            "its own cancellation notice per the event's settings; 'none' otherwise. "
+            "The CRM itself never messages the contact on cancellation."
+        )
+    )
+    message: str
 
 
 class PaginatedAppointments(BaseModel):

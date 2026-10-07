@@ -65,6 +65,15 @@ class CalComRateLimitError(CalComError):
     pass
 
 
+class CalComBookingAlreadyCancelledError(CalComError):
+    """Cal.com reports the booking was already cancelled."""
+
+    pass
+
+
+_ALREADY_CANCELLED_RE = re.compile(r"already\s+(been\s+)?cancel", re.IGNORECASE)
+
+
 class CalComService:
     """Cal.com appointment booking and sync service."""
 
@@ -367,26 +376,38 @@ class CalComService:
             raise CalComError(f"Failed to get booking: {str(e)}") from e
 
     async def cancel_booking(self, booking_uid: str, reason: str = "Cancelled by customer") -> bool:
-        """Cancel a booking on Cal.com.
+        """Cancel a booking on Cal.com (v2 ``POST /bookings/{uid}/cancel``).
+
+        Cal.com rejects a second cancellation with HTTP 400 "This booking has
+        already been cancelled."; that is reported as
+        :class:`CalComBookingAlreadyCancelledError` so callers can treat it as
+        an idempotent success without assuming Cal.com sent new notices.
+        Retrying a cancel is therefore safe.
 
         Args:
             booking_uid: Cal.com booking UID
-            reason: Cancellation reason
+            reason: Cancellation reason (sent as ``cancellationReason``)
 
         Returns:
-            True if cancellation successful
+            True if Cal.com cancelled the booking on this call
 
         Raises:
-            CalComError: If cancellation fails
+            CalComBookingAlreadyCancelledError: booking was already cancelled
+            CalComNotFoundError: Cal.com has no booking with this UID
+            CalComError: any other cancellation failure
         """
         log = self.logger.bind(operation="cancel_booking", booking_uid=booking_uid)
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,255}", booking_uid):
+            raise CalComError("Invalid booking UID")
 
         try:
-            payload = {"reason": reason}
+            payload: dict[str, Any] = {}
+            if reason:
+                payload["cancellationReason"] = reason
 
             await self._request_with_retry(
-                "DELETE",
-                f"/bookings/{booking_uid}",
+                "POST",
+                f"/bookings/{booking_uid}/cancel",
                 json=payload,
             )
 
@@ -394,6 +415,14 @@ class CalComService:
             return True
 
         except CalComError as e:
+            cause = e.__cause__
+            if (
+                isinstance(cause, ProviderHTTPError)
+                and cause.status_code == 400
+                and _ALREADY_CANCELLED_RE.search(cause.message or "")
+            ):
+                log.info("booking_already_cancelled")
+                raise CalComBookingAlreadyCancelledError("Booking already cancelled") from e
             log.error("cancel_booking_failed", error=str(e))
             raise
         except Exception as e:

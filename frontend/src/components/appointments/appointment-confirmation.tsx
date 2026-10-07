@@ -35,14 +35,15 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useAgent } from "@/hooks/useAgents";
-import { useUpdateAppointment } from "@/hooks/useAppointments";
+import { useCancelAppointment } from "@/hooks/useAppointments";
+import type { CancelAppointmentResult } from "@/lib/api/appointments";
 import {
   getContactName,
   getInitials,
 } from "@/lib/calendar/calendar-derivations";
 import { cn } from "@/lib/utils";
 import { formatDate } from "@/lib/utils/date";
-import { getApiErrorMessage } from "@/lib/utils/errors";
+import { getApiErrorCode, getApiErrorMessage } from "@/lib/utils/errors";
 import type { Appointment } from "@/types";
 
 /**
@@ -52,8 +53,13 @@ import type { Appointment } from "@/types";
  * - scheduled: full meeting details plus reschedule/cancel actions in one rail;
  * - inline cancel confirmation with an optional reason, focus moved into the
  *   confirmation block and returned to the cancel trigger on dismissal;
- * - cancelled: state header plus a Reason row (`notes` fallback, "Unspecified"
- *   when absent) and a rebook action.
+ * - cancelled: state header plus a Reason row (`cancellation_reason`,
+ *   "Unspecified" when absent) and a rebook action.
+ *
+ * Cancelling a Cal.com-backed appointment cancels the Cal.com booking first;
+ * the CRM only shows "cancelled" once Cal.com confirms. If Cal.com fails, the
+ * operator can retry or explicitly cancel in the CRM only, which leaves a
+ * visible "Cal.com booking still active" state with a retry action.
  */
 
 type Phase = "view" | "confirm";
@@ -124,8 +130,12 @@ export function AppointmentConfirmation({
   const [phase, setPhase] = useState<Phase>("view");
   const [reason, setReason] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  // Set when Cal.com refused the cancel and a CRM-only cancel is possible.
+  const [offerCrmOnly, setOfferCrmOnly] = useState(false);
+  const [result, setResult] = useState<CancelAppointmentResult | null>(null);
+  const [retryError, setRetryError] = useState<string | null>(null);
 
-  const updateMutation = useUpdateAppointment(workspaceId);
+  const cancelMutation = useCancelAppointment(workspaceId);
 
   // Optional agent lookup: a blank workspace id keeps the query disabled when
   // the appointment has no agent.
@@ -135,9 +145,10 @@ export function AppointmentConfirmation({
   // After a successful cancel, the mutation response settles the UI into the
   // cancelled state immediately, even before the list refetch lands. Once the
   // webhook-driven server status arrives, it takes over.
+  const latestCancel =
+    result?.appointment.id === appointment.id ? result.appointment : undefined;
   const status: Appointment["status"] =
-    appointment.status === "scheduled" &&
-    updateMutation.data?.status === "cancelled"
+    appointment.status === "scheduled" && latestCancel?.status === "cancelled"
       ? "cancelled"
       : appointment.status;
 
@@ -176,11 +187,12 @@ export function AppointmentConfirmation({
     }
   }, [status]);
 
-  const isPending = updateMutation.isPending;
+  const isPending = cancelMutation.isPending;
 
   const keepAppointment = () => {
     returnFocusRef.current = true;
     setFormError(null);
+    setOfferCrmOnly(false);
     setPhase("view");
   };
 
@@ -193,33 +205,58 @@ export function AppointmentConfirmation({
     }
   };
 
-  const cancelAppointment = () => {
+  const cancelAppointment = (crmOnly = false) => {
     if (!workspaceId) {
       setFormError("No workspace selected. Reload the page and try again.");
       return;
     }
     setFormError(null);
     const trimmed = reason.trim();
-    updateMutation.mutate(
+    cancelMutation.mutate(
       {
         id: appointment.id,
         data: {
-          status: "cancelled",
-          // The API has no dedicated cancellation-reason field; the optional
-          // note rides on `notes` so the cancelled state can show a reason.
-          ...(trimmed ? { notes: trimmed } : {}),
+          ...(trimmed ? { reason: trimmed } : {}),
+          ...(crmOnly ? { crm_only: true } : {}),
         },
       },
       {
-        onSuccess: () => {
+        onSuccess: (data) => {
+          setResult(data);
+          setOfferCrmOnly(false);
           setPhase("view");
           setReason("");
           onRefresh();
-          toast.success("Appointment cancelled");
+          if (data.provider_result === "skipped") {
+            toast.warning("Cancelled in the CRM only. Cal.com booking still active.");
+          } else {
+            toast.success("Appointment cancelled");
+          }
         },
         onError: (error) => {
+          setOfferCrmOnly(getApiErrorCode(error) === "calendar_cancel_failed");
           setFormError(
             getApiErrorMessage(error, "Could not cancel the appointment."),
+          );
+        },
+      },
+    );
+  };
+
+  // Recovery for a CRM-only cancel: retry cancelling the Cal.com booking.
+  const retryProviderCancel = () => {
+    setRetryError(null);
+    cancelMutation.mutate(
+      { id: appointment.id, data: {} },
+      {
+        onSuccess: (data) => {
+          setResult(data);
+          onRefresh();
+          toast.success("Cal.com booking cancelled");
+        },
+        onError: (error) => {
+          setRetryError(
+            getApiErrorMessage(error, "Could not cancel the Cal.com booking."),
           );
         },
       },
@@ -235,13 +272,14 @@ export function AppointmentConfirmation({
   const showingConfirm = isScheduled && phase === "confirm";
   // Prefer the latest cancel response so the typed reason shows in the
   // cancelled state immediately, even before the list refetch lands.
-  const latestCancel =
-    updateMutation.data?.id === appointment.id ? updateMutation.data : undefined;
-  const notes = (
-    latestCancel?.status === "cancelled"
-      ? latestCancel.notes
-      : appointment.notes
-  )?.trim();
+  const current = latestCancel ?? appointment;
+  const notes = appointment.notes?.trim();
+  const cancellationReason = current.cancellation_reason?.trim();
+  // Cancelled in the CRM only while the Cal.com booking is still live.
+  const externalStillActive =
+    status === "cancelled" &&
+    Boolean(bookingUid) &&
+    current.sync_status === "local_only";
 
   let descriptionText: string | null = null;
   if (isScheduled) {
@@ -365,8 +403,9 @@ export function AppointmentConfirmation({
               Cancel this appointment?
             </h3>
             <p className="text-sm text-muted-foreground">
-              The CRM marks this appointment cancelled. The contact is not
-              notified automatically.
+              {bookingUid
+                ? "This also cancels the Cal.com booking. Cal.com sends its own cancellation notice based on your event settings; the CRM sends no message."
+                : "This appointment is not on Cal.com, so only the CRM is updated. The contact is not notified."}
             </p>
           </div>
           <div className="space-y-1.5">
@@ -387,6 +426,19 @@ export function AppointmentConfirmation({
               {formError}
             </p>
           )}
+          {offerCrmOnly && (
+            <div className="flex justify-end">
+              <Button
+                variant="link"
+                className="h-auto p-0 text-destructive"
+                onClick={() => cancelAppointment(true)}
+                onKeyDown={handleConfirmKeyDown}
+                disabled={isPending}
+              >
+                Cancel in CRM only (Cal.com booking stays active)
+              </Button>
+            </div>
+          )}
           <div className="flex justify-end gap-2">
             <Button
               variant="outline"
@@ -398,7 +450,7 @@ export function AppointmentConfirmation({
             </Button>
             <Button
               variant="destructive"
-              onClick={cancelAppointment}
+              onClick={() => cancelAppointment()}
               onKeyDown={handleConfirmKeyDown}
               disabled={isPending}
             >
@@ -406,6 +458,38 @@ export function AppointmentConfirmation({
               Cancel appointment
             </Button>
           </div>
+        </div>
+      )}
+
+      {result && status === "cancelled" && !externalStillActive && (
+        <p role="status" className="text-center text-sm text-muted-foreground">
+          {result.message}
+        </p>
+      )}
+
+      {externalStillActive && (
+        <div
+          className="space-y-2 rounded-lg border border-warning/50 p-3 text-sm"
+          aria-busy={isPending}
+        >
+          <p role="status" className="text-warning">
+            Cancelled in the CRM only. The Cal.com booking is still active and
+            the contact was not notified.
+          </p>
+          {retryError && (
+            <p role="alert" className="text-destructive">
+              {retryError}
+            </p>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={retryProviderCancel}
+            disabled={isPending}
+          >
+            {isPending && <Loader2 className="animate-spin" />}
+            Retry Cal.com cancellation
+          </Button>
         </div>
       )}
 
@@ -499,11 +583,13 @@ export function AppointmentConfirmation({
         {status === "cancelled" && (
           <>
             <dt className={ROW_LABEL_CLASS}>Reason</dt>
-            <dd className="whitespace-pre-wrap">{notes || "Unspecified"}</dd>
+            <dd className="whitespace-pre-wrap">
+              {cancellationReason || "Unspecified"}
+            </dd>
           </>
         )}
 
-        {status !== "cancelled" && notes && (
+        {notes && (
           <>
             <dt className={ROW_LABEL_CLASS}>Details</dt>
             <dd className="whitespace-pre-wrap">{notes}</dd>

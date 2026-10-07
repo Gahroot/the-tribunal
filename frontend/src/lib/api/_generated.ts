@@ -1987,6 +1987,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/appointments/{appointment_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel an appointment and its external calendar booking
+         * @description Cancel an appointment.
+         *
+         *     For Cal.com-backed appointments the Cal.com booking is cancelled first;
+         *     the CRM is only updated once Cal.com confirms (or reports the booking
+         *     already cancelled / missing). On provider failure nothing changes and a
+         *     502 ``calendar_cancel_failed`` is returned. ``crm_only`` deliberately
+         *     leaves the external booking active. Repeat calls are no-ops.
+         */
+        post: operations["cancel_appointment_api_v1_workspaces__workspace_id__appointments__appointment_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/appointments/{appointment_id}/refund-deposit": {
         parameters: {
             query?: never;
@@ -8456,6 +8482,50 @@ export interface components {
             total: number;
         };
         /**
+         * AppointmentCancelRequest
+         * @description Cancel an appointment, including its external calendar booking.
+         */
+        AppointmentCancelRequest: {
+            /**
+             * Crm Only
+             * @description Mark cancelled in the CRM without touching the external booking. The external booking stays active (sync_status='local_only').
+             * @default false
+             */
+            crm_only: boolean;
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
+         * AppointmentCancelResponse
+         * @description Outcome of a cancellation, honest about what happened externally.
+         */
+        AppointmentCancelResponse: {
+            appointment: components["schemas"]["AppointmentResponse"];
+            /**
+             * Attendee Notice
+             * @description 'provider' when Cal.com processed the cancellation on this request and sends its own cancellation notice per the event's settings; 'none' otherwise. The CRM itself never messages the contact on cancellation.
+             * @enum {string}
+             */
+            attendee_notice: "provider" | "none";
+            /** Message */
+            message: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "cancelled" | "already_cancelled";
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "calcom" | "none";
+            /**
+             * Provider Result
+             * @enum {string}
+             */
+            provider_result: "cancelled" | "already_cancelled" | "not_found" | "skipped" | "not_applicable";
+        };
+        /**
          * AppointmentCreate
          * @description Schema for creating an appointment.
          */
@@ -8512,6 +8582,8 @@ export interface components {
             calcom_event_type_id: number | null;
             /** Campaign Id */
             campaign_id?: string | null;
+            /** Cancellation Reason */
+            cancellation_reason?: string | null;
             contact?: components["schemas"]["ContactSummary"] | null;
             /** Contact Id */
             contact_id: number;
@@ -10830,7 +10902,7 @@ export interface components {
             /** Last Name */
             last_name: string | null;
             /** Phone Number */
-            phone_number: string;
+            phone_number?: string | null;
         };
         /**
          * ContactUpdate
@@ -23622,6 +23694,49 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    cancel_appointment_api_v1_workspaces__workspace_id__appointments__appointment_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                appointment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppointmentCancelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppointmentCancelResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description calendar_cancel_failed: provider did not cancel */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -661,6 +661,31 @@ async def test_booking_cancelled_by_host_skips_rebook_sms(
     stubs["send_lifecycle_sms"].assert_not_awaited()
 
 
+async def test_booking_cancelled_webhook_reconciles_crm_cancel_without_side_effects(
+    monkeypatch: pytest.MonkeyPatch,
+    booking_cancelled_by_attendee: dict[str, Any],
+) -> None:
+    """Webhook after a CRM-initiated (or duplicate) cancel only syncs state."""
+    stubs = _stub_side_effects(monkeypatch)
+    appt = _make_appointment(status=AppointmentStatus.CANCELLED)
+    appt.sync_status = "local_only"
+    appt.cancellation_reason = "Operator note"
+    db = _make_db([_Result(scalar=appt)])
+    _patch_session_local(monkeypatch, db)
+
+    await handlers.handle_booking_cancelled(booking_cancelled_by_attendee, _make_log())
+
+    assert appt.status == AppointmentStatus.CANCELLED
+    assert appt.sync_status == "synced"
+    assert appt.sync_error is None
+    assert appt.cancellation_reason == "Operator note"
+    db.commit.assert_awaited_once()
+    assert db.execute.await_count == 1
+    stubs["tag_service"].add_tag_to_contact.assert_not_awaited()
+    stubs["send_lifecycle_sms"].assert_not_awaited()
+    stubs["push"].send_to_workspace_members.assert_not_awaited()
+
+
 # --------------------------------------------------------------------------- #
 # handle_meeting_ended
 # --------------------------------------------------------------------------- #
@@ -1034,3 +1059,20 @@ async def test_router_replay_returns_200_without_invoking_handler(
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "deduped": "true"}
     handler.assert_not_awaited()
+
+
+async def test_booking_cancelled_webhook_stores_provider_reason(
+    monkeypatch: pytest.MonkeyPatch,
+    booking_cancelled_by_host: dict[str, Any],
+) -> None:
+    _stub_side_effects(monkeypatch)
+    workspace_id = uuid.uuid4()
+    contact = _make_contact(workspace_id=workspace_id)
+    appt = _make_appointment(workspace_id=workspace_id, contact_id=contact.id)
+    db = _make_db([_Result(scalar=appt), _Result(scalar=contact), _Result(scalar=contact)])
+    _patch_session_local(monkeypatch, db)
+
+    await handlers.handle_booking_cancelled(booking_cancelled_by_host, _make_log())
+
+    assert appt.status == AppointmentStatus.CANCELLED
+    assert appt.cancellation_reason == "Host unavailable"

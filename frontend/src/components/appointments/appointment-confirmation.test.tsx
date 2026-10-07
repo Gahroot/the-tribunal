@@ -5,15 +5,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppointmentConfirmation } from "@/components/appointments/appointment-confirmation";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import type { CancelAppointmentResult } from "@/lib/api/appointments";
 import type { Appointment } from "@/types";
 
-const { updateAppointmentMock, agentGetMock, toastSuccessMock } = vi.hoisted(
-  () => ({
-    updateAppointmentMock: vi.fn(),
+const { cancelAppointmentMock, agentGetMock, toastSuccessMock, toastWarningMock } =
+  vi.hoisted(() => ({
+    cancelAppointmentMock: vi.fn(),
     agentGetMock: vi.fn(),
     toastSuccessMock: vi.fn(),
-  }),
-);
+    toastWarningMock: vi.fn(),
+  }));
 
 vi.mock("@/lib/api/appointments", async (importOriginal) => {
   const actual =
@@ -22,7 +23,7 @@ vi.mock("@/lib/api/appointments", async (importOriginal) => {
     ...actual,
     appointmentsApi: {
       ...actual.appointmentsApi,
-      update: updateAppointmentMock,
+      cancel: cancelAppointmentMock,
     },
   };
 });
@@ -36,7 +37,7 @@ vi.mock("@/lib/api/agents", async (importOriginal) => {
 });
 
 vi.mock("sonner", () => ({
-  toast: { success: toastSuccessMock, error: vi.fn() },
+  toast: { success: toastSuccessMock, warning: toastWarningMock, error: vi.fn() },
 }));
 
 function makeAppointment(overrides: Partial<Appointment> = {}): Appointment {
@@ -113,14 +114,48 @@ function renderConfirmation(
   return { onRebook, onRefresh, rerender };
 }
 
+function cancelResult(
+  data: { reason?: string; crm_only?: boolean },
+  overrides: Partial<CancelAppointmentResult> = {},
+): CancelAppointmentResult {
+  const crmOnly = Boolean(data.crm_only);
+  return {
+    appointment: makeAppointment({
+      status: "cancelled",
+      cancellation_reason: data.reason ?? null,
+      sync_status: crmOnly ? "local_only" : "synced",
+    }),
+    outcome: "cancelled",
+    provider: "calcom",
+    provider_result: crmOnly ? "skipped" : "cancelled",
+    attendee_notice: crmOnly ? "none" : "provider",
+    message: crmOnly
+      ? "Marked cancelled in the CRM only."
+      : "Cancelled in the CRM and on Cal.com.",
+    ...overrides,
+  };
+}
+
+const calendarCancelFailed = {
+  response: {
+    data: {
+      code: "calendar_cancel_failed",
+      message: "Cal.com could not cancel the booking.",
+    },
+  },
+};
+
 describe("AppointmentConfirmation", () => {
   beforeEach(() => {
-    updateAppointmentMock.mockReset().mockImplementation(
-      async (_workspaceId: string, _id: number, data: Partial<Appointment>) =>
-        makeAppointment({ status: "cancelled", ...data }),
-    );
+    cancelAppointmentMock
+      .mockReset()
+      .mockImplementation(
+        async (_ws: string, _id: number, data: { reason?: string; crm_only?: boolean }) =>
+          cancelResult(data),
+      );
     agentGetMock.mockReset().mockResolvedValue({ id: 1, name: "Dana Wolfe" });
     toastSuccessMock.mockReset();
+    toastWarningMock.mockReset();
   });
 
   it("shows the scheduled confirmation with full meeting details", async () => {
@@ -206,7 +241,7 @@ describe("AppointmentConfirmation", () => {
     expect(
       screen.getByRole("button", { name: /cancel appointment/i }),
     ).toHaveFocus();
-    expect(updateAppointmentMock).not.toHaveBeenCalled();
+    expect(cancelAppointmentMock).not.toHaveBeenCalled();
 
     // "Keep appointment" follows the same focus-return contract.
     await user.click(screen.getByRole("button", { name: /cancel appointment/i }));
@@ -214,7 +249,7 @@ describe("AppointmentConfirmation", () => {
     expect(
       screen.getByRole("button", { name: /cancel appointment/i }),
     ).toHaveFocus();
-    expect(updateAppointmentMock).not.toHaveBeenCalled();
+    expect(cancelAppointmentMock).not.toHaveBeenCalled();
   });
 
   it("cancels with the typed reason and settles into the cancelled state", async () => {
@@ -233,9 +268,8 @@ describe("AppointmentConfirmation", () => {
     );
 
     await waitFor(() =>
-      expect(updateAppointmentMock).toHaveBeenCalledWith("ws_1", 7, {
-        status: "cancelled",
-        notes: "Client asked to move",
+      expect(cancelAppointmentMock).toHaveBeenCalledWith("ws_1", 7, {
+        reason: "Client asked to move",
       }),
     );
 
@@ -245,6 +279,9 @@ describe("AppointmentConfirmation", () => {
     });
     expect(heading).toHaveFocus();
     expect(screen.getByText("Client asked to move")).toBeInTheDocument();
+    // Existing notes are preserved, not overwritten by the reason.
+    expect(screen.getByText("Prefers afternoon slots")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/on cal\.com/i);
     expect(toastSuccessMock).toHaveBeenCalledWith("Appointment cancelled");
     expect(onRefresh).toHaveBeenCalled();
 
@@ -259,10 +296,9 @@ describe("AppointmentConfirmation", () => {
   });
 
   it("shows Unspecified for a webhook-cancelled appointment without a reason", () => {
-    // Mirrors the Cal.com BOOKING_CANCELLED webhook-driven status: the backend
-    // stores status but no dedicated cancellation-reason field.
+    // Mirrors a Cal.com BOOKING_CANCELLED webhook without a reason.
     renderConfirmation(
-      makeAppointment({ status: "cancelled", notes: undefined }),
+      makeAppointment({ status: "cancelled", cancellation_reason: null }),
     );
 
     expect(
@@ -276,13 +312,11 @@ describe("AppointmentConfirmation", () => {
 
   it("keeps the confirmation open with an announced error when cancel fails, then retries", async () => {
     const user = userEvent.setup();
-    updateAppointmentMock
+    cancelAppointmentMock
       .mockReset()
-      .mockRejectedValueOnce({
-        response: { data: { detail: "Cal.com rejected the update" } },
-      })
-      .mockImplementationOnce(async (_ws: string, _id: number, data: Partial<Appointment>) =>
-        makeAppointment({ status: "cancelled", ...data }),
+      .mockRejectedValueOnce(calendarCancelFailed)
+      .mockImplementationOnce(async (_ws: string, _id: number, data: { reason?: string }) =>
+        cancelResult(data),
       );
     renderConfirmation(makeAppointment());
 
@@ -299,7 +333,7 @@ describe("AppointmentConfirmation", () => {
 
     // Failure: announced inline, still in the confirmation, nothing cancelled.
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("Cal.com rejected the update");
+    expect(alert).toHaveTextContent("Cal.com could not cancel the booking.");
     expect(
       screen.getByRole("heading", { name: /cancel this appointment\?/i }),
     ).toBeInTheDocument();
@@ -316,7 +350,7 @@ describe("AppointmentConfirmation", () => {
         screen.getByRole("heading", { name: /this appointment is cancelled/i }),
       ).toBeInTheDocument(),
     );
-    expect(updateAppointmentMock).toHaveBeenCalledTimes(2);
+    expect(cancelAppointmentMock).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
@@ -339,6 +373,73 @@ describe("AppointmentConfirmation", () => {
     expect(
       screen.getByRole("button", { name: /rebook appointment/i }),
     ).toBeInTheDocument();
-    expect(updateAppointmentMock).not.toHaveBeenCalled();
+    expect(cancelAppointmentMock).not.toHaveBeenCalled();
+  });
+
+  it("explains CRM-only cancel for appointments not on Cal.com", async () => {
+    const user = userEvent.setup();
+    cancelAppointmentMock.mockReset().mockResolvedValue(
+      cancelResult(
+        {},
+        {
+          appointment: makeAppointment({
+            status: "cancelled",
+            calcom_booking_uid: undefined,
+            sync_status: "pending",
+          }),
+          provider: "none",
+          provider_result: "not_applicable",
+          attendee_notice: "none",
+          message: "Cancelled in the CRM. This appointment has no external calendar booking.",
+        },
+      ),
+    );
+    renderConfirmation(
+      makeAppointment({ calcom_booking_uid: undefined, sync_status: "pending" }),
+    );
+
+    await user.click(screen.getByRole("button", { name: /cancel appointment/i }));
+    expect(screen.getByText(/not on cal\.com, so only the crm/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /cancel appointment/i }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      /no external calendar booking/i,
+    );
+    expect(cancelAppointmentMock).toHaveBeenCalledWith("ws_1", 7, {});
+  });
+
+  it("offers a CRM-only cancel after Cal.com fails, then retries the Cal.com cancel", async () => {
+    const user = userEvent.setup();
+    cancelAppointmentMock
+      .mockReset()
+      .mockRejectedValueOnce(calendarCancelFailed)
+      .mockImplementationOnce(async (_ws: string, _id: number, data: { crm_only?: boolean }) =>
+        cancelResult(data),
+      )
+      .mockImplementationOnce(async () => cancelResult({}));
+    renderConfirmation(makeAppointment());
+
+    await user.click(screen.getByRole("button", { name: /cancel appointment/i }));
+    await user.click(screen.getByRole("button", { name: /cancel appointment/i }));
+    await user.click(
+      await screen.findByRole("button", { name: /cancel in crm only/i }),
+    );
+
+    expect(cancelAppointmentMock).toHaveBeenLastCalledWith("ws_1", 7, {
+      crm_only: true,
+    });
+    expect(
+      await screen.findByText(/the cal\.com booking is still active/i),
+    ).toBeInTheDocument();
+    expect(toastWarningMock).toHaveBeenCalled();
+
+    await user.click(
+      screen.getByRole("button", { name: /retry cal\.com cancellation/i }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByText(/the cal\.com booking is still active/i)).toBeNull(),
+    );
+    expect(cancelAppointmentMock).toHaveBeenLastCalledWith("ws_1", 7, {});
+    expect(toastSuccessMock).toHaveBeenCalledWith("Cal.com booking cancelled");
   });
 });

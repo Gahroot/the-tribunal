@@ -530,11 +530,15 @@ async def handle_booking_cancelled(data: dict[str, Any], log: Any) -> None:  # n
     )
 
     async with AsyncSessionLocal() as db:
-        # Find appointment by booking UID
+        # Find appointment by booking UID. Lock the row so an in-flight CRM
+        # cancel (which holds the same lock while calling Cal.com) finishes
+        # first and this handler then sees the committed cancellation.
         result = await db.execute(
-            select(Appointment).where(
+            select(Appointment)
+            .where(
                 Appointment.calcom_booking_uid == booking_uid,
             )
+            .with_for_update()
         )
         appointment = result.scalar_one_or_none()
 
@@ -546,12 +550,26 @@ async def handle_booking_cancelled(data: dict[str, Any], log: Any) -> None:  # n
             # Preserve the forensic no-show rather than reclassifying it.
             log.info("cancelled_booking_already_recorded_as_no_show")
             return
+        webhook_reason = data.get("cancellationReason")
+        if appointment.status == AppointmentStatus.CANCELLED:
+            # Already cancelled (CRM cancel, CRM-only cancel, or a duplicate
+            # delivery). Reconcile sync state only — no repeat tags/SMS/push.
+            appointment.sync_status = "synced"
+            appointment.last_synced_at = datetime.now(UTC)
+            appointment.sync_error = None
+            if not appointment.cancellation_reason and isinstance(webhook_reason, str):
+                appointment.cancellation_reason = webhook_reason[:500] or None
+            await db.commit()
+            log.info("cancelled_booking_reconciled", appointment_id=appointment.id)
+            return
 
         # Update appointment status
         appointment.status = AppointmentStatus.CANCELLED
         appointment.sync_status = "synced"
         appointment.last_synced_at = datetime.now(UTC)
         appointment.sync_error = None  # Clear any previous sync errors
+        if isinstance(webhook_reason, str) and webhook_reason.strip():
+            appointment.cancellation_reason = webhook_reason.strip()[:500]
 
         # Update contact lifecycle fields for cancellation
         cancelled_contact_result = await db.execute(

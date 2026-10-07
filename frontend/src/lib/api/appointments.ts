@@ -96,8 +96,46 @@ export interface SendReminderResult {
   retryable?: boolean;
 }
 
+export interface CancelAppointmentRequest {
+  reason?: string;
+  /** Mark cancelled in the CRM only; the external booking stays active. */
+  crm_only?: boolean;
+}
+
+/** Honest outcome of a cancel: what happened in the CRM and on Cal.com. */
+export interface CancelAppointmentResult {
+  appointment: Appointment;
+  outcome: "cancelled" | "already_cancelled";
+  provider: "calcom" | "none";
+  provider_result:
+    | "cancelled"
+    | "already_cancelled"
+    | "not_found"
+    | "skipped"
+    | "not_applicable";
+  /** "provider": Cal.com sent its own notice. The CRM never messages on cancel. */
+  attendee_notice: "provider" | "none";
+  message: string;
+}
+
 export const appointmentsApi = {
   ...baseApi,
+
+  /**
+   * Cancel an appointment, cancelling its Cal.com booking first.
+   * POST /api/v1/workspaces/{workspaceId}/appointments/{appointmentId}/cancel
+   * Fails with 502 `calendar_cancel_failed` (nothing changed) when Cal.com does not cancel.
+   */
+  cancel: async (
+    workspaceId: string,
+    appointmentId: number,
+    data: CancelAppointmentRequest
+  ): Promise<CancelAppointmentResult> => {
+    return apiPost<CancelAppointmentResult>(
+      `/api/v1/workspaces/${workspaceId}/appointments/${appointmentId}/cancel`,
+      data
+    );
+  },
 
   /**
    * Retry Cal.com sync for a pending appointment.

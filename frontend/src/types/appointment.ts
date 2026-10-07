@@ -15,6 +15,7 @@ export interface Appointment {
   status: "scheduled" | "completed" | "cancelled" | "no_show";
   service_type?: string;
   notes?: string;
+  cancellation_reason?: string | null;
   calcom_booking_uid?: string;
   calcom_booking_id?: number;
   calcom_event_type_id?: number;

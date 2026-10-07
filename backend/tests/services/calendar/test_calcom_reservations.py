@@ -123,3 +123,41 @@ async def test_release_uid_cannot_change_request_path(wire, uid):
     with pytest.raises(CalComError, match="Invalid reservation UID"):
         await service.release_slot(uid)
     assert requests == []
+
+
+@pytest.mark.asyncio
+async def test_cancel_booking_wire_contract(wire):
+    from app.services.calendar.calcom import (
+        CalComBookingAlreadyCancelledError,
+        CalComNotFoundError,
+    )
+
+    requests, responses, _clients = wire
+    responses.extend(
+        [
+            httpx.Response(200, json={"status": "success", "data": {"status": "cancelled"}}),
+            httpx.Response(
+                400,
+                json={
+                    "status": "error",
+                    "error": {"message": "This booking has already been cancelled."},
+                    "message": "This booking has already been cancelled.",
+                },
+            ),
+            httpx.Response(404, json={"message": "Booking not found"}),
+        ]
+    )
+    service = CalComService("test")
+    assert await service.cancel_booking("sandbox-uid", reason="Client moved") is True
+    with pytest.raises(CalComBookingAlreadyCancelledError):
+        await service.cancel_booking("sandbox-uid", reason="Client moved")
+    with pytest.raises(CalComNotFoundError):
+        await service.cancel_booking("gone-uid")
+    await service.close()
+
+    assert [r.method for r in requests] == ["POST", "POST", "POST"]
+    assert requests[0].url.path == "/v2/bookings/sandbox-uid/cancel"
+    assert requests[0].headers["cal-api-version"] == "2024-08-13"
+    assert json.loads(requests[0].content) == {"cancellationReason": "Client moved"}
+    with pytest.raises(CalComError):
+        await service.cancel_booking("../bookings/other")

@@ -111,6 +111,7 @@ class Appointment(Base):
     )
     service_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Cal.com sync
     calcom_booking_uid: Mapped[str | None] = mapped_column(
