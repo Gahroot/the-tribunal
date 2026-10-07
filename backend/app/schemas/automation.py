@@ -1,7 +1,7 @@
 """Automation schemas."""
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -39,8 +39,9 @@ class AutomationActionSchema(BaseModel):
     type: str = Field(
         ...,
         description=(
-            "Action type: send_sms, send_email, make_call, enroll_campaign, "
-            "apply_tag/add_tag, wait/delay"
+            "Action type: send_sms (config.message), send_email (config.subject + "
+            "config.message), make_call (optional config.agent_id), enroll_campaign "
+            "(config.campaign_id), apply_tag/add_tag (config.tag)"
         ),
     )
     config: dict[str, Any] = Field(
@@ -70,6 +71,31 @@ class AutomationUpdate(BaseModel):
     is_active: bool | None = None
 
 
+class AutomationConfigIssueSchema(BaseModel):
+    """One reason an automation cannot be activated yet."""
+
+    code: str
+    field: str
+    message: str
+
+
+class AutomationExecutionSummary(BaseModel):
+    """Outcome of the most recent automation run.
+
+    ``status`` is the stored execution status: ``pending`` (running),
+    ``completed`` (succeeded), or ``failed`` (``error`` says how to fix it).
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    status: str
+    error: str | None
+    contact_id: int | None
+    created_at: datetime
+    executed_at: datetime | None
+
+
 class AutomationResponse(BaseModel):
     """Schema for automation response."""
 
@@ -86,6 +112,11 @@ class AutomationResponse(BaseModel):
     last_triggered_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    # Readiness: "ready" when the worker can execute every part of the
+    # automation, otherwise "incomplete" with the blocking ``config_issues``.
+    readiness: Literal["ready", "incomplete"] = "ready"
+    config_issues: list[AutomationConfigIssueSchema] = Field(default_factory=list)
+    last_execution: AutomationExecutionSummary | None = None
 
 
 class PaginatedAutomations(BaseModel):

@@ -28,15 +28,18 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Switch } from "@/components/ui/switch";
 import { formatDate } from "@/lib/utils/date";
 import type { Automation } from "@/types";
 
 import {
+  displayStateConfig,
   itemVariants,
   resolveActionConfig,
   resolveTriggerConfig,
 } from "./automation-config";
+import { getAutomationDisplayState } from "./automation-logic";
 
 export function AutomationCardSkeleton() {
   return (
@@ -83,6 +86,12 @@ export function AutomationCard({
 }: AutomationCardProps) {
   const trigger = resolveTriggerConfig(automation.trigger_type);
   const TriggerIcon = trigger.icon;
+  const displayState = getAutomationDisplayState(automation);
+  const status = displayStateConfig[displayState];
+  const lastError =
+    automation.last_execution?.status === "failed"
+      ? automation.last_execution.error
+      : null;
 
   return (
     <motion.div
@@ -96,12 +105,8 @@ export function AutomationCard({
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between">
             <div className="space-y-1">
-              <CardTitle className="text-lg flex items-center gap-2">
-                {automation.name}
-                {automation.is_active && (
-                  <span className="size-2 rounded-full bg-success" />
-                )}
-              </CardTitle>
+              <CardTitle className="text-lg">{automation.name}</CardTitle>
+              <StatusBadge dotClass={status.dotClass}>{status.label}</StatusBadge>
               <CardDescription>{automation.description}</CardDescription>
             </div>
             <DropdownMenu>
@@ -175,6 +180,35 @@ export function AutomationCard({
             <ArrowRight className="size-4 text-muted-foreground" />
           </div>
 
+          {displayState === "incomplete" && automation.config_issues.length > 0 && (
+            <div className="rounded-lg border border-warning/40 p-3 text-sm">
+              <p className="font-medium">Finish setup to activate</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted-foreground">
+                {automation.config_issues.map((issue) => (
+                  <li key={`${issue.field}-${issue.code}`}>{issue.message}</li>
+                ))}
+              </ul>
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto px-0"
+                onClick={() => onConfigure(automation)}
+              >
+                Configure
+              </Button>
+            </div>
+          )}
+
+          {lastError && (
+            <div
+              role="status"
+              className="rounded-lg border border-destructive/40 p-3 text-sm"
+            >
+              <p className="font-medium">Last run failed</p>
+              <p className="text-muted-foreground">{lastError}</p>
+            </div>
+          )}
+
           {/* Actions */}
           <div className="space-y-2">
             {automation.actions.map((action, index) => {
@@ -200,6 +234,7 @@ export function AutomationCard({
                 : "Never triggered"}
             </div>
             <Switch
+              aria-label={automation.is_active ? "Pause automation" : "Activate automation"}
               checked={automation.is_active}
               onCheckedChange={() => onToggle(automation)}
               disabled={isToggling}

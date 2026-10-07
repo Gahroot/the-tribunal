@@ -1,9 +1,10 @@
 // Container logic for the Automations page: data fetching, mutation wiring,
 // dialog/form state, and toast feedback. Presentational components stay dumb.
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { useAgents } from "@/hooks/useAgents";
 import {
   useAutomations,
   useCreateAutomation,
@@ -11,11 +12,14 @@ import {
   useToggleAutomation,
   useUpdateAutomation,
 } from "@/hooks/useAutomations";
+import { useCampaigns } from "@/hooks/useCampaigns";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { automationsApi } from "@/lib/api/automations";
 import { queryKeys } from "@/lib/query-keys";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 import type { Automation } from "@/types";
 
+import type { AutomationOption } from "./automation-form-dialog";
 import {
   EMPTY_AUTOMATION_FORM,
   type AutomationFormState,
@@ -25,6 +29,7 @@ import {
   buildUpdatePayload,
   countActive,
   filterAutomations,
+  getFormIssues,
 } from "./automation-logic";
 
 export function useAutomationsController() {
@@ -35,6 +40,9 @@ export function useAutomationsController() {
     null,
   );
   const [form, setForm] = useState<AutomationFormState>(EMPTY_AUTOMATION_FORM);
+  // Inline issues appear after the first save attempt (or when editing an
+  // automation that already needs setup), not while the operator is typing.
+  const [showIssues, setShowIssues] = useState(false);
 
   const { data, isPending, error } = useAutomations(workspaceId ?? "");
   const { data: statsData } = useQuery({
@@ -47,12 +55,36 @@ export function useAutomationsController() {
   const deleteMutation = useDeleteAutomation(workspaceId ?? "");
   const toggleMutation = useToggleAutomation(workspaceId ?? "");
 
+  const isEditing = editingAutomation !== null;
+  const isDialogOpen = isCreateDialogOpen || isEditing;
+  // Option lists are only needed (and fetched) while the builder is open.
+  const { data: campaignsData } = useCampaigns(
+    isDialogOpen ? (workspaceId ?? "") : "",
+    { page_size: 100 },
+  );
+  const { data: agentsData } = useAgents(
+    isDialogOpen ? (workspaceId ?? "") : "",
+    { active_only: true, page_size: 100 },
+  );
+  const campaignOptions = useMemo<AutomationOption[]>(
+    () =>
+      (campaignsData?.items ?? []).map((campaign) => ({
+        id: campaign.id,
+        name: campaign.name,
+        hint: campaign.status,
+      })),
+    [campaignsData],
+  );
+  const agentOptions = useMemo<AutomationOption[]>(
+    () =>
+      (agentsData?.items ?? []).map((agent) => ({ id: agent.id, name: agent.name })),
+    [agentsData],
+  );
+  const formIssues = useMemo(() => getFormIssues(form), [form]);
+
   const automations = data?.items ?? [];
   const filteredAutomations = filterAutomations(automations, searchQuery);
   const activeCount = countActive(automations);
-
-  const isEditing = editingAutomation !== null;
-  const isDialogOpen = isCreateDialogOpen || isEditing;
 
   const updateForm = useCallback((patch: Partial<AutomationFormState>) => {
     setForm((prev) => ({ ...prev, ...patch }));
@@ -62,16 +94,19 @@ export function useAutomationsController() {
     setIsCreateDialogOpen(false);
     setEditingAutomation(null);
     setForm(EMPTY_AUTOMATION_FORM);
+    setShowIssues(false);
   }, []);
 
   const openCreateDialog = useCallback(() => {
     setEditingAutomation(null);
     setForm(EMPTY_AUTOMATION_FORM);
+    setShowIssues(false);
     setIsCreateDialogOpen(true);
   }, []);
 
   const openConfigureDialog = useCallback((automation: Automation) => {
     setForm(automationToForm(automation));
+    setShowIssues(automation.readiness === "incomplete");
     setEditingAutomation(automation);
   }, []);
 
@@ -87,6 +122,11 @@ export function useAutomationsController() {
       toast.error("Please enter a name for the automation");
       return;
     }
+    if (form.isActive && formIssues.length > 0) {
+      setShowIssues(true);
+      toast.error("Finish setting up this automation, or turn off Active to save a draft.");
+      return;
+    }
 
     try {
       if (editingAutomation) {
@@ -94,20 +134,28 @@ export function useAutomationsController() {
           id: editingAutomation.id,
           data: buildUpdatePayload(form),
         });
-        toast.success("Automation updated successfully");
+        toast.success(
+          form.isActive ? "Automation updated" : "Automation saved as draft",
+        );
       } else {
         await createMutation.mutateAsync(buildCreatePayload(form));
-        toast.success("Automation created successfully");
+        toast.success(
+          form.isActive ? "Automation created and active" : "Automation saved as draft",
+        );
       }
       resetDialog();
-    } catch {
+    } catch (err) {
+      setShowIssues(true);
       toast.error(
-        editingAutomation
-          ? "Failed to update automation"
-          : "Failed to create automation",
+        getApiErrorMessage(
+          err,
+          editingAutomation
+            ? "Failed to update automation"
+            : "Failed to create automation",
+        ),
       );
     }
-  }, [form, editingAutomation, updateMutation, createMutation, resetDialog]);
+  }, [form, formIssues, editingAutomation, updateMutation, createMutation, resetDialog]);
 
   const toggleAutomation = useCallback(
     async (automation: Automation) => {
@@ -116,8 +164,8 @@ export function useAutomationsController() {
         toast.success(
           automation.is_active ? "Automation paused" : "Automation activated",
         );
-      } catch {
-        toast.error("Failed to toggle automation");
+      } catch (err) {
+        toast.error(getApiErrorMessage(err, "Failed to toggle automation"));
       }
     },
     [toggleMutation],
@@ -160,6 +208,9 @@ export function useAutomationsController() {
     isDialogOpen,
     isEditing,
     form,
+    formIssues: showIssues ? formIssues : [],
+    campaignOptions,
+    agentOptions,
     updateForm,
     onDialogOpenChange,
     openCreateDialog,

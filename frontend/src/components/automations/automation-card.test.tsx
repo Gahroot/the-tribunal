@@ -17,6 +17,9 @@ function makeAutomation(overrides: Partial<Automation> = {}): Automation {
     last_triggered_at: undefined,
     created_at: "2026-06-01T00:00:00.000Z",
     updated_at: "2026-06-10T00:00:00.000Z",
+    readiness: "ready",
+    config_issues: [],
+    last_execution: null,
     ...overrides,
   };
 }
@@ -70,5 +73,51 @@ describe("AutomationCard", () => {
     const { onToggle } = renderCard();
     fireEvent.click(screen.getByRole("switch"));
     expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks an incomplete automation as needing setup with its issues", () => {
+    const { onConfigure } = renderCard(
+      makeAutomation({
+        is_active: false,
+        readiness: "incomplete",
+        config_issues: [
+          {
+            code: "missing_sms_message",
+            field: "actions[0].config.message",
+            message: "Step 1: write the text message to send.",
+          },
+        ],
+      }),
+    );
+    expect(screen.getByText("Needs setup")).toBeInTheDocument();
+    expect(
+      screen.getByText("Step 1: write the text message to send."),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Configure" }));
+    expect(onConfigure).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the actionable error from a failed run", () => {
+    renderCard(
+      makeAutomation({
+        last_execution: {
+          id: "e1",
+          status: "failed",
+          error: "No SMS-enabled phone number is active in this workspace.",
+          contact_id: 7,
+          created_at: "2026-06-12T00:00:00.000Z",
+          executed_at: "2026-06-12T00:00:01.000Z",
+        },
+      }),
+    );
+    expect(screen.getAllByText("Last run failed").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText("No SMS-enabled phone number is active in this workspace."),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the ready state for an active, never-run automation", () => {
+    renderCard();
+    expect(screen.getByText("Ready")).toBeInTheDocument();
   });
 });

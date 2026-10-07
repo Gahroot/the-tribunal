@@ -437,9 +437,17 @@ class TestAdditionalRetrySendKeys:
             patch.object(worker, "_resolve_from_number", AsyncMock(return_value="+12025556789")),
             patch.object(worker, "_render_template", return_value="hi"),
             patch("app.workers.automation_worker.get_text_message_provider") as provider_factory,
+            patch(
+                "app.services.rate_limiting.opt_out_manager.OptOutManager.check_opt_out",
+                AsyncMock(return_value=False),
+            ),
         ):
             sms_instance = provider_factory.return_value
-            sms_instance.send_message = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
+            sms_instance.send_message = AsyncMock(
+                return_value=SimpleNamespace(
+                    id=uuid4(), status="sent", provider_message_id="m1", error_message=None
+                )
+            )
             sms_instance.close = AsyncMock()
 
             await worker._action_send_sms(  # type: ignore[arg-type]

@@ -1,6 +1,12 @@
 import { apiGet, apiPost } from "@/lib/api";
 import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
-import type { Automation, AutomationActionType, AutomationTriggerType } from "@/types";
+import type {
+  Automation,
+  AutomationActionType,
+  AutomationConfigIssue,
+  AutomationExecutionSummary,
+  AutomationTriggerType,
+} from "@/types";
 
 // Backend response types
 export interface AutomationAction {
@@ -20,6 +26,9 @@ export interface AutomationResponse {
   last_triggered_at: string | null;
   created_at: string;
   updated_at: string;
+  readiness?: "ready" | "incomplete";
+  config_issues?: AutomationConfigIssue[];
+  last_execution?: AutomationExecutionSummary | null;
 }
 
 export interface AutomationsListParams {
@@ -72,6 +81,9 @@ function transformAutomation(raw: unknown): Automation {
     last_triggered_at: response.last_triggered_at ?? undefined,
     created_at: response.created_at,
     updated_at: response.updated_at,
+    readiness: response.readiness ?? "ready",
+    config_issues: response.config_issues ?? [],
+    last_execution: response.last_execution ?? null,
   };
 }
 

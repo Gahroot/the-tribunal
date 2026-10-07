@@ -39,8 +39,13 @@ Supported action type values
 - ``wait`` / ``delay``: no-op in the current cycle (action is recorded as
                         "scheduled" and re-evaluated on subsequent poll)
 
-Actions that target a contact (SMS/email/call/tag/enroll) are skipped with a
-warning when an event has no associated contact (e.g. roleplay/knowledge).
+Execution outcomes are recorded on ``AutomationExecution.status``:
+``pending`` while running, ``completed`` when every action succeeded, and
+``failed`` (with an operator-actionable ``error``) when any action could not
+run - a missing template, recipient, sender number, provider, campaign, or a
+compliance block. Nothing is reported as successful when it silently did
+nothing. Incomplete automations (see ``services.automations.validation``) are
+never evaluated against contacts.
 """
 
 import uuid
@@ -67,8 +72,15 @@ from app.models.phone_number import PhoneNumber
 from app.models.tag import ContactTag, Tag
 from app.services.approval.approval_gate_service import approval_gate_service
 from app.services.automations.events import AUTOMATION_EVENT_TRIGGERS
+from app.services.automations.validation import static_config_issues
 from app.services.email import send_automation_email
 from app.services.idempotency import derive_outbound_key, derive_worker_retry_key
+from app.services.outbound.delivery import (
+    OutboundDeliveryChannel,
+    OutboundDeliveryRequest,
+    OutboundDeliveryService,
+    OutboundDeliveryStatus,
+)
 from app.services.tags import TagService
 from app.services.telephony.telnyx_voice import TelnyxVoiceService
 from app.services.telephony.text_provider import get_text_message_provider
@@ -92,6 +104,19 @@ DEFAULT_NEVER_BOOKED_DAYS = 7
 _CONTACT_ACTIONS = frozenset(
     {"send_sms", "send_email", "make_call", "enroll_campaign", "apply_tag", "add_tag"}
 )
+
+
+class AutomationActionError(Exception):
+    """An action could not run; the message tells the operator how to fix it."""
+
+
+def _config_issue_summary(automation: Automation) -> str | None:
+    issues = static_config_issues(
+        automation.trigger_type, automation.trigger_config, automation.actions
+    )
+    if not issues:
+        return None
+    return "Automation is not fully configured: " + " ".join(i.message for i in issues)
 
 
 class AutomationWorker(RetryableWorker, BaseWorker):
@@ -196,6 +221,14 @@ class AutomationWorker(RetryableWorker, BaseWorker):
             automation_id=str(automation.id),
             trigger_type=automation.trigger_type,
         )
+
+        # Never fan an incomplete automation out to contacts: every run would
+        # fail identically and mark those contacts as already processed. The
+        # API reports it as "incomplete" with the same issues.
+        incomplete = _config_issue_summary(automation)
+        if incomplete:
+            log.warning("automation_incomplete_skipped", error=incomplete)
+            return
 
         since = automation.last_evaluated_at or (
             datetime.now(UTC) - timedelta(days=DEFAULT_LOOKBACK_DAYS)
@@ -443,7 +476,7 @@ class AutomationWorker(RetryableWorker, BaseWorker):
 
         Shared by the polling-trigger and event-trigger paths. ``contact`` may
         be ``None`` for event triggers without an associated contact; actions
-        that require one are skipped with a warning. ``payload`` provides extra
+        that require one fail the execution with an actionable error. ``payload`` provides extra
         template tokens (e.g. ``{rating}``, ``{stage}``) for message rendering.
         Never raises — failures are recorded on the execution row.
         """
@@ -454,9 +487,13 @@ class AutomationWorker(RetryableWorker, BaseWorker):
         )
 
         try:
+            incomplete = _config_issue_summary(automation)
+            if incomplete:
+                raise AutomationActionError(incomplete)
+
             for action in automation.actions:
                 action_type: str = str(action.get("type", "")).lower()
-                action_config: dict[str, Any] = action.get("config", {})
+                action_config: dict[str, Any] = action.get("config") or {}
 
                 log.debug("Executing action", action_type=action_type)
 
@@ -479,14 +516,17 @@ class AutomationWorker(RetryableWorker, BaseWorker):
                     log.info("automation_action_pending_approval", action_type=action_type)
                     continue
                 elif decision == "blocked":
-                    log.warning("automation_action_blocked", action_type=action_type)
-                    continue
+                    raise AutomationActionError(
+                        f"'{action_type}' was blocked by the workspace approval policy. "
+                        "Review the approval settings for automation actions."
+                    )
 
-                # Actions targeting a contact are skipped when the (event)
+                # Actions targeting a contact cannot run when the (event)
                 # trigger has none. Checking here lets mypy narrow ``contact``.
                 if action_type in _CONTACT_ACTIONS and contact is None:
-                    log.warning("automation_action_requires_contact", action_type=action_type)
-                    continue
+                    raise AutomationActionError(
+                        f"'{action_type}' needs a contact, but this trigger has none."
+                    )
 
                 if action_type == "send_sms" and contact is not None:
                     await self._action_send_sms(automation, contact, action_config, payload, db)
@@ -503,22 +543,12 @@ class AutomationWorker(RetryableWorker, BaseWorker):
                 elif action_type in ("apply_tag", "add_tag") and contact is not None:
                     await self._action_apply_tag(contact, action_config, db)
 
-                elif action_type in ("wait", "delay"):
-                    # Schedule the execution for later — skip remaining actions
-                    delay_hours: int = int(action_config.get("hours", 1))
-                    execution.status = "scheduled"
-                    execution.scheduled_for = datetime.now(UTC) + timedelta(hours=delay_hours)
-                    log.info(
-                        "Action delayed",
-                        delay_hours=delay_hours,
-                        scheduled_for=execution.scheduled_for.isoformat(),
-                    )
-                    return  # Do not mark as completed yet
-
                 else:
-                    log.warning(
-                        "Unknown action type — skipping",
-                        action_type=action_type,
+                    # Includes legacy wait/delay steps: nothing resumes a
+                    # deferred execution, so report it rather than stall.
+                    raise AutomationActionError(
+                        f"'{action_type or 'unknown'}' steps are not run by the "
+                        "automation engine. Remove or replace this step."
                     )
 
             execution.status = "completed"
@@ -527,9 +557,15 @@ class AutomationWorker(RetryableWorker, BaseWorker):
             await self._notify_automation_triggered(automation, contact, execution, db)
             log.info("Automation executed successfully")
 
+        except AutomationActionError as exc:
+            execution.status = "failed"
+            execution.error = str(exc)
+            execution.executed_at = datetime.now(UTC)
+            log.warning("automation_execution_failed", error=str(exc))
         except Exception as exc:
             execution.status = "failed"
             execution.error = str(exc)
+            execution.executed_at = datetime.now(UTC)
             log.exception("Automation execution failed", error=str(exc))
 
     async def _notify_automation_triggered(
@@ -596,49 +632,51 @@ class AutomationWorker(RetryableWorker, BaseWorker):
                            {full_name}, {company_name}, {email}, and any event
                            payload token (e.g. {rating}, {stage}).
         """
-        message_template: str = config.get("message", "")
+        message_template = str(config.get("message") or "").strip()
         if not message_template:
-            self.logger.warning(
-                "send_sms action has no message template",
-                automation_id=str(automation.id),
-            )
-            return
+            raise AutomationActionError("Send SMS has no message. Add the text to send.")
 
         if not contact.phone_number:
-            self.logger.warning(
-                "Contact has no phone number",
-                contact_id=contact.id,
-            )
-            return
+            raise AutomationActionError("The contact has no phone number, so no SMS was sent.")
 
         message_body = self._render_template(message_template, contact, payload)
 
         from_number = await self._resolve_from_number(db, contact.id, automation.workspace_id)
         if not from_number:
-            self.logger.warning(
-                "No from-number available for workspace",
-                workspace_id=str(automation.workspace_id),
+            raise AutomationActionError(
+                "No SMS-enabled phone number is active in this workspace. "
+                "Add or activate one under Phone Numbers."
             )
-            return
 
-        sms_service = get_text_message_provider()
-        try:
-            idempotency_key = derive_outbound_key("automation_sms", automation.id, contact.id)
-            await sms_service.send_message(
-                to_number=contact.phone_number,
-                from_number=from_number,
-                body=message_body,
-                db=db,
+        # Shared dispatch: enforces global opt-out and records the message.
+        delivery = await OutboundDeliveryService(
+            text_provider_factory=get_text_message_provider
+        ).deliver(
+            db,
+            OutboundDeliveryRequest(
                 workspace_id=automation.workspace_id,
-                idempotency_key=idempotency_key,
-            )
-            self.logger.info(
-                "Automation SMS sent",
-                contact_id=contact.id,
+                channel=OutboundDeliveryChannel.SMS,
                 to=contact.phone_number,
+                from_=from_number,
+                body=message_body,
+                contact=contact,
+                idempotency_scope="automation_sms",
+                idempotency_parts=(automation.id, contact.id),
+                action_type="automation_sms",
+                # Existing automation policy: consent is not required, but
+                # opted-out recipients are always blocked by the delivery gate.
+                require_sms_consent=False,
+            ),
+        )
+        if delivery.status is OutboundDeliveryStatus.BLOCKED:
+            raise AutomationActionError(
+                f"SMS was blocked by compliance checks ({delivery.reason})."
             )
-        finally:
-            await sms_service.close()
+        if not delivery.delivered:
+            raise AutomationActionError(
+                f"SMS provider did not accept the message ({delivery.reason or 'unknown error'})."
+            )
+        self.logger.info("Automation SMS sent", contact_id=contact.id)
 
     async def _action_send_email(
         self,
@@ -658,15 +696,10 @@ class AutomationWorker(RetryableWorker, BaseWorker):
         subject_template: str = config.get("subject", "")
         body_template: str = config.get("message") or config.get("body") or ""
         if not subject_template or not body_template:
-            self.logger.warning(
-                "send_email action missing subject or body",
-                automation_id=str(automation.id),
-            )
-            return
+            raise AutomationActionError("Send Email needs both a subject and a body.")
 
         if not contact.email:
-            self.logger.warning("Contact has no email", contact_id=contact.id)
-            return
+            raise AutomationActionError("The contact has no email address, so no email was sent.")
 
         subject = self._render_template(subject_template, contact, payload)
         body = self._render_template(body_template, contact, payload)
@@ -678,17 +711,11 @@ class AutomationWorker(RetryableWorker, BaseWorker):
             body=body,
             idempotency_key=idempotency_key,
         )
-        if sent:
-            self.logger.info(
-                "Automation email sent",
-                contact_id=contact.id,
-                to=contact.email,
+        if not sent:
+            raise AutomationActionError(
+                "Email was not sent: the email provider is not configured or rejected it."
             )
-        else:
-            self.logger.warning(
-                "Automation email not sent (provider unavailable or failed)",
-                contact_id=contact.id,
-            )
+        self.logger.info("Automation email sent", contact_id=contact.id)
 
     async def _action_make_call(
         self,
@@ -704,33 +731,28 @@ class AutomationWorker(RetryableWorker, BaseWorker):
             connection_id (str, optional): Telnyx connection id override.
         """
         if not settings.telnyx_api_key:
-            self.logger.warning(
-                "make_call action skipped: Telnyx not configured",
-                automation_id=str(automation.id),
-            )
-            return
+            raise AutomationActionError("Calling is not configured (Telnyx API key missing).")
         if not contact.phone_number:
-            self.logger.warning("Contact has no phone number", contact_id=contact.id)
-            return
+            raise AutomationActionError("The contact has no phone number, so no call was placed.")
 
         from_number = await self._resolve_from_number(
             db, contact.id, automation.workspace_id, voice=True
         )
         if not from_number:
-            self.logger.warning(
-                "No voice from-number available for workspace",
-                workspace_id=str(automation.workspace_id),
+            raise AutomationActionError(
+                "No voice-enabled phone number is active in this workspace. "
+                "Add or activate one under Phone Numbers."
             )
-            return
 
         agent_id: uuid.UUID | None = None
-        agent_id_str = str(config.get("agent_id", "")).strip()
+        agent_id_str = str(config.get("agent_id") or "").strip()
         if agent_id_str:
             try:
                 agent_id = uuid.UUID(agent_id_str)
-            except ValueError:
-                self.logger.warning("make_call has invalid agent_id", agent_id=agent_id_str)
-                return
+            except ValueError as exc:
+                raise AutomationActionError(
+                    "Make Call points at an invalid voice agent. Choose an agent again."
+                ) from exc
 
         api_base = settings.api_base_url or "http://localhost:8000"
         webhook_url = f"{api_base}/webhooks/telnyx/voice"
@@ -770,22 +792,16 @@ class AutomationWorker(RetryableWorker, BaseWorker):
         Config keys:
             campaign_id (str): UUID of the target campaign.
         """
-        campaign_id_str: str = str(config.get("campaign_id", ""))
+        campaign_id_str = str(config.get("campaign_id") or "").strip()
         if not campaign_id_str:
-            self.logger.warning(
-                "enroll_campaign action missing campaign_id",
-                automation_id=str(automation.id),
-            )
-            return
+            raise AutomationActionError("Enroll in Campaign has no campaign selected.")
 
         try:
             campaign_id = uuid.UUID(campaign_id_str)
-        except ValueError:
-            self.logger.warning(
-                "enroll_campaign has invalid campaign_id",
-                campaign_id=campaign_id_str,
-            )
-            return
+        except ValueError as exc:
+            raise AutomationActionError(
+                "Enroll in Campaign points at an invalid campaign. Choose a campaign again."
+            ) from exc
 
         # Verify the campaign exists and belongs to the same workspace
         campaign_result = await db.execute(
@@ -804,11 +820,10 @@ class AutomationWorker(RetryableWorker, BaseWorker):
         )
         campaign = campaign_result.scalar_one_or_none()
         if not campaign:
-            self.logger.warning(
-                "enroll_campaign: campaign not found or not active",
-                campaign_id=str(campaign_id),
+            raise AutomationActionError(
+                "The selected campaign was deleted or is not running/scheduled. "
+                "Start the campaign or choose another one."
             )
-            return
 
         # Upsert campaign_contact (ignore if already enrolled)
         stmt = (
@@ -854,11 +869,7 @@ class AutomationWorker(RetryableWorker, BaseWorker):
         """
         tag: str = str(config.get("tag", "")).strip()
         if not tag:
-            self.logger.warning(
-                "apply_tag action missing tag value",
-                contact_id=contact.id,
-            )
-            return
+            raise AutomationActionError("Apply Tag has no tag. Enter the tag to apply.")
 
         await TagService(db).add_tag_to_contact(
             workspace_id=contact.workspace_id,

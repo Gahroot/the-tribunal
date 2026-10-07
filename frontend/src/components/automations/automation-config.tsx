@@ -26,6 +26,8 @@ import {
 
 import type { AutomationActionType, AutomationTriggerType } from "@/types";
 
+import type { AutomationDisplayState } from "./automation-logic";
+
 export interface TriggerConfig {
   label: string;
   icon: LucideIcon;
@@ -69,23 +71,67 @@ export const actionTypeConfig: Record<AutomationActionType, ActionConfig> = {
   assign_agent: { label: "Assign Agent", icon: UserCheck },
 };
 
-// Triggers offered in the builder dropdown, grouped for readability.
+// Triggers offered in the builder dropdown, grouped for readability. The
+// generic event/schedule/condition kinds are not run by the engine, so they
+// are only shown when editing a legacy automation that still uses one.
 export const TRIGGER_OPTIONS: { group: string; values: AutomationTriggerType[] }[] = [
-  { group: "General", values: ["event", "schedule", "condition"] },
   { group: "Appointments", values: ["appointment_booked", "booking_created", "no_show", "never_booked"] },
   { group: "Contacts & Pipeline", values: ["contact_tagged", "opportunity_created", "deal_stage_changed"] },
   { group: "Engagement", values: ["review_received", "review_request_response", "missed_call", "roleplay_completed", "knowledge_document_uploaded"] },
 ];
 
-// Actions offered in the builder dropdown.
+// Actions offered in the builder dropdown (all executed by the engine).
 export const ACTION_OPTIONS: AutomationActionType[] = [
   "send_sms",
   "send_email",
   "make_call",
   "enroll_campaign",
   "apply_tag",
-  "wait",
 ];
+
+// Inline guidance shown under the trigger select.
+export const TRIGGER_GUIDANCE: Partial<Record<AutomationTriggerType, string>> = {
+  appointment_booked: "Runs once for each contact whose appointment is scheduled.",
+  booking_created: "Runs once for each contact with a new booking.",
+  no_show: "Runs once for each contact marked as a no-show.",
+  contact_tagged: "Runs once for each contact that has the tag below.",
+  never_booked:
+    "Runs for contacts created at least this many days ago who never booked.",
+  missed_call: "Runs for the caller when an inbound call goes unanswered.",
+  roleplay_completed:
+    "Has no contact, so contact actions (SMS, email, calls, tags) cannot run.",
+  knowledge_document_uploaded:
+    "Has no contact, so contact actions (SMS, email, calls, tags) cannot run.",
+};
+
+// Inline guidance shown under each action step.
+export const ACTION_GUIDANCE: Partial<Record<AutomationActionType, string>> = {
+  send_sms:
+    "Sent from an active SMS number in this workspace. Opted-out contacts are skipped and the run is marked failed.",
+  send_email: "Requires the contact to have an email address.",
+  make_call:
+    "Calls from an active voice number. Pick an agent to talk, or leave it on default.",
+  enroll_campaign:
+    "The campaign must be running or scheduled when the automation fires.",
+  apply_tag: "Adds the tag to the contact.",
+  add_tag: "Adds the tag to the contact.",
+};
+
+export const TEMPLATE_TOKENS_HINT =
+  "Use {first_name}, {last_name}, {full_name}, {company_name} or {email} to personalize.";
+
+// Card status presentation (dot + label, see `StatusBadge`).
+export const displayStateConfig: Record<
+  AutomationDisplayState,
+  { label: string; dotClass: string }
+> = {
+  incomplete: { label: "Needs setup", dotClass: "bg-warning" },
+  paused: { label: "Paused", dotClass: "bg-muted-foreground" },
+  ready: { label: "Ready", dotClass: "bg-info" },
+  running: { label: "Running", dotClass: "bg-info" },
+  succeeded: { label: "Last run succeeded", dotClass: "bg-success" },
+  failed: { label: "Last run failed", dotClass: "bg-destructive" },
+};
 
 /** Resolve a trigger's display config, falling back to a generic descriptor. */
 export function resolveTriggerConfig(type: AutomationTriggerType): TriggerConfig {

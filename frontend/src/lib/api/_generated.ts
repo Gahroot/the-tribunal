@@ -2176,6 +2176,9 @@ export interface paths {
         /**
          * Create Automation
          * @description Create a new automation.
+         *
+         *     Inactive automations may be saved as drafts with incomplete configuration;
+         *     an active automation must be fully configured (422 otherwise).
          */
         post: operations["create_automation_api_v1_workspaces__workspace_id__automations_post"];
         delete?: never;
@@ -2219,6 +2222,9 @@ export interface paths {
         /**
          * Update Automation
          * @description Update an automation.
+         *
+         *     Omitted fields keep their stored values. If the automation is (or becomes)
+         *     active, the merged configuration must be complete (422 otherwise).
          */
         put: operations["update_automation_api_v1_workspaces__workspace_id__automations__automation_id__put"];
         post?: never;
@@ -2243,7 +2249,7 @@ export interface paths {
         put?: never;
         /**
          * Toggle Automation
-         * @description Toggle automation active status.
+         * @description Toggle automation active status. Activation requires a complete setup.
          */
         post: operations["toggle_automation_api_v1_workspaces__workspace_id__automations__automation_id__toggle_post"];
         delete?: never;
@@ -8847,9 +8853,21 @@ export interface components {
             };
             /**
              * Type
-             * @description Action type: send_sms, send_email, make_call, enroll_campaign, apply_tag/add_tag, wait/delay
+             * @description Action type: send_sms (config.message), send_email (config.subject + config.message), make_call (optional config.agent_id), enroll_campaign (config.campaign_id), apply_tag/add_tag (config.tag)
              */
             type: string;
+        };
+        /**
+         * AutomationConfigIssueSchema
+         * @description One reason an automation cannot be activated yet.
+         */
+        AutomationConfigIssueSchema: {
+            /** Code */
+            code: string;
+            /** Field */
+            field: string;
+            /** Message */
+            message: string;
         };
         /**
          * AutomationCreate
@@ -8878,6 +8896,33 @@ export interface components {
             trigger_type: string;
         };
         /**
+         * AutomationExecutionSummary
+         * @description Outcome of the most recent automation run.
+         *
+         *     ``status`` is the stored execution status: ``pending`` (running),
+         *     ``completed`` (succeeded), or ``failed`` (``error`` says how to fix it).
+         */
+        AutomationExecutionSummary: {
+            /** Contact Id */
+            contact_id: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error */
+            error: string | null;
+            /** Executed At */
+            executed_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Status */
+            status: string;
+        };
+        /**
          * AutomationResponse
          * @description Schema for automation response.
          */
@@ -8886,6 +8931,8 @@ export interface components {
             actions: {
                 [key: string]: unknown;
             }[];
+            /** Config Issues */
+            config_issues?: components["schemas"]["AutomationConfigIssueSchema"][];
             /**
              * Created At
              * Format: date-time
@@ -8900,10 +8947,17 @@ export interface components {
             id: string;
             /** Is Active */
             is_active: boolean;
+            last_execution?: components["schemas"]["AutomationExecutionSummary"] | null;
             /** Last Triggered At */
             last_triggered_at: string | null;
             /** Name */
             name: string;
+            /**
+             * Readiness
+             * @default ready
+             * @enum {string}
+             */
+            readiness: "ready" | "incomplete";
             /** Trigger Config */
             trigger_config: {
                 [key: string]: unknown;

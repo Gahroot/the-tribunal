@@ -4231,7 +4231,7 @@
             "type": "object"
           },
           "type": {
-            "description": "Action type: send_sms, send_email, make_call, enroll_campaign, apply_tag/add_tag, wait/delay",
+            "description": "Action type: send_sms (config.message), send_email (config.subject + config.message), make_call (optional config.agent_id), enroll_campaign (config.campaign_id), apply_tag/add_tag (config.tag)",
             "title": "Type",
             "type": "string"
           }
@@ -4240,6 +4240,30 @@
           "type"
         ],
         "title": "AutomationActionSchema",
+        "type": "object"
+      },
+      "AutomationConfigIssueSchema": {
+        "description": "One reason an automation cannot be activated yet.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "field",
+          "message"
+        ],
+        "title": "AutomationConfigIssueSchema",
         "type": "object"
       },
       "AutomationCreate": {
@@ -4292,6 +4316,69 @@
         "title": "AutomationCreate",
         "type": "object"
       },
+      "AutomationExecutionSummary": {
+        "description": "Outcome of the most recent automation run.\n\n``status`` is the stored execution status: ``pending`` (running),\n``completed`` (succeeded), or ``failed`` (``error`` says how to fix it).",
+        "properties": {
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "executed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executed At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "error",
+          "contact_id",
+          "created_at",
+          "executed_at"
+        ],
+        "title": "AutomationExecutionSummary",
+        "type": "object"
+      },
       "AutomationResponse": {
         "description": "Schema for automation response.",
         "properties": {
@@ -4301,6 +4388,13 @@
               "type": "object"
             },
             "title": "Actions",
+            "type": "array"
+          },
+          "config_issues": {
+            "items": {
+              "$ref": "#/components/schemas/AutomationConfigIssueSchema"
+            },
+            "title": "Config Issues",
             "type": "array"
           },
           "created_at": {
@@ -4328,6 +4422,16 @@
             "title": "Is Active",
             "type": "boolean"
           },
+          "last_execution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AutomationExecutionSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "last_triggered_at": {
             "anyOf": [
               {
@@ -4342,6 +4446,15 @@
           },
           "name": {
             "title": "Name",
+            "type": "string"
+          },
+          "readiness": {
+            "default": "ready",
+            "enum": [
+              "ready",
+              "incomplete"
+            ],
+            "title": "Readiness",
             "type": "string"
           },
           "trigger_config": {
@@ -40154,7 +40267,7 @@
         ]
       },
       "post": {
-        "description": "Create a new automation.",
+        "description": "Create a new automation.\n\nInactive automations may be saved as drafts with incomplete configuration;\nan active automation must be fully configured (422 otherwise).",
         "operationId": "create_automation_api_v1_workspaces__workspace_id__automations_post",
         "parameters": [
           {
@@ -40369,7 +40482,7 @@
         ]
       },
       "put": {
-        "description": "Update an automation.",
+        "description": "Update an automation.\n\nOmitted fields keep their stored values. If the automation is (or becomes)\nactive, the merged configuration must be complete (422 otherwise).",
         "operationId": "update_automation_api_v1_workspaces__workspace_id__automations__automation_id__put",
         "parameters": [
           {
@@ -40438,7 +40551,7 @@
     },
     "/api/v1/workspaces/{workspace_id}/automations/{automation_id}/toggle": {
       "post": {
-        "description": "Toggle automation active status.",
+        "description": "Toggle automation active status. Activation requires a complete setup.",
         "operationId": "toggle_automation_api_v1_workspaces__workspace_id__automations__automation_id__toggle_post",
         "parameters": [
           {

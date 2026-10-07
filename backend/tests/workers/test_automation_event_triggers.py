@@ -5,7 +5,7 @@ cover, per new trigger:
 
 * event triggers are NOT evaluated by the contact-polling path;
 * the worker drains a queued event and dispatches the right action;
-* contact-targeting actions are skipped when an event has no contact;
+* contact-targeting actions fail visibly when an event has no contact;
 * per-(automation, event) dedupe prevents double execution on re-drain.
 
 End-to-end DB-backed coverage (real services emitting + worker executing) lives
@@ -65,9 +65,21 @@ def _automation(trigger_type: str, actions: list[dict]) -> MagicMock:
     automation.workspace_id = uuid.uuid4()
     automation.name = "Test automation"
     automation.trigger_type = trigger_type
+    automation.trigger_config = {}
     automation.actions = actions
     automation.last_triggered_at = None
     return automation
+
+
+# Minimal complete config for each supported action type.
+VALID_ACTION_CONFIG: dict[str, dict[str, str]] = {
+    "send_sms": {"message": "Hi {first_name}"},
+    "send_email": {"subject": "Hello", "message": "Hi {first_name}"},
+    "make_call": {},
+    "enroll_campaign": {"campaign_id": str(uuid.uuid4())},
+    "apply_tag": {"tag": "vip"},
+    "add_tag": {"tag": "vip"},
+}
 
 
 def _contact() -> MagicMock:
@@ -132,7 +144,10 @@ async def test_run_actions_dispatches_each_action(
     _auto_gate(monkeypatch)
     setattr(worker, method_name, AsyncMock())
 
-    automation = _automation("review_received", [{"type": action_type, "config": {}}])
+    automation = _automation(
+        "review_received",
+        [{"type": action_type, "config": VALID_ACTION_CONFIG[action_type]}],
+    )
     contact = _contact()
     execution = _execution()
     db = MagicMock()
@@ -146,10 +161,11 @@ async def test_run_actions_dispatches_each_action(
 @pytest.mark.parametrize(
     "action_type", ["send_sms", "send_email", "make_call", "enroll_campaign", "apply_tag"]
 )
-async def test_contact_actions_skipped_without_contact(
+async def test_contact_actions_fail_without_contact(
     action_type: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Contact-targeting actions are skipped (not run) for contactless events."""
+    """Contact-targeting actions never run for contactless events and the
+    execution is recorded as failed with an actionable reason."""
     worker = AutomationWorker()
     _auto_gate(monkeypatch)
     # Spy on every action method to prove none are invoked.
@@ -162,7 +178,10 @@ async def test_contact_actions_skipped_without_contact(
     ):
         setattr(worker, name, AsyncMock())
 
-    automation = _automation("roleplay_completed", [{"type": action_type, "config": {}}])
+    automation = _automation(
+        "roleplay_completed",
+        [{"type": action_type, "config": VALID_ACTION_CONFIG[action_type]}],
+    )
     execution = _execution()
     db = MagicMock()
 
@@ -176,8 +195,9 @@ async def test_contact_actions_skipped_without_contact(
         "_action_apply_tag",
     ):
         getattr(worker, name).assert_not_awaited()
-    # Execution still completes (no error) even though the action was skipped.
-    assert execution.status == "completed"
+    # Nothing ran, so the execution must not be reported as successful.
+    assert execution.status == "failed"
+    assert "no contact" in execution.error
 
 
 async def test_render_template_uses_event_payload() -> None:

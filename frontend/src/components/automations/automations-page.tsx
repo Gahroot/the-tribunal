@@ -23,6 +23,9 @@ export function AutomationsPage() {
     isDialogOpen,
     isEditing,
     form,
+    formIssues,
+    campaignOptions,
+    agentOptions,
     updateForm,
     onDialogOpenChange,
     openCreateDialog,
@@ -63,6 +66,9 @@ export function AutomationsPage() {
           open={isDialogOpen}
           isEditing={isEditing}
           form={form}
+          issues={formIssues}
+          campaigns={campaignOptions}
+          agents={agentOptions}
           isSubmitting={isSubmitting}
           onFormChange={updateForm}
           onOpenChange={onDialogOpenChange}

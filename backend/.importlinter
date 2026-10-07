@@ -452,7 +452,7 @@ forbidden_modules =
 allow_indirect_imports = True
 
 [importlinter:contract:block-automations]
-name = automations may only import core + declared depends_on (contacts, core, hitl, voice)
+name = automations may only import core + declared depends_on (contacts, core, hitl, messaging, voice)
 type = forbidden
 source_modules =
     app.api.v1.automations
@@ -462,25 +462,19 @@ forbidden_modules =
     app.api.v1.agents
     app.api.v1.appointments
     app.api.v1.bookable_staff
-    app.api.v1.campaigns
-    app.api.v1.drip_campaigns
     app.api.v1.embed
     app.api.v1.knowledge_documents
     app.api.v1.message_tests
     app.api.v1.offers
-    app.api.v1.outbound_missions
     app.api.v1.prompt_versions
     app.services.agents
     app.services.ai
     app.services.appointments
     app.services.calendar
-    app.services.campaigns
     app.services.compliance
     app.services.knowledge
     app.services.message_tests
-    app.services.messaging
     app.services.offers
-    app.services.outbound
     app.services.payments
     app.services.rate_limiting
     app.workers.reminder_worker

@@ -17,7 +17,7 @@ public_api:
   - backend/app/services/automations/events.py::EVENT_MISSED_CALL
   - backend/app/services/automations/events.py::EVENT_ROLEPLAY_COMPLETED
   - backend/app/services/automations/events.py::EVENT_KNOWLEDGE_DOCUMENT_UPLOADED
-depends_on: [core, contacts, hitl, voice]
+depends_on: [core, contacts, hitl, messaging, voice]
 external_integrations: []
 env_vars: []
 db_tables:
@@ -40,6 +40,7 @@ Automations is the workspace rules engine. It has two halves that should not be 
 Sideways block imports to sever (non-`core`, from `docs/blocks/coupling-report.json`). All live in the **worker**, not the event bus:
 
 - `backend/app/workers/automation_worker.py:73,74: from app.services.telephony.telnyx_voice import TelnyxVoiceService` / `text_provider import get_text_message_provider` → **voice** — automation actions that place calls or send SMS.
+- `backend/app/workers/automation_worker.py: from app.services.outbound.delivery import OutboundDeliveryService` → **messaging** — `send_sms` actions go through the shared outbound dispatcher so global opt-out compliance and message recording match every other SMS path; a blocked or failed delivery fails the execution visibly.
 - `backend/app/workers/automation_worker.py:72: from app.services.tags import TagService` → **contacts** — automation actions that add/remove tags.
 - `backend/app/workers/automation_worker.py:68: from app.services.approval.approval_gate_service import approval_gate_service` → **hitl** — automation actions that escalate to the approval queue.
 - `backend/app/workers/automation_worker.py:75,76: from app.workers.base import BaseWorker, WorkerRegistry` / `retryable import RetryableWorker` → **core** — worker base.
@@ -56,7 +57,7 @@ Core: `app.api.deps` (`DB`, `CurrentUser`, `get_workspace`), `app.db.scope.apply
 
 ## How to Extract
 
-1. Pull `core` plus `contacts`, `hitl`, and `voice` transitively (needed only by the worker's action executors). The event bus alone needs nothing beyond core.
+1. Pull `core` plus `contacts`, `hitl`, `messaging`, and `voice` transitively (needed only by the worker's action executors). The event bus alone needs nothing beyond core.
 2. Copy `owns_paths` (automations service incl. `events.py`, the router, the worker, three model files).
 3. Decide the extraction granularity: if you only need the **emit** seam in the new project, copy `events.py` + the three models and leave a no-op drain. To run automations, sever the worker's voice/contacts/hitl imports by injecting action-executor ports (an SMS/call port, a tagging port, an escalation port).
 4. Mount the `automations` router; export `emit_automation_event` and the `EVENT_*` constants for emitting blocks.
