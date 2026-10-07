@@ -10715,7 +10715,7 @@ export interface components {
             /** Notes */
             notes: string | null;
             /** Phone Number */
-            phone_number: string;
+            phone_number: string | null;
             qualification_signals: components["schemas"]["QualificationSignals"] | null;
             /** Qualified At */
             qualified_at: string | null;
@@ -10869,7 +10869,7 @@ export interface components {
             /** Notes */
             notes: string | null;
             /** Phone Number */
-            phone_number: string;
+            phone_number: string | null;
             qualification_signals: components["schemas"]["QualificationSignals"] | null;
             /** Qualified At */
             qualified_at: string | null;

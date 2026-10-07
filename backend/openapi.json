@@ -9012,8 +9012,15 @@
             "title": "Notes"
           },
           "phone_number": {
-            "title": "Phone Number",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone Number"
           },
           "qualification_signals": {
             "anyOf": [
@@ -9627,8 +9634,15 @@
             "title": "Notes"
           },
           "phone_number": {
-            "title": "Phone Number",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone Number"
           },
           "qualification_signals": {
             "anyOf": [

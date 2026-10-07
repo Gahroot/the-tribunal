@@ -84,6 +84,8 @@ async def offer_waitlist_opening(db: AsyncSession, appointment: Appointment) -> 
     opt_out = OptOutManager()
     candidate = None
     for waiting_contact in candidates:
+        if not waiting_contact.phone_number:
+            continue
         if not await opt_out.check_opt_out(
             appointment.workspace_id, waiting_contact.phone_number, db
         ):

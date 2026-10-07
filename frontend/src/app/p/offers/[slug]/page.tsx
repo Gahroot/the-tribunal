@@ -23,6 +23,7 @@ import { PageErrorState, PageLoadingState } from "@/components/ui/page-state";
 import { Separator } from "@/components/ui/separator";
 import { publicOffersApi, OptInRequest } from "@/lib/api/public-offers";
 import { queryKeys } from "@/lib/query-keys";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 import { formatNumber } from "@/lib/utils/number";
 
 interface PublicOfferPageProps {
@@ -63,8 +64,9 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
   const isFormValid = () => {
     if (offer?.require_email && !email) return false;
     if (offer?.require_phone && !phone) return false;
-    if (offer?.require_name && !name) return false;
-    return email || phone || name;
+    if (offer?.require_name && !name.trim()) return false;
+    // A lead must leave a way to reach them; a name alone is rejected server-side.
+    return Boolean(email.trim() || phone.trim());
   };
 
   if (isPending) {
@@ -309,7 +311,10 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
                       <AlertCircle className="size-4" />
                       <AlertTitle>Error</AlertTitle>
                       <AlertDescription>
-                        Something went wrong. Please try again.
+                        {getApiErrorMessage(
+                          optInMutation.error,
+                          "Something went wrong. Please try again."
+                        )}
                       </AlertDescription>
                     </Alert>
                   )}

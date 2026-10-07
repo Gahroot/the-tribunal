@@ -384,6 +384,10 @@ class SpeedToLeadWorker(RetryableWorker, BaseWorker):
         Each send opens its own DB session — an ``AsyncSession`` must not be
         used by two coroutines at once.
         """
+        contact_phone = contact.phone_number
+        if not contact_phone:
+            # config_gate already blocks phoneless contacts; never dial/text None.
+            return {}
         agent_id = await self._resolve_agent_id(db, workspace_id)
         coroutines: dict[str, Awaitable[uuid.UUID | None]] = {}
         voice_from: str | None = None
@@ -395,7 +399,7 @@ class SpeedToLeadWorker(RetryableWorker, BaseWorker):
                 coroutines[CHANNEL_VOICE] = self._dial_first_touch(
                     workspace_id=workspace_id,
                     contact_id=contact.id,
-                    contact_phone=contact.phone_number,
+                    contact_phone=contact_phone,
                     agent_id=agent_id,
                     from_number=voice_from,
                 )

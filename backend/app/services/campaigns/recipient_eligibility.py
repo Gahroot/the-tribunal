@@ -193,7 +193,7 @@ class RecipientEligibilityService:
         contacts = {contact.id: contact for contact in contacts_result.scalars().all()}
         opted_out = await self.compliance_service.opt_out_manager.opted_out_numbers(
             campaign.workspace_id,
-            (contact.phone_number for contact in contacts.values()),
+            (contact.phone_number for contact in contacts.values() if contact.phone_number),
             db,
         )
 
@@ -240,7 +240,11 @@ class RecipientEligibilityService:
         evaluated = [row for row in rows if row.status in _EVALUATED_STATUSES]
         opted_out = await self.compliance_service.opt_out_manager.opted_out_numbers(
             campaign.workspace_id,
-            (row.contact.phone_number for row in evaluated if row.contact is not None),
+            (
+                row.contact.phone_number
+                for row in evaluated
+                if row.contact is not None and row.contact.phone_number
+            ),
             db,
         )
 

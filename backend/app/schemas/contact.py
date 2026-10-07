@@ -84,7 +84,7 @@ class ContactResponse(BaseModel):
     first_name: str
     last_name: str | None
     email: str | None
-    phone_number: str
+    phone_number: str | None
     company_name: str | None
     avatar_url: str | None = None
     address_line1: str | None = None

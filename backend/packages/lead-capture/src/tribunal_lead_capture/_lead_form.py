@@ -88,6 +88,10 @@ async def _check_lead_form_rate_limit(db: DB, client_ip: str) -> None:
 
 async def _action_auto_text(lead_source: LeadSource, contact: Contact, db: DB) -> None:
     """Send an automatic text message to the lead."""
+    contact_phone = contact.phone_number
+    if not contact_phone:
+        logger.warning("auto_text_skipped", reason="contact has no phone number")
+        return
     config = lead_source.action_config or {}
     from_number = config.get("from_phone_number", settings.demo_from_phone_number)
     template = config.get("message_template") or (
@@ -104,7 +108,7 @@ async def _action_auto_text(lead_source: LeadSource, contact: Contact, db: DB) -
     try:
         idempotency_key = derive_outbound_key("lead_form_auto_text", lead_source.id, contact.id)
         await sms_service.send_message(
-            to_number=contact.phone_number,
+            to_number=contact_phone,
             from_number=from_number,
             body=template,
             db=db,
@@ -117,7 +121,7 @@ async def _action_auto_text(lead_source: LeadSource, contact: Contact, db: DB) -
             from app.utils.phone import normalize_phone_safe
 
             norm_from = normalize_phone_safe(from_number) or from_number
-            norm_to = normalize_phone_safe(contact.phone_number) or contact.phone_number
+            norm_to = normalize_phone_safe(contact_phone) or contact_phone
             conv_result = await db.execute(
                 apply_workspace_scope(
                     select(Conversation),
@@ -140,6 +144,10 @@ async def _action_auto_text(lead_source: LeadSource, contact: Contact, db: DB) -
 
 async def _action_auto_call(lead_source: LeadSource, contact: Contact, db: DB) -> None:
     """Initiate an automatic call to the lead."""
+    contact_phone = contact.phone_number
+    if not contact_phone:
+        logger.warning("auto_call_skipped", reason="contact has no phone number")
+        return
     config = lead_source.action_config or {}
     from_number = config.get("from_phone_number", settings.demo_from_phone_number)
     if not settings.telnyx_api_key or not from_number:
@@ -151,13 +159,13 @@ async def _action_auto_call(lead_source: LeadSource, contact: Contact, db: DB) -
         agent_id_str = config.get("agent_id")
         idempotency_key = derive_outbound_key("lead_form_auto_call", lead_source.id, contact.id)
         await voice_service.initiate_call(
-            to_number=contact.phone_number,
+            to_number=contact_phone,
             from_number=from_number,
             connection_id=settings.telnyx_connection_id or None,
             webhook_url=f"{api_base}/webhooks/telnyx/voice",
             db=db,
             workspace_id=lead_source.workspace_id,
-            contact_phone=contact.phone_number,
+            contact_phone=contact_phone,
             agent_id=uuid.UUID(agent_id_str) if agent_id_str else None,
             idempotency_key=idempotency_key,
         )

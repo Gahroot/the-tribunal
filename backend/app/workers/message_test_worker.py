@@ -131,6 +131,8 @@ class MessageTestWorker(RetryableWorker, BaseWorker):
     ) -> bool:
         """Send a test message and update stats. Returns True on success."""
         contact = test_contact.contact
+        if not contact.phone_number:
+            return False
         message_text = self._render_template(variant.message_template, contact)
 
         idempotency_key = derive_outbound_key("message_test", test.id, test_contact.id)

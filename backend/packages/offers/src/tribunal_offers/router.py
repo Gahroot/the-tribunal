@@ -17,7 +17,7 @@ Both prefixes + tags are baked into the routers so the host mounts them prefix-f
 * **lead-capture** — ``deliver_lead_magnet_to_lead``, ``LeadMagnet``,
   ``LeadMagnetLead``, ``LeadMagnetResponse`` (declared dependency).
 * **agent-brain** — ``generate_offer_content`` (declared dependency).
-* **contacts** — the shared ``Contact`` model (declared dependency).
+* **contacts** — shared lead-contact resolution (declared dependency).
 """
 
 from __future__ import annotations
@@ -36,14 +36,17 @@ from app.api.crud import get_or_404
 from app.core_api import (
     DB,
     CurrentUser,
-    apply_workspace_scope,
     get_workspace,
     paginate,
     select_workspace_owned,
 )
-from app.models.contact import Contact
 from app.models.workspace import Workspace
 from app.services.ai.offer_generator import generate_offer_content
+from app.services.contacts.lead_contacts import (
+    LeadIdentityError,
+    find_or_create_lead_contact,
+    normalize_lead_identity,
+)
 
 from .models import Offer, OfferLeadMagnet
 from .schemas import (
@@ -487,59 +490,47 @@ async def submit_offer_optin(
             detail="Offer not found",
         )
 
+    # Normalize first so blank/whitespace values count as missing and malformed
+    # values are rejected instead of being dropped behind a success response.
+    try:
+        identity = normalize_lead_identity(
+            email=optin.email,
+            phone_number=optin.phone_number,
+            name=optin.name,
+        )
+    except LeadIdentityError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
     # Validate required fields
-    if offer.require_email and not optin.email:
+    if offer.require_email and not identity.email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email is required",
         )
-    if offer.require_phone and not optin.phone_number:
+    if offer.require_phone and not identity.phone_number:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Phone number is required",
         )
-    if offer.require_name and not optin.name:
+    if offer.require_name and not identity.name:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Name is required",
         )
 
-    # Try to find or create contact
-    contact: Contact | None = None
-    if optin.email:
-        contact_result = await db.execute(
-            apply_workspace_scope(select(Contact), Contact, offer.workspace_id).where(
-                Contact.email == optin.email
-            )
+    # Every accepted opt-in resolves to a workspace contact (email-only too).
+    # No phone number or messaging consent is inferred from the submission.
+    try:
+        lead_contact = await find_or_create_lead_contact(
+            db,
+            workspace_id=offer.workspace_id,
+            identity=identity,
+            source="offer_optin",
+            note=f"Opted in via offer: {offer.name}",
         )
-        contact = contact_result.scalar_one_or_none()
-
-    if not contact and optin.phone_number:
-        contact_result = await db.execute(
-            apply_workspace_scope(select(Contact), Contact, offer.workspace_id).where(
-                Contact.phone_number == optin.phone_number
-            )
-        )
-        contact = contact_result.scalar_one_or_none()
-
-    if not contact and optin.phone_number:
-        # Create a CRM contact only when we have the required phone fields.
-        # Email-only opt-ins are still captured on LeadMagnetLead below.
-        name_parts = (optin.name or "").split(" ", 1)
-        first_name = name_parts[0] if name_parts else "Unknown"
-        last_name = name_parts[1] if len(name_parts) > 1 else None
-
-        contact = Contact(
-            workspace_id=str(offer.workspace_id),
-            first_name=first_name,
-            last_name=last_name,
-            email=optin.email,
-            phone_number=optin.phone_number,
-            status="new",
-            notes=f"Opted in via offer: {offer.name}",
-        )
-        db.add(contact)
-        await db.flush()
+    except LeadIdentityError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    contact = lead_contact.contact
 
     # Create lead magnet lead record for each attached lead magnet
     lead_magnet_lead_id: uuid.UUID | None = None
@@ -555,10 +546,10 @@ async def submit_offer_optin(
         lead = LeadMagnetLead(
             lead_magnet_id=olm.lead_magnet_id,
             workspace_id=offer.workspace_id,
-            email=optin.email,
-            phone_number=optin.phone_number,
-            name=optin.name,
-            contact_id=contact.id if contact else None,
+            email=identity.email,
+            phone_number=identity.phone_number,
+            name=identity.name,
+            contact_id=contact.id,
             source_offer_id=offer.id,
             delivered=False,
         )
@@ -581,7 +572,7 @@ async def submit_offer_optin(
     return OptInResponse(
         success=True,
         message="Thank you for signing up!",
-        contact_id=contact.id if contact else None,
+        contact_id=contact.id,
         lead_magnet_lead_id=lead_magnet_lead_id,
     )
 

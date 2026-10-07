@@ -71,7 +71,9 @@ async def record_sms_consent(
     contacts = {contact.id: contact for contact in result.scalars().all()}
     manager = opt_out_manager or OptOutManager()
     opted_out = await manager.opted_out_numbers(
-        workspace_id, (contact.phone_number for contact in contacts.values()), db
+        workspace_id,
+        (contact.phone_number for contact in contacts.values() if contact.phone_number),
+        db,
     )
 
     outcome = SmsConsentRecordResult()

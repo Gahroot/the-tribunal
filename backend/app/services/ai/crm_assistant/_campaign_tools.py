@@ -93,6 +93,8 @@ class CampaignAssistantTools:
         )
         if not contact:
             return {"success": False, "error": "Contact not found"}
+        if not contact.phone_number:
+            return {"success": False, "error": "Contact has no phone number"}
 
         phone_result = await self.context.db.execute(
             select_workspace_owned(PhoneNumber, self.context.workspace_id).limit(1)

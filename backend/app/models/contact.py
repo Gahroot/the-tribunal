@@ -43,8 +43,8 @@ class Contact(Base):
     last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     email: Mapped[str | None] = mapped_column(EncryptedString(), nullable=True)
     email_hash: Mapped[str | None] = mapped_column(LookupHash(), nullable=True, index=True)
-    phone_number: Mapped[str] = mapped_column(EncryptedString(), nullable=False)
-    phone_hash: Mapped[str] = mapped_column(LookupHash(), nullable=False, index=True)
+    phone_number: Mapped[str | None] = mapped_column(EncryptedString(), nullable=True)
+    phone_hash: Mapped[str | None] = mapped_column(LookupHash(), nullable=True, index=True)
     company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Optional profile/company image URL. Non-PII — stored as plain text since
     # the URL itself (Gravatar hash, uploaded asset URL) is not sensitive.
@@ -177,14 +177,15 @@ class Contact(Base):
         )
 
     def __repr__(self) -> str:
-        return f"<Contact(id={self.id}, phone_hash={self.phone_hash[:8]}..., status={self.status})>"
+        phone_ref = f"{self.phone_hash[:8]}..." if self.phone_hash else None
+        return f"<Contact(id={self.id}, phone_hash={phone_ref}, status={self.status})>"
 
 
 def _sync_contact_lookup_hashes(_mapper: object, _connection: object, target: Contact) -> None:
     """Keep encrypted contact lookup hashes in sync for all write paths."""
     target.email_hash = hash_value(target.email) if target.email else None
-    if target.phone_number:
-        target.phone_hash = hash_phone(target.phone_number)
+    # Email-only contacts (e.g. offer opt-ins) carry no phone and no phone hash.
+    target.phone_hash = hash_phone(target.phone_number) if target.phone_number else None
 
 
 event.listen(Contact, "before_insert", _sync_contact_lookup_hashes)

@@ -81,20 +81,32 @@ class OutboundComplianceService:
         self.opt_out_manager = opt_out_manager or OptOutManager()
         self.logger = logger.bind(component="outbound_compliance")
 
+    async def _phone_block_reason(
+        self,
+        request: OutboundComplianceRequest,
+        db: AsyncSession,
+    ) -> str | None:
+        """Block phoneless contacts (e.g. email-only leads) and opted-out numbers."""
+        phone_number = request.contact.phone_number
+        if not phone_number:
+            return "missing_phone_number"
+        if request.known_opted_out_numbers is not None:
+            is_opted_out = phone_number in request.known_opted_out_numbers
+        else:
+            is_opted_out = await self.opt_out_manager.check_opt_out(
+                request.workspace_id, phone_number, db
+            )
+        return "global_opt_out" if is_opted_out else None
+
     async def evaluate(  # noqa: PLR0911
         self,
         request: OutboundComplianceRequest,
         db: AsyncSession,
     ) -> OutboundComplianceResult:
         """Evaluate all compliance gates for a proposed outbound send."""
-        if request.known_opted_out_numbers is not None:
-            is_opted_out = request.contact.phone_number in request.known_opted_out_numbers
-        else:
-            is_opted_out = await self.opt_out_manager.check_opt_out(
-                request.workspace_id, request.contact.phone_number, db
-            )
-        if is_opted_out:
-            return self._blocked("global_opt_out", request)
+        phone_block = await self._phone_block_reason(request, db)
+        if phone_block is not None:
+            return self._blocked(phone_block, request)
 
         if request.channel == "sms" and request.require_sms_consent:
             consent_status = request.contact.sms_consent_status or "unknown"
