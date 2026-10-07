@@ -21,6 +21,7 @@ outbound from-number via the appointments block (``resolve_from_number``).
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -61,6 +62,7 @@ from .schemas import (
     PaginatedReviewRequests,
     PaginatedReviews,
     PublicRatingResult,
+    PublicReviewNextStep,
     PublicReviewRequest,
     RatingBucket,
     ReputationSummary,
@@ -93,6 +95,75 @@ def _sentiment_for_rating(rating: int) -> ReviewSentiment:
 def _public_review_url(review_settings: ReviewSettings) -> str | None:
     """Return the configured public review destination, preferring Google."""
     return review_settings.google_review_url or review_settings.facebook_review_url
+
+
+_FEEDBACK_PROMPT = "Thanks for your honesty. Please tell us how we can do better."
+
+
+@dataclass(frozen=True)
+class _ResumeState:
+    """Where a recipient left off on the public rating page."""
+
+    next_step: PublicReviewNextStep
+    is_positive: bool
+    redirect_url: str | None
+    destination_missing: bool
+    feedback_submitted: bool
+    message: str | None
+
+
+def _resume_state(
+    review_request: ReviewRequest,
+    review: Review | None,
+    review_settings: ReviewSettings,
+) -> _ResumeState:
+    """Derive the unfinished follow-through for a review request.
+
+    Routing is taken from what was recorded at rating time (the stored review's
+    ``is_public`` flag) so later threshold changes never re-route a recipient.
+    A public-review handoff is only ever *offered* again: clicking the link is
+    not proof a review was posted, so this never reports one as posted.
+    """
+    rating = review_request.rating
+    if rating is None:
+        return _ResumeState(PublicReviewNextStep.RATE, False, None, False, False, None)
+
+    feedback_submitted = bool(review is not None and review.body)
+    is_positive = (
+        review.is_public if review is not None else rating >= review_settings.positive_threshold
+    )
+
+    if feedback_submitted:
+        return _ResumeState(
+            PublicReviewNextStep.DONE,
+            is_positive,
+            None,
+            False,
+            True,
+            "Thanks — we've received your feedback and will be in touch.",
+        )
+
+    if is_positive:
+        redirect_url = _public_review_url(review_settings)
+        if redirect_url:
+            return _ResumeState(
+                PublicReviewNextStep.PUBLIC_REVIEW,
+                True,
+                redirect_url,
+                False,
+                False,
+                "Thanks for your rating! If you'd like, you can share it publicly.",
+            )
+        return _ResumeState(
+            PublicReviewNextStep.DONE,
+            True,
+            None,
+            True,
+            False,
+            "Thanks for the great rating — your feedback has been recorded.",
+        )
+
+    return _ResumeState(PublicReviewNextStep.FEEDBACK, False, None, False, False, _FEEDBACK_PROMPT)
 
 
 class ReviewService:
@@ -427,10 +498,12 @@ class ReviewService:
             review_request.clicked_at = datetime.now(UTC)
             await self.db.commit()
 
-        already_submitted = review_request.status in (
-            ReviewRequestStatus.RATED,
-            ReviewRequestStatus.COMPLETED,
+        review = (
+            await self._load_review_for_request(review_request.id)
+            if review_request.rating is not None
+            else None
         )
+        resume = _resume_state(review_request, review, review_settings)
         return PublicReviewRequest(
             token=review_request.token,
             status=review_request.status,  # type: ignore[arg-type]
@@ -438,7 +511,12 @@ class ReviewService:
             business_name=review_settings.business_name,
             contact_first_name=contact.first_name,
             positive_threshold=review_settings.positive_threshold,
-            already_submitted=already_submitted,
+            already_submitted=review_request.rating is not None,
+            next_step=resume.next_step,
+            redirect_url=resume.redirect_url,
+            public_review_destination_missing=resume.destination_missing,
+            feedback_submitted=resume.feedback_submitted,
+            message=resume.message,
         )
 
     async def submit_rating(self, token: str, rating: int) -> PublicRatingResult:
@@ -447,7 +525,8 @@ class ReviewService:
         High ratings (>= threshold) route to the public review URL; low ratings
         capture a private feedback row and surface the feedback form.
         """
-        review_request = await self._load_request_by_token(token)
+        # Lock the row so a double-tap cannot record two ratings/notifications.
+        review_request = await self._load_request_by_token(token, for_update=True)
         workspace = await self._load_workspace(review_request.workspace_id)
         review_settings = self.get_settings(workspace)
 
@@ -495,9 +574,21 @@ class ReviewService:
             )
             await self.db.commit()
         else:
-            # Re-derive routing from the original rating.
-            rating = review_request.rating
-            is_positive = rating >= review_settings.positive_threshold
+            # Repeat submission: keep the original rating and its routing; never
+            # let a second tap change where the recipient is sent.
+            review = await self._load_review_for_request(review_request.id)
+            resume = _resume_state(review_request, review, review_settings)
+            stored_rating = review_request.rating
+            return PublicRatingResult(
+                success=True,
+                rating=stored_rating,
+                is_positive=resume.is_positive,
+                redirect_url=resume.redirect_url,
+                public_review_destination_missing=resume.destination_missing,
+                show_feedback_form=resume.next_step == PublicReviewNextStep.FEEDBACK,
+                feedback_submitted=resume.feedback_submitted,
+                message=resume.message or "",
+            )
 
         redirect_url = _public_review_url(review_settings) if is_positive else None
         public_review_destination_missing = is_positive and redirect_url is None
@@ -524,7 +615,7 @@ class ReviewService:
             redirect_url=None,
             public_review_destination_missing=False,
             show_feedback_form=True,
-            message="Thanks for your honesty. Please tell us how we can do better.",
+            message=_FEEDBACK_PROMPT,
         )
 
     async def submit_feedback(
@@ -532,11 +623,18 @@ class ReviewService:
         token: str,
         body: str,
         reviewer_name: str | None,
-    ) -> None:
-        """Attach private feedback text to a low-rating review (firewall path)."""
-        review_request = await self._load_request_by_token(token)
+    ) -> bool:
+        """Attach private feedback text to a low-rating review (firewall path).
+
+        Returns ``True`` when the feedback was stored, ``False`` when feedback
+        had already been received for this request. Repeat submissions (a
+        double-tap, or a reopened link) never overwrite the original feedback.
+        """
+        review_request = await self._load_request_by_token(token, for_update=True)
 
         review = await self._load_review_for_request(review_request.id)
+        if review is not None and review.body:
+            return False
         if review is None:
             # Defensive: rating step should have created it, but tolerate a
             # direct feedback submission by creating the private review now.
@@ -553,6 +651,7 @@ class ReviewService:
             review.reviewer_name = reviewer_name
         review_request.status = ReviewRequestStatus.COMPLETED
         await self.db.commit()
+        return True
 
     async def _upsert_review_for_request(
         self,
@@ -878,8 +977,11 @@ class ReviewService:
             )
         return workspace
 
-    async def _load_request_by_token(self, token: str) -> ReviewRequest:
-        result = await self.db.execute(select(ReviewRequest).where(ReviewRequest.token == token))
+    async def _load_request_by_token(self, token: str, for_update: bool = False) -> ReviewRequest:
+        stmt = select(ReviewRequest).where(ReviewRequest.token == token)
+        if for_update:
+            stmt = stmt.with_for_update()
+        result = await self.db.execute(stmt)
         review_request = result.scalar_one_or_none()
         if review_request is None:
             raise HTTPException(

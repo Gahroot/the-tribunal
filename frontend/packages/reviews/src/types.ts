@@ -134,8 +134,18 @@ export interface PublicReviewRequest {
   business_name: string | null;
   contact_first_name: string | null;
   positive_threshold: number;
+  /** True once a rating was recorded. Use `next_step` to decide what to show. */
   already_submitted: boolean;
+  /** Unfinished follow-through to resume when the link is reopened. */
+  next_step?: PublicReviewNextStep;
+  /** Configured public review destination (only for `public_review`). */
+  redirect_url?: string | null;
+  public_review_destination_missing?: boolean;
+  feedback_submitted?: boolean;
+  message?: string | null;
 }
+
+export type PublicReviewNextStep = "rate" | "public_review" | "feedback" | "done";
 
 export interface PublicRatingResult {
   success: boolean;
@@ -144,10 +154,12 @@ export interface PublicRatingResult {
   redirect_url: string | null;
   public_review_destination_missing: boolean;
   show_feedback_form: boolean;
+  feedback_submitted?: boolean;
   message: string;
 }
 
 export interface PublicFeedbackResult {
   success: boolean;
   message: string;
+  already_submitted?: boolean;
 }

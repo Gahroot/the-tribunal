@@ -25680,6 +25680,11 @@
       "PublicFeedbackResult": {
         "description": "Result of submitting private feedback.",
         "properties": {
+          "already_submitted": {
+            "default": false,
+            "title": "Already Submitted",
+            "type": "boolean"
+          },
           "message": {
             "title": "Message",
             "type": "string"
@@ -25986,6 +25991,11 @@
       "PublicRatingResult": {
         "description": "Routing result after a public rating submission (the rating gate).",
         "properties": {
+          "feedback_submitted": {
+            "default": false,
+            "title": "Feedback Submitted",
+            "type": "boolean"
+          },
           "is_positive": {
             "title": "Is Positive",
             "type": "boolean"
@@ -26049,6 +26059,17 @@
         "title": "PublicRatingSubmit",
         "type": "object"
       },
+      "PublicReviewNextStep": {
+        "description": "What the public landing page should show when the link is (re)opened.\n\n* ``rate`` — no rating recorded yet; show the star picker.\n* ``public_review`` — positive rating recorded and a public review\n  destination is configured; offer the handoff link again. We cannot know\n  whether the recipient actually posted, so this never claims they did.\n* ``feedback`` — low rating recorded but no private feedback yet; show the\n  feedback form.\n* ``done`` — nothing left to do (feedback received, or a positive rating\n  with no public destination configured).",
+        "enum": [
+          "rate",
+          "public_review",
+          "feedback",
+          "done"
+        ],
+        "title": "PublicReviewNextStep",
+        "type": "string"
+      },
       "PublicReviewRequest": {
         "description": "Public view of a review request for the rating landing page.",
         "properties": {
@@ -26079,10 +26100,35 @@
             ],
             "title": "Contact First Name"
           },
+          "feedback_submitted": {
+            "default": false,
+            "title": "Feedback Submitted",
+            "type": "boolean"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "next_step": {
+            "$ref": "#/components/schemas/PublicReviewNextStep",
+            "default": "rate"
+          },
           "positive_threshold": {
             "default": 4,
             "title": "Positive Threshold",
             "type": "integer"
+          },
+          "public_review_destination_missing": {
+            "default": false,
+            "title": "Public Review Destination Missing",
+            "type": "boolean"
           },
           "rating": {
             "anyOf": [
@@ -26094,6 +26140,17 @@
               }
             ],
             "title": "Rating"
+          },
+          "redirect_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redirect Url"
           },
           "status": {
             "$ref": "#/components/schemas/ReviewRequestStatusSchema"

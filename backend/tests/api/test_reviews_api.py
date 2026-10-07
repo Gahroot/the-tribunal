@@ -20,6 +20,7 @@ from app.api.deps import get_current_user, get_db, get_workspace
 from app.schemas.review import (
     PublicFeedbackResult,
     PublicRatingResult,
+    PublicReviewNextStep,
     PublicReviewRequest,
     ReviewRequestStatusSchema,
 )
@@ -211,4 +212,74 @@ class TestPublicRatingGate:
 
     async def test_submit_feedback_empty_body_returns_422(self, public_client: AsyncClient) -> None:
         resp = await public_client.post("/api/v1/p/reviews/abc/feedback", json={"body": ""})
+        assert resp.status_code == 422
+
+
+class TestPublicReopenAndRepeat:
+    """RF-019: reopening a link resumes the unfinished step; repeats are safe."""
+
+    @pytest.mark.parametrize(
+        ("path", "method", "payload"),
+        [
+            ("/api/v1/p/reviews/nope", "get", None),
+            ("/api/v1/p/reviews/nope/rate", "post", {"rating": 4}),
+            ("/api/v1/p/reviews/nope/feedback", "post", {"body": "hi"}),
+        ],
+    )
+    async def test_invalid_token_returns_404(
+        self,
+        public_client: AsyncClient,
+        mock_db: AsyncMock,
+        path: str,
+        method: str,
+        payload: dict[str, object] | None,
+    ) -> None:
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = None
+        mock_db.execute = AsyncMock(return_value=result)
+
+        if method == "get":
+            resp = await public_client.get(path)
+        else:
+            resp = await public_client.post(path, json=payload)
+
+        assert resp.status_code == 404
+        mock_db.commit.assert_not_awaited()
+
+    async def test_get_returns_resume_state_for_rated_link(
+        self, public_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def fake_get(self: object, token: str) -> PublicReviewRequest:
+            return PublicReviewRequest(
+                token=token,
+                status=ReviewRequestStatusSchema.RATED,
+                rating=2,
+                already_submitted=True,
+                next_step=PublicReviewNextStep.FEEDBACK,
+            )
+
+        monkeypatch.setattr(ReviewService, "get_public_request", fake_get, raising=True)
+        resp = await public_client.get("/api/v1/p/reviews/abc")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["next_step"] == "feedback"
+        assert body["feedback_submitted"] is False
+        assert body["redirect_url"] is None
+
+    async def test_repeat_feedback_is_acknowledged_without_overwrite(
+        self, public_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def fake_feedback(
+            self: object, token: str, body: str, reviewer_name: str | None
+        ) -> bool:
+            return False
+
+        monkeypatch.setattr(ReviewService, "submit_feedback", fake_feedback, raising=True)
+        resp = await public_client.post("/api/v1/p/reviews/abc/feedback", json={"body": "again"})
+        assert resp.status_code == 200
+        assert resp.json()["success"] is True
+        assert resp.json()["already_submitted"] is True
+
+    async def test_feedback_over_limit_returns_422(self, public_client: AsyncClient) -> None:
+        resp = await public_client.post("/api/v1/p/reviews/abc/feedback", json={"body": "x" * 5001})
         assert resp.status_code == 422

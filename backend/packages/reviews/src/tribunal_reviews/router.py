@@ -267,7 +267,16 @@ def get_public_router() -> APIRouter:
         db: DB,
     ) -> PublicFeedbackResult:
         """Submit private feedback for a low rating (firewall path)."""
-        await ReviewService(db).submit_feedback(token, submission.body, submission.reviewer_name)
+        stored = await ReviewService(db).submit_feedback(
+            token, submission.body, submission.reviewer_name
+        )
+        if stored is False:
+            # Repeat submission: acknowledge without overwriting the original.
+            return PublicFeedbackResult(
+                success=True,
+                message="We've already received your feedback — thank you.",
+                already_submitted=True,
+            )
         return PublicFeedbackResult(
             success=True,
             message="Thank you for your feedback. We'll be in touch.",

@@ -260,6 +260,25 @@ class ReputationSummary(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class PublicReviewNextStep(StrEnum):
+    """What the public landing page should show when the link is (re)opened.
+
+    * ``rate`` — no rating recorded yet; show the star picker.
+    * ``public_review`` — positive rating recorded and a public review
+      destination is configured; offer the handoff link again. We cannot know
+      whether the recipient actually posted, so this never claims they did.
+    * ``feedback`` — low rating recorded but no private feedback yet; show the
+      feedback form.
+    * ``done`` — nothing left to do (feedback received, or a positive rating
+      with no public destination configured).
+    """
+
+    RATE = "rate"
+    PUBLIC_REVIEW = "public_review"
+    FEEDBACK = "feedback"
+    DONE = "done"
+
+
 class PublicReviewRequest(BaseModel):
     """Public view of a review request for the rating landing page."""
 
@@ -270,7 +289,15 @@ class PublicReviewRequest(BaseModel):
     contact_first_name: str | None = None
     # Threshold and destinations the client needs to render the gate.
     positive_threshold: int = 4
+    # True once a rating has been recorded (kept for back-compat; use
+    # ``next_step`` to decide what to render).
     already_submitted: bool = False
+    # Resume state so a reopened link continues the unfinished follow-through.
+    next_step: PublicReviewNextStep = PublicReviewNextStep.RATE
+    redirect_url: str | None = None
+    public_review_destination_missing: bool = False
+    feedback_submitted: bool = False
+    message: str | None = None
 
 
 class PublicRatingSubmit(BaseModel):
@@ -292,6 +319,9 @@ class PublicRatingResult(BaseModel):
     public_review_destination_missing: bool = False
     # When negative, the client renders the private feedback form.
     show_feedback_form: bool = False
+    # True when private feedback was already received for this request (a
+    # repeat rating submission must not re-open the feedback form).
+    feedback_submitted: bool = False
     message: str
 
 
@@ -307,3 +337,6 @@ class PublicFeedbackResult(BaseModel):
 
     success: bool
     message: str
+    # True when feedback had already been received; the repeat submission was
+    # acknowledged without overwriting the original feedback.
+    already_submitted: bool = False

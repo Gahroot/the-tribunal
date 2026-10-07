@@ -8,10 +8,10 @@ import type {
 // Public review rating-gate API (no auth required).
 export const publicReviewsApi = {
   get: (token: string): Promise<PublicReviewRequest> =>
-    apiGet<PublicReviewRequest>(`/api/v1/p/reviews/${token}`),
+    apiGet<PublicReviewRequest>(`/api/v1/p/reviews/${encodeURIComponent(token)}`),
 
   rate: (token: string, rating: number): Promise<PublicRatingResult> =>
-    apiPost<PublicRatingResult>(`/api/v1/p/reviews/${token}/rate`, {
+    apiPost<PublicRatingResult>(`/api/v1/p/reviews/${encodeURIComponent(token)}/rate`, {
       rating,
     }),
 
@@ -20,7 +20,7 @@ export const publicReviewsApi = {
     body: string,
     reviewerName?: string,
   ): Promise<PublicFeedbackResult> =>
-    apiPost<PublicFeedbackResult>(`/api/v1/p/reviews/${token}/feedback`, {
+    apiPost<PublicFeedbackResult>(`/api/v1/p/reviews/${encodeURIComponent(token)}/feedback`, {
       body,
       reviewer_name: reviewerName,
     }),
