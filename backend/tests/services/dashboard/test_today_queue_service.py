@@ -336,6 +336,33 @@ async def test_snoozed_and_future_nudges_not_counted() -> None:
         assert all(item.kind != "hot_nudges" for item in queue.items)
 
 
+async def test_delivered_nudge_due_today_still_counted_until_resolved() -> None:
+    async with AsyncSessionLocal() as db:
+        ws = await _workspace(db)
+        now = datetime.now(UTC)
+        for title, status in (("Delivered", "sent"), ("Done", "acted"), ("Gone", "dismissed")):
+            db.add(
+                HumanNudge(
+                    workspace_id=ws.id,
+                    contact_id=None,
+                    nudge_type="monitor_idle",
+                    title=title,
+                    message="m",
+                    due_date=now,
+                    status=status,
+                    delivered_at=now,
+                    dedup_key=f"test:{uuid.uuid4().hex}",
+                )
+            )
+        await db.flush()
+
+        queue = await TodayQueueService(db).get_today_queue(ws.id)
+        hot = [item for item in queue.items if item.kind == "hot_nudges"]
+        assert len(hot) == 1
+        assert hot[0].count == 1
+        assert hot[0].body == "Delivered"
+
+
 async def test_healthy_ai_conversations_and_past_appointments_excluded() -> None:
     async with AsyncSessionLocal() as db:
         ws = await _workspace(db)

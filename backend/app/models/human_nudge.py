@@ -16,6 +16,13 @@ if TYPE_CHECKING:
     from app.models.workspace import Workspace
 
 
+# Unresolved, actionable nudges. "sent" only means the operator was notified
+# (SMS/push); the follow-up itself is still open until it is acted on or
+# dismissed. Snoozed nudges are parked and return to "pending" when
+# ``snoozed_until`` passes (see the nudge worker).
+ACTIVE_NUDGE_STATUSES: tuple[str, ...] = ("pending", "sent")
+
+
 class HumanNudge(Base):
     """Nudge/reminder sent to a human operator about a contact relationship."""
 

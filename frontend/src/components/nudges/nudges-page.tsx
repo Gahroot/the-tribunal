@@ -5,7 +5,11 @@ import { PageErrorState } from "@/components/ui/page-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { NudgeCard } from "./nudge-card";
-import { STATUS_TABS } from "./nudge-presentation";
+import {
+  STATUS_TABS,
+  activeNudgeCount,
+  countForFilter,
+} from "./nudge-presentation";
 import { NudgeEmptyState, NudgeListSkeleton } from "./nudge-states";
 import { useNudgesController } from "./use-nudges-controller";
 
@@ -32,6 +36,10 @@ export function NudgesPage() {
     isDismissing,
   } = useNudgesController();
 
+  const openCount = activeNudgeCount(stats);
+  // Only claim the workspace is truly empty once stats confirm it.
+  const hasAnyNudges = stats ? stats.total > 0 : undefined;
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="space-y-6 p-6">
@@ -43,14 +51,16 @@ export function NudgesPage() {
               Relationship reminders and follow-up prompts
             </p>
           </div>
-          {stats && stats.pending > 0 && (
+          {openCount > 0 && (
             <div className="flex items-center gap-2 rounded-full border bg-muted px-3 py-1">
               <span
                 aria-hidden
                 className="size-2 rounded-full bg-warning"
               />
               <span className="text-sm font-medium text-muted-foreground">
-                {stats.pending} pending nudge{stats.pending !== 1 && "s"}
+                {openCount === 1
+                  ? "1 nudge needs attention"
+                  : `${openCount} nudges need attention`}
               </span>
             </div>
           )}
@@ -62,16 +72,19 @@ export function NudgesPage() {
           onValueChange={(v) => changeStatusFilter(v as typeof statusFilter)}
         >
           <TabsList>
-            {STATUS_TABS.map((tab) => (
-              <TabsTrigger key={tab.value} value={tab.value}>
-                {tab.label}
-                {tab.value === "pending" && stats && stats.pending > 0 && (
-                  <span className="ml-1.5 rounded-full bg-warning px-1.5 py-0.5 text-xs text-white">
-                    {stats.pending}
-                  </span>
-                )}
-              </TabsTrigger>
-            ))}
+            {STATUS_TABS.map((tab) => {
+              const count = countForFilter(stats, tab.value);
+              return (
+                <TabsTrigger key={tab.value} value={tab.value}>
+                  {tab.label}
+                  {tab.value === "active" && count > 0 && (
+                    <span className="ml-1.5 rounded-full bg-warning px-1.5 py-0.5 text-xs text-white">
+                      {count}
+                    </span>
+                  )}
+                </TabsTrigger>
+              );
+            })}
           </TabsList>
 
           {STATUS_TABS.map((tab) => (
@@ -84,7 +97,7 @@ export function NudgesPage() {
                   onRetry={() => refetchList()}
                 />
               ) : !nudgeList?.items.length ? (
-                <NudgeEmptyState status={tab.value} />
+                <NudgeEmptyState filter={tab.value} hasAnyNudges={hasAnyNudges} />
               ) : (
                 <div className="space-y-3">
                   {nudgeList.items.map((nudge) => (

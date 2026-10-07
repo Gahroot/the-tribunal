@@ -12,7 +12,7 @@ from app.api.deps import DB, WorkspaceAccess
 from app.db.pagination import paginate
 from app.db.scope import apply_workspace_scope
 from app.models.contact import Contact
-from app.models.human_nudge import HumanNudge
+from app.models.human_nudge import ACTIVE_NUDGE_STATUSES, HumanNudge
 from app.models.workspace import WorkspaceIntegration, WorkspaceMembership
 from app.schemas.nudge import (
     NudgeActRequest,
@@ -29,6 +29,9 @@ from app.services.cards.card_service import CardService
 from app.services.cards.card_templates import render_template
 
 router = APIRouter()
+
+# ``?status=active`` (or no status) selects the unresolved working list.
+ACTIVE_STATUS_FILTER = "active"
 
 
 def _nudge_to_response(nudge: HumanNudge) -> NudgeResponse:
@@ -114,7 +117,11 @@ async def list_nudges(
 ) -> NudgeListResponse:
     """List nudges for a workspace with optional filters.
 
-    Defaults to showing pending and sent nudges, ordered by due_date ascending.
+    ``status`` accepts a single nudge status (pending, sent, acted, dismissed,
+    snoozed) or ``active``. Omitting it (or passing ``active``) returns the
+    unresolved working list: pending and sent nudges. Delivery (sent) does not
+    resolve a nudge; only acting on or dismissing it does. Ordered by due_date
+    ascending.
     """
     query = apply_workspace_scope(
         select(HumanNudge).options(joinedload(HumanNudge.contact)),
@@ -122,11 +129,10 @@ async def list_nudges(
         workspace.id,
     ).order_by(HumanNudge.due_date.asc())
 
-    if status_filter:
+    if status_filter and status_filter != ACTIVE_STATUS_FILTER:
         query = query.where(HumanNudge.status == status_filter)
     else:
-        # Default: show pending and sent
-        query = query.where(HumanNudge.status.in_(["pending", "sent"]))
+        query = query.where(HumanNudge.status.in_(ACTIVE_NUDGE_STATUSES))
 
     if nudge_type:
         query = query.where(HumanNudge.nudge_type == nudge_type)

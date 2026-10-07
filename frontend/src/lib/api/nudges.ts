@@ -5,7 +5,7 @@ import type {
   NudgeStats,
   NudgeSettings,
   UpdateNudgeSettings,
-  NudgeStatus,
+  NudgeListFilter,
   NudgeType,
   NudgePriority,
 } from "@/types/nudge";
@@ -13,7 +13,8 @@ import type {
 export interface NudgeListParams {
   page?: number;
   page_size?: number;
-  status?: NudgeStatus;
+  /** Omit (or pass `"active"`) for unresolved pending + sent nudges. */
+  status?: NudgeListFilter;
   nudge_type?: NudgeType;
   priority?: NudgePriority;
   /** Only tasks tied to this contact (the contact detail "Next task" section). */

@@ -41,6 +41,12 @@ export type NudgeType =
   | "approvals_waiting"
   | "monitor_idle";
 export type NudgeStatus = "pending" | "sent" | "acted" | "dismissed" | "snoozed";
+/**
+ * List scope for the Nudges page. `"active"` is the unresolved working list
+ * (pending + sent): delivery notifies the operator but does not finish the
+ * follow-up. Any other value filters to exactly that status.
+ */
+export type NudgeListFilter = "active" | NudgeStatus;
 export type NudgePriority = "low" | "medium" | "high";
 export type SuggestedAction = "send_card" | "call" | "text" | "email";
 

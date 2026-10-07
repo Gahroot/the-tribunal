@@ -50288,7 +50288,7 @@
     },
     "/api/v1/workspaces/{workspace_id}/nudges": {
       "get": {
-        "description": "List nudges for a workspace with optional filters.\n\nDefaults to showing pending and sent nudges, ordered by due_date ascending.",
+        "description": "List nudges for a workspace with optional filters.\n\n``status`` accepts a single nudge status (pending, sent, acted, dismissed,\nsnoozed) or ``active``. Omitting it (or passing ``active``) returns the\nunresolved working list: pending and sent nudges. Delivery (sent) does not\nresolve a nudge; only acting on or dismissing it does. Ordered by due_date\nascending.",
         "operationId": "list_nudges_api_v1_workspaces__workspace_id__nudges_get",
         "parameters": [
           {

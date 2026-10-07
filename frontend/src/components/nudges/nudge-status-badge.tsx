@@ -5,15 +5,16 @@ import { StatusBadge } from "@/components/ui/status-badge";
 export function NudgeStatusBadge({ status }: { status: string }) {
   switch (status) {
     case "sent":
+      // Delivered to the operator, but the follow-up itself is still open.
       return (
-        <StatusBadge dotClass="bg-muted-foreground" className="text-xs">
-          Sent
+        <StatusBadge dotClass="bg-warning" className="text-xs">
+          Notified
         </StatusBadge>
       );
     case "acted":
       return (
         <StatusBadge dotClass="bg-success" className="text-xs">
-          Acted
+          Done
         </StatusBadge>
       );
     case "dismissed":

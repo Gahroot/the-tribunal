@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.dialects import postgresql
 
 from app.api.deps import get_current_user, get_db, get_workspace
 from app.api.v1 import nudges as nudges_module
@@ -191,6 +192,65 @@ class TestListNudges:
             )
 
         assert response.status_code == 200
+
+
+def _status_where_sql(mock_paginate: AsyncMock) -> str:
+    """Compile the WHERE clause of the query handed to ``paginate``."""
+    query = mock_paginate.await_args.args[1]
+    compiled = query.whereclause.compile(
+        dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+    )
+    return str(compiled)
+
+
+class TestListNudgesScope:
+    """The working list is unresolved work: delivery (sent) is not completion."""
+
+    @pytest.mark.parametrize("query_string", ["", "?status=active"])
+    async def test_default_and_active_scope_include_pending_and_sent(
+        self, client: AsyncClient, query_string: str
+    ) -> None:
+        empty = PaginationResult(items=[], total=0, page=1, page_size=20, pages=1)
+        with patch("app.api.v1.nudges.paginate", new_callable=AsyncMock) as mock_paginate:
+            mock_paginate.return_value = empty
+            response = await client.get(f"/api/v1/workspaces/{WS_ID}/nudges{query_string}")
+
+        assert response.status_code == 200
+        where = _status_where_sql(mock_paginate)
+        assert "human_nudges.status IN ('pending', 'sent')" in where
+        for resolved in ("acted", "dismissed", "snoozed"):
+            assert resolved not in where
+
+    async def test_sent_nudge_is_returned_in_active_list(self, client: AsyncClient) -> None:
+        delivered = _make_mock_nudge(status="sent")
+        delivered.delivered_via = "push"
+        delivered.delivered_at = datetime.now(UTC)
+        page = PaginationResult(items=[delivered], total=1, page=1, page_size=20, pages=1)
+        with patch("app.api.v1.nudges.paginate", new_callable=AsyncMock) as mock_paginate:
+            mock_paginate.return_value = page
+            response = await client.get(f"/api/v1/workspaces/{WS_ID}/nudges?status=active")
+
+        assert response.status_code == 200
+        item = response.json()["items"][0]
+        assert item["status"] == "sent"
+        assert item["delivered_via"] == "push"
+        assert item["acted_at"] is None
+
+    @pytest.mark.parametrize("history_status", ["acted", "dismissed", "snoozed", "sent"])
+    async def test_explicit_status_filter_is_exact(
+        self, client: AsyncClient, history_status: str
+    ) -> None:
+        empty = PaginationResult(items=[], total=0, page=1, page_size=20, pages=1)
+        with patch("app.api.v1.nudges.paginate", new_callable=AsyncMock) as mock_paginate:
+            mock_paginate.return_value = empty
+            response = await client.get(
+                f"/api/v1/workspaces/{WS_ID}/nudges?status={history_status}"
+            )
+
+        assert response.status_code == 200
+        where = _status_where_sql(mock_paginate)
+        assert f"human_nudges.status = '{history_status}'" in where
+        assert " IN " not in where
 
 
 class TestGetStats:

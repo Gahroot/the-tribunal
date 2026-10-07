@@ -178,7 +178,8 @@ export function AppSidebar({ children }: AppSidebarProps) {
     : user?.email?.slice(0, 2).toUpperCase() ?? "U";
 
   const badgeCounts: Partial<Record<AppNavBadgeKey, number>> = {
-    nudges: nudgeStats?.pending ?? 0,
+    // Open nudges: pending + sent (delivery notifies; it does not resolve).
+    nudges: (nudgeStats?.pending ?? 0) + (nudgeStats?.sent ?? 0),
     "pending-actions": pendingActionStats?.pending ?? 0,
   };
 

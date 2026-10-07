@@ -4,19 +4,26 @@ import { Inbox } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageEmptyState } from "@/components/ui/page-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { NudgeListFilter } from "@/types/nudge";
 
-export function NudgeEmptyState({ status }: { status: string }) {
+import { getNudgeEmptyCopy } from "./nudge-presentation";
+
+export function NudgeEmptyState({
+  filter,
+  hasAnyNudges,
+}: {
+  filter: NudgeListFilter;
+  /** `false` only when stats confirm the workspace has no nudges at all. */
+  hasAnyNudges?: boolean;
+}) {
+  const { title, description } = getNudgeEmptyCopy(filter, hasAnyNudges);
   return (
     <Card>
       <CardContent className="py-4">
         <PageEmptyState
           icon={<Inbox className="h-12 w-12" />}
-          title={status === "pending" ? "All caught up!" : "No nudges"}
-          description={
-            status === "pending"
-              ? "No nudges right now. When your contacts have upcoming birthdays or need follow-ups, they'll appear here."
-              : `No ${status} nudges found.`
-          }
+          title={title}
+          description={description}
         />
       </CardContent>
     </Card>

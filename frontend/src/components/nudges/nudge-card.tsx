@@ -29,6 +29,7 @@ import {
   SUGGESTED_ACTION_LABELS,
   formatDueDate,
   getNudgeIcon,
+  isActiveNudgeStatus,
 } from "./nudge-presentation";
 import { NudgeStatusBadge } from "./nudge-status-badge";
 
@@ -51,7 +52,8 @@ export function NudgeCard({
 }: NudgeCardProps) {
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const NudgeIcon = getNudgeIcon(nudge.nudge_type);
-  const isPending = nudge.status === "pending";
+  // Pending and sent nudges are both open work: delivery is not completion.
+  const isActionable = isActiveNudgeStatus(nudge.status);
 
   return (
     <Card>
@@ -108,14 +110,25 @@ export function NudgeCard({
                 Snoozed until {formatDayMonth(nudge.snoozed_until)}
               </span>
             )}
-            {nudge.status !== "pending" && nudge.status !== "snoozed" && (
-              <NudgeStatusBadge status={nudge.status} />
+            {nudge.status === "sent" && (
+              <span className="flex items-center gap-1.5">
+                <NudgeStatusBadge status="sent" />
+                <span>
+                  {nudge.delivered_at
+                    ? `Notified ${formatDayMonth(nudge.delivered_at)}`
+                    : "Notified"}
+                  {nudge.delivered_via ? ` via ${nudge.delivered_via}` : ""} · still open
+                </span>
+              </span>
             )}
+            {nudge.status !== "pending" &&
+              nudge.status !== "snoozed" &&
+              nudge.status !== "sent" && <NudgeStatusBadge status={nudge.status} />}
           </div>
         </div>
 
         {/* Actions */}
-        {isPending && (
+        {isActionable && (
           <div className="flex shrink-0 items-center gap-1">
             {nudge.href ? (
               <Button asChild size="sm" title={nudge.cta_label ?? "Open"}>

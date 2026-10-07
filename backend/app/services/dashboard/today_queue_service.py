@@ -18,7 +18,7 @@ from app.models.appointment import Appointment, AppointmentStatus
 from app.models.campaign import Campaign, CampaignContact, CampaignStatus
 from app.models.contact import Contact
 from app.models.conversation import Conversation
-from app.models.human_nudge import HumanNudge
+from app.models.human_nudge import ACTIVE_NUDGE_STATUSES, HumanNudge
 from app.models.pending_action import PendingAction
 from app.models.tag import ContactTag, Tag
 from app.schemas.today_queue import TodayQueueItem, TodayQueueResponse
@@ -247,7 +247,8 @@ class TodayQueueService:
         end_of_today = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
         base_filter = (
             HumanNudge.workspace_id == workspace_id,
-            HumanNudge.status == "pending",
+            # Delivered (sent) nudges still need a human; only acted/dismissed resolve them.
+            HumanNudge.status.in_(ACTIVE_NUDGE_STATUSES),
             HumanNudge.due_date < end_of_today,
         )
 

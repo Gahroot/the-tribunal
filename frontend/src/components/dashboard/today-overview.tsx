@@ -180,7 +180,8 @@ export const NudgesCard = memo(function NudgesCard({ workspaceId }: NudgesCardPr
     ...POLL_60S,
   });
 
-  const pending = nudgeStats?.pending ?? 0;
+  // Pending + sent: a delivered nudge still needs a human.
+  const pending = (nudgeStats?.pending ?? 0) + (nudgeStats?.sent ?? 0);
 
   return (
     <Card>
@@ -199,7 +200,7 @@ export const NudgesCard = memo(function NudgesCard({ workspaceId }: NudgesCardPr
             <div className="flex items-center gap-2">
               <span className="text-2xl font-bold text-warning">{pending}</span>
               <span className="text-sm text-muted-foreground">
-                nudge{pending !== 1 ? "s" : ""} pending
+                nudge{pending !== 1 ? "s" : ""} need{pending === 1 ? "s" : ""} attention
               </span>
             </div>
             <Button variant="outline" size="sm" asChild>
@@ -210,7 +211,7 @@ export const NudgesCard = memo(function NudgesCard({ workspaceId }: NudgesCardPr
             </Button>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">No pending nudges</p>
+          <p className="text-sm text-muted-foreground">No nudges need attention</p>
         )}
       </CardContent>
     </Card>

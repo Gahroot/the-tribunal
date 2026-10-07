@@ -9,14 +9,16 @@ import { nudgesApi } from "@/lib/api/nudges";
 import { queryKeys } from "@/lib/query-keys";
 import { formatDayMonth } from "@/lib/utils/date";
 import { getApiErrorMessage } from "@/lib/utils/errors";
-import type { NudgeStatus } from "@/types/nudge";
+import type { NudgeListFilter } from "@/types/nudge";
 
-import { PAGE_SIZE } from "./nudge-presentation";
+import { DEFAULT_NUDGE_FILTER, PAGE_SIZE } from "./nudge-presentation";
 
 export function useNudgesController() {
   const workspaceId = useWorkspaceId();
   const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<NudgeStatus>("pending");
+  // Default to unresolved work (pending + sent) so delivered nudges that still
+  // need a human stay in view.
+  const [statusFilter, setStatusFilter] = useState<NudgeListFilter>(DEFAULT_NUDGE_FILTER);
   const [page, setPage] = useState(1);
 
   const { data: stats, isPending: statsLoading } = useQuery({
@@ -51,6 +53,12 @@ export function useNudgesController() {
 
   const invalidateNudges = () => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.nudges.root() });
+    // The Today queue's "nudges due today" item counts the same open nudges.
+    if (workspaceId) {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.dashboard.todayQueue(workspaceId),
+      });
+    }
   };
 
   const actMutation = useMutation({
@@ -107,7 +115,15 @@ export function useNudgesController() {
 
   const totalPages = nudgeList ? Math.ceil(nudgeList.total / PAGE_SIZE) : 0;
 
-  const changeStatusFilter = (status: NudgeStatus) => {
+  // Completing/dismissing the last item on the last page shrinks the scope;
+  // step back to the new last page instead of showing an empty page. Adjusted
+  // during render (not in an effect) so the stale page never paints.
+  const lastPage = Math.max(1, totalPages);
+  if (nudgeList && page > lastPage) {
+    setPage(lastPage);
+  }
+
+  const changeStatusFilter = (status: NudgeListFilter) => {
     setStatusFilter(status);
     setPage(1);
   };

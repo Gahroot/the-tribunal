@@ -4698,7 +4698,11 @@ export interface paths {
          * List Nudges
          * @description List nudges for a workspace with optional filters.
          *
-         *     Defaults to showing pending and sent nudges, ordered by due_date ascending.
+         *     ``status`` accepts a single nudge status (pending, sent, acted, dismissed,
+         *     snoozed) or ``active``. Omitting it (or passing ``active``) returns the
+         *     unresolved working list: pending and sent nudges. Delivery (sent) does not
+         *     resolve a nudge; only acting on or dismissing it does. Ordered by due_date
+         *     ascending.
          */
         get: operations["list_nudges_api_v1_workspaces__workspace_id__nudges_get"];
         put?: never;
