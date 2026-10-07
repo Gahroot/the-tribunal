@@ -133,3 +133,55 @@ describe("PendingActionCard payload details", () => {
     expect(screen.getByText("vip")).toBeInTheDocument();
   });
 });
+
+describe("PendingActionCard booking results", () => {
+  const failedBooking: PendingAction = {
+    ...baseAction,
+    action_type: "book_appointment",
+    description: "Book appointment",
+    status: "failed",
+    execution_result: {
+      status: "failed",
+      error: "The 19:00 slot is no longer available.",
+      error_code: "booking_slot_unavailable",
+      retryable: true,
+      alternative_slots: [{ date: "2026-11-01", time: "20:00" }],
+    },
+  };
+
+  it("offers retry and alternative slots for a retryable booking failure", () => {
+    const onRetry = vi.fn();
+    render(
+      <PendingActionCard
+        action={failedBooking}
+        onApprove={vi.fn()}
+        onReject={vi.fn()}
+        onRetry={onRetry}
+        isApproving={false}
+        isRejecting={false}
+      />,
+    );
+
+    expect(screen.getByText(/no longer available/)).toBeInTheDocument();
+    screen.getByRole("button", { name: "Book 2026-11-01 20:00 instead" }).click();
+    expect(onRetry).toHaveBeenCalledWith({ date: "2026-11-01", time: "20:00" });
+  });
+
+  it("does not offer retry when the failure is not retryable", () => {
+    render(
+      <PendingActionCard
+        action={{
+          ...failedBooking,
+          execution_result: { status: "failed", error: "Saved failed", retryable: false },
+        }}
+        onApprove={vi.fn()}
+        onReject={vi.fn()}
+        onRetry={vi.fn()}
+        isApproving={false}
+        isRejecting={false}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /Retry/ })).not.toBeInTheDocument();
+  });
+});

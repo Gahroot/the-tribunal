@@ -5634,6 +5634,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/pending-actions/{action_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Action
+         * @description Re-queue a retryable failed action, optionally with a new booking slot.
+         */
+        post: operations["retry_action_api_v1_workspaces__workspace_id__pending_actions__action_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/phone-numbers": {
         parameters: {
             query?: never;
@@ -17635,6 +17655,16 @@ export interface components {
              * @default 0
              */
             total_reviews: number;
+        };
+        /**
+         * RetryActionRequest
+         * @description Retry a failed action, optionally moving a booking to a new slot.
+         */
+        RetryActionRequest: {
+            /** Date */
+            date?: string | null;
+            /** Time */
+            time?: string | null;
         };
         /**
          * RevealEmailResponse
@@ -31020,6 +31050,42 @@ export interface operations {
         requestBody?: {
             content: {
                 "application/json": components["schemas"]["RejectActionRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_action_api_v1_workspaces__workspace_id__pending_actions__action_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RetryActionRequest"] | null;
             };
         };
         responses: {

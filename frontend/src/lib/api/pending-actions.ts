@@ -41,6 +41,17 @@ export const pendingActionsApi = {
     );
   },
 
+  retry: async (
+    workspaceId: string,
+    actionId: string,
+    slot?: { date: string; time: string }
+  ): Promise<PendingAction> => {
+    return apiPost<PendingAction>(
+      `/api/v1/workspaces/${workspaceId}/pending-actions/${actionId}/retry`,
+      slot
+    );
+  },
+
   reject: async (
     workspaceId: string,
     actionId: string,

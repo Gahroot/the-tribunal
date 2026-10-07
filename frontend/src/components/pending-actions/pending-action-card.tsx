@@ -1,6 +1,6 @@
 "use client";
 
-import { AlarmClock, Check, Loader2, X } from "lucide-react";
+import { AlarmClock, Check, Loader2, RotateCcw, X } from "lucide-react";
 import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -99,10 +99,18 @@ function Fact({ label, value }: { label: string; value: string }) {
   );
 }
 
+export interface BookingSlot {
+  date: string;
+  time: string;
+}
+
 interface PendingActionCardProps {
   action: PendingAction;
   onApprove: () => void;
   onReject: () => void;
+  /** Re-queue a retryable failure; pass a slot to move a booking to a new time. */
+  onRetry?: (slot?: BookingSlot) => void;
+  isRetrying?: boolean;
   isApproving: boolean;
   isRejecting: boolean;
   /** Status badges are redundant on a status tab; show them on the All tab. */
@@ -120,6 +128,8 @@ export function PendingActionCard({
   action,
   onApprove,
   onReject,
+  onRetry,
+  isRetrying = false,
   isApproving,
   isRejecting,
   showStatus = false,
@@ -134,6 +144,14 @@ export function PendingActionCard({
   const failureReason =
     action.status === "failed" ? getFailureReason(action.execution_result) : undefined;
   const isSelected = selected === true;
+  const result = action.execution_result;
+  const canRetry =
+    action.status === "failed" && result?.retryable === true && onRetry !== undefined;
+  const alternativeSlots = canRetry ? getAlternativeSlots(result) : [];
+  const bookedAt =
+    action.status === "executed" && result?.status === "booked"
+      ? getFirstString(result, ["scheduled_at"])
+      : undefined;
 
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const [snoozeOptions, setSnoozeOptions] = useState<SnoozeOption[]>([]);
@@ -333,7 +351,11 @@ export function PendingActionCard({
             <span>Expired {formatRelative(action.expires_at ?? action.updated_at)}</span>
           ) : null}
           {action.status === "executed" ? (
-            <span>Executed {formatRelative(action.executed_at ?? action.updated_at)}</span>
+            <span>
+              {bookedAt
+                ? `Booked for ${new Date(bookedAt).toLocaleString()}`
+                : `Executed ${formatRelative(action.executed_at ?? action.updated_at)}`}
+            </span>
           ) : null}
           {failureReason ? (
             <span>
@@ -341,6 +363,35 @@ export function PendingActionCard({
             </span>
           ) : null}
         </div>
+        {canRetry ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onRetry()}
+              disabled={isRetrying}
+              aria-label={`Retry: ${action.description}`}
+            >
+              {isRetrying ? (
+                <Loader2 className="animate-spin" aria-hidden="true" />
+              ) : (
+                <RotateCcw aria-hidden="true" />
+              )}
+              Retry
+            </Button>
+            {alternativeSlots.map((slot) => (
+              <Button
+                key={`${slot.date}T${slot.time}`}
+                size="sm"
+                variant="ghost"
+                onClick={() => onRetry(slot)}
+                disabled={isRetrying}
+              >
+                Book {slot.date} {slot.time} instead
+              </Button>
+            ))}
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -516,6 +567,20 @@ function getMessagePreviews(payload: Record<string, unknown>): string | undefine
     (entry): entry is string => typeof entry === "string" && entry.trim().length > 0,
   );
   return texts.length > 0 ? texts.join("\n\n") : undefined;
+}
+
+function getAlternativeSlots(executionResult: Record<string, unknown> | null): BookingSlot[] {
+  const raw = executionResult?.alternative_slots;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(
+      (slot): slot is BookingSlot =>
+        typeof slot === "object" &&
+        slot !== null &&
+        typeof (slot as BookingSlot).date === "string" &&
+        typeof (slot as BookingSlot).time === "string",
+    )
+    .slice(0, 3);
 }
 
 function getFailureReason(executionResult: Record<string, unknown> | null): string | undefined {

@@ -28,7 +28,7 @@ import { formatTime } from "@/lib/utils/date";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 import type { PendingActionStatus } from "@/types/pending-action";
 
-import { PendingActionCard } from "./pending-action-card";
+import { type BookingSlot, PendingActionCard } from "./pending-action-card";
 
 type TabStatus = PendingActionStatus | "all";
 
@@ -191,6 +191,18 @@ export function PendingActionsPage() {
       setRejectReason("");
     },
     onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to reject action")),
+  });
+
+  const retryMutation = useMutation({
+    mutationFn: ({ actionId, slot }: { actionId: string; slot?: BookingSlot }) => {
+      if (!workspaceId) throw new Error("No workspace");
+      return pendingActionsApi.retry(workspaceId, actionId, slot);
+    },
+    onSuccess: () => {
+      toast.success("Retry queued");
+      invalidateActions();
+    },
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to retry action")),
   });
 
   const batchApproveMutation = useMutation({
@@ -401,6 +413,10 @@ export function PendingActionsPage() {
                       }
                       isRejecting={
                         rejectMutation.isPending && rejectMutation.variables?.actionId === action.id
+                      }
+                      onRetry={(slot) => retryMutation.mutate({ actionId: action.id, slot })}
+                      isRetrying={
+                        retryMutation.isPending && retryMutation.variables?.actionId === action.id
                       }
                       showStatus={tab.value === "all"}
                       selected={selected.has(action.id)}

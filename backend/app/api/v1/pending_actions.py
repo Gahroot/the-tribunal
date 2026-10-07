@@ -17,8 +17,12 @@ from app.schemas.pending_action import (
     PendingActionResponse,
     PendingActionStatsResponse,
     RejectActionRequest,
+    RetryActionRequest,
 )
-from app.services.approval.approval_gate_service import approval_gate_service
+from app.services.approval.approval_gate_service import (
+    ApprovalRetryError,
+    approval_gate_service,
+)
 
 router = APIRouter()
 
@@ -211,5 +215,46 @@ async def reject_action(
         user_id=current_user.id,
         reason=body.reason if body else None,
     )
+
+    return _action_to_response(updated)
+
+
+@router.post("/{action_id}/retry", response_model=PendingActionResponse)
+async def retry_action(
+    workspace_id: uuid.UUID,
+    action_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+    body: RetryActionRequest | None = None,
+) -> PendingActionResponse:
+    """Re-queue a retryable failed action, optionally with a new booking slot."""
+    slot: tuple[str, str] | None = None
+    if body and (body.date or body.time):
+        if not (body.date and body.time):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Provide both date and time to change the slot",
+            )
+        slot = (body.date, body.time)
+
+    try:
+        updated = await approval_gate_service.retry_failed_action(
+            db,
+            workspace_id=workspace_id,
+            action_id=action_id,
+            user_id=current_user.id,
+            slot=slot,
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Pending action not found",
+        ) from exc
+    except ApprovalRetryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
 
     return _action_to_response(updated)

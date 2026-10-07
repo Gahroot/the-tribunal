@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.human_profile import HumanProfile
 from app.models.pending_action import PendingAction
 from app.models.workspace import Workspace
+from app.services.approval.booking_approval import BookAppointmentActionHandler
 from app.services.autonomy_mandate import autonomy_allows_action
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,16 @@ class ApprovalActionExecutionError(RuntimeError):
         self.action_id = action_id
         self.action_type = action_type
         super().__init__(f"Failed to execute approved action {action_id} ({action_type})")
+
+
+class ApprovalRetryError(ValueError):
+    """Raised when a failed action cannot be sent back for another attempt."""
+
+
+# Action types with external side effects that must never run twice. Their
+# execution claims the row (``FOR UPDATE SKIP LOCKED``) and re-checks status so
+# concurrent workers or repeated approvals cannot execute the same action.
+EXCLUSIVE_ACTION_TYPES = frozenset({"book_appointment"})
 
 
 class ApprovedActionHandler(Protocol):
@@ -201,103 +212,6 @@ class LaunchCampaignHandler:
             "campaign_status": result.status.value,
             "contact_count": result.contact_count,
         }
-
-
-@dataclass(slots=True, frozen=True)
-class BookAppointmentActionHandler:
-    """Execute a book_appointment pending action via BookingService.
-
-    Credentials always come from the action's own workspace Cal.com connection
-    (see ``resolve_calcom_credentials``); any ``api_key`` in the model-supplied
-    payload is ignored. The event type follows the agent's staff routing (or the
-    agent default) and the timezone follows the workspace setting.
-    """
-
-    action_type: str = "book_appointment"
-
-    async def execute(self, db: AsyncSession, action: PendingAction) -> dict[str, Any]:
-        from app.models.agent import Agent
-        from app.services.ai.message_context_builder import get_workspace_timezone
-        from app.services.calendar.booking import BookingService
-        from app.services.calendar.calcom_credentials import (
-            CALCOM_EVENT_TYPE_MISSING,
-            CalComCredentialError,
-            resolve_calcom_credentials,
-        )
-        from app.services.calendar.staff_assignment import resolve_staff_for_booking
-
-        payload = action.action_payload or {}
-
-        try:
-            credentials = await resolve_calcom_credentials(db, action.workspace_id)
-        except CalComCredentialError as exc:
-            return {"status": "failed", "error": exc.message, "error_code": exc.code}
-
-        agent: Agent | None = None
-        if action.agent_id is not None:
-            agent_result = await db.execute(
-                select(Agent).where(
-                    Agent.id == action.agent_id,
-                    Agent.workspace_id == action.workspace_id,
-                )
-            )
-            agent = agent_result.scalar_one_or_none()
-
-        event_type_id: int | None = agent.calcom_event_type_id if agent else None
-        assigned_staff: str | None = None
-        if agent is not None:
-            staff = await resolve_staff_for_booking(
-                db,
-                agent=agent,
-                required_skill=payload.get("skill"),
-                commit=False,
-            )
-            if staff and staff.calcom_event_type_id:
-                event_type_id = staff.calcom_event_type_id
-                assigned_staff = str(staff.id)
-        if not event_type_id:
-            return {
-                "status": "failed",
-                "error": (
-                    "No Cal.com event type is configured for this agent. "
-                    "Set the agent's Cal.com event type in agent settings."
-                ),
-                "error_code": CALCOM_EVENT_TYPE_MISSING,
-            }
-
-        timezone = await get_workspace_timezone(action.workspace_id, db)
-        service = BookingService(
-            api_key=credentials.api_key,
-            event_type_id=event_type_id,
-            timezone=timezone,
-        )
-        try:
-            booking_result = await service.book_appointment(
-                date_str=payload.get("date", ""),
-                time_str=payload.get("time", ""),
-                email=payload.get("email", ""),
-                contact_name=payload.get("name") or "Customer",
-                duration_minutes=payload.get("duration_minutes", 30),
-                phone_number=payload.get("phone_number"),
-            )
-        finally:
-            await service.close()
-
-        if not booking_result.success:
-            return {
-                "status": "failed",
-                "error": booking_result.error or "Booking failed",
-                "error_code": booking_result.error_code,
-            }
-        result: dict[str, Any] = {
-            "status": "booked",
-            "booking_uid": booking_result.booking_uid,
-            "booking_id": booking_result.booking_id,
-            "event_type_id": event_type_id,
-        }
-        if assigned_staff:
-            result["assigned_staff_id"] = assigned_staff
-        return result
 
 
 @dataclass(slots=True, frozen=True)
@@ -550,9 +464,22 @@ class ApprovalGateService:
         user_id: int,
         channel: str = "web",
     ) -> PendingAction:
-        """Mark a pending action as approved."""
-        result = await db.execute(select(PendingAction).where(PendingAction.id == action_id))
+        """Mark a pending action as approved.
+
+        Idempotent: the row is locked and only a still-``pending`` action is
+        approved, so a repeated or concurrent approval cannot re-queue an action
+        that already ran (or is running).
+        """
+        result = await db.execute(
+            select(PendingAction)
+            .where(PendingAction.id == action_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
         action = result.scalar_one()
+        if action.status != "pending":
+            await db.commit()
+            return action
 
         action.status = "approved"
         action.reviewed_by_id = user_id
@@ -606,6 +533,15 @@ class ApprovalGateService:
                 "status": action.status,
             }
 
+        if action.action_type in EXCLUSIVE_ACTION_TYPES and not await self._claim_for_execution(
+            db, action
+        ):
+            return {
+                "error": "action_not_claimed",
+                "action_id": str(action.id),
+                "status": action.status,
+            }
+
         try:
             execution_result = await self._dispatch_action(db, action)
         except Exception as exc:
@@ -621,6 +557,86 @@ class ApprovalGateService:
         action.execution_result = execution_result
         await db.commit()
         return execution_result
+
+    async def _claim_for_execution(self, db: AsyncSession, action: PendingAction) -> bool:
+        """Lock the action row and confirm it is still approved.
+
+        Another executor holding the lock (or having already moved the row out of
+        ``approved``) makes this return False, so the side effect runs once.
+        """
+        result = await db.execute(
+            select(PendingAction)
+            .where(
+                PendingAction.id == action.id,
+                PendingAction.workspace_id == action.workspace_id,
+            )
+            .with_for_update(skip_locked=True)
+            .execution_options(populate_existing=True)
+        )
+        claimed = result.scalar_one_or_none()
+        if claimed is None or claimed.status != "approved":
+            logger.info("Skipping action %s: already claimed or no longer approved", action.id)
+            return False
+        return True
+
+    async def retry_failed_action(
+        self,
+        db: AsyncSession,
+        *,
+        workspace_id: uuid.UUID,
+        action_id: uuid.UUID,
+        user_id: int,
+        slot: tuple[str, str] | None = None,
+        channel: str = "web",
+    ) -> PendingAction:
+        """Send a retryable failed action back to ``approved`` for another attempt.
+
+        ``slot`` lets the operator pick a new booking time (for example one of the
+        alternatives returned when the requested slot was taken). The original
+        request is preserved in ``context["requested_slot"]``. Availability is
+        re-checked with the provider when the retry runs.
+        """
+        result = await db.execute(
+            select(PendingAction)
+            .where(PendingAction.id == action_id, PendingAction.workspace_id == workspace_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        action = result.scalar_one_or_none()
+        if action is None:
+            raise LookupError("Pending action not found")
+        if action.status != "failed":
+            raise ApprovalRetryError(f"Action is {action.status}; only failed actions can retry")
+        previous = action.execution_result or {}
+        if previous.get("retryable") is not True:
+            raise ApprovalRetryError("This failure cannot be retried safely")
+
+        context = dict(action.context or {})
+        if slot is not None:
+            if action.action_type != "book_appointment":
+                raise ApprovalRetryError("Only booking actions accept a new time")
+            payload = dict(action.action_payload or {})
+            context.setdefault(
+                "requested_slot", {"date": payload.get("date"), "time": payload.get("time")}
+            )
+            payload["date"], payload["time"] = slot
+            action.action_payload = payload
+            context["slot_changed_by_user_id"] = user_id
+        context["retry_count"] = int(context.get("retry_count") or 0) + 1
+        context["last_failure"] = {
+            "error_code": previous.get("error_code"),
+            "error": previous.get("error"),
+        }
+        action.context = context
+        action.status = "approved"
+        action.reviewed_by_id = user_id
+        action.reviewed_at = datetime.now(UTC)
+        action.review_channel = channel
+        action.executed_at = None
+        action.execution_result = None
+        await db.commit()
+        await db.refresh(action)
+        return action
 
     async def _dispatch_action(
         self,

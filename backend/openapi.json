@@ -27638,6 +27638,37 @@
         "title": "ReputationSummary",
         "type": "object"
       },
+      "RetryActionRequest": {
+        "description": "Retry a failed action, optionally moving a booking to a new slot.",
+        "properties": {
+          "date": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "time": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{2}:\\d{2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time"
+          }
+        },
+        "title": "RetryActionRequest",
+        "type": "object"
+      },
       "RevealEmailResponse": {
         "description": "Outcome of an on-demand email reveal + verification.",
         "properties": {
@@ -54583,6 +54614,82 @@
           }
         ],
         "summary": "Reject Action",
+        "tags": [
+          "Pending Actions"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/pending-actions/{action_id}/retry": {
+      "post": {
+        "description": "Re-queue a retryable failed action, optionally with a new booking slot.",
+        "operationId": "retry_action_api_v1_workspaces__workspace_id__pending_actions__action_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Action Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/RetryActionRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Retry Action",
         "tags": [
           "Pending Actions"
         ]

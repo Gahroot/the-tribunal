@@ -149,6 +149,9 @@ class TextToolExecutor(BaseToolExecutor):
                 context={
                     "source": "text_conversation",
                     "conversation_id": str(self.conversation.id),
+                    # Trusted, server-side contact so approved bookings resolve
+                    # the attendee without relying on model arguments.
+                    "contact_id": self.conversation.contact_id,
                 },
             )
 

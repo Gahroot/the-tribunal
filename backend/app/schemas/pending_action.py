@@ -3,7 +3,7 @@
 import uuid
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PendingActionResponse(BaseModel):
@@ -64,3 +64,10 @@ class RejectActionRequest(BaseModel):
     """Schema for rejecting a pending action."""
 
     reason: str | None = None
+
+
+class RetryActionRequest(BaseModel):
+    """Retry a failed action, optionally moving a booking to a new slot."""
+
+    date: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    time: str | None = Field(default=None, pattern=r"^\d{2}:\d{2}$")

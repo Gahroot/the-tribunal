@@ -63,6 +63,11 @@ class BookingResult:
     error: str | None = None
     alternative_slots: list[AvailableSlot] = field(default_factory=list)
     error_code: str | None = None
+    start_iso: str | None = None
+
+
+BOOKING_SLOT_UNAVAILABLE = "booking_slot_unavailable"
+BOOKING_NOT_CONFIRMED = "booking_not_confirmed"
 
 
 class BookingService:
@@ -204,7 +209,16 @@ class BookingService:
                 self._log_provider_failure("book_prevalidate_error", code, e)
                 return BookingResult(success=False, error=message, error_code=code)
 
-            matched_slot = next((s for s in raw_slots if s.get("time") == time_str), None)
+            # The availability window spans two days (Cal.com quirk), so the
+            # match must pin the requested date as well as the time.
+            matched_slot = next(
+                (
+                    s
+                    for s in raw_slots
+                    if s.get("time") == time_str and s.get("date", date_str) == date_str
+                ),
+                None,
+            )
 
             if not matched_slot:
                 # Slot gone — return alternatives
@@ -225,6 +239,7 @@ class BookingService:
                     success=False,
                     error=f"The {time_str} slot is no longer available.",
                     alternative_slots=alternatives,
+                    error_code=BOOKING_SLOT_UNAVAILABLE,
                 )
 
             # Use the ISO time from the matched slot
@@ -245,8 +260,18 @@ class BookingService:
                 phone_number=phone_number,
             )
 
-            booking_uid = booking.get("uid")
-            booking_id = booking.get("id")
+            # Cal.com v2 wraps the booking in a ``data`` envelope.
+            envelope = booking.get("data")
+            data: dict[str, Any] = envelope if isinstance(envelope, dict) else booking
+            booking_uid = data.get("uid")
+            booking_id = data.get("id")
+            if not booking_uid:
+                self._log.error("booking_not_confirmed", booking_id=booking_id)
+                return BookingResult(
+                    success=False,
+                    error="Cal.com did not confirm the booking. Nothing was scheduled.",
+                    error_code=BOOKING_NOT_CONFIRMED,
+                )
 
             self._log.info(
                 "booking_created",
@@ -259,6 +284,7 @@ class BookingService:
                 success=True,
                 booking_uid=booking_uid,
                 booking_id=booking_id,
+                start_iso=start_iso,
             )
 
         except Exception as e:

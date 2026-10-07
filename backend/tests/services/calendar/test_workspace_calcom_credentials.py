@@ -24,6 +24,8 @@ import app.db.session as db_session_module
 from app.core.config import settings
 from app.core.encryption import encrypt_json
 from app.models.agent import Agent
+from app.models.appointment import Appointment
+from app.models.contact import Contact
 from app.models.pending_action import PendingAction
 from app.models.workspace import WorkspaceIntegration
 from app.services.ai.text_response_generator import text_booking_enabled
@@ -52,6 +54,7 @@ KEY_B = "cal_live_workspace_b"
 GLOBAL_KEY = "cal_live_global_env"
 SLOT_DAY = (datetime.now(UTC) + timedelta(days=30)).strftime("%Y-%m-%d")
 SLOT_ISO = f"{SLOT_DAY}T19:00:00.000Z"
+CONTACT_ID = 301
 
 
 # ── Boundaries ───────────────────────────────────────────────────────────────
@@ -64,6 +67,12 @@ class _Result:
     def scalar_one_or_none(self) -> Any | None:
         return self._row
 
+    def scalars(self) -> _Result:
+        return self
+
+    def first(self) -> Any | None:
+        return self._row
+
 
 class _ScopedDB:
     """Fake AsyncSession that filters rows by the query's compiled predicates."""
@@ -71,6 +80,11 @@ class _ScopedDB:
     def __init__(self, integrations: list[WorkspaceIntegration], agents: list[Any] = ()) -> None:
         self.integrations = list(integrations)
         self.agents = list(agents)
+        self.contacts = [
+            Contact(id=CONTACT_ID, workspace_id=ws, first_name="Lead", email="lead@example.test")
+            for ws in (WS_A, WS_B)
+        ]
+        self.added: list[Any] = []
         self.queries: list[dict[str, Any]] = []
 
     async def __aenter__(self) -> _ScopedDB:
@@ -104,7 +118,28 @@ class _ScopedDB:
                 None,
             )
             return _Result(row)
+        if entity is Contact:
+            row = next(
+                (
+                    c
+                    for c in self.contacts
+                    if c.id == params["id_1"] and c.workspace_id == params["workspace_id_1"]
+                ),
+                None,
+            )
+            return _Result(row)
+        if entity is Appointment:
+            return _Result(None)
         raise AssertionError(f"unexpected query on {entity}")
+
+    def add(self, row: Any) -> None:
+        self.added.append(row)
+
+    def begin_nested(self) -> _ScopedDB:
+        return self
+
+    async def flush(self) -> None:
+        return None
 
     async def commit(self) -> None:
         return None
@@ -366,6 +401,7 @@ def _pending_booking(workspace_id: uuid.UUID, agent_id: uuid.UUID | None) -> Pen
             # A model-supplied key must never be used.
             "api_key": KEY_A,
         },
+        context={"source": "text_conversation", "contact_id": CONTACT_ID},
     )
 
 
