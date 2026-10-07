@@ -5572,6 +5572,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/phone-numbers/inbound-readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Phone Numbers Inbound Readiness
+         * @description Report which of this workspace's numbers will have an agent answer inbound calls.
+         *
+         *     Provider capability (``voice_enabled``) alone is not readiness: a number is
+         *     ready only when its assigned agent is active, voice-capable, and owned by
+         *     this workspace.
+         */
+        get: operations["get_phone_numbers_inbound_readiness_api_v1_workspaces__workspace_id__phone_numbers_inbound_readiness_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/phone-numbers/purchase": {
         parameters: {
             query?: never;
@@ -5583,7 +5607,10 @@ export interface paths {
         put?: never;
         /**
          * Purchase Phone Number
-         * @description Purchase a phone number from Telnyx.
+         * @description Purchase a phone number from Telnyx and assign its inbound agent.
+         *
+         *     The agent assignment is validated before the paid purchase so an invalid
+         *     agent never leaves a bought-but-misconfigured number behind.
          */
         post: operations["purchase_phone_number_api_v1_workspaces__workspace_id__phone_numbers_purchase_post"];
         delete?: never;
@@ -11363,6 +11390,21 @@ export interface components {
             type: string;
         };
         /**
+         * EligibleVoiceAgentResponse
+         * @description An active, voice-capable agent that can answer inbound calls.
+         */
+        EligibleVoiceAgentResponse: {
+            /** Channel Mode */
+            channel_mode: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
          * EmbedActionResponse
          * @description Generic success response for public embed side-effect actions.
          */
@@ -15902,6 +15944,36 @@ export interface components {
             workspace_id: string;
         };
         /**
+         * PhoneNumberInboundReadinessResponse
+         * @description Whether a new inbound call to this number will be answered by an agent.
+         */
+        PhoneNumberInboundReadinessResponse: {
+            /** Action Href */
+            action_href?: string | null;
+            /** Action Label */
+            action_label?: string | null;
+            /** Assigned Agent Id */
+            assigned_agent_id: string | null;
+            /** Assigned Agent Name */
+            assigned_agent_name: string | null;
+            /** Eligible Agent Count */
+            eligible_agent_count: number;
+            /** Message */
+            message: string;
+            /**
+             * Phone Number Id
+             * Format: uuid
+             */
+            phone_number_id: string;
+            /** Ready */
+            ready: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "needs_agent_choice" | "no_eligible_agent" | "agent_not_eligible" | "voice_disabled" | "number_inactive";
+        };
+        /**
          * PhoneNumberInfoResponse
          * @description Phone number info from Telnyx.
          */
@@ -15916,6 +15988,50 @@ export interface components {
             id: string;
             /** Phone Number */
             phone_number: string;
+        };
+        /**
+         * PhoneNumberPurchaseResponse
+         * @description Purchased number plus how its inbound agent assignment was resolved.
+         */
+        PhoneNumberPurchaseResponse: {
+            /**
+             * Agent Assignment
+             * @enum {string}
+             */
+            agent_assignment: "explicit" | "default_single_agent" | "skipped" | "pending";
+            /** Assigned Agent Id */
+            assigned_agent_id: string | null;
+            /** Friendly Name */
+            friendly_name: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Imessage Enabled */
+            imessage_enabled: boolean;
+            inbound_voice: components["schemas"]["PhoneNumberInboundReadinessResponse"];
+            /** Is Active */
+            is_active: boolean;
+            /** Mac Relay Sender Id */
+            mac_relay_sender_id: string | null;
+            /** Mac Relay Service */
+            mac_relay_service: string;
+            /** Mms Enabled */
+            mms_enabled: boolean;
+            /** Phone Number */
+            phone_number: string;
+            /** Provider */
+            provider: string;
+            /** Sms Enabled */
+            sms_enabled: boolean;
+            /** Voice Enabled */
+            voice_enabled: boolean;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
         };
         /**
          * PhoneNumberResponse
@@ -15986,6 +16102,16 @@ export interface components {
             friendly_name?: string | null;
             /** Is Active */
             is_active?: boolean | null;
+        };
+        /**
+         * PhoneNumbersInboundReadinessResponse
+         * @description Inbound voice readiness for the workspace's own numbers.
+         */
+        PhoneNumbersInboundReadinessResponse: {
+            /** Eligible Agents */
+            eligible_agents: components["schemas"]["EligibleVoiceAgentResponse"][];
+            /** Numbers */
+            numbers: components["schemas"]["PhoneNumberInboundReadinessResponse"][];
         };
         /**
          * PipelineCreate
@@ -16599,10 +16725,22 @@ export interface components {
         /**
          * PurchasePhoneNumberRequest
          * @description Purchase phone number request.
+         *
+         *     ``assigned_agent_id`` answers inbound calls on the new number. When omitted
+         *     and ``skip_agent_assignment`` is false, the workspace's only eligible voice
+         *     agent is used; with zero or several eligible agents the assignment stays
+         *     pending so the operator chooses explicitly.
          */
         PurchasePhoneNumberRequest: {
+            /** Assigned Agent Id */
+            assigned_agent_id?: string | null;
             /** Phone Number */
             phone_number: string;
+            /**
+             * Skip Agent Assignment
+             * @default false
+             */
+            skip_agent_assignment: boolean;
         };
         /**
          * QualificationSignalDetail
@@ -30503,6 +30641,37 @@ export interface operations {
             };
         };
     };
+    get_phone_numbers_inbound_readiness_api_v1_workspaces__workspace_id__phone_numbers_inbound_readiness_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhoneNumbersInboundReadinessResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     purchase_phone_number_api_v1_workspaces__workspace_id__phone_numbers_purchase_post: {
         parameters: {
             query?: never;
@@ -30524,7 +30693,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PhoneNumberResponse"];
+                    "application/json": components["schemas"]["PhoneNumberPurchaseResponse"];
                 };
             };
             /** @description Validation Error */

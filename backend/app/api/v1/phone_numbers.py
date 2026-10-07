@@ -11,9 +11,13 @@ from app.db.pagination import paginate
 from app.models.phone_number import PhoneNumber
 from app.models.workspace import Workspace
 from app.schemas.phone_number import (
+    EligibleVoiceAgentResponse,
     PaginatedPhoneNumbers,
+    PhoneNumberInboundReadinessResponse,
     PhoneNumberInfoResponse,
+    PhoneNumberPurchaseResponse,
     PhoneNumberResponse,
+    PhoneNumbersInboundReadinessResponse,
     PhoneNumberTelephonyStatusResponse,
     PhoneNumberUpdate,
     PurchasePhoneNumberRequest,
@@ -28,6 +32,13 @@ from app.services.telephony.availability import (
     TELEPHONY_UNAVAILABLE_MESSAGE,
     get_telnyx_api_key_for_workspace,
     telephony_unavailable_detail,
+)
+from app.services.telephony.phone_number_assignment import (
+    AgentAssignmentError,
+    get_assignable_agent,
+    get_inbound_voice_readiness,
+    list_eligible_voice_agents,
+    plan_purchase_assignment,
 )
 from app.services.telephony.telnyx import TelnyxSMSService
 
@@ -96,6 +107,33 @@ async def get_phone_number_telephony_status(
     )
 
 
+@router.get("/inbound-readiness", response_model=PhoneNumbersInboundReadinessResponse)
+async def get_phone_numbers_inbound_readiness(
+    workspace_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> PhoneNumbersInboundReadinessResponse:
+    """Report which of this workspace's numbers will have an agent answer inbound calls.
+
+    Provider capability (``voice_enabled``) alone is not readiness: a number is
+    ready only when its assigned agent is active, voice-capable, and owned by
+    this workspace.
+    """
+    result = await db.execute(
+        select(PhoneNumber)
+        .where(PhoneNumber.workspace_id == workspace_id)
+        .order_by(PhoneNumber.created_at.desc())
+    )
+    phones = list(result.scalars().all())
+    eligible_agents = await list_eligible_voice_agents(db, workspace_id)
+    readiness = await get_inbound_voice_readiness(db, workspace_id, phones, eligible_agents)
+    return PhoneNumbersInboundReadinessResponse(
+        eligible_agents=[EligibleVoiceAgentResponse.model_validate(a) for a in eligible_agents],
+        numbers=[PhoneNumberInboundReadinessResponse.model_validate(r) for r in readiness],
+    )
+
+
 @router.get("/{phone_number_id}", response_model=PhoneNumberResponse)
 async def get_phone_number(
     workspace_id: uuid.UUID,
@@ -147,6 +185,14 @@ async def update_phone_number(
         )
 
     update_data = phone_number_in.model_dump(exclude_unset=True)
+    new_agent_id = update_data.get("assigned_agent_id")
+    if new_agent_id is not None:
+        try:
+            await get_assignable_agent(db, workspace_id, new_agent_id)
+        except AgentAssignmentError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+            ) from exc
     for field, value in update_data.items():
         setattr(phone_number, field, value)
 
@@ -194,7 +240,7 @@ async def search_phone_numbers(
 
 @router.post(
     "/purchase",
-    response_model=PhoneNumberResponse,
+    response_model=PhoneNumberPurchaseResponse,
     responses={status.HTTP_424_FAILED_DEPENDENCY: _TELEPHONY_UNAVAILABLE_RESPONSE},
 )
 async def purchase_phone_number(
@@ -203,9 +249,25 @@ async def purchase_phone_number(
     current_user: CurrentUser,
     db: DB,
     workspace: Annotated[Workspace, Depends(get_workspace)],
-) -> PhoneNumber:
-    """Purchase a phone number from Telnyx."""
+) -> PhoneNumberPurchaseResponse:
+    """Purchase a phone number from Telnyx and assign its inbound agent.
+
+    The agent assignment is validated before the paid purchase so an invalid
+    agent never leaves a bought-but-misconfigured number behind.
+    """
     telnyx_api_key = await _get_telnyx_api_key_or_raise(db, workspace_id)
+
+    try:
+        plan = await plan_purchase_assignment(
+            db,
+            workspace_id,
+            requested_agent_id=request_data.assigned_agent_id,
+            skip_agent_assignment=request_data.skip_agent_assignment,
+        )
+    except AgentAssignmentError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
 
     service = TelnyxSMSService(telnyx_api_key)
     try:
@@ -220,12 +282,20 @@ async def purchase_phone_number(
             sms_enabled=True,
             voice_enabled=True,
             is_active=True,
+            assigned_agent_id=plan.agent_id,
         )
         db.add(phone_number)
         await db.commit()
         await db.refresh(phone_number)
 
-        return phone_number
+        [readiness] = await get_inbound_voice_readiness(db, workspace_id, [phone_number])
+        return PhoneNumberPurchaseResponse.model_validate(
+            {
+                **PhoneNumberResponse.model_validate(phone_number).model_dump(),
+                "agent_assignment": plan.source,
+                "inbound_voice": PhoneNumberInboundReadinessResponse.model_validate(readiness),
+            }
+        )
     finally:
         await service.close()
 

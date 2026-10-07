@@ -11126,6 +11126,31 @@
         "title": "DripStepSchema",
         "type": "object"
       },
+      "EligibleVoiceAgentResponse": {
+        "description": "An active, voice-capable agent that can answer inbound calls.",
+        "properties": {
+          "channel_mode": {
+            "title": "Channel Mode",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "channel_mode"
+        ],
+        "title": "EligibleVoiceAgentResponse",
+        "type": "object"
+      },
       "EmbedActionResponse": {
         "description": "Generic success response for public embed side-effect actions.",
         "properties": {
@@ -23563,6 +23588,96 @@
         "title": "PersonResult",
         "type": "object"
       },
+      "PhoneNumberInboundReadinessResponse": {
+        "description": "Whether a new inbound call to this number will be answered by an agent.",
+        "properties": {
+          "action_href": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Href"
+          },
+          "action_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Label"
+          },
+          "assigned_agent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned Agent Id"
+          },
+          "assigned_agent_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned Agent Name"
+          },
+          "eligible_agent_count": {
+            "title": "Eligible Agent Count",
+            "type": "integer"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "phone_number_id": {
+            "format": "uuid",
+            "title": "Phone Number Id",
+            "type": "string"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "needs_agent_choice",
+              "no_eligible_agent",
+              "agent_not_eligible",
+              "voice_disabled",
+              "number_inactive"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "phone_number_id",
+          "status",
+          "ready",
+          "assigned_agent_id",
+          "assigned_agent_name",
+          "eligible_agent_count",
+          "message"
+        ],
+        "title": "PhoneNumberInboundReadinessResponse",
+        "type": "object"
+      },
       "PhoneNumberInfoResponse": {
         "description": "Phone number info from Telnyx.",
         "properties": {
@@ -23607,6 +23722,119 @@
           "capabilities"
         ],
         "title": "PhoneNumberInfoResponse",
+        "type": "object"
+      },
+      "PhoneNumberPurchaseResponse": {
+        "description": "Purchased number plus how its inbound agent assignment was resolved.",
+        "properties": {
+          "agent_assignment": {
+            "enum": [
+              "explicit",
+              "default_single_agent",
+              "skipped",
+              "pending"
+            ],
+            "title": "Agent Assignment",
+            "type": "string"
+          },
+          "assigned_agent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned Agent Id"
+          },
+          "friendly_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Friendly Name"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "imessage_enabled": {
+            "title": "Imessage Enabled",
+            "type": "boolean"
+          },
+          "inbound_voice": {
+            "$ref": "#/components/schemas/PhoneNumberInboundReadinessResponse"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "mac_relay_sender_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mac Relay Sender Id"
+          },
+          "mac_relay_service": {
+            "title": "Mac Relay Service",
+            "type": "string"
+          },
+          "mms_enabled": {
+            "title": "Mms Enabled",
+            "type": "boolean"
+          },
+          "phone_number": {
+            "title": "Phone Number",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "sms_enabled": {
+            "title": "Sms Enabled",
+            "type": "boolean"
+          },
+          "voice_enabled": {
+            "title": "Voice Enabled",
+            "type": "boolean"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "phone_number",
+          "friendly_name",
+          "provider",
+          "sms_enabled",
+          "voice_enabled",
+          "mms_enabled",
+          "imessage_enabled",
+          "mac_relay_sender_id",
+          "mac_relay_service",
+          "assigned_agent_id",
+          "is_active",
+          "agent_assignment",
+          "inbound_voice"
+        ],
+        "title": "PhoneNumberPurchaseResponse",
         "type": "object"
       },
       "PhoneNumberResponse": {
@@ -23793,6 +24021,31 @@
           }
         },
         "title": "PhoneNumberUpdate",
+        "type": "object"
+      },
+      "PhoneNumbersInboundReadinessResponse": {
+        "description": "Inbound voice readiness for the workspace's own numbers.",
+        "properties": {
+          "eligible_agents": {
+            "items": {
+              "$ref": "#/components/schemas/EligibleVoiceAgentResponse"
+            },
+            "title": "Eligible Agents",
+            "type": "array"
+          },
+          "numbers": {
+            "items": {
+              "$ref": "#/components/schemas/PhoneNumberInboundReadinessResponse"
+            },
+            "title": "Numbers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "eligible_agents",
+          "numbers"
+        ],
+        "title": "PhoneNumbersInboundReadinessResponse",
         "type": "object"
       },
       "PipelineCreate": {
@@ -25472,11 +25725,28 @@
         "type": "object"
       },
       "PurchasePhoneNumberRequest": {
-        "description": "Purchase phone number request.",
+        "description": "Purchase phone number request.\n\n``assigned_agent_id`` answers inbound calls on the new number. When omitted\nand ``skip_agent_assignment`` is false, the workspace's only eligible voice\nagent is used; with zero or several eligible agents the assignment stays\npending so the operator chooses explicitly.",
         "properties": {
+          "assigned_agent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned Agent Id"
+          },
           "phone_number": {
             "title": "Phone Number",
             "type": "string"
+          },
+          "skip_agent_assignment": {
+            "default": false,
+            "title": "Skip Agent Assignment",
+            "type": "boolean"
           }
         },
         "required": [
@@ -53709,9 +53979,58 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/phone-numbers/inbound-readiness": {
+      "get": {
+        "description": "Report which of this workspace's numbers will have an agent answer inbound calls.\n\nProvider capability (``voice_enabled``) alone is not readiness: a number is\nready only when its assigned agent is active, voice-capable, and owned by\nthis workspace.",
+        "operationId": "get_phone_numbers_inbound_readiness_api_v1_workspaces__workspace_id__phone_numbers_inbound_readiness_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhoneNumbersInboundReadinessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Phone Numbers Inbound Readiness",
+        "tags": [
+          "Phone Numbers"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/phone-numbers/purchase": {
       "post": {
-        "description": "Purchase a phone number from Telnyx.",
+        "description": "Purchase a phone number from Telnyx and assign its inbound agent.\n\nThe agent assignment is validated before the paid purchase so an invalid\nagent never leaves a bought-but-misconfigured number behind.",
         "operationId": "purchase_phone_number_api_v1_workspaces__workspace_id__phone_numbers_purchase_post",
         "parameters": [
           {
@@ -53740,7 +54059,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PhoneNumberResponse"
+                  "$ref": "#/components/schemas/PhoneNumberPurchaseResponse"
                 }
               }
             },

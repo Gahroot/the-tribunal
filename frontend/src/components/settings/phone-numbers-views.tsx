@@ -47,7 +47,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { PhoneNumberSearchResult, PhoneNumberTelephonyStatus } from "@/lib/api/phone-numbers";
+import type {
+  EligibleVoiceAgent,
+  PhoneNumberInboundReadiness,
+  PhoneNumberSearchResult,
+  PhoneNumberTelephonyStatus,
+} from "@/lib/api/phone-numbers";
 import { formatPhoneNumber } from "@/lib/utils/phone";
 import type { PhoneNumber } from "@/types";
 
@@ -220,6 +225,115 @@ export function SearchNumbersForm({
   );
 }
 
+/**
+ * Shows whether a new inbound call to this number will be answered by an agent,
+ * and offers the assignment (or agent-creation recovery) action in place.
+ * Provider "Voice" capability alone is not readiness.
+ */
+export function InboundAgentControl({
+  number,
+  readiness,
+  eligibleAgents,
+  isAssigning,
+  onAssignAgent,
+}: {
+  number: PhoneNumber;
+  readiness: PhoneNumberInboundReadiness | undefined;
+  eligibleAgents: EligibleVoiceAgent[];
+  isAssigning: boolean;
+  onAssignAgent: (phoneNumberId: string, agentId: string) => void;
+}) {
+  if (!readiness) return null;
+  if (readiness.status === "voice_disabled" || readiness.status === "number_inactive") {
+    return null;
+  }
+
+  if (readiness.ready) {
+    return (
+      <div className="flex items-center gap-2">
+        <StatusBadge dotClass="bg-success">
+          Calls answered by {readiness.assigned_agent_name ?? "agent"}
+        </StatusBadge>
+        {eligibleAgents.length > 1 && (
+          <AgentSelect
+            number={number}
+            value={readiness.assigned_agent_id ?? undefined}
+            eligibleAgents={eligibleAgents}
+            isAssigning={isAssigning}
+            onAssignAgent={onAssignAgent}
+            placeholder="Change agent"
+          />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2" role="status">
+      <Badge variant="outline" className="border-warning text-warning" title={readiness.message}>
+        <AlertCircle className="size-3 mr-1" />
+        Calls go to voicemail
+      </Badge>
+      {eligibleAgents.length > 0 ? (
+        <AgentSelect
+          number={number}
+          eligibleAgents={eligibleAgents}
+          isAssigning={isAssigning}
+          onAssignAgent={onAssignAgent}
+          placeholder="Choose agent to answer calls"
+        />
+      ) : (
+        <Button asChild variant="outline" size="sm">
+          <Link href={readiness.action_href || "/agents/create"}>
+            {readiness.action_label || "Create a voice agent"}
+          </Link>
+        </Button>
+      )}
+      <p className="w-full text-xs text-muted-foreground">{readiness.message}</p>
+    </div>
+  );
+}
+
+function AgentSelect({
+  number,
+  value,
+  eligibleAgents,
+  isAssigning,
+  onAssignAgent,
+  placeholder,
+}: {
+  number: PhoneNumber;
+  value?: string;
+  eligibleAgents: EligibleVoiceAgent[];
+  isAssigning: boolean;
+  onAssignAgent: (phoneNumberId: string, agentId: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <Select
+      value={value}
+      onValueChange={(agentId) => onAssignAgent(number.id, agentId)}
+      disabled={isAssigning}
+    >
+      <SelectTrigger
+        size="sm"
+        className="w-52"
+        aria-label={`Agent that answers calls to ${formatPhoneNumber(number.phone_number)}`}
+      >
+        {isAssigning && <Loader2 className="size-3 animate-spin" />}
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {eligibleAgents.map((agent) => (
+          <SelectItem key={agent.id} value={agent.id}>
+            {agent.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 export function OwnedNumbersContent({
   variant,
   phoneNumbers,
@@ -228,6 +342,10 @@ export function OwnedNumbersContent({
   telephonyStatus,
   isTelephonyUnavailable,
   onRelease,
+  readinessById = {},
+  eligibleAgents = [],
+  assigningPhoneNumberId = null,
+  onAssignAgent = () => undefined,
 }: {
   variant: PhoneNumbersTableVariant;
   phoneNumbers: PhoneNumber[];
@@ -236,7 +354,21 @@ export function OwnedNumbersContent({
   telephonyStatus: PhoneNumberTelephonyStatus | null;
   isTelephonyUnavailable: boolean;
   onRelease: (phoneNumberId: string) => void;
+  readinessById?: Record<string, PhoneNumberInboundReadiness>;
+  eligibleAgents?: EligibleVoiceAgent[];
+  assigningPhoneNumberId?: string | null;
+  onAssignAgent?: (phoneNumberId: string, agentId: string) => void;
 }) {
+  const inboundControl = (number: PhoneNumber) => (
+    <InboundAgentControl
+      number={number}
+      readiness={readinessById[number.id]}
+      eligibleAgents={eligibleAgents}
+      isAssigning={assigningPhoneNumberId === number.id}
+      onAssignAgent={onAssignAgent}
+    />
+  );
+
   if (isLoading) {
     return <PageLoadingState className={variant === "section" ? "min-h-0 py-8" : undefined} />;
   }
@@ -299,7 +431,10 @@ export function OwnedNumbersContent({
     return (
       <div className="space-y-2">
         {phoneNumbers.map((number) => (
-          <div key={number.id} className="flex items-center justify-between p-3 rounded-lg border">
+          <div
+            key={number.id}
+            className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border"
+          >
             <div className="flex items-center gap-3">
               <div className="flex size-8 items-center justify-center rounded-full bg-muted">
                 <Phone className="size-4 text-muted-foreground" />
@@ -328,7 +463,7 @@ export function OwnedNumbersContent({
                   </Badge>
                 )}
               </div>
-              {number.assigned_agent_id && <Badge variant="secondary">Assigned to Agent</Badge>}
+              {inboundControl(number)}
               <ReleaseNumberDialog
                 number={number}
                 onRelease={onRelease}
@@ -357,6 +492,7 @@ export function OwnedNumbersContent({
           <TableHead>Label</TableHead>
           <TableHead>Capabilities</TableHead>
           <TableHead>Status</TableHead>
+          <TableHead>Inbound calls</TableHead>
           <TableHead className="text-right">Actions</TableHead>
         </TableRow>
       </TableHeader>
@@ -390,6 +526,7 @@ export function OwnedNumbersContent({
                 <Badge variant="secondary">Inactive</Badge>
               )}
             </TableCell>
+            <TableCell>{inboundControl(number)}</TableCell>
             <TableCell className="text-right">
               <ReleaseNumberDialog
                 number={number}

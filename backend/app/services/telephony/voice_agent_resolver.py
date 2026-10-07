@@ -94,7 +94,11 @@ class VoiceAgentResolver:
         # Priority 4: Phone number's assigned agent
         if phone_record.assigned_agent_id:
             result = await self._check_agent(
-                db, phone_record.assigned_agent_id, "phone_number_agent", log
+                db,
+                phone_record.assigned_agent_id,
+                "phone_number_agent",
+                log,
+                workspace_id=phone_record.workspace_id,
             )
             if result:
                 return result
@@ -205,6 +209,8 @@ class VoiceAgentResolver:
         agent_id: uuid.UUID,
         source: str,
         log: Any,
+        *,
+        workspace_id: uuid.UUID | None = None,
     ) -> ResolvedAgent | None:
         """Check if an agent is valid for voice calls.
 
@@ -213,11 +219,15 @@ class VoiceAgentResolver:
             agent_id: Agent ID to check
             source: Source description for logging
             log: Logger instance
+            workspace_id: When set, the agent must belong to this workspace
 
         Returns:
             ResolvedAgent if agent is active and voice-capable, None otherwise
         """
-        result = await db.execute(select(Agent).where(Agent.id == agent_id))
+        query = select(Agent).where(Agent.id == agent_id)
+        if workspace_id is not None:
+            query = query.where(Agent.workspace_id == workspace_id)
+        result = await db.execute(query)
         agent = result.scalar_one_or_none()
 
         if not agent:

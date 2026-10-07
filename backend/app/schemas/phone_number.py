@@ -54,9 +54,67 @@ class SearchPhoneNumbersRequest(BaseModel):
 
 
 class PurchasePhoneNumberRequest(BaseModel):
-    """Purchase phone number request."""
+    """Purchase phone number request.
+
+    ``assigned_agent_id`` answers inbound calls on the new number. When omitted
+    and ``skip_agent_assignment`` is false, the workspace's only eligible voice
+    agent is used; with zero or several eligible agents the assignment stays
+    pending so the operator chooses explicitly.
+    """
 
     phone_number: str
+    assigned_agent_id: uuid.UUID | None = None
+    skip_agent_assignment: bool = False
+
+
+InboundVoiceStatusValue = Literal[
+    "ready",
+    "needs_agent_choice",
+    "no_eligible_agent",
+    "agent_not_eligible",
+    "voice_disabled",
+    "number_inactive",
+]
+
+
+class PhoneNumberInboundReadinessResponse(BaseModel):
+    """Whether a new inbound call to this number will be answered by an agent."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    phone_number_id: uuid.UUID
+    status: InboundVoiceStatusValue
+    ready: bool
+    assigned_agent_id: uuid.UUID | None
+    assigned_agent_name: str | None
+    eligible_agent_count: int
+    message: str
+    action_label: str | None = None
+    action_href: str | None = None
+
+
+class EligibleVoiceAgentResponse(BaseModel):
+    """An active, voice-capable agent that can answer inbound calls."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    channel_mode: str
+
+
+class PhoneNumbersInboundReadinessResponse(BaseModel):
+    """Inbound voice readiness for the workspace's own numbers."""
+
+    eligible_agents: list[EligibleVoiceAgentResponse]
+    numbers: list[PhoneNumberInboundReadinessResponse]
+
+
+class PhoneNumberPurchaseResponse(PhoneNumberResponse):
+    """Purchased number plus how its inbound agent assignment was resolved."""
+
+    agent_assignment: Literal["explicit", "default_single_agent", "skipped", "pending"]
+    inbound_voice: PhoneNumberInboundReadinessResponse
 
 
 class PhoneNumberInfoResponse(BaseModel):

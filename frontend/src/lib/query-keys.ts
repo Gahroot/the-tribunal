@@ -316,6 +316,8 @@ export const queryKeys = {
       phoneNumbers.list(workspaceId, { active_only: false }),
     telephonyStatus: (workspaceId: string) =>
       [...phoneNumbers.all(workspaceId), "telephony-status"] as const,
+    inboundReadiness: (workspaceId: string) =>
+      [...phoneNumbers.all(workspaceId), "inbound-readiness"] as const,
   },
   promptVersions: createResourceQueryKeys("prompt-versions"),
   reviews: {

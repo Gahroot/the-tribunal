@@ -7,6 +7,9 @@ import { toast } from "sonner";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import {
   phoneNumbersApi,
+  type EligibleVoiceAgent,
+  type PhoneNumberInboundReadiness,
+  type PhoneNumberPurchaseResult,
   type PhoneNumberSearchResult,
   type PhoneNumberTelephonyStatus,
 } from "@/lib/api/phone-numbers";
@@ -31,6 +34,11 @@ export interface UsePhoneNumberManagerResult {
   isSearching: boolean;
   isPurchasing: boolean;
   isSyncing: boolean;
+  /** Inbound-call readiness per owned number id (agent assignment, not provider capability). */
+  readinessById: Record<string, PhoneNumberInboundReadiness>;
+  eligibleAgents: EligibleVoiceAgent[];
+  assigningPhoneNumberId: string | null;
+  assignAgent: (phoneNumberId: string, agentId: string) => void;
   handleSearch: (event: React.FormEvent) => void;
   purchase: (phoneNumber: string) => void;
   release: (phoneNumberId: string) => void;
@@ -61,6 +69,25 @@ function telephonyStatusFromUnavailableError(error: unknown): PhoneNumberTelepho
     action_label: typeof details?.action_label === "string" ? details.action_label : null,
     action_href: typeof details?.action_href === "string" ? details.action_href : null,
   };
+}
+
+/** Toast copy describing how the new number's inbound agent was resolved. */
+export function describePurchaseOutcome(result: PhoneNumberPurchaseResult): {
+  kind: "success" | "warning";
+  message: string;
+} {
+  const number = result.phone_number;
+  const readiness = result.inbound_voice;
+  if (readiness.ready) {
+    return {
+      kind: "success",
+      message: `Purchased ${number}. Inbound calls are answered by ${readiness.assigned_agent_name ?? "the assigned agent"}.`,
+    };
+  }
+  if (result.agent_assignment === "skipped") {
+    return { kind: "success", message: `Purchased ${number} for SMS. No agent answers calls yet.` };
+  }
+  return { kind: "warning", message: `Purchased ${number}. ${readiness.message}` };
 }
 
 /**
@@ -107,6 +134,15 @@ export function usePhoneNumberManager(): UsePhoneNumberManagerResult {
     queryFn: () => {
       if (!workspaceId) throw new Error("Workspace not loaded");
       return phoneNumbersApi.getTelephonyStatus(workspaceId);
+    },
+    enabled: !!workspaceId,
+  });
+
+  const { data: readinessData } = useQuery({
+    queryKey: queryKeys.phoneNumbers.inboundReadiness(workspaceId ?? ""),
+    queryFn: () => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return phoneNumbersApi.getInboundReadiness(workspaceId);
     },
     enabled: !!workspaceId,
   });
@@ -159,12 +195,28 @@ export function usePhoneNumberManager(): UsePhoneNumberManagerResult {
       });
     },
     onSuccess: (data) => {
-      toast.success(`Successfully purchased ${data.phone_number}`);
+      const outcome = describePurchaseOutcome(data);
+      if (outcome.kind === "success") toast.success(outcome.message);
+      else toast.warning(outcome.message);
       void invalidatePhoneNumbers();
       setSearchResults((prev) => prev.filter((r) => r.phone_number !== data.phone_number));
     },
     onError: (error: unknown) => {
       handleTelephonyMutationError(error, "Failed to purchase number");
+    },
+  });
+
+  const assignAgentMutation = useMutation({
+    mutationFn: ({ phoneNumberId, agentId }: { phoneNumberId: string; agentId: string }) => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return phoneNumbersApi.assignAgent(workspaceId, phoneNumberId, agentId);
+    },
+    onSuccess: () => {
+      toast.success("Inbound agent assigned");
+      void invalidatePhoneNumbers();
+    },
+    onError: (error: unknown) => {
+      toast.error(getApiErrorMessage(error, "Failed to assign agent"));
     },
   });
 
@@ -204,6 +256,9 @@ export function usePhoneNumberManager(): UsePhoneNumberManagerResult {
   });
 
   const phoneNumbers = Array.isArray(phoneNumbersData?.items) ? phoneNumbersData.items : [];
+  const readinessById: Record<string, PhoneNumberInboundReadiness> = Object.fromEntries(
+    (readinessData?.numbers ?? []).map((r) => [r.phone_number_id, r]),
+  );
 
   const handleSearch = (event: React.FormEvent) => {
     event.preventDefault();
@@ -230,6 +285,13 @@ export function usePhoneNumberManager(): UsePhoneNumberManagerResult {
     isSearching: searchMutation.isPending,
     isPurchasing: purchaseMutation.isPending,
     isSyncing: syncMutation.isPending,
+    readinessById,
+    eligibleAgents: readinessData?.eligible_agents ?? [],
+    assigningPhoneNumberId: assignAgentMutation.isPending
+      ? (assignAgentMutation.variables?.phoneNumberId ?? null)
+      : null,
+    assignAgent: (phoneNumberId, agentId) =>
+      assignAgentMutation.mutate({ phoneNumberId, agentId }),
     handleSearch,
     purchase: (phoneNumber) => {
       if (!isTelephonyUnavailable) purchaseMutation.mutate(phoneNumber);

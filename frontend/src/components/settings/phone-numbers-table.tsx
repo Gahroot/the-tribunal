@@ -37,6 +37,10 @@ export function PhoneNumbersTable({ variant }: PhoneNumbersTableProps) {
     isSearching,
     isPurchasing,
     isSyncing,
+    readinessById,
+    eligibleAgents,
+    assigningPhoneNumberId,
+    assignAgent,
     handleSearch,
     purchase,
     release,
@@ -67,6 +71,10 @@ export function PhoneNumbersTable({ variant }: PhoneNumbersTableProps) {
       telephonyStatus={telephonyStatus}
       isTelephonyUnavailable={isTelephonyUnavailable}
       onRelease={release}
+      readinessById={readinessById}
+      eligibleAgents={eligibleAgents}
+      assigningPhoneNumberId={assigningPhoneNumberId}
+      onAssignAgent={assignAgent}
     />
   );
 
