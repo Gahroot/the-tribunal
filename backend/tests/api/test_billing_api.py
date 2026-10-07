@@ -11,7 +11,7 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -19,8 +19,10 @@ import stripe
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from app.api.deps import get_current_user, get_db
+from app.api.deps import get_current_user
 from app.api.v1 import billing as billing_module
+from app.core.config import settings as app_settings
+from app.db.session import get_db
 
 WS_ID = uuid.uuid4()
 
@@ -55,9 +57,9 @@ async def client() -> AsyncIterator[AsyncClient]:
 def stripe_env(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     """Configure fake Stripe settings and stub workspace/customer lookups."""
     state: dict[str, Any] = {"customer_id": None, "client": MagicMock()}
-    monkeypatch.setattr(billing_module.settings, "stripe_secret_key", "sk_test_fake")
-    monkeypatch.setattr(billing_module.settings, "stripe_price_id", "price_test_fake")
-    monkeypatch.setattr(billing_module.settings, "frontend_url", "https://app.example.test")
+    monkeypatch.setattr(app_settings, "stripe_secret_key", "sk_test_fake")
+    monkeypatch.setattr(app_settings, "stripe_price_id", "price_test_fake")
+    monkeypatch.setattr(app_settings, "frontend_url", "https://app.example.test")
     monkeypatch.setattr(billing_module, "_get_user_workspace_id", AsyncMock(return_value=WS_ID))
     monkeypatch.setattr(billing_module, "_get_stripe_integration", AsyncMock(return_value=None))
     monkeypatch.setattr(billing_module, "_get_customer_id", lambda _i: state["customer_id"])
@@ -68,7 +70,7 @@ def stripe_env(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 async def test_status_reports_unconfigured_billing(
     client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(billing_module.settings, "stripe_secret_key", "")
+    monkeypatch.setattr(app_settings, "stripe_secret_key", "")
     resp = await client.get("/api/v1/billing/status")
     assert resp.status_code == 200
     body = resp.json()
@@ -98,7 +100,7 @@ async def test_status_without_customer_offers_checkout_only(
 async def test_status_without_price_disables_checkout(
     client: AsyncClient, stripe_env: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(billing_module.settings, "stripe_price_id", "")
+    monkeypatch.setattr(app_settings, "stripe_price_id", "")
     body = (await client.get("/api/v1/billing/status")).json()
     assert body["configured"] is True
     assert body["checkout_available"] is False
@@ -125,7 +127,8 @@ async def test_status_stripe_failure_is_an_error_not_unsubscribed(
     client: AsyncClient, stripe_env: dict[str, Any]
 ) -> None:
     stripe_env["customer_id"] = "cus_test"
-    stripe_env["client"].subscriptions.list.side_effect = stripe.APIConnectionError("down")
+    connection_error = cast(Any, stripe.APIConnectionError)("down")
+    stripe_env["client"].subscriptions.list.side_effect = connection_error
 
     resp = await client.get("/api/v1/billing/status")
     assert resp.status_code == 502
@@ -141,7 +144,7 @@ async def test_workspace_lookup_tolerates_multiple_default_memberships() -> None
     db.execute.return_value = result
 
     resolved = await billing_module._get_user_workspace_id(
-        SimpleNamespace(id=1),  # type: ignore[arg-type]
+        cast(Any, SimpleNamespace(id=1)),
         db,
     )
 
