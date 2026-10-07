@@ -33,6 +33,7 @@ from app.services.ai.openai_credentials import (
 )
 from app.services.ai.protocols import VoiceAgentProtocol
 from app.services.ai.voice_agent import VoiceAgentSession
+from app.services.calendar.calcom_credentials import calcom_credentials_ready
 
 logger = structlog.get_logger()
 
@@ -67,6 +68,8 @@ class VoiceSessionFactory:
         provider: str,
         agent: Agent | None = None,
         timezone: str = "America/New_York",
+        *,
+        calcom_ready: bool | None = None,
     ) -> tuple[VoiceSessionType | None, str | None]:
         """Create appropriate voice session based on provider.
 
@@ -74,6 +77,9 @@ class VoiceSessionFactory:
             provider: Provider name (openai, grok, elevenlabs)
             agent: Agent model for configuration
             timezone: Timezone for date context
+            calcom_ready: Whether the agent's workspace has usable Cal.com
+                credentials. ``None`` (no workspace context) falls back to
+                the documented global ``CALCOM_API_KEY``.
 
         Returns:
             Tuple of (voice_session, error_message)
@@ -86,10 +92,10 @@ class VoiceSessionFactory:
             return self._create_live_session(agent, timezone)
 
         if provider_lower == "elevenlabs":
-            return self._create_elevenlabs_session(agent, timezone)
+            return self._create_elevenlabs_session(agent, timezone, calcom_ready=calcom_ready)
 
         if provider_lower == "grok":
-            return self._create_grok_session(agent, timezone)
+            return self._create_grok_session(agent, timezone, calcom_ready=calcom_ready)
 
         # Default to OpenAI
         return self._create_openai_session(agent)
@@ -109,7 +115,9 @@ class VoiceSessionFactory:
             # there are no per-workspace credentials to resolve.
             return self._create_live_session(agent, timezone)
         if provider_lower != "openai":
-            return self.create_session(provider, agent, timezone)
+            # Booking tools follow the workspace's own Cal.com connection.
+            calcom_ready = await calcom_credentials_ready(db, workspace_id)
+            return self.create_session(provider, agent, timezone, calcom_ready=calcom_ready)
 
         try:
             credential_context = await resolve_openai_credentials(db, workspace_id)
@@ -206,6 +214,8 @@ class VoiceSessionFactory:
         self,
         agent: Agent | None,
         timezone: str,
+        *,
+        calcom_ready: bool | None = None,
     ) -> tuple[VoiceSessionType | None, str | None]:
         """Create Grok (xAI) Realtime API session.
 
@@ -220,7 +230,7 @@ class VoiceSessionFactory:
             return None, "xAI API key not configured"
 
         # Determine if tools should be enabled
-        enable_tools = self._should_enable_tools(agent)
+        enable_tools = self._should_enable_tools(agent, calcom_ready=calcom_ready)
 
         self.logger.info(
             "grok_voice_session_creating",
@@ -263,6 +273,8 @@ class VoiceSessionFactory:
         self,
         agent: Agent | None,
         timezone: str,
+        *,
+        calcom_ready: bool | None = None,
     ) -> tuple[VoiceSessionType | None, str | None]:
         """Create ElevenLabs hybrid session (Grok STT+LLM + ElevenLabs TTS).
 
@@ -280,7 +292,7 @@ class VoiceSessionFactory:
             return None, "xAI API key required for ElevenLabs mode (used for STT+LLM)"
 
         # Enable tools if agent has Cal.com configured
-        enable_tools = self._should_enable_tools(agent)
+        enable_tools = self._should_enable_tools(agent, calcom_ready=calcom_ready)
 
         return ElevenLabsVoiceAgentSession(
             xai_api_key=self.settings.xai_api_key,
@@ -290,15 +302,23 @@ class VoiceSessionFactory:
             timezone=timezone,
         ), None
 
-    def _should_enable_tools(self, agent: Agent | None) -> bool:
+    def _should_enable_tools(
+        self,
+        agent: Agent | None,
+        *,
+        calcom_ready: bool | None = None,
+    ) -> bool:
         """Determine if tools should be enabled for an agent.
 
         Tools require:
         - Agent with calcom_event_type_id configured
-        - Cal.com API key in settings
+        - Usable Cal.com credentials for the agent's workspace (``calcom_ready``),
+          or — only when no workspace context was resolved — the documented
+          global ``CALCOM_API_KEY`` fallback
 
         Args:
             agent: Agent to check
+            calcom_ready: Workspace Cal.com readiness, if resolved
 
         Returns:
             True if tools should be enabled
@@ -309,6 +329,8 @@ class VoiceSessionFactory:
         if not agent.calcom_event_type_id:
             return False
 
+        if calcom_ready is not None:
+            return calcom_ready
         return bool(self.settings.calcom_api_key)
 
     def get_provider_for_agent(self, agent: Agent | None) -> str:

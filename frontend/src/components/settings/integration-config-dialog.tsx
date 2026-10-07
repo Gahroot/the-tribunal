@@ -65,7 +65,8 @@ const INTEGRATION_CONFIGS: Record<IntegrationType, IntegrationConfig> = {
         key: "api_key",
         label: "API Key",
         placeholder: "cal_live_...",
-        description: "Find this in Cal.com Settings > Developer > API Keys",
+        description:
+          "Find this in Cal.com Settings > Developer > API Keys. AI agents in this workspace check availability and book with this key.",
         required: true,
         type: "password",
       },
@@ -73,7 +74,8 @@ const INTEGRATION_CONFIGS: Record<IntegrationType, IntegrationConfig> = {
         key: "event_type_id",
         label: "Event Type ID",
         placeholder: "123456",
-        description: "Default event type for bookings (optional)",
+        description:
+          "Optional reference. AI agents book on the event type set in each agent's settings (or its staff routing).",
       },
     ],
   },

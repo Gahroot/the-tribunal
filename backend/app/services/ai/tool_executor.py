@@ -266,7 +266,7 @@ class VoiceToolExecutor(BaseToolExecutor):
 
         # An ambiguous network response must not produce a second booking POST.
         return BookingService(
-            api_key=settings.calcom_api_key,
+            api_key=self._calcom_api_key(),
             event_type_id=event_type_id or self.agent.calcom_event_type_id,
             timezone=self.timezone,
             max_attempts=1,
@@ -414,7 +414,7 @@ class VoiceToolExecutor(BaseToolExecutor):
                 ),
             }
 
-        return {"success": False, "error": result.error or "Booking failed"}
+        return super().format_booking_failure(result, time_str)
 
     async def post_booking_success(
         self,

@@ -37,7 +37,7 @@ from app.models.appointment import Appointment
 from app.models.contact import Contact
 from app.models.conversation import Conversation
 from app.models.user import User
-from app.models.workspace import WorkspaceIntegration, WorkspaceMembership
+from app.models.workspace import WorkspaceMembership
 from app.services.ai.base_tool_executor import BaseToolExecutor
 from app.services.ai.tool_definition import ToolArguments
 from app.services.ai.tool_definitions import (
@@ -48,6 +48,8 @@ from app.services.ai.tool_definitions import (
     tools_for_channel,
 )
 from app.services.approval.approval_gate_service import approval_gate_service
+from app.services.calendar.calcom import CalComAuthError
+from app.services.calendar.calcom_credentials import CalComCredentials, resolve_calcom_credentials
 from app.services.email import send_appointment_booked_notification
 from app.utils.background_tasks import spawn_background_task
 
@@ -258,7 +260,7 @@ class TextToolExecutor(BaseToolExecutor):
     ) -> dict[str, Any]:
         """Resolve contact, validate datetime, then delegate to base booking."""
         # Check config early (before contact lookup)
-        error = self._validate_calcom_config()
+        error = await self._validate_calcom_config()
         if error:
             return error
 
@@ -474,36 +476,13 @@ class TextToolExecutor(BaseToolExecutor):
 
     # ── Text-only helpers ───────────────────────────────────────────
 
-    async def _get_calcom_api_key(self) -> str | None:
-        """Return the Cal.com API key for this workspace, or None if not found.
+    def _calcom_workspace_id(self) -> uuid.UUID | None:
+        """Text bookings always use the conversation's workspace connection."""
+        return self.conversation.workspace_id
 
-        Checks the workspace's WorkspaceIntegration record (type "calcom").
-        Falls back to the global ``settings.calcom_api_key`` if set.
-        """
-        from app.core.config import settings
-        from app.core.encryption import decrypt_json
-
-        workspace_id = self.conversation.workspace_id
-        result = await self.db.execute(
-            select(WorkspaceIntegration).where(
-                WorkspaceIntegration.workspace_id == workspace_id,
-                WorkspaceIntegration.integration_type == "calcom",
-                WorkspaceIntegration.is_active.is_(True),
-            )
-        )
-        integration = result.scalar_one_or_none()
-        if integration is not None:
-            try:
-                creds = decrypt_json(integration.encrypted_credentials)
-                key = creds.get("api_key")
-                if key:
-                    return str(key)
-            except Exception:
-                self.log.warning("calcom_credential_decrypt_failed")
-
-        # Fall back to global key
-        global_key = settings.calcom_api_key
-        return global_key if global_key else None
+    async def _load_calcom_credentials(self) -> CalComCredentials:
+        """Resolve Cal.com credentials on the request session (workspace-scoped)."""
+        return await resolve_calcom_credentials(self.db, self.conversation.workspace_id)
 
     async def _build_booking_link(self, contact: Contact) -> dict[str, Any]:
         """Build a Cal.com booking URL for a contact who has no email address.
@@ -550,26 +529,48 @@ class TextToolExecutor(BaseToolExecutor):
         if not event_type_id:
             return None, None, "Cal.com not configured for this agent"
 
-        api_key = await self._get_calcom_api_key()
-        if not api_key:
-            return None, None, "Cal.com API key not available — cannot generate booking link"
+        credential_error = await self._ensure_calcom_credentials()
+        if credential_error:
+            return None, None, str(credential_error["error"])
+        api_key = self._calcom_api_key()
 
         calcom_v1 = "https://api.cal.com/v1"
 
+        username: str | None = None
+        slug: str | None = None
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 username = await self._fetch_calcom_username(client, calcom_v1, api_key)
-                if username is None:
-                    return None, None, "Cal.com username not found — cannot generate booking link"
-
-                slug = await self._fetch_event_slug(client, calcom_v1, api_key, event_type_id)
-                if slug is None:
-                    return None, None, "Cal.com event slug not found — cannot generate booking link"
-
+                if username is not None:
+                    slug = await self._fetch_event_slug(client, calcom_v1, api_key, event_type_id)
+        except CalComAuthError:
+            return (
+                None,
+                None,
+                (
+                    "Cal.com rejected the saved API key — cannot generate booking link. "
+                    "Reconnect Cal.com in Settings → Integrations → Cal.com."
+                ),
+            )
         except httpx.HTTPError as exc:
-            self.log.exception("calcom_booking_link_http_error", error=str(exc))
-            return None, None, f"Network error building booking link: {exc!s}"
+            # The v1 API authenticates via query string, so never log the URL/str(exc).
+            self.log.warning("calcom_booking_link_http_error", error_type=type(exc).__name__)
+            return (
+                None,
+                None,
+                (
+                    f"Network error reaching Cal.com ({type(exc).__name__}) — "
+                    "cannot generate booking link"
+                ),
+            )
 
+        if username is None or slug is None:
+            missing = (
+                "Cal.com username not found"
+                if username is None
+                else f"Cal.com event type {event_type_id} was not found for the connected account"
+            )
+            return None, None, f"{missing} — cannot generate booking link"
         return username, slug, None
 
     async def _fetch_calcom_username(
@@ -580,6 +581,9 @@ class TextToolExecutor(BaseToolExecutor):
     ) -> str | None:
         """Call Cal.com v1 /me and return the username, or None on failure."""
         resp = await client.get(f"{base_url}/me", params={"apiKey": api_key})
+        if resp.status_code in (401, 403):
+            self.log.warning("calcom_me_rejected", status=resp.status_code)
+            raise CalComAuthError("Cal.com rejected the API key")
         if resp.status_code != 200:
             self.log.error("calcom_me_failed", status=resp.status_code, body=resp.text[:200])
             return None

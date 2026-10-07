@@ -21,7 +21,10 @@ import pytest
 
 from app.core.config import settings
 from app.models.agent import Agent
-from app.services.ai.text_response_generator import text_booking_enabled
+from app.services.ai.text_response_generator import (
+    text_booking_configured,
+    text_booking_enabled,
+)
 from app.services.ai.voice_tools import get_tools_from_agent_config
 from scripts.ops.configure_ava_blackmountain import (
     AVA_SYSTEM_PROMPT,
@@ -134,29 +137,24 @@ class TestScriptWritesBookingFields:
 class TestTextChannelGate:
     """Exercises the real gate from text_response_generator, not a copy of it."""
 
-    def test_gate_open_for_configured_agent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_gate_open_for_configured_agent(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(settings, "calcom_api_key", "cal_live_test", raising=False)
 
-        assert text_booking_enabled(_make_ava()) is True
+        assert await text_booking_enabled(_make_ava(), None, None) is True  # type: ignore[arg-type]
 
-    def test_gate_closed_without_book_appointment_tool(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(settings, "calcom_api_key", "cal_live_test", raising=False)
+    def test_gate_closed_without_book_appointment_tool(self) -> None:
         agent = _make_ava(enabled_tools=["bookings", "check_availability"])
 
-        assert text_booking_enabled(agent) is False
+        assert text_booking_configured(agent) is False
 
-    def test_gate_closed_without_event_type(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(settings, "calcom_api_key", "cal_live_test", raising=False)
+    def test_gate_closed_without_event_type(self) -> None:
+        assert text_booking_configured(_make_ava(calcom_event_type_id=None)) is False
 
-        assert text_booking_enabled(_make_ava(calcom_event_type_id=None)) is False
-
-    def test_gate_closed_without_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Matches the missing_calcom_api_key startup warning in app/main.py."""
+    async def test_gate_closed_without_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """No workspace connection and no documented global fallback → closed."""
         monkeypatch.setattr(settings, "calcom_api_key", "", raising=False)
 
-        assert text_booking_enabled(_make_ava()) is False
+        assert await text_booking_enabled(_make_ava(), None, None) is False  # type: ignore[arg-type]
 
 
 class TestAvaPrompt:

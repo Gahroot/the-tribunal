@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.services.appointments import show_rate, waitlist
+from app.services.calendar.calcom_credentials import CalComCredentials
 from app.services.opportunities import appointment_stages
 from app.workers.noshow_reengagement_worker import (
     _DEFAULT_DAY3_TEMPLATE,
@@ -133,7 +134,11 @@ async def test_waitlist_skips_opted_out_contact_and_offers_freed_slot(monkeypatc
     db.scalars = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[blocked, eligible])))
     opt_out = MagicMock(check_opt_out=AsyncMock(side_effect=[True, False]))
     monkeypatch.setattr(waitlist, "OptOutManager", lambda: opt_out)
-    monkeypatch.setattr(waitlist.settings, "calcom_api_key", "test-key")
+    monkeypatch.setattr(
+        waitlist,
+        "resolve_calcom_credentials",
+        AsyncMock(return_value=CalComCredentials(api_key="test-key", source="workspace")),
+    )
     cal = MagicMock(
         generate_booking_url=MagicMock(return_value="https://cal.com/open"),
         cancel_booking=AsyncMock(return_value=True),
@@ -170,7 +175,11 @@ async def test_future_slot_not_offered_when_calcom_does_not_show_it(monkeypatch)
         id=15, phone_number="+14155550222", email="b@example.com", first_name="B", last_name="C"
     )
     db = MagicMock(scalars=AsyncMock(return_value=MagicMock(all=lambda: [contact])))
-    monkeypatch.setattr(waitlist.settings, "calcom_api_key", "test-key")
+    monkeypatch.setattr(
+        waitlist,
+        "resolve_calcom_credentials",
+        AsyncMock(return_value=CalComCredentials(api_key="test-key", source="workspace")),
+    )
     monkeypatch.setattr(
         waitlist, "OptOutManager", lambda: MagicMock(check_opt_out=AsyncMock(return_value=False))
     )
@@ -207,7 +216,11 @@ async def test_expired_no_show_offers_verified_future_slot_not_expired_time(monk
         id=15, phone_number="+14155550222", email="b@example.com", first_name="B", last_name="C"
     )
     db = MagicMock(scalars=AsyncMock(return_value=MagicMock(all=lambda: [contact])))
-    monkeypatch.setattr(waitlist.settings, "calcom_api_key", "test-key")
+    monkeypatch.setattr(
+        waitlist,
+        "resolve_calcom_credentials",
+        AsyncMock(return_value=CalComCredentials(api_key="test-key", source="workspace")),
+    )
     monkeypatch.setattr(
         waitlist, "OptOutManager", lambda: MagicMock(check_opt_out=AsyncMock(return_value=False))
     )

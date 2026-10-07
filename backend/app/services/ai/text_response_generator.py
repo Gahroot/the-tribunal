@@ -18,7 +18,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.models.agent import Agent
 from app.models.contact import Contact
 from app.models.conversation import Conversation
@@ -36,6 +35,7 @@ from app.services.ai.text_prompt_builder import (
 )
 from app.services.ai.text_tool_executor import TextToolExecutor, _KnowledgeArguments
 from app.services.ai.voice_tools import get_text_booking_tools, get_text_search_knowledge_tool
+from app.services.calendar.calcom_credentials import calcom_credentials_ready
 from app.services.knowledge.knowledge_context_service import knowledge_context_service
 from app.services.outbound.message_trace import OutboundTraceDraft
 
@@ -85,19 +85,27 @@ async def _validated_text(
     return output.text
 
 
-def text_booking_enabled(agent: Agent) -> bool:
-    """Whether the text/SMS path may offer Cal.com booking for this agent.
+def text_booking_configured(agent: Agent) -> bool:
+    """Whether the agent itself is set up to offer Cal.com booking over text.
 
     Stricter than the voice path: the OpenAI realtime path gates booking on
     ``agent.calcom_event_type_id`` alone, while text additionally requires
-    ``book_appointment`` in ``enabled_tools``. Both need the global API key,
-    which the tool executor also enforces at call time.
+    ``book_appointment`` in ``enabled_tools``.
     """
-    return bool(
-        agent.calcom_event_type_id
-        and settings.calcom_api_key
-        and "book_appointment" in (agent.enabled_tools or [])
-    )
+    return bool(agent.calcom_event_type_id and "book_appointment" in (agent.enabled_tools or []))
+
+
+async def text_booking_enabled(agent: Agent, db: AsyncSession, workspace_id: Any) -> bool:
+    """Whether the text/SMS path may offer Cal.com booking for this agent.
+
+    Requires the agent configuration plus usable Cal.com credentials for the
+    conversation's workspace (its own saved connection, or the documented
+    global fallback when the workspace never connected Cal.com). The tool
+    executor resolves the same credentials again at call time.
+    """
+    if not text_booking_configured(agent):
+        return False
+    return await calcom_credentials_ready(db, workspace_id)
 
 
 def _capture_knowledge_snippets(
@@ -325,7 +333,7 @@ async def generate_text_response(  # noqa: PLR0915, PLR0912
     offer_context = await get_offer_context(conversation, db)
 
     # Build system instructions - include booking tools info if configured
-    has_booking_tools = text_booking_enabled(agent)
+    has_booking_tools = await text_booking_enabled(agent, db, conversation.workspace_id)
 
     booking_instructions = ""
     extracted_email = None

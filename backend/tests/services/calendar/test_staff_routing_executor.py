@@ -12,13 +12,14 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 import app.db.session as db_session_module
 from app.services.ai import base_tool_executor
 from app.services.ai.tool_executor import VoiceToolExecutor
+from app.services.calendar.calcom_credentials import CalComCredentials
 
 
 class _FakeStaff:
@@ -149,7 +150,11 @@ async def test_book_appointment_routes_to_selected_staff_event_type() -> None:
     executor = VoiceToolExecutor(agent=_round_robin_agent())
 
     with (
-        patch.object(base_tool_executor.settings, "calcom_api_key", "test-key"),
+        patch.object(
+            base_tool_executor,
+            "resolve_calcom_credentials",
+            AsyncMock(return_value=CalComCredentials(api_key="test-key", source="workspace")),
+        ),
         patch.object(db_session_module, "AsyncSessionLocal", return_value=_FakeSession(pool)),
         patch("app.services.calendar.booking.BookingService", _FakeBookingService),
     ):

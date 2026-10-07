@@ -205,32 +205,99 @@ class LaunchCampaignHandler:
 
 @dataclass(slots=True, frozen=True)
 class BookAppointmentActionHandler:
-    """Execute a book_appointment pending action via BookingService."""
+    """Execute a book_appointment pending action via BookingService.
+
+    Credentials always come from the action's own workspace Cal.com connection
+    (see ``resolve_calcom_credentials``); any ``api_key`` in the model-supplied
+    payload is ignored. The event type follows the agent's staff routing (or the
+    agent default) and the timezone follows the workspace setting.
+    """
 
     action_type: str = "book_appointment"
 
     async def execute(self, db: AsyncSession, action: PendingAction) -> dict[str, Any]:
+        from app.models.agent import Agent
+        from app.services.ai.message_context_builder import get_workspace_timezone
         from app.services.calendar.booking import BookingService
+        from app.services.calendar.calcom_credentials import (
+            CALCOM_EVENT_TYPE_MISSING,
+            CalComCredentialError,
+            resolve_calcom_credentials,
+        )
+        from app.services.calendar.staff_assignment import resolve_staff_for_booking
 
-        payload = action.action_payload
-        api_key: str = payload.get("api_key", "")
-        event_type_id: int = payload.get("event_type_id", 0)
-        timezone: str = payload.get("timezone", "America/New_York")
+        payload = action.action_payload or {}
 
+        try:
+            credentials = await resolve_calcom_credentials(db, action.workspace_id)
+        except CalComCredentialError as exc:
+            return {"status": "failed", "error": exc.message, "error_code": exc.code}
+
+        agent: Agent | None = None
+        if action.agent_id is not None:
+            agent_result = await db.execute(
+                select(Agent).where(
+                    Agent.id == action.agent_id,
+                    Agent.workspace_id == action.workspace_id,
+                )
+            )
+            agent = agent_result.scalar_one_or_none()
+
+        event_type_id: int | None = agent.calcom_event_type_id if agent else None
+        assigned_staff: str | None = None
+        if agent is not None:
+            staff = await resolve_staff_for_booking(
+                db,
+                agent=agent,
+                required_skill=payload.get("skill"),
+                commit=False,
+            )
+            if staff and staff.calcom_event_type_id:
+                event_type_id = staff.calcom_event_type_id
+                assigned_staff = str(staff.id)
+        if not event_type_id:
+            return {
+                "status": "failed",
+                "error": (
+                    "No Cal.com event type is configured for this agent. "
+                    "Set the agent's Cal.com event type in agent settings."
+                ),
+                "error_code": CALCOM_EVENT_TYPE_MISSING,
+            }
+
+        timezone = await get_workspace_timezone(action.workspace_id, db)
         service = BookingService(
-            api_key=api_key,
+            api_key=credentials.api_key,
             event_type_id=event_type_id,
             timezone=timezone,
         )
-        booking_result = await service.book_appointment(
-            date_str=payload.get("date", ""),
-            time_str=payload.get("time", ""),
-            email=payload.get("email", ""),
-            contact_name=payload.get("name", ""),
-            duration_minutes=payload.get("duration_minutes", 30),
-            phone_number=payload.get("phone_number"),
-        )
-        return {"status": "booked", "booking": str(booking_result)}
+        try:
+            booking_result = await service.book_appointment(
+                date_str=payload.get("date", ""),
+                time_str=payload.get("time", ""),
+                email=payload.get("email", ""),
+                contact_name=payload.get("name") or "Customer",
+                duration_minutes=payload.get("duration_minutes", 30),
+                phone_number=payload.get("phone_number"),
+            )
+        finally:
+            await service.close()
+
+        if not booking_result.success:
+            return {
+                "status": "failed",
+                "error": booking_result.error or "Booking failed",
+                "error_code": booking_result.error_code,
+            }
+        result: dict[str, Any] = {
+            "status": "booked",
+            "booking_uid": booking_result.booking_uid,
+            "booking_id": booking_result.booking_id,
+            "event_type_id": event_type_id,
+        }
+        if assigned_staff:
+            result["assigned_staff_id"] = assigned_staff
+        return result
 
 
 @dataclass(slots=True, frozen=True)

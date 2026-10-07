@@ -10,12 +10,19 @@ Usage:
             ...  # channel-specific formatting
 """
 
+import uuid
 from typing import Any
 
 import structlog
 
-from app.core.config import settings
+from app.core.config import settings  # noqa: F401 - re-exported for test patching
 from app.services.calendar.booking import BookingService
+from app.services.calendar.calcom_credentials import (
+    CALCOM_EVENT_TYPE_MISSING,
+    CalComCredentialError,
+    CalComCredentials,
+    resolve_calcom_credentials,
+)
 
 logger = structlog.get_logger()
 
@@ -39,6 +46,8 @@ class BaseToolExecutor:
         # Staff member chosen by round-robin / skill-based routing for the most
         # recent booking attempt (None when the single-event-type path is used).
         self.assigned_staff: dict[str, Any] | None = None
+        # Cal.com credentials resolved for this executor's workspace. Never logged.
+        self._calcom_credentials: CalComCredentials | None = None
 
     # ── Config validation ───────────────────────────────────────────
 
@@ -46,21 +55,77 @@ class BaseToolExecutor:
         """Return the agent's booking assignment strategy (defaults to single)."""
         return getattr(self.agent, "assignment_strategy", "single") or "single"
 
-    def _validate_calcom_config(self) -> dict[str, Any] | None:
+    def _calcom_workspace_id(self) -> uuid.UUID | None:
+        """Workspace whose Cal.com connection this executor books against."""
+        workspace_id = getattr(self.agent, "workspace_id", None)
+        return workspace_id if isinstance(workspace_id, uuid.UUID) else None
+
+    async def _load_calcom_credentials(self) -> CalComCredentials:
+        """Resolve workspace Cal.com credentials. Override to reuse a session."""
+        workspace_id = self._calcom_workspace_id()
+        if workspace_id is None:
+            # No workspace context (legacy/test agents): only the documented
+            # global fallback can apply, so skip opening a DB session.
+            return await resolve_calcom_credentials(None, None)
+
+        from app.db.session import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            return await resolve_calcom_credentials(db, workspace_id)
+
+    async def _ensure_calcom_credentials(self) -> dict[str, Any] | None:
+        """Resolve (once) and cache Cal.com credentials. Returns an error dict on failure."""
+        if self._calcom_credentials is not None:
+            return None
+        try:
+            self._calcom_credentials = await self._load_calcom_credentials()
+        except CalComCredentialError as exc:
+            self.log.warning("calcom_credentials_unavailable", error_code=exc.code)
+            return exc.to_result()
+        return None
+
+    async def _validate_calcom_config(self) -> dict[str, Any] | None:
         """Check Cal.com configuration. Returns error dict or None if valid.
 
-        With a multi-staff strategy the agent need not have its own
+        Credentials come from the active workspace's Cal.com integration (with
+        the documented global fallback only when the workspace never connected
+        Cal.com). With a multi-staff strategy the agent need not have its own
         ``calcom_event_type_id`` — the event type is resolved from the assigned
-        staff member at booking time. Only the API key is strictly required up
-        front; a missing event type surfaces after staff resolution.
+        staff member at booking time; a missing event type surfaces after staff
+        resolution.
         """
-        if not settings.calcom_api_key:
-            return {"success": False, "error": "Cal.com API key not configured"}
+        error = await self._ensure_calcom_credentials()
+        if error:
+            return error
         if self._assignment_strategy() == "single" and (
             not self.agent or not self.agent.calcom_event_type_id
         ):
-            return {"success": False, "error": "Cal.com not configured for this agent"}
+            return {
+                "success": False,
+                "error": (
+                    "No Cal.com event type is configured for this agent. "
+                    "Set the agent's Cal.com event type in agent settings."
+                ),
+                "error_code": CALCOM_EVENT_TYPE_MISSING,
+            }
         return None
+
+    def _calcom_api_key(self) -> str:
+        """Return the resolved Cal.com API key (call ``_validate_calcom_config`` first)."""
+        if self._calcom_credentials is None:
+            raise RuntimeError("Cal.com credentials not resolved for this executor")
+        return self._calcom_credentials.api_key
+
+    @staticmethod
+    def _no_calendar_error() -> dict[str, Any]:
+        return {
+            "success": False,
+            "error": (
+                "No bookable calendar available: neither the assigned staff member nor "
+                "the agent has a Cal.com event type."
+            ),
+            "error_code": CALCOM_EVENT_TYPE_MISSING,
+        }
 
     async def _resolve_event_type_id(
         self, required_skill: str | None, *, record: bool = True
@@ -109,7 +174,7 @@ class BaseToolExecutor:
     def _create_booking_service(self, event_type_id: int | None = None) -> BookingService:
         """Create a BookingService for the resolved (or agent default) event type."""
         return BookingService(
-            api_key=settings.calcom_api_key,
+            api_key=self._calcom_api_key(),
             event_type_id=event_type_id or self.agent.calcom_event_type_id,
             timezone=self.timezone,
         )
@@ -123,14 +188,14 @@ class BaseToolExecutor:
         required_skill: str | None = None,
     ) -> dict[str, Any]:
         """Check Cal.com availability. Delegates formatting to hooks."""
-        error = self._validate_calcom_config()
+        error = await self._validate_calcom_config()
         if error:
             return error
 
         # Peek only: an availability check must not consume a round-robin turn.
         event_type_id = await self._resolve_event_type_id(required_skill, record=False)
         if not event_type_id:
-            return {"success": False, "error": "No bookable calendar available"}
+            return self._no_calendar_error()
 
         booking_service = self._create_booking_service(event_type_id)
         try:
@@ -141,7 +206,13 @@ class BaseToolExecutor:
             )
 
             if not result.success:
-                return {"success": False, "error": result.error or "Unknown error"}
+                failure: dict[str, Any] = {
+                    "success": False,
+                    "error": result.error or "Unknown error",
+                }
+                if result.error_code:
+                    failure["error_code"] = result.error_code
+                return failure
 
             if not result.slots:
                 return {
@@ -165,7 +236,7 @@ class BaseToolExecutor:
         required_skill: str | None = None,
     ) -> dict[str, Any]:
         """Book a Cal.com appointment. Delegates formatting/persistence to hooks."""
-        error = self._validate_calcom_config()
+        error = await self._validate_calcom_config()
         if error:
             return error
 
@@ -178,7 +249,7 @@ class BaseToolExecutor:
 
         event_type_id = await self._resolve_event_type_id(required_skill)
         if not event_type_id:
-            return {"success": False, "error": "No bookable calendar available"}
+            return self._no_calendar_error()
 
         contact_name = self.get_contact_name()
         contact_phone = self.get_contact_phone()
@@ -269,7 +340,10 @@ class BaseToolExecutor:
         time_str: str,
     ) -> dict[str, Any]:
         """Format failed booking response. Override in subclass."""
-        return {"success": False, "error": result.error or "Booking failed"}
+        failure: dict[str, Any] = {"success": False, "error": result.error or "Booking failed"}
+        if getattr(result, "error_code", None):
+            failure["error_code"] = result.error_code
+        return failure
 
     async def post_booking_success(
         self,

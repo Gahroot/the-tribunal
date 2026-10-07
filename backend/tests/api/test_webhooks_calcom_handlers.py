@@ -779,6 +779,7 @@ async def test_meeting_ended_marks_no_show_and_increments_count(
             _Result(scalar=appt),  # Appointment
             _Result(scalar=contact),  # Contact for tag update
             _Result(),  # Remove stale opposite-cause tag
+            _Result(),  # Waitlist: workspace has no Cal.com connection → skip
             _Result(scalar=contact),  # Contact for no-show SMS
         ]
     )

@@ -9,7 +9,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.encryption import decrypt_json, encrypt_json
+from app.core.encryption import encrypt_json
 from app.db.scope import apply_workspace_scope
 from app.models.workspace import WorkspaceIntegration
 
@@ -83,30 +83,20 @@ async def get_workspace_calcom_api_key(
     workspace_id: uuid.UUID,
     db: AsyncSession,
 ) -> str | None:
-    """Return the active stored Cal.com API key for a workspace, if present."""
-    result = await db.execute(
-        apply_workspace_scope(
-            select(WorkspaceIntegration),
-            WorkspaceIntegration,
-            workspace_id,
-        ).where(
-            WorkspaceIntegration.integration_type == CALCOM_INTEGRATION_TYPE,
-            WorkspaceIntegration.is_active.is_(True),
-        )
+    """Return the active stored Cal.com API key for a workspace, if present.
+
+    Delegates to the shared calendar credential resolver (no global fallback)
+    so onboarding and booking agree on what "connected" means.
+    """
+    from app.services.calendar.calcom_credentials import (
+        CalComCredentialError,
+        resolve_calcom_credentials,
     )
-    integration = result.scalar_one_or_none()
-    if integration is None:
-        return None
 
     try:
-        credentials = decrypt_json(integration.encrypted_credentials)
-    except Exception as exc:  # pragma: no cover - defensive corrupt-row guard
-        logger.warning(
-            "calcom_credentials_decrypt_failed",
-            workspace_id=str(workspace_id),
-            error=str(exc),
+        credentials = await resolve_calcom_credentials(
+            db, workspace_id, allow_global_fallback=False
         )
+    except CalComCredentialError:
         return None
-
-    api_key = credentials.get("api_key")
-    return api_key if isinstance(api_key, str) and api_key else None
+    return credentials.api_key

@@ -10,6 +10,7 @@ import pytest
 from app.services.ai.booking_flow import BookingState
 from app.services.ai.tool_executor import VoiceToolExecutor
 from app.services.calendar.booking import AvailabilityResult, AvailableSlot, BookingResult
+from app.services.calendar.calcom_credentials import CalComCredentials
 
 SLOT = {"date": "2026-10-01", "time": "14:00", "iso": "2026-10-01T18:00:00Z"}
 BOOK = {"date": SLOT["date"], "time": SLOT["time"], "name": "Alice", "email": "a@example.test"}
@@ -229,6 +230,6 @@ async def test_reservation_exception_is_contained(executor):
 
 
 def test_voice_calendar_disables_network_retries(monkeypatch):
-    monkeypatch.setattr("app.services.ai.tool_executor.settings.calcom_api_key", "test")
     ex = VoiceToolExecutor(agent=SimpleNamespace(calcom_event_type_id=123))
+    ex._calcom_credentials = CalComCredentials(api_key="test", source="workspace")
     assert ex._create_booking_service()._calcom.max_attempts == 1

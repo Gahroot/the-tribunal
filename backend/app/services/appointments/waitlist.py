@@ -10,12 +10,15 @@ from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.webhooks.calcom_events import send_lifecycle_sms
-from app.core.config import settings
 from app.models.agent import Agent
 from app.models.appointment import Appointment, AppointmentStatus
 from app.models.contact import Contact
 from app.models.tag import ContactTag, Tag
 from app.services.calendar.calcom import CalComService
+from app.services.calendar.calcom_credentials import (
+    CalComCredentialError,
+    resolve_calcom_credentials,
+)
 from app.services.rate_limiting.opt_out_manager import OptOutManager
 
 
@@ -42,8 +45,11 @@ async def offer_waitlist_opening(db: AsyncSession, appointment: Appointment) -> 
         appointment.status != AppointmentStatus.NO_SHOW
         or not appointment.confirmed_at
         or not appointment.calcom_event_type_id
-        or not settings.calcom_api_key
     ):
+        return
+    try:
+        credentials = await resolve_calcom_credentials(db, appointment.workspace_id)
+    except CalComCredentialError:
         return
     waiting = exists(
         select(ContactTag.id)
@@ -85,7 +91,7 @@ async def offer_waitlist_opening(db: AsyncSession, appointment: Appointment) -> 
             break
     if candidate is None:
         return
-    cal = CalComService(settings.calcom_api_key)
+    cal = CalComService(credentials.api_key)
     future_slot = appointment.scheduled_at > now + timedelta(minutes=15)
     try:
         if future_slot and (

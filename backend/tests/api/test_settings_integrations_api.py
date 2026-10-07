@@ -185,3 +185,61 @@ async def test_test_integration_without_body_requires_stored_row(
         )
 
     assert resp.status_code == 404
+
+
+async def test_calcom_test_uses_booking_auth_and_reports_rejection(
+    mock_db: AsyncMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """RF-011: Cal.com "Test" hits the same v2 Bearer auth booking uses; 401 is actionable."""
+    seen: list[tuple[str, dict]] = []
+
+    class _RecordingClient(_FakeAsyncClient):
+        async def get(self, url: str, **kwargs: object) -> SimpleNamespace:  # type: ignore[override]
+            seen.append((url, dict(kwargs.get("headers") or {})))  # type: ignore[call-overload]
+            return await super().get(url, **kwargs)
+
+    monkeypatch.setattr(
+        credentials_module.httpx,
+        "AsyncClient",
+        lambda *a, **k: _RecordingClient(401, {}),
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=_credentials_app(mock_db)),
+        base_url="http://testserver",
+    ) as ac:
+        resp = await ac.post(
+            f"/api/v1/workspaces/{WS_ID}/integrations/calcom/test",
+            json={"credentials": {"api_key": "cal_live_rejected"}},
+        )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["success"] is False
+    assert "rejected" in body["message"]
+    assert "cal_live_rejected" not in body["message"]
+    assert seen[0][0] == "https://api.cal.com/v2/me"
+    assert seen[0][1]["Authorization"] == "Bearer cal_live_rejected"
+    assert seen[0][1]["cal-api-version"] == "2024-08-13"
+
+
+async def test_stored_calcom_credentials_that_cannot_decrypt_are_reported(
+    mock_db: AsyncMock,
+) -> None:
+    """RF-011: an undecryptable saved key returns guidance instead of a 500."""
+    stored = MagicMock()
+    stored.safe_credentials.return_value = None
+    mock_db.execute = AsyncMock(
+        return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=stored))
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=_credentials_app(mock_db)),
+        base_url="http://testserver",
+    ) as ac:
+        resp = await ac.post(f"/api/v1/workspaces/{WS_ID}/integrations/calcom/test")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["success"] is False
+    assert "decrypted" in body["message"]

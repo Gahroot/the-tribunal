@@ -526,18 +526,25 @@ class AppointmentService:
         On failure: logs error and stores it in sync_error; leaves sync_status='pending'.
         Never raises.
         """
-        from app.core.config import settings
         from app.services.calendar.calcom import CalComError, CalComService
-
-        if not settings.calcom_api_key:
-            self.log.debug("calcom_sync_skipped_no_api_key")
-            return
+        from app.services.calendar.calcom_credentials import (
+            CalComCredentialError,
+            resolve_calcom_credentials,
+        )
 
         if not contact_email:
             self.log.debug("calcom_sync_skipped_no_email")
             return
 
-        calcom = CalComService(settings.calcom_api_key)
+        try:
+            credentials = await resolve_calcom_credentials(self.db, appointment.workspace_id)
+        except CalComCredentialError as exc:
+            self.log.debug("calcom_sync_skipped_no_credentials", error_code=exc.code)
+            appointment.sync_error = exc.message
+            await self.db.commit()
+            return
+
+        calcom = CalComService(credentials.api_key)
         try:
             booking = await calcom.create_booking(
                 event_type_id=event_type_id,

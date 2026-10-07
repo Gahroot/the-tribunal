@@ -252,11 +252,28 @@ async def delete_integration(
 
 
 async def _test_calcom(client: httpx.AsyncClient, api_key: str) -> IntegrationTestResult:
-    """Test Cal.com API connection."""
+    """Test Cal.com API connection.
+
+    Uses the same v2 Bearer auth + API version that AI booking uses
+    (``CalComService``), so a passing test means booking can authenticate.
+    """
+    if not api_key:
+        return IntegrationTestResult(
+            success=False,
+            message="Cal.com API key is missing. Paste a key from Cal.com Settings > Developer.",
+        )
     response = await client.get(
-        "https://api.cal.com/v1/me",
-        headers={"Authorization": f"Bearer {api_key}"},
+        "https://api.cal.com/v2/me",
+        headers={"Authorization": f"Bearer {api_key}", "cal-api-version": "2024-08-13"},
     )
+    if response.status_code in (401, 403):
+        return IntegrationTestResult(
+            success=False,
+            message=(
+                "Cal.com rejected this API key. Check that it is active in "
+                "Cal.com Settings > Developer > API Keys."
+            ),
+        )
     if response.status_code == 200:
         try:
             data = response.json()
@@ -557,4 +574,13 @@ async def test_integration(
             detail=f"Integration '{integration_type}' not found",
         )
 
-    return await _run_integration_test(integration_type, integration.credentials)
+    stored = integration.safe_credentials()
+    if stored is None:
+        return IntegrationTestResult(
+            success=False,
+            message=(
+                "The saved credentials could not be decrypted. Re-enter them to reconnect "
+                "this integration."
+            ),
+        )
+    return await _run_integration_test(integration_type, stored)

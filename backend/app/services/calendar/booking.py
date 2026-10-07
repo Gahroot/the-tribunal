@@ -19,7 +19,17 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
 
-from app.services.calendar.calcom import MAX_RETRIES, CalComService
+from app.services.calendar.calcom import (
+    MAX_RETRIES,
+    CalComAuthError,
+    CalComNotFoundError,
+    CalComService,
+)
+from app.services.calendar.calcom_credentials import (
+    CALCOM_AUTH_FAILED,
+    CALCOM_EVENT_TYPE_NOT_FOUND,
+    CALCOM_PROVIDER_ERROR,
+)
 
 logger = structlog.get_logger()
 
@@ -40,6 +50,7 @@ class AvailabilityResult:
     success: bool
     slots: list[AvailableSlot] = field(default_factory=list)
     error: str | None = None
+    error_code: str | None = None
 
 
 @dataclass
@@ -51,6 +62,7 @@ class BookingResult:
     booking_id: int | None = None
     error: str | None = None
     alternative_slots: list[AvailableSlot] = field(default_factory=list)
+    error_code: str | None = None
 
 
 class BookingService:
@@ -132,8 +144,9 @@ class BookingService:
             return AvailabilityResult(success=True, slots=slots)
 
         except Exception as e:
-            self._log.exception("check_availability_error", error=str(e))
-            return AvailabilityResult(success=False, error=f"Failed to check availability: {e!s}")
+            code, message = self._classify_provider_error(e, "Failed to check availability")
+            self._log_provider_failure("check_availability_error", code, e)
+            return AvailabilityResult(success=False, error=message, error_code=code)
 
     async def reserve_slot(self, start_iso: str) -> dict[str, Any]:
         """Place a short-lived hold on a slot returned by availability."""
@@ -179,12 +192,17 @@ class BookingService:
 
         if pre_validate:
             # Re-check availability to confirm the slot still exists
-            raw_slots = await self._calcom.get_availability(
-                event_type_id=self._event_type_id,
-                start_date=start_date,
-                end_date=start_date,
-                timezone=self._timezone,
-            )
+            try:
+                raw_slots = await self._calcom.get_availability(
+                    event_type_id=self._event_type_id,
+                    start_date=start_date,
+                    end_date=start_date,
+                    timezone=self._timezone,
+                )
+            except Exception as e:
+                code, message = self._classify_provider_error(e, "Failed to book appointment")
+                self._log_provider_failure("book_prevalidate_error", code, e)
+                return BookingResult(success=False, error=message, error_code=code)
 
             matched_slot = next((s for s in raw_slots if s.get("time") == time_str), None)
 
@@ -244,8 +262,30 @@ class BookingService:
             )
 
         except Exception as e:
-            self._log.exception("book_appointment_error", error=str(e))
-            return BookingResult(success=False, error=f"Failed to book appointment: {e!s}")
+            code, message = self._classify_provider_error(e, "Failed to book appointment")
+            self._log_provider_failure("book_appointment_error", code, e)
+            return BookingResult(success=False, error=message, error_code=code)
+
+    def _log_provider_failure(self, event: str, code: str, exc: Exception) -> None:
+        """Expected credential/config rejections warn; unexpected failures keep the trace."""
+        if code == CALCOM_PROVIDER_ERROR:
+            self._log.exception(event, error_code=code, error=str(exc))
+        else:
+            self._log.warning(event, error_code=code, error_type=type(exc).__name__)
+
+    def _classify_provider_error(self, exc: Exception, prefix: str) -> tuple[str, str]:
+        """Map a Cal.com failure to an actionable (error_code, message) pair."""
+        if isinstance(exc, CalComAuthError):
+            return CALCOM_AUTH_FAILED, (
+                "Cal.com rejected the saved API key. Reconnect Cal.com in "
+                "Settings → Integrations → Cal.com."
+            )
+        if isinstance(exc, CalComNotFoundError):
+            return CALCOM_EVENT_TYPE_NOT_FOUND, (
+                f"Cal.com event type {self._event_type_id} was not found for the connected "
+                "account. Check the agent's Cal.com event type."
+            )
+        return CALCOM_PROVIDER_ERROR, f"{prefix}: {exc!s}"
 
     async def close(self) -> None:
         """Close the underlying CalComService if we own it."""

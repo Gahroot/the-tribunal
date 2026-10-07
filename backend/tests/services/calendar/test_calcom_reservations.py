@@ -9,6 +9,7 @@ import pytest
 
 from app.services.ai.tool_executor import VoiceToolExecutor
 from app.services.calendar.calcom import CalComError, CalComService
+from app.services.calendar.calcom_credentials import CalComCredentials
 from app.services.providers.http import AsyncProviderHTTPClient
 
 
@@ -98,6 +99,7 @@ async def test_voice_booking_post_is_not_retried_after_timeout(wire):
     requests, responses, _clients = wire
     responses.append(httpx.ReadTimeout("ambiguous booking result"))
     executor = VoiceToolExecutor(agent=SimpleNamespace(calcom_event_type_id=123))
+    executor._calcom_credentials = CalComCredentials(api_key="test", source="workspace")
     service = executor._create_booking_service(123)
     try:
         with pytest.raises(CalComError):

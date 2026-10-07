@@ -278,7 +278,13 @@ def _validate_startup_config() -> None:
 
     # Check optional but important integrations
     if not settings.calcom_api_key:
-        log.warning("missing_calcom_api_key", message="Cal.com appointments disabled")
+        log.info(
+            "missing_calcom_api_key",
+            message=(
+                "No global CALCOM_API_KEY fallback; workspaces book with their own "
+                "Cal.com connection from Settings > Integrations"
+            ),
+        )
 
     if not settings.elevenlabs_api_key:
         log.warning("missing_elevenlabs_api_key", message="ElevenLabs voice disabled")
