@@ -72,7 +72,9 @@ async def _titles(db: AsyncSession, ws: Workspace, status: str | None) -> set[st
     return {item.title for item in page.items}
 
 
-async def test_delivered_nudge_stays_in_active_work_until_resolved() -> None:
+async def test_delivered_nudge_stays_in_active_work_until_resolved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     async with AsyncSessionLocal() as db:
         ws = await _workspace(db)
         now = datetime.now(UTC)
@@ -99,14 +101,16 @@ async def test_delivered_nudge_stays_in_active_work_until_resolved() -> None:
         assert await _titles(db, ws, "snoozed") == {"snoozed"}
 
         # Dismissing the delivered nudge removes it from active work.
-        db.commit = db.flush  # type: ignore[method-assign]  # keep the test transactional
+        monkeypatch.setattr(db, "commit", db.flush)  # keep the test transactional
         await dismiss_nudge(workspace=ws, db=db, nudge_id=sent.id)
         assert await _titles(db, ws, None) == {"pending"}
         assert await _titles(db, ws, "dismissed") == {"dismissed", "sent"}
         await db.rollback()
 
 
-async def test_snoozed_nudge_returns_to_active_work_after_snooze_ends() -> None:
+async def test_snoozed_nudge_returns_to_active_work_after_snooze_ends(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     async with AsyncSessionLocal() as db:
         ws = await _workspace(db)
         now = datetime.now(UTC)
@@ -119,7 +123,7 @@ async def test_snoozed_nudge_returns_to_active_work_after_snooze_ends() -> None:
         await db.flush()
         assert await _titles(db, ws, None) == set()
 
-        db.commit = db.flush  # type: ignore[method-assign]  # keep the test transactional
+        monkeypatch.setattr(db, "commit", db.flush)  # keep the test transactional
         await NudgeWorker()._expire_snoozed_nudges(db)
 
         assert await _titles(db, ws, None) == {"expired"}
