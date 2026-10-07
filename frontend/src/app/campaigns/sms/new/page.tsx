@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { PageLoadingState } from "@/components/ui/page-state";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 import { agentsApi } from "@/lib/api/agents";
+import { getNotSendableEligibility } from "@/lib/api/campaign-eligibility";
 import { offersApi } from "@/lib/api/offers";
 import { phoneNumbersApi } from "@/lib/api/phone-numbers";
 import { smsCampaignsApi, type CreateSMSCampaignRequest } from "@/lib/api/sms-campaigns";
@@ -134,14 +135,20 @@ export default function NewSMSCampaignPage() {
         await smsCampaignsApi.addContacts(workspaceId, campaign.id, contactIdsArray);
       }
 
-      // Start sending. A start failure leaves the campaign in draft — surface
-      // it, but keep the campaign so the operator can retry from the list.
+      // Start sending. The backend rechecks recipient eligibility here (the
+      // preview is advisory) and refuses with 409 when nobody can be texted.
+      // A start failure leaves the campaign in draft — surface it, and keep
+      // the campaign so the operator can fix the audience and retry.
       let started = false;
       let startError: string | null = null;
+      let startMessage: string | null = null;
+      let notSendable = false;
       try {
-        await smsCampaignsApi.start(workspaceId, campaign.id);
+        const result = await smsCampaignsApi.start(workspaceId, campaign.id);
         started = true;
+        startMessage = result.message;
       } catch (error) {
+        notSendable = getNotSendableEligibility(error) !== null;
         startError = getApiErrorMessage(error, messages.campaigns.startFailed);
       }
 
@@ -150,9 +157,11 @@ export default function NewSMSCampaignPage() {
         totalContacts: contactIdsArray.length,
         started,
         startError,
+        startMessage,
+        notSendable,
       };
     },
-    onSuccess: ({ campaign, totalContacts, started, startError }) => {
+    onSuccess: ({ campaign, totalContacts, started, startError, startMessage, notSendable }) => {
       if (workspaceId) {
         const status: CampaignStatus = started ? "running" : campaign.status;
         const row = toListCampaign(campaign, status, totalContacts);
@@ -169,11 +178,13 @@ export default function NewSMSCampaignPage() {
         queryClient.invalidateQueries({ queryKey: queryKeys.campaigns.all(workspaceId) });
       }
       if (started) {
-        toast.success(messages.campaigns.smsSent);
+        toast.success(messages.campaigns.smsSent, startMessage ? { description: startMessage } : undefined);
       } else {
         toast.error(startError ?? messages.campaigns.startFailed);
       }
-      router.push("/campaigns");
+      // When nobody could be texted, land on the draft so the operator sees
+      // the exclusions and can recover instead of hunting through the list.
+      router.push(notSendable ? `/campaigns/${campaign.id}` : "/campaigns");
     },
     onError: (error) => {
       toast.error(getApiErrorMessage(error, messages.campaigns.smsCreateFailed));

@@ -325,3 +325,29 @@ class BatchQualifyResponse(BaseModel):
     errors: int = 0
     contacts: list[dict[str, Any]] = []
     error: str | None = None
+
+
+class SmsConsentRecordRequest(BaseModel):
+    """Operator-attested SMS consent for a set of contacts.
+
+    Consent is never inferred; the operator names the source and attests that
+    each contact agreed to receive texts. Opted-out numbers are never changed.
+    """
+
+    ids: list[int] = Field(..., min_length=1, max_length=10_000)
+    source: Literal["web_form", "paper_form", "text_keyword", "verbal_recorded", "other_documented"]
+    collected_at: datetime | None = None
+    notes: str | None = Field(None, max_length=500)
+    attested: Literal[True] = Field(
+        ...,
+        description="Operator confirms each contact gave consent to receive text messages.",
+    )
+
+
+class SmsConsentRecordResponse(BaseModel):
+    """Outcome of recording SMS consent."""
+
+    updated: int
+    already_opted_in: int
+    skipped_opted_out: list[int]
+    not_found: list[int]

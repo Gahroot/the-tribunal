@@ -1,4 +1,5 @@
 import { apiGet, apiPost } from "@/lib/api";
+import type { CampaignStartResponse } from "@/lib/api/campaign-eligibility";
 import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
 import type { SMSCampaign, CampaignStatus } from "@/types";
 
@@ -83,11 +84,15 @@ export const smsCampaignsApi = {
   ...baseApi,
 
   // Campaign actions
+  /**
+   * Start sending. SMS campaigns recheck recipient eligibility server-side;
+   * a 409 `no_eligible_recipients` means nobody can be texted yet.
+   */
   start: async (
     workspaceId: string,
     campaignId: string
-  ): Promise<{ status: string; message: string }> => {
-    return apiPost<{ status: string; message: string }>(
+  ): Promise<CampaignStartResponse> => {
+    return apiPost<CampaignStartResponse>(
       `/api/v1/workspaces/${workspaceId}/campaigns/${campaignId}/start`
     );
   },

@@ -2620,6 +2620,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/campaigns/eligibility-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Recipient Eligibility
+         * @description Preview which selected contacts an SMS campaign could message right now.
+         *
+         *     Read-only and advisory: uses the same compliance rules as the send path,
+         *     which rechecks every recipient at launch and again at send time.
+         */
+        post: operations["preview_recipient_eligibility_api_v1_workspaces__workspace_id__campaigns_eligibility_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/campaigns/recipients/sms-consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Recipients Sms Consent
+         * @description Record operator-attested SMS consent for workspace contacts.
+         *
+         *     Recovery path for recipients excluded for missing consent. Consent is never
+         *     inferred: the operator names the source and attests. Opted-out numbers are
+         *     skipped, and the campaign worker still rechecks every rule at send time.
+         */
+        post: operations["record_recipients_sms_consent_api_v1_workspaces__workspace_id__campaigns_recipients_sms_consent_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}": {
         parameters: {
             query?: never;
@@ -2732,6 +2779,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}/eligibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Recipient Eligibility
+         * @description Read-only eligibility of an existing SMS campaign's recipients right now.
+         */
+        get: operations["get_recipient_eligibility_api_v1_workspaces__workspace_id__campaigns__campaign_id__eligibility_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}/guarantee": {
         parameters: {
             query?: never;
@@ -2804,6 +2871,10 @@ export interface paths {
         /**
          * Start Campaign
          * @description Start a campaign.
+         *
+         *     SMS campaigns recheck recipient eligibility now (never trusting an earlier
+         *     preview) and return 409 ``no_eligible_recipients`` when nobody may be
+         *     messaged, leaving the campaign unchanged.
          */
         post: operations["start_campaign_api_v1_workspaces__workspace_id__campaigns__campaign_id__start_post"];
         delete?: never;
@@ -9906,6 +9977,7 @@ export interface components {
              * @default 0
              */
             qualification_rate: number;
+            recipients?: components["schemas"]["CampaignRecipientBreakdown"] | null;
             /** Replies Received */
             replies_received: number;
             /**
@@ -10063,6 +10135,32 @@ export interface components {
              * @default America/New_York
              */
             timezone: string;
+        };
+        /**
+         * CampaignRecipientBreakdown
+         * @description Where each campaign recipient stands on its initial message.
+         */
+        CampaignRecipientBreakdown: {
+            /** Deferred */
+            deferred: number;
+            /** Deferred Reasons */
+            deferred_reasons?: {
+                [key: string]: number;
+            };
+            /** Excluded */
+            excluded: number;
+            /** Excluded Reasons */
+            excluded_reasons?: {
+                [key: string]: number;
+            };
+            /** Failed */
+            failed: number;
+            /** Opted Out */
+            opted_out: number;
+            /** Queued */
+            queued: number;
+            /** Sent */
+            sent: number;
         };
         /**
          * CampaignReportListResponse
@@ -10270,6 +10368,17 @@ export interface components {
              * Format: uuid
              */
             workspace_id: string;
+        };
+        /**
+         * CampaignStartResponse
+         * @description Result of starting or resuming a campaign.
+         */
+        CampaignStartResponse: {
+            eligibility?: components["schemas"]["RecipientEligibilityResponse"] | null;
+            /** Message */
+            message: string;
+            /** Status */
+            status: string;
         };
         /**
          * CampaignStat
@@ -17176,6 +17285,86 @@ export interface components {
             top_call_reasons: components["schemas"]["CallReasonStat"][];
         };
         /**
+         * RecipientEligibilityPreviewRequest
+         * @description Preview eligibility for a campaign that has not been created yet.
+         */
+        RecipientEligibilityPreviewRequest: {
+            /** Contact Ids */
+            contact_ids: number[];
+            /** From Phone Number */
+            from_phone_number: string;
+            /**
+             * Sending Days
+             * @description Days of the week sending is allowed, evaluated in the campaign timezone. Python weekday encoding: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6 (Mon-Fri = [0,1,2,3,4]); NOT JavaScript getDay(). null means every day.
+             */
+            sending_days?: number[] | null;
+            /** Sending Hours End */
+            sending_hours_end?: string | null;
+            /** Sending Hours Start */
+            sending_hours_start?: string | null;
+            /**
+             * Timezone
+             * @default America/New_York
+             */
+            timezone: string;
+        };
+        /**
+         * RecipientEligibilityResponse
+         * @description Who a campaign may message right now under the send-time compliance rules.
+         *
+         *     Informational only: the worker re-evaluates every recipient at send time.
+         */
+        RecipientEligibilityResponse: {
+            /** Already Contacted Count */
+            already_contacted_count: number;
+            /**
+             * Channel
+             * @enum {string}
+             */
+            channel: "sms" | "imessage";
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
+            /** Consent Required */
+            consent_required: boolean;
+            /** Deferral Details */
+            deferral_details?: {
+                [key: string]: unknown;
+            };
+            /** Deferral Label */
+            deferral_label?: string | null;
+            /** Deferral Reason */
+            deferral_reason?: string | null;
+            /** Eligible Count */
+            eligible_count: number;
+            /** Excluded Count */
+            excluded_count: number;
+            /** Exclusions */
+            exclusions: components["schemas"]["RecipientExclusionResponse"][];
+            /** Ready To Send */
+            ready_to_send: boolean;
+            /** Selected Count */
+            selected_count: number;
+        };
+        /**
+         * RecipientExclusionResponse
+         * @description Recipients withheld by one compliance rule.
+         */
+        RecipientExclusionResponse: {
+            /** Contact Ids */
+            contact_ids: number[];
+            /** Count */
+            count: number;
+            /** Label */
+            label: string;
+            /** Reason */
+            reason: string;
+            /** Recoverable With Consent */
+            recoverable_with_consent: boolean;
+        };
+        /**
          * RegisterTokenRequest
          * @description Schema for registering an Expo push token.
          */
@@ -17936,6 +18125,46 @@ export interface components {
          * @enum {string}
          */
         SequenceEnrollmentStatus: "active" | "paused" | "completed" | "replied" | "opted_out" | "converted" | "failed" | "cancelled";
+        /**
+         * SmsConsentRecordRequest
+         * @description Operator-attested SMS consent for a set of contacts.
+         *
+         *     Consent is never inferred; the operator names the source and attests that
+         *     each contact agreed to receive texts. Opted-out numbers are never changed.
+         */
+        SmsConsentRecordRequest: {
+            /**
+             * Attested
+             * @description Operator confirms each contact gave consent to receive text messages.
+             * @constant
+             */
+            attested: true;
+            /** Collected At */
+            collected_at?: string | null;
+            /** Ids */
+            ids: number[];
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "web_form" | "paper_form" | "text_keyword" | "verbal_recorded" | "other_documented";
+        };
+        /**
+         * SmsConsentRecordResponse
+         * @description Outcome of recording SMS consent.
+         */
+        SmsConsentRecordResponse: {
+            /** Already Opted In */
+            already_opted_in: number;
+            /** Not Found */
+            not_found: number[];
+            /** Skipped Opted Out */
+            skipped_opted_out: number[];
+            /** Updated */
+            updated: number;
+        };
         /** SourceBucket */
         SourceBucket: {
             /** Booked */
@@ -24510,6 +24739,76 @@ export interface operations {
             };
         };
     };
+    preview_recipient_eligibility_api_v1_workspaces__workspace_id__campaigns_eligibility_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecipientEligibilityPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecipientEligibilityResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_recipients_sms_consent_api_v1_workspaces__workspace_id__campaigns_recipients_sms_consent_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SmsConsentRecordRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmsConsentRecordResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_campaign_api_v1_workspaces__workspace_id__campaigns__campaign_id__get: {
         parameters: {
             query?: never;
@@ -24779,6 +25078,38 @@ export interface operations {
             };
         };
     };
+    get_recipient_eligibility_api_v1_workspaces__workspace_id__campaigns__campaign_id__eligibility_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecipientEligibilityResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_guarantee_progress_api_v1_workspaces__workspace_id__campaigns__campaign_id__guarantee_get: {
         parameters: {
             query?: never;
@@ -24863,9 +25194,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["CampaignStartResponse"];
                 };
             };
             /** @description Validation Error */
@@ -24897,10 +25226,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["CampaignStartResponse"];
                 };
+            };
+            /** @description No recipient can currently be messaged */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

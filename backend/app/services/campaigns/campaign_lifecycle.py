@@ -8,7 +8,11 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.campaign import Campaign, CampaignContact, CampaignStatus
+from app.models.campaign import Campaign, CampaignContact, CampaignStatus, CampaignType
+from app.services.campaigns.recipient_eligibility import (
+    RecipientEligibility,
+    RecipientEligibilityService,
+)
 
 
 class CampaignLifecycleError(Exception):
@@ -22,6 +26,65 @@ class CampaignLifecycleResult:
     status: CampaignStatus
     message: str
     contact_count: int | None = None
+    # SMS campaigns only: launch-time recipient eligibility (rechecked here,
+    # and again by the worker at send time).
+    eligibility: RecipientEligibility | None = None
+
+
+class CampaignNotSendableError(CampaignLifecycleError):
+    """Raised when an SMS campaign has no recipient who may currently be messaged."""
+
+    def __init__(self, message: str, eligibility: RecipientEligibility) -> None:
+        super().__init__(message)
+        self.eligibility = eligibility
+
+
+def _is_sms_campaign(campaign: Campaign) -> bool:
+    return campaign.campaign_type in (CampaignType.SMS, CampaignType.SMS.value)
+
+
+def _eligibility_message(prefix: str, eligibility: RecipientEligibility) -> str:
+    message = (
+        f"{prefix}: {eligibility.eligible_count} of {eligibility.selected_count} "
+        "recipients eligible now"
+    )
+    if eligibility.exclusions:
+        message += f"; {eligibility.excluded_count} excluded ({eligibility.exclusion_summary()})"
+    if eligibility.deferral_label:
+        message += f". Sends deferred: {eligibility.deferral_label.lower()}"
+    return message
+
+
+async def _recheck_sms_recipients(
+    db: AsyncSession,
+    campaign: Campaign,
+    eligibility_service: RecipientEligibilityService | None,
+    *,
+    require_eligible: bool,
+) -> RecipientEligibility:
+    """Re-evaluate recipients with the send-time rules and persist the verdicts.
+
+    Never trusts an earlier preview. When ``require_eligible`` and nobody can be
+    messaged (and nobody was messaged before), nothing is persisted and
+    :class:`CampaignNotSendableError` is raised so the campaign is not reported
+    as delivering.
+    """
+    service = eligibility_service or RecipientEligibilityService()
+    eligibility = await service.evaluate_campaign(db, campaign)
+    if (
+        require_eligible
+        and eligibility.eligible_count == 0
+        and eligibility.already_contacted_count == 0
+    ):
+        detail = eligibility.exclusion_summary() or "no recipients"
+        raise CampaignNotSendableError(
+            "No recipients can be messaged yet "
+            f"({detail}). Record SMS consent for these contacts or choose a "
+            "different audience, then start again.",
+            eligibility,
+        )
+    service.apply_to_campaign(campaign, eligibility)
+    return eligibility
 
 
 async def get_campaign_for_workspace(
@@ -51,8 +114,13 @@ async def start_campaign(
     db: AsyncSession,
     campaign: Campaign,
     contact_count: int | None = None,
+    eligibility_service: RecipientEligibilityService | None = None,
 ) -> CampaignLifecycleResult:
-    """Start a draft, paused, or scheduled campaign with worker-compatible status."""
+    """Start a draft, paused, or scheduled campaign with worker-compatible status.
+
+    SMS campaigns recheck recipient eligibility with the authoritative
+    compliance rules and refuse to start when nobody may be messaged.
+    """
     if campaign.status not in {
         CampaignStatus.DRAFT,
         CampaignStatus.PAUSED,
@@ -66,6 +134,14 @@ async def start_campaign(
     if enrolled_count == 0:
         raise CampaignLifecycleError("Campaign has no contacts")
 
+    eligibility: RecipientEligibility | None = None
+    message = f"Campaign started with {enrolled_count} contacts"
+    if _is_sms_campaign(campaign):
+        eligibility = await _recheck_sms_recipients(
+            db, campaign, eligibility_service, require_eligible=True
+        )
+        message = _eligibility_message("Campaign started", eligibility)
+
     campaign.status = CampaignStatus.RUNNING
     campaign.started_at = datetime.now(UTC)
     if campaign.guarantee_target and campaign.guarantee_target > 0:
@@ -73,8 +149,9 @@ async def start_campaign(
 
     return CampaignLifecycleResult(
         status=CampaignStatus.RUNNING,
-        message=f"Campaign started with {enrolled_count} contacts",
+        message=message,
         contact_count=enrolled_count,
+        eligibility=eligibility,
     )
 
 
@@ -91,8 +168,14 @@ async def resume_campaign(
     db: AsyncSession,
     campaign: Campaign,
     contact_count: int | None = None,
+    eligibility_service: RecipientEligibilityService | None = None,
 ) -> CampaignLifecycleResult:
-    """Resume a paused campaign with worker-compatible status."""
+    """Resume a paused campaign with worker-compatible status.
+
+    SMS campaigns re-evaluate excluded recipients so consent recorded while
+    paused returns them to the queue. Resume never refuses on eligibility
+    because already-contacted recipients may still have follow-ups due.
+    """
     if campaign.status != CampaignStatus.PAUSED:
         raise CampaignLifecycleError("Can only resume paused campaigns")
 
@@ -102,11 +185,20 @@ async def resume_campaign(
     if enrolled_count == 0:
         raise CampaignLifecycleError("Campaign has no contacts")
 
+    eligibility: RecipientEligibility | None = None
+    message = "Campaign resumed"
+    if _is_sms_campaign(campaign):
+        eligibility = await _recheck_sms_recipients(
+            db, campaign, eligibility_service, require_eligible=False
+        )
+        message = _eligibility_message("Campaign resumed", eligibility)
+
     campaign.status = CampaignStatus.RUNNING
     return CampaignLifecycleResult(
         status=CampaignStatus.RUNNING,
-        message="Campaign resumed",
+        message=message,
         contact_count=enrolled_count,
+        eligibility=eligibility,
     )
 
 

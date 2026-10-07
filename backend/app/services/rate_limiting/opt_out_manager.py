@@ -1,6 +1,7 @@
 """Global opt-out list management."""
 
 import uuid
+from collections.abc import Iterable
 from datetime import UTC, datetime
 
 import structlog
@@ -10,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.opt_out import GlobalOptOut
 
 logger = structlog.get_logger()
+
+_OPT_OUT_BATCH_SIZE = 1000
 
 
 class OptOutManager:
@@ -61,6 +64,32 @@ class OptOutManager:
             )
         )
         return result.scalar_one_or_none() is not None
+
+    async def opted_out_numbers(
+        self,
+        workspace_id: uuid.UUID,
+        phone_numbers: Iterable[str],
+        db: AsyncSession,
+    ) -> frozenset[str]:
+        """Return the subset of ``phone_numbers`` on the workspace opt-out list.
+
+        Batch form of :meth:`check_opt_out` (same table and workspace scoping)
+        for previews that evaluate many recipients at once.
+        """
+        numbers = sorted({number for number in phone_numbers if number})
+        if not numbers:
+            return frozenset()
+        opted_out: set[str] = set()
+        for start in range(0, len(numbers), _OPT_OUT_BATCH_SIZE):
+            chunk = numbers[start : start + _OPT_OUT_BATCH_SIZE]
+            result = await db.execute(
+                select(GlobalOptOut.phone_number).where(
+                    GlobalOptOut.workspace_id == workspace_id,
+                    GlobalOptOut.phone_number.in_(chunk),
+                )
+            )
+            opted_out.update(result.scalars().all())
+        return frozenset(opted_out)
 
     async def add_opt_out(
         self,

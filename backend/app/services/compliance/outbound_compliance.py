@@ -15,6 +15,19 @@ from app.services.rate_limiting.opt_out_manager import OptOutManager
 
 logger = structlog.get_logger()
 
+# Compliance reasons that withhold one recipient until the operator changes
+# something about that contact (as opposed to timing/capacity reasons such as
+# ``quiet_hours`` or ``campaign_send_cap_reached``, which only defer a send).
+RECIPIENT_EXCLUSION_REASONS: frozenset[str] = frozenset(
+    {
+        "global_opt_out",
+        "missing_sms_consent",
+        "missing_phone_number",
+        "duplicate_campaign_contact",
+        "contact_send_cap_reached",
+    }
+)
+
 
 @dataclass(slots=True, frozen=True)
 class OutboundComplianceRequest:
@@ -28,6 +41,14 @@ class OutboundComplianceRequest:
     action_type: str
     now: datetime
     require_sms_consent: bool = True
+    # Campaign-wide gates (quiet hours, campaign send cap) defer sends rather
+    # than exclude a recipient. Launch previews report them once per campaign;
+    # real sends always keep them on.
+    include_campaign_gates: bool = True
+    # Optional pre-fetched workspace opt-out set (from
+    # ``OptOutManager.opted_out_numbers``) so batch previews avoid one query
+    # per recipient. ``None`` means "query the opt-out list".
+    known_opted_out_numbers: frozenset[str] | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -66,9 +87,13 @@ class OutboundComplianceService:
         db: AsyncSession,
     ) -> OutboundComplianceResult:
         """Evaluate all compliance gates for a proposed outbound send."""
-        if await self.opt_out_manager.check_opt_out(
-            request.workspace_id, request.contact.phone_number, db
-        ):
+        if request.known_opted_out_numbers is not None:
+            is_opted_out = request.contact.phone_number in request.known_opted_out_numbers
+        else:
+            is_opted_out = await self.opt_out_manager.check_opt_out(
+                request.workspace_id, request.contact.phone_number, db
+            )
+        if is_opted_out:
             return self._blocked("global_opt_out", request)
 
         if request.channel == "sms" and request.require_sms_consent:
@@ -80,22 +105,14 @@ class OutboundComplianceService:
                     {"sms_consent_status": consent_status},
                 )
 
-        quiet_hours_result = self._evaluate_quiet_hours(request)
-        if not quiet_hours_result.allowed:
-            return quiet_hours_result
+        if request.include_campaign_gates:
+            quiet_hours_result = self._evaluate_quiet_hours(request)
+            if not quiet_hours_result.allowed:
+                return quiet_hours_result
 
-        if (
-            request.campaign.max_messages_per_campaign is not None
-            and request.campaign.messages_sent >= request.campaign.max_messages_per_campaign
-        ):
-            return self._blocked(
-                "campaign_send_cap_reached",
-                request,
-                {
-                    "messages_sent": request.campaign.messages_sent,
-                    "max_messages_per_campaign": request.campaign.max_messages_per_campaign,
-                },
-            )
+            cap_details = self.campaign_send_cap_details(request.campaign)
+            if cap_details is not None:
+                return self._blocked("campaign_send_cap_reached", request, cap_details)
 
         if request.campaign_contact is not None:
             if request.campaign_contact.messages_sent >= request.campaign.max_messages_per_contact:
@@ -135,6 +152,10 @@ class OutboundComplianceService:
         campaign_contact.last_compliance_result = result.as_dict()
 
         if result.allowed:
+            # A contact that was previously deferred/excluded (e.g. quiet hours,
+            # missing consent later recorded) must not keep a stale reason.
+            campaign_contact.suppressed_reason = None
+            campaign_contact.suppressed_at = None
             return
 
         campaign_contact.suppressed_reason = result.reason
@@ -175,22 +196,36 @@ class OutboundComplianceService:
         duplicate_result = await db.execute(duplicate_query)
         return bool(duplicate_result.scalar())
 
-    def _evaluate_quiet_hours(self, request: OutboundComplianceRequest) -> OutboundComplianceResult:
-        start = request.campaign.quiet_hours_start
-        end = request.campaign.quiet_hours_end
-        if start is None or end is None:
-            return OutboundComplianceResult(allowed=True)
+    @staticmethod
+    def campaign_send_cap_details(campaign: Campaign) -> dict[str, object] | None:
+        """Return cap details when the campaign has reached its total send cap."""
+        if (
+            campaign.max_messages_per_campaign is not None
+            and campaign.messages_sent >= campaign.max_messages_per_campaign
+        ):
+            return {
+                "messages_sent": campaign.messages_sent,
+                "max_messages_per_campaign": campaign.max_messages_per_campaign,
+            }
+        return None
 
-        timezone_name = request.campaign.quiet_hours_timezone or request.campaign.timezone or "UTC"
+    def quiet_hours_details(self, campaign: Campaign, now: datetime) -> dict[str, object] | None:
+        """Return quiet-hours details when ``now`` is inside the campaign's quiet hours."""
+        start = campaign.quiet_hours_start
+        end = campaign.quiet_hours_end
+        if start is None or end is None:
+            return None
+
+        timezone_name = campaign.quiet_hours_timezone or campaign.timezone or "UTC"
         try:
-            local_now = request.now.astimezone(ZoneInfo(timezone_name))
+            local_now = now.astimezone(ZoneInfo(timezone_name))
         except ZoneInfoNotFoundError:
             self.logger.warning(
                 "invalid_quiet_hours_timezone",
                 timezone=timezone_name,
-                campaign_id=str(request.campaign.id),
+                campaign_id=str(campaign.id),
             )
-            local_now = request.now.astimezone(ZoneInfo("UTC"))
+            local_now = now.astimezone(ZoneInfo("UTC"))
             timezone_name = "UTC"
 
         local_time = local_now.time()
@@ -200,18 +235,20 @@ class OutboundComplianceService:
             in_quiet_hours = local_time >= start or local_time < end
 
         if not in_quiet_hours:
-            return OutboundComplianceResult(allowed=True)
+            return None
 
-        return self._blocked(
-            "quiet_hours",
-            request,
-            {
-                "quiet_hours_start": start.isoformat(),
-                "quiet_hours_end": end.isoformat(),
-                "timezone": timezone_name,
-                "local_time": local_time.isoformat(),
-            },
-        )
+        return {
+            "quiet_hours_start": start.isoformat(),
+            "quiet_hours_end": end.isoformat(),
+            "timezone": timezone_name,
+            "local_time": local_time.isoformat(),
+        }
+
+    def _evaluate_quiet_hours(self, request: OutboundComplianceRequest) -> OutboundComplianceResult:
+        details = self.quiet_hours_details(request.campaign, request.now)
+        if details is None:
+            return OutboundComplianceResult(allowed=True)
+        return self._blocked("quiet_hours", request, details)
 
     def _blocked(
         self,

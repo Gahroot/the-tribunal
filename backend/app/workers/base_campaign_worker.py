@@ -7,16 +7,14 @@ Extracts common patterns from campaign_worker.py and voice_campaign_worker.py:
 """
 
 from abc import abstractmethod
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import QueryableAttribute, selectinload
 
 from app.core.config import settings
-from app.core.sending_days import is_sending_day
 from app.db.session import AsyncSessionLocal
 from app.models.campaign import (
     Campaign,
@@ -25,6 +23,7 @@ from app.models.campaign import (
     CampaignType,
 )
 from app.services.ai.campaign_report_service import CampaignReportService
+from app.services.campaigns.sending_window import is_within_sending_window
 from app.workers.base import BaseWorker
 from app.workers.retryable import RetryableWorker
 
@@ -134,40 +133,15 @@ class BaseCampaignWorker(RetryableWorker, BaseWorker):
     def _is_within_sending_hours(self, campaign: Campaign, now: datetime | None = None) -> bool:
         """Check if current time is within campaign sending hours.
 
-        ``sending_days`` follows ``app.core.sending_days`` (Monday=0 … Sunday=6),
-        evaluated on the campaign's local date.
+        Delegates to :func:`app.services.campaigns.sending_window.is_within_sending_window`
+        so launch previews and workers share one rule.
         """
-        if campaign.sending_hours_start is None or campaign.sending_hours_end is None:
-            self.logger.debug(
-                "Sending hours not set, allowing",
-                start=campaign.sending_hours_start,
-                end=campaign.sending_hours_end,
-            )
-            return True
-
-        tz = ZoneInfo(campaign.timezone or "UTC")
-        now = (now or datetime.now(UTC)).astimezone(tz)
-
-        if not is_sending_day(campaign.sending_days, now):
-            self.logger.debug(
-                "Not a sending day",
-                sending_days=campaign.sending_days,
-                weekday=now.weekday(),
-            )
-            return False
-
-        start_val = campaign.sending_hours_start
-        end_val = campaign.sending_hours_end
-        start_time: time = start_val.time() if isinstance(start_val, datetime) else start_val
-        end_time: time = end_val.time() if isinstance(end_val, datetime) else end_val
-        current_time = now.time()
-
-        result = start_time <= current_time <= end_time
+        result = is_within_sending_window(campaign, now)
         self.logger.debug(
             "Sending hours check",
-            start_time=str(start_time),
-            end_time=str(end_time),
-            current_time=str(current_time),
+            start=str(campaign.sending_hours_start),
+            end=str(campaign.sending_hours_end),
+            sending_days=campaign.sending_days,
             result=result,
         )
         return result

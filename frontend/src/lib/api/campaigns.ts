@@ -1,4 +1,5 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api";
+import type { Schemas } from "@/lib/api/_client";
 import { createApiClient, type FullApiClient } from "@/lib/api/create-api-client";
 import type {
   Campaign,
@@ -75,6 +76,8 @@ export interface CampaignAnalytics {
   reply_rate?: number;
   delivery_rate?: number;
   qualification_rate?: number;
+  /** Initial-message status per recipient: sent vs deferred vs excluded. */
+  recipients?: Schemas["CampaignRecipientBreakdown"] | null;
 }
 
 export interface CampaignActionResponse {
@@ -99,8 +102,8 @@ export const campaignsApi = {
   },
 
   // Campaign lifecycle actions
-  start: async (workspaceId: string, id: string): Promise<CampaignActionResponse> => {
-    return apiPost<CampaignActionResponse>(
+  start: async (workspaceId: string, id: string): Promise<Schemas["CampaignStartResponse"]> => {
+    return apiPost<Schemas["CampaignStartResponse"]>(
       `/api/v1/workspaces/${workspaceId}/campaigns/${id}/start`
     );
   },
@@ -111,8 +114,8 @@ export const campaignsApi = {
     );
   },
 
-  resume: async (workspaceId: string, id: string): Promise<CampaignActionResponse> => {
-    return apiPost<CampaignActionResponse>(
+  resume: async (workspaceId: string, id: string): Promise<Schemas["CampaignStartResponse"]> => {
+    return apiPost<Schemas["CampaignStartResponse"]>(
       `/api/v1/workspaces/${workspaceId}/campaigns/${id}/resume`
     );
   },

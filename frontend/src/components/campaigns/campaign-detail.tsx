@@ -25,6 +25,10 @@ import { PageEmptyState, PageLoadingState } from "@/components/ui/page-state";
 import { Progress } from "@/components/ui/progress";
 import { useCampaignAnalytics } from "@/hooks/useCampaigns";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
+import {
+  campaignEligibilityApi,
+  getNotSendableEligibility,
+} from "@/lib/api/campaign-eligibility";
 import { campaignReportsApi, type CampaignReportResponse } from "@/lib/api/campaign-reports";
 import { campaignsApi, type CampaignAnalytics } from "@/lib/api/campaigns";
 import { voiceCampaignsApi } from "@/lib/api/voice-campaigns";
@@ -35,6 +39,10 @@ import { getApiErrorMessage } from "@/lib/utils/errors";
 import type { Campaign, VoiceCampaignAnalytics } from "@/types";
 
 import { CampaignStatusBadge } from "./campaign-status-badge";
+import {
+  RecipientEligibilityPanel,
+  type RecordConsentInput,
+} from "./recipient-eligibility-panel";
 
 interface CampaignDetailProps {
   campaignId: string;
@@ -77,6 +85,55 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
     },
     enabled: !!workspaceId && !!campaign && isVoiceCampaign,
     refetchInterval: runningCampaignRefetchInterval,
+  });
+
+  // Before (re)launch, show who the send-time compliance rules allow now.
+  const showEligibility =
+    campaign?.campaign_type === "sms" &&
+    (campaign.status === "draft" || campaign.status === "paused");
+  const eligibilityQuery = useQuery({
+    queryKey: queryKeys.campaigns.eligibility(workspaceId ?? "", campaignId),
+    queryFn: async () => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return campaignEligibilityApi.forCampaign(workspaceId, campaignId);
+    },
+    enabled: !!workspaceId && showEligibility,
+  });
+  const eligibility = eligibilityQuery.data ?? null;
+  const startBlocked =
+    campaign?.status === "draft" &&
+    campaign.campaign_type === "sms" &&
+    (eligibility === null ||
+      (eligibility.eligible_count === 0 && eligibility.already_contacted_count === 0));
+
+  const invalidateCampaign = () => {
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.campaigns.detail(workspaceId ?? "", campaignId),
+    });
+  };
+
+  const recordConsentMutation = useMutation({
+    mutationFn: async ({ contactIds, source }: RecordConsentInput) => {
+      if (!workspaceId) throw new Error("Workspace not loaded");
+      return campaignEligibilityApi.recordSmsConsent(workspaceId, {
+        ids: contactIds,
+        source,
+        attested: true,
+      });
+    },
+    onSuccess: (result) => {
+      const skipped = result.skipped_opted_out.length;
+      toast.success(
+        `SMS consent recorded for ${result.updated} contact${result.updated === 1 ? "" : "s"}` +
+          (skipped > 0 ? `; ${skipped} opted-out contact${skipped === 1 ? "" : "s"} left unchanged` : ""),
+      );
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.campaigns.eligibility(workspaceId ?? "", campaignId),
+      });
+    },
+    onError: (err: unknown) => {
+      toast.error(getApiErrorMessage(err, "Could not record SMS consent"));
+    },
   });
 
   const canGenerateReport = campaign?.status === "completed" || campaign?.status === "running";
@@ -123,14 +180,20 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
       if (!workspaceId) throw new Error("Workspace not loaded");
       return campaignsApi.start(workspaceId, campaignId);
     },
-    onSuccess: () => {
-      toast.success("Campaign started!");
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.campaigns.detail(workspaceId ?? "", campaignId),
-      });
+    onSuccess: (result) => {
+      toast.success("Campaign started!", { description: result.message });
+      invalidateCampaign();
     },
     onError: (err: unknown) => {
       toast.error(getApiErrorMessage(err, "Failed to start campaign"));
+      const launchEligibility = getNotSendableEligibility(err);
+      if (launchEligibility) {
+        // Show the launch-time recheck, which may differ from the preview.
+        queryClient.setQueryData(
+          queryKeys.campaigns.eligibility(workspaceId ?? "", campaignId),
+          launchEligibility,
+        );
+      }
     },
   });
 
@@ -157,11 +220,9 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
       if (!workspaceId) throw new Error("Workspace not loaded");
       return campaignsApi.resume(workspaceId, campaignId);
     },
-    onSuccess: () => {
-      toast.success("Campaign resumed!");
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.campaigns.detail(workspaceId ?? "", campaignId),
-      });
+    onSuccess: (result) => {
+      toast.success("Campaign resumed!", { description: result.message });
+      invalidateCampaign();
     },
     onError: (err: unknown) => {
       toast.error(getApiErrorMessage(err, "Failed to resume campaign"));
@@ -242,7 +303,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
           {campaign.status === "draft" && (
             <Button
               onClick={() => startMutation.mutate()}
-              disabled={startMutation.isPending}
+              disabled={startMutation.isPending || startBlocked}
               size="sm"
             >
               <Play className="size-4 mr-2" />
@@ -283,6 +344,30 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
           )}
         </div>
       </div>
+
+      {showEligibility && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Who can be texted now</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <RecipientEligibilityPanel
+              eligibility={eligibility}
+              isLoading={eligibilityQuery.isPending || eligibilityQuery.isFetching}
+              error={
+                eligibilityQuery.isError
+                  ? getApiErrorMessage(eligibilityQuery.error, "Could not check recipients")
+                  : null
+              }
+              onRetry={() => void eligibilityQuery.refetch()}
+              onRecordConsent={async (input) => {
+                await recordConsentMutation.mutateAsync(input).catch(() => undefined);
+              }}
+              isRecordingConsent={recordConsentMutation.isPending}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Campaign details */}
       <div className="grid gap-6 md:grid-cols-2">
@@ -510,6 +595,19 @@ function SmsStatistics({
           <StatItem label="Replies" value={campaign.replies_received} />
           <StatItem label="Qualified" value={campaign.contacts_qualified} />
           <StatItem label="Opted Out" value={campaign.contacts_opted_out} />
+          {analytics?.recipients && (
+            <>
+              <StatItem label="Waiting to send" value={analytics.recipients.queued} />
+              <StatItem
+                label="Deferred (sending hours / limits)"
+                value={analytics.recipients.deferred}
+              />
+              <StatItem
+                label="Excluded (no consent, etc.)"
+                value={analytics.recipients.excluded}
+              />
+            </>
+          )}
           {campaign.messages_failed > 0 && (
             <StatItem
               className="text-destructive"

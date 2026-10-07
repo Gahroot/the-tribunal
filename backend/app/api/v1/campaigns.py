@@ -14,7 +14,7 @@ from app.api.deps import DB, CurrentUser, get_workspace
 from app.core.config import settings
 from app.db.pagination import paginate
 from app.models.agent import Agent
-from app.models.campaign import Campaign, CampaignContact, CampaignStatus
+from app.models.campaign import Campaign, CampaignContact, CampaignStatus, CampaignType
 from app.models.contact import Contact
 from app.models.phone_number import PhoneNumber
 from app.models.workspace import Workspace
@@ -23,14 +23,20 @@ from app.schemas.campaign import (
     CampaignContactAdd,
     CampaignContactResponse,
     CampaignCreate,
+    CampaignRecipientBreakdown,
     CampaignResponse,
+    CampaignStartResponse,
     CampaignUpdate,
     GuaranteeProgressResponse,
     PaginatedCampaigns,
+    RecipientEligibilityPreviewRequest,
+    RecipientEligibilityResponse,
 )
+from app.schemas.contact import SmsConsentRecordRequest, SmsConsentRecordResponse
 from app.services.campaigns.campaign_filters import apply_campaign_filters
 from app.services.campaigns.campaign_lifecycle import (
     CampaignLifecycleError,
+    CampaignNotSendableError,
 )
 from app.services.campaigns.campaign_lifecycle import (
     pause_campaign as pause_campaign_lifecycle,
@@ -42,9 +48,30 @@ from app.services.campaigns.campaign_lifecycle import (
     start_campaign as start_campaign_lifecycle,
 )
 from app.services.campaigns.guarantee_tracker import check_guarantee_expiry
+from app.services.campaigns.recipient_eligibility import (
+    RecipientEligibilityService,
+    build_draft_campaign,
+    campaign_recipient_breakdown,
+    resolve_campaign_sender,
+)
+from app.services.compliance.sms_consent import SmsConsentValidationError, record_sms_consent
 from app.utils.datetime import parse_time_string
 
 router = APIRouter()
+
+
+def _not_sendable_http_error(exc: CampaignNotSendableError) -> HTTPException:
+    """409 carrying the eligibility so clients can offer a recovery path."""
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": "no_eligible_recipients",
+            "message": str(exc),
+            "details": RecipientEligibilityResponse.from_eligibility(exc.eligibility).model_dump(
+                mode="json"
+            ),
+        },
+    )
 
 
 async def _validate_campaign_sender(db: AsyncSession, from_phone_number: str) -> None:
@@ -148,6 +175,93 @@ async def create_campaign(
     return campaign
 
 
+@router.post("/eligibility-preview", response_model=RecipientEligibilityResponse)
+async def preview_recipient_eligibility(
+    workspace_id: uuid.UUID,
+    request: RecipientEligibilityPreviewRequest,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> RecipientEligibilityResponse:
+    """Preview which selected contacts an SMS campaign could message right now.
+
+    Read-only and advisory: uses the same compliance rules as the send path,
+    which rechecks every recipient at launch and again at send time.
+    """
+    sender = await resolve_campaign_sender(db, workspace.id, request.from_phone_number)
+    if sender is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Campaign sender phone number is not in this workspace",
+        )
+    draft = build_draft_campaign(
+        workspace_id=workspace.id,
+        from_phone_number=request.from_phone_number,
+        sending_hours_start=parse_time_string(request.sending_hours_start),
+        sending_hours_end=parse_time_string(request.sending_hours_end),
+        sending_days=request.sending_days,
+        timezone=request.timezone,
+    )
+    eligibility = await RecipientEligibilityService().preview_contacts(
+        db, campaign=draft, contact_ids=request.contact_ids, sender=sender
+    )
+    return RecipientEligibilityResponse.from_eligibility(eligibility)
+
+
+@router.post("/recipients/sms-consent", response_model=SmsConsentRecordResponse)
+async def record_recipients_sms_consent(
+    workspace_id: uuid.UUID,
+    request: SmsConsentRecordRequest,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> SmsConsentRecordResponse:
+    """Record operator-attested SMS consent for workspace contacts.
+
+    Recovery path for recipients excluded for missing consent. Consent is never
+    inferred: the operator names the source and attests. Opted-out numbers are
+    skipped, and the campaign worker still rechecks every rule at send time.
+    """
+    try:
+        result = await record_sms_consent(
+            db,
+            workspace_id=workspace.id,
+            contact_ids=request.ids,
+            source=request.source,
+            collected_at=request.collected_at,
+            notes=request.notes,
+            recorded_by_user_id=current_user.id,
+        )
+    except SmsConsentValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    await db.commit()
+    return SmsConsentRecordResponse(
+        updated=result.updated,
+        already_opted_in=result.already_opted_in,
+        skipped_opted_out=result.skipped_opted_out,
+        not_found=result.not_found,
+    )
+
+
+@router.get("/{campaign_id}/eligibility", response_model=RecipientEligibilityResponse)
+async def get_recipient_eligibility(
+    workspace_id: uuid.UUID,
+    campaign_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> RecipientEligibilityResponse:
+    """Read-only eligibility of an existing SMS campaign's recipients right now."""
+    campaign = await get_or_404(db, Campaign, campaign_id, workspace_id=workspace_id)
+    if campaign.campaign_type != CampaignType.SMS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Recipient eligibility is available for SMS campaigns only",
+        )
+    eligibility = await RecipientEligibilityService().evaluate_campaign(db, campaign)
+    return RecipientEligibilityResponse.from_eligibility(eligibility)
+
+
 @router.get("/{campaign_id}", response_model=CampaignResponse)
 async def get_campaign(
     workspace_id: uuid.UUID,
@@ -199,20 +313,32 @@ async def update_campaign(
     return campaign
 
 
-@router.post("/{campaign_id}/start")
+@router.post(
+    "/{campaign_id}/start",
+    response_model=CampaignStartResponse,
+    responses={409: {"description": "No recipient can currently be messaged"}},
+)
 async def start_campaign(
     workspace_id: uuid.UUID,
     campaign_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
     workspace: Annotated[Workspace, Depends(get_workspace)],
-) -> dict[str, str]:
-    """Start a campaign."""
+) -> CampaignStartResponse:
+    """Start a campaign.
+
+    SMS campaigns recheck recipient eligibility now (never trusting an earlier
+    preview) and return 409 ``no_eligible_recipients`` when nobody may be
+    messaged, leaving the campaign unchanged.
+    """
     campaign = await get_or_404(db, Campaign, campaign_id, workspace_id=workspace_id)
 
     try:
         await _validate_campaign_sender(db, campaign.from_phone_number)
         lifecycle_result = await start_campaign_lifecycle(db, campaign)
+    except CampaignNotSendableError as exc:
+        await db.rollback()
+        raise _not_sendable_http_error(exc) from exc
     except CampaignLifecycleError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -221,7 +347,15 @@ async def start_campaign(
 
     await db.commit()
 
-    return {"status": lifecycle_result.status.value, "message": lifecycle_result.message}
+    return CampaignStartResponse(
+        status=lifecycle_result.status.value,
+        message=lifecycle_result.message,
+        eligibility=(
+            RecipientEligibilityResponse.from_eligibility(lifecycle_result.eligibility)
+            if lifecycle_result.eligibility is not None
+            else None
+        ),
+    )
 
 
 @router.post("/{campaign_id}/pause")
@@ -248,14 +382,14 @@ async def pause_campaign(
     return {"status": lifecycle_result.status.value}
 
 
-@router.post("/{campaign_id}/resume")
+@router.post("/{campaign_id}/resume", response_model=CampaignStartResponse)
 async def resume_campaign(
     workspace_id: uuid.UUID,
     campaign_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
     workspace: Annotated[Workspace, Depends(get_workspace)],
-) -> dict[str, str]:
+) -> CampaignStartResponse:
     """Resume a paused campaign."""
     campaign = await get_or_404(db, Campaign, campaign_id, workspace_id=workspace_id)
 
@@ -269,7 +403,15 @@ async def resume_campaign(
 
     await db.commit()
 
-    return {"status": lifecycle_result.status.value, "message": lifecycle_result.message}
+    return CampaignStartResponse(
+        status=lifecycle_result.status.value,
+        message=lifecycle_result.message,
+        eligibility=(
+            RecipientEligibilityResponse.from_eligibility(lifecycle_result.eligibility)
+            if lifecycle_result.eligibility is not None
+            else None
+        ),
+    )
 
 
 @router.post("/{campaign_id}/cancel")
@@ -397,7 +539,19 @@ async def get_analytics(
         else 0.0
     )
 
+    breakdown = await campaign_recipient_breakdown(db, campaign.id)
+
     return CampaignAnalytics(
+        recipients=CampaignRecipientBreakdown(
+            sent=breakdown.sent,
+            queued=breakdown.queued,
+            deferred=breakdown.deferred,
+            excluded=breakdown.excluded,
+            opted_out=breakdown.opted_out,
+            failed=breakdown.failed,
+            excluded_reasons=breakdown.excluded_reasons,
+            deferred_reasons=breakdown.deferred_reasons,
+        ),
         total_contacts=campaign.total_contacts,
         messages_sent=campaign.messages_sent,
         messages_delivered=campaign.messages_delivered,

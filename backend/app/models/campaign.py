@@ -63,6 +63,10 @@ class CampaignContactStatus(StrEnum):
     OPTED_OUT = "opted_out"
     FAILED = "failed"
     COMPLETED = "completed"
+    # Withheld before any send by a recipient-level compliance rule (e.g. no
+    # SMS consent on file). ``suppressed_reason`` holds the rule; launch/resume
+    # re-evaluates these rows so recorded consent can return them to PENDING.
+    EXCLUDED = "excluded"
     # Voice campaign statuses
     CALLING = "calling"
     CALL_ANSWERED = "call_answered"

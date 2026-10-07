@@ -2,11 +2,16 @@
 
 import uuid
 from datetime import datetime, time
+from typing import TYPE_CHECKING, Any, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, field_serializer, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 from app.core.sending_days import SendingDaysInput, SendingDaysOutput
 from app.schemas.voice_experiment import VoiceExperiment, VoiceExperimentResults
+
+if TYPE_CHECKING:
+    from app.services.campaigns.recipient_eligibility import RecipientEligibility
 
 
 class CampaignCreate(BaseModel):
@@ -163,6 +168,8 @@ class CampaignAnalytics(BaseModel):
     reply_rate: float = 0.0
     delivery_rate: float = 0.0
     qualification_rate: float = 0.0
+    # Initial-message status per recipient (sent vs deferred vs excluded).
+    recipients: "CampaignRecipientBreakdown | None" = None
 
 
 # Voice Campaign Schemas
@@ -397,3 +404,112 @@ class VoiceCampaignAnalytics(BaseModel):
     answer_rate: float
     fallback_rate: float
     qualification_rate: float
+
+
+# Recipient eligibility (pre-launch preview and launch result)
+
+
+class RecipientExclusionResponse(BaseModel):
+    """Recipients withheld by one compliance rule."""
+
+    reason: str
+    label: str
+    count: int
+    # Capped list (counts are exact) for recovery actions such as recording consent.
+    contact_ids: list[int]
+    recoverable_with_consent: bool
+
+
+class RecipientEligibilityResponse(BaseModel):
+    """Who a campaign may message right now under the send-time compliance rules.
+
+    Informational only: the worker re-evaluates every recipient at send time.
+    """
+
+    channel: Literal["sms", "imessage"]
+    consent_required: bool
+    checked_at: datetime
+    selected_count: int
+    eligible_count: int
+    excluded_count: int
+    already_contacted_count: int
+    ready_to_send: bool
+    exclusions: list[RecipientExclusionResponse]
+    # Campaign-wide timing deferral (sending window / quiet hours / send cap):
+    # eligible recipients wait; nobody is excluded by these.
+    deferral_reason: str | None = None
+    deferral_label: str | None = None
+    deferral_details: dict[str, Any] = Field(default_factory=dict)
+
+    @classmethod
+    def from_eligibility(
+        cls, eligibility: "RecipientEligibility"
+    ) -> "RecipientEligibilityResponse":
+        return cls(
+            channel="imessage" if eligibility.channel == "imessage" else "sms",
+            consent_required=eligibility.consent_required,
+            checked_at=eligibility.checked_at,
+            selected_count=eligibility.selected_count,
+            eligible_count=eligibility.eligible_count,
+            excluded_count=eligibility.excluded_count,
+            already_contacted_count=eligibility.already_contacted_count,
+            ready_to_send=eligibility.ready_to_send,
+            exclusions=[
+                RecipientExclusionResponse(
+                    reason=exclusion.reason,
+                    label=exclusion.label,
+                    count=exclusion.count,
+                    contact_ids=exclusion.contact_ids,
+                    recoverable_with_consent=exclusion.recoverable_with_consent,
+                )
+                for exclusion in eligibility.exclusions
+            ],
+            deferral_reason=eligibility.deferral_reason,
+            deferral_label=eligibility.deferral_label,
+            deferral_details=eligibility.deferral_details,
+        )
+
+
+class RecipientEligibilityPreviewRequest(BaseModel):
+    """Preview eligibility for a campaign that has not been created yet."""
+
+    contact_ids: list[int] = Field(min_length=1, max_length=10_000)
+    from_phone_number: str = Field(min_length=1, max_length=50)
+    sending_hours_start: str | None = None
+    sending_hours_end: str | None = None
+    sending_days: SendingDaysInput = None  # Monday=0 … Sunday=6
+    timezone: str = "America/New_York"
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError("Unknown timezone") from exc
+        return value
+
+
+class CampaignStartResponse(BaseModel):
+    """Result of starting or resuming a campaign."""
+
+    status: str
+    message: str
+    # SMS campaigns: launch-time recheck of recipient eligibility.
+    eligibility: RecipientEligibilityResponse | None = None
+
+
+class CampaignRecipientBreakdown(BaseModel):
+    """Where each campaign recipient stands on its initial message."""
+
+    sent: int
+    queued: int
+    deferred: int
+    excluded: int
+    opted_out: int
+    failed: int
+    excluded_reasons: dict[str, int] = Field(default_factory=dict)
+    deferred_reasons: dict[str, int] = Field(default_factory=dict)
+
+
+CampaignAnalytics.model_rebuild()

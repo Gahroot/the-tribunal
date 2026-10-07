@@ -6861,6 +6861,16 @@
             "title": "Qualification Rate",
             "type": "number"
           },
+          "recipients": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CampaignRecipientBreakdown"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "replies_received": {
             "title": "Replies Received",
             "type": "integer"
@@ -7258,6 +7268,59 @@
           "initial_message"
         ],
         "title": "CampaignCreate",
+        "type": "object"
+      },
+      "CampaignRecipientBreakdown": {
+        "description": "Where each campaign recipient stands on its initial message.",
+        "properties": {
+          "deferred": {
+            "title": "Deferred",
+            "type": "integer"
+          },
+          "deferred_reasons": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Deferred Reasons",
+            "type": "object"
+          },
+          "excluded": {
+            "title": "Excluded",
+            "type": "integer"
+          },
+          "excluded_reasons": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Excluded Reasons",
+            "type": "object"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "opted_out": {
+            "title": "Opted Out",
+            "type": "integer"
+          },
+          "queued": {
+            "title": "Queued",
+            "type": "integer"
+          },
+          "sent": {
+            "title": "Sent",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sent",
+          "queued",
+          "deferred",
+          "excluded",
+          "opted_out",
+          "failed"
+        ],
+        "title": "CampaignRecipientBreakdown",
         "type": "object"
       },
       "CampaignReportListResponse": {
@@ -7866,6 +7929,35 @@
           "updated_at"
         ],
         "title": "CampaignResponse",
+        "type": "object"
+      },
+      "CampaignStartResponse": {
+        "description": "Result of starting or resuming a campaign.",
+        "properties": {
+          "eligibility": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecipientEligibilityResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "CampaignStartResponse",
         "type": "object"
       },
       "CampaignStat": {
@@ -26653,6 +26745,200 @@
         "title": "ReceptionistScorecard",
         "type": "object"
       },
+      "RecipientEligibilityPreviewRequest": {
+        "description": "Preview eligibility for a campaign that has not been created yet.",
+        "properties": {
+          "contact_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 10000,
+            "minItems": 1,
+            "title": "Contact Ids",
+            "type": "array"
+          },
+          "from_phone_number": {
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "From Phone Number",
+            "type": "string"
+          },
+          "sending_days": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Days of the week sending is allowed, evaluated in the campaign timezone. Python weekday encoding: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6 (Mon-Fri = [0,1,2,3,4]); NOT JavaScript getDay(). null means every day.",
+            "title": "Sending Days"
+          },
+          "sending_hours_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sending Hours End"
+          },
+          "sending_hours_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sending Hours Start"
+          },
+          "timezone": {
+            "default": "America/New_York",
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contact_ids",
+          "from_phone_number"
+        ],
+        "title": "RecipientEligibilityPreviewRequest",
+        "type": "object"
+      },
+      "RecipientEligibilityResponse": {
+        "description": "Who a campaign may message right now under the send-time compliance rules.\n\nInformational only: the worker re-evaluates every recipient at send time.",
+        "properties": {
+          "already_contacted_count": {
+            "title": "Already Contacted Count",
+            "type": "integer"
+          },
+          "channel": {
+            "enum": [
+              "sms",
+              "imessage"
+            ],
+            "title": "Channel",
+            "type": "string"
+          },
+          "checked_at": {
+            "format": "date-time",
+            "title": "Checked At",
+            "type": "string"
+          },
+          "consent_required": {
+            "title": "Consent Required",
+            "type": "boolean"
+          },
+          "deferral_details": {
+            "additionalProperties": true,
+            "title": "Deferral Details",
+            "type": "object"
+          },
+          "deferral_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deferral Label"
+          },
+          "deferral_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deferral Reason"
+          },
+          "eligible_count": {
+            "title": "Eligible Count",
+            "type": "integer"
+          },
+          "excluded_count": {
+            "title": "Excluded Count",
+            "type": "integer"
+          },
+          "exclusions": {
+            "items": {
+              "$ref": "#/components/schemas/RecipientExclusionResponse"
+            },
+            "title": "Exclusions",
+            "type": "array"
+          },
+          "ready_to_send": {
+            "title": "Ready To Send",
+            "type": "boolean"
+          },
+          "selected_count": {
+            "title": "Selected Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "channel",
+          "consent_required",
+          "checked_at",
+          "selected_count",
+          "eligible_count",
+          "excluded_count",
+          "already_contacted_count",
+          "ready_to_send",
+          "exclusions"
+        ],
+        "title": "RecipientEligibilityResponse",
+        "type": "object"
+      },
+      "RecipientExclusionResponse": {
+        "description": "Recipients withheld by one compliance rule.",
+        "properties": {
+          "contact_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Contact Ids",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "recoverable_with_consent": {
+            "title": "Recoverable With Consent",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "reason",
+          "label",
+          "count",
+          "contact_ids",
+          "recoverable_with_consent"
+        ],
+        "title": "RecipientExclusionResponse",
+        "type": "object"
+      },
       "RegisterTokenRequest": {
         "description": "Schema for registering an Expo push token.",
         "properties": {
@@ -28620,6 +28906,103 @@
         ],
         "title": "SequenceEnrollmentStatus",
         "type": "string"
+      },
+      "SmsConsentRecordRequest": {
+        "description": "Operator-attested SMS consent for a set of contacts.\n\nConsent is never inferred; the operator names the source and attests that\neach contact agreed to receive texts. Opted-out numbers are never changed.",
+        "properties": {
+          "attested": {
+            "const": true,
+            "description": "Operator confirms each contact gave consent to receive text messages.",
+            "title": "Attested",
+            "type": "boolean"
+          },
+          "collected_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collected At"
+          },
+          "ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 10000,
+            "minItems": 1,
+            "title": "Ids",
+            "type": "array"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "source": {
+            "enum": [
+              "web_form",
+              "paper_form",
+              "text_keyword",
+              "verbal_recorded",
+              "other_documented"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ids",
+          "source",
+          "attested"
+        ],
+        "title": "SmsConsentRecordRequest",
+        "type": "object"
+      },
+      "SmsConsentRecordResponse": {
+        "description": "Outcome of recording SMS consent.",
+        "properties": {
+          "already_opted_in": {
+            "title": "Already Opted In",
+            "type": "integer"
+          },
+          "not_found": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Not Found",
+            "type": "array"
+          },
+          "skipped_opted_out": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Skipped Opted Out",
+            "type": "array"
+          },
+          "updated": {
+            "title": "Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "updated",
+          "already_opted_in",
+          "skipped_opted_out",
+          "not_found"
+        ],
+        "title": "SmsConsentRecordResponse",
+        "type": "object"
       },
       "SourceBucket": {
         "properties": {
@@ -41412,6 +41795,124 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/campaigns/eligibility-preview": {
+      "post": {
+        "description": "Preview which selected contacts an SMS campaign could message right now.\n\nRead-only and advisory: uses the same compliance rules as the send path,\nwhich rechecks every recipient at launch and again at send time.",
+        "operationId": "preview_recipient_eligibility_api_v1_workspaces__workspace_id__campaigns_eligibility_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecipientEligibilityPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipientEligibilityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Preview Recipient Eligibility",
+        "tags": [
+          "Campaigns"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/campaigns/recipients/sms-consent": {
+      "post": {
+        "description": "Record operator-attested SMS consent for workspace contacts.\n\nRecovery path for recipients excluded for missing consent. Consent is never\ninferred: the operator names the source and attests. Opted-out numbers are\nskipped, and the campaign worker still rechecks every rule at send time.",
+        "operationId": "record_recipients_sms_consent_api_v1_workspaces__workspace_id__campaigns_recipients_sms_consent_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SmsConsentRecordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SmsConsentRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Record Recipients Sms Consent",
+        "tags": [
+          "Campaigns"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}": {
       "delete": {
         "description": "Delete a campaign.",
@@ -41931,6 +42432,65 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}/eligibility": {
+      "get": {
+        "description": "Read-only eligibility of an existing SMS campaign's recipients right now.",
+        "operationId": "get_recipient_eligibility_api_v1_workspaces__workspace_id__campaigns__campaign_id__eligibility_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipientEligibilityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Recipient Eligibility",
+        "tags": [
+          "Campaigns"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}/guarantee": {
       "get": {
         "description": "Get campaign guarantee progress.",
@@ -42084,11 +42644,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Resume Campaign Api V1 Workspaces  Workspace Id  Campaigns  Campaign Id  Resume Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/CampaignStartResponse"
                 }
               }
             },
@@ -42118,7 +42674,7 @@
     },
     "/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}/start": {
       "post": {
-        "description": "Start a campaign.",
+        "description": "Start a campaign.\n\nSMS campaigns recheck recipient eligibility now (never trusting an earlier\npreview) and return 409 ``no_eligible_recipients`` when nobody may be\nmessaged, leaving the campaign unchanged.",
         "operationId": "start_campaign_api_v1_workspaces__workspace_id__campaigns__campaign_id__start_post",
         "parameters": [
           {
@@ -42147,15 +42703,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Start Campaign Api V1 Workspaces  Workspace Id  Campaigns  Campaign Id  Start Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/CampaignStartResponse"
                 }
               }
             },
             "description": "Successful Response"
+          },
+          "409": {
+            "description": "No recipient can currently be messaged"
           },
           "422": {
             "content": {

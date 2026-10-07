@@ -1,7 +1,7 @@
 "use client";
 
 import { Eye, PenLine, Send } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +14,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { assistantApi } from "@/lib/api/assistant";
+import {
+  campaignEligibilityApi,
+  type RecipientEligibility,
+} from "@/lib/api/campaign-eligibility";
 import type { CreateSMSCampaignRequest } from "@/lib/api/sms-campaigns";
 import { formatSendingDays, TIMEZONE_OPTIONS } from "@/lib/constants";
 import { messages } from "@/lib/messages";
@@ -34,6 +38,7 @@ import {
   validateBasics,
 } from "./_shared";
 import { BaseCampaignWizard } from "./base-campaign-wizard";
+import type { RecordConsentInput } from "./recipient-eligibility-panel";
 import { SendConfirmationDialog } from "./send-confirmation-dialog";
 import {
   type AgentStepFields,
@@ -178,6 +183,13 @@ export function SMSCampaignWizard({
   const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingSend, setPendingSend] = useState<PendingSend | null>(null);
+  const [eligibility, setEligibility] = useState<RecipientEligibility | null>(null);
+  const [eligibilityLoading, setEligibilityLoading] = useState(false);
+  const [eligibilityError, setEligibilityError] = useState<string | null>(null);
+  const [isRecordingConsent, setIsRecordingConsent] = useState(false);
+  const goToStepRef = useRef<((stepId: StepId) => void) | null>(null);
+  // Ignore responses from superseded eligibility checks.
+  const eligibilityRequestRef = useRef(0);
   // Reused across generate clicks so retries stay in one assistant thread.
   const [aiConversationId, setAiConversationId] = useState<string | null>(null);
 
@@ -482,7 +494,69 @@ export function SMSCampaignWizard({
   // Runs only after validateAllSteps() passes in BaseCampaignWizard, so
   // invalid data never reaches the confirmation modal — each error surfaces
   // on its own step and the wizard jumps back to it.
-  const handleWizardSubmit = (formData: SMSFormData) => {
+  // Ask the backend who can be texted right now with the send-time
+  // compliance rules. Advisory only: launch and each send recheck.
+  const checkEligibility = useCallback(
+    async (send: PendingSend) => {
+      const requestId = ++eligibilityRequestRef.current;
+      setEligibilityLoading(true);
+      setEligibilityError(null);
+      try {
+        const result = await campaignEligibilityApi.preview(workspaceId, {
+          contact_ids: send.contactIds,
+          from_phone_number: send.request.from_phone_number,
+          sending_hours_start: send.request.sending_hours_start ?? null,
+          sending_hours_end: send.request.sending_hours_end ?? null,
+          sending_days: send.request.sending_days ?? null,
+          timezone: send.request.timezone ?? "America/New_York",
+        });
+        if (requestId === eligibilityRequestRef.current) setEligibility(result);
+      } catch (error) {
+        if (requestId === eligibilityRequestRef.current) {
+          setEligibility(null);
+          setEligibilityError(
+            getApiErrorMessage(error, "Could not check which contacts can be texted.")
+          );
+        }
+      } finally {
+        if (requestId === eligibilityRequestRef.current) setEligibilityLoading(false);
+      }
+    },
+    [workspaceId]
+  );
+
+  const handleRecordConsent = async ({ contactIds, source }: RecordConsentInput) => {
+    if (!pendingSend) return;
+    setIsRecordingConsent(true);
+    try {
+      const result = await campaignEligibilityApi.recordSmsConsent(workspaceId, {
+        ids: contactIds,
+        source,
+        attested: true,
+      });
+      const skipped = result.skipped_opted_out.length;
+      toast.success(
+        `SMS consent recorded for ${result.updated} contact${result.updated === 1 ? "" : "s"}` +
+          (skipped > 0 ? `; ${skipped} opted-out contact${skipped === 1 ? "" : "s"} left unchanged` : "")
+      );
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Could not record SMS consent"));
+    } finally {
+      setIsRecordingConsent(false);
+    }
+    await checkEligibility(pendingSend);
+  };
+
+  const handleChangeAudience = () => {
+    setConfirmOpen(false);
+    goToStepRef.current?.("audience");
+  };
+
+  const handleWizardSubmit = (
+    formData: SMSFormData,
+    controls: { goToStep: (stepId: StepId) => void }
+  ) => {
+    goToStepRef.current = controls.goToStep;
     const request: CreateSMSCampaignRequest = {
       name: formData.name,
       description: formData.description || undefined,
@@ -517,7 +591,7 @@ export function SMSCampaignWizard({
       scheduleParts.push(`Starts ${formatDateTime(formData.scheduled_start)}`);
     }
 
-    setPendingSend({
+    const send: PendingSend = {
       request,
       contactIds: Array.from(selectedContactIds),
       campaignName: formData.name,
@@ -530,12 +604,15 @@ export function SMSCampaignWizard({
           : `max ${formData.max_messages_per_contact} per contact`
       }`,
       message: formData.initial_message,
-    });
+    };
+    setPendingSend(send);
+    setEligibility(null);
     setConfirmOpen(true);
+    void checkEligibility(send);
   };
 
   const handleConfirmSend = async () => {
-    if (!pendingSend) return;
+    if (!pendingSend || !eligibility || eligibility.eligible_count === 0) return;
     try {
       await onSubmit(pendingSend.request, new Set(pendingSend.contactIds));
       setConfirmOpen(false);
@@ -568,6 +645,15 @@ export function SMSCampaignWizard({
         message={pendingSend?.message ?? ""}
         isSending={isSubmitting}
         onConfirm={() => void handleConfirmSend()}
+        eligibility={eligibility}
+        eligibilityLoading={eligibilityLoading}
+        eligibilityError={eligibilityError}
+        onRetryEligibility={() => {
+          if (pendingSend) void checkEligibility(pendingSend);
+        }}
+        onRecordConsent={handleRecordConsent}
+        isRecordingConsent={isRecordingConsent}
+        onChangeAudience={handleChangeAudience}
       />
     </>
   );

@@ -209,6 +209,8 @@ export const queryKeys = {
       [...campaigns.detail(workspaceId, campaignId), "analytics"] as const,
     guaranteeProgress: (workspaceId: string, campaignId: string) =>
       [...campaigns.detail(workspaceId, campaignId), "guarantee-progress"] as const,
+    eligibility: (workspaceId: string, campaignId: string) =>
+      [...campaigns.detail(workspaceId, campaignId), "eligibility"] as const,
   },
   contacts: {
     ...contacts,

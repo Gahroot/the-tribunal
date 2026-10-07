@@ -14,7 +14,11 @@ export interface BaseCampaignWizardProps<
 > {
   steps: ReadonlyArray<WizardStep<TStepId, TFormData>>;
   initialFormData: TFormData;
-  onSubmit: (formData: TFormData) => void | Promise<void>;
+  /** `controls.goToStep` lets a submit flow send the operator back to a step. */
+  onSubmit: (
+    formData: TFormData,
+    controls: { goToStep: (stepId: TStepId) => void }
+  ) => void | Promise<void>;
   isSubmitting?: boolean;
   onCancel?: () => void;
   submitLabel?: string;
@@ -75,7 +79,7 @@ export function BaseCampaignWizard<
 
   const handleSubmit = useCallback(async () => {
     if (!wizard.validateAllSteps()) return;
-    await onSubmit(wizard.formData);
+    await onSubmit(wizard.formData, { goToStep: wizard.goToStep });
   }, [wizard, onSubmit]);
 
   return (

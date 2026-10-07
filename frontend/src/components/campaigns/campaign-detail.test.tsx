@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CampaignDetail } from "@/components/campaigns/campaign-detail";
+import type { RecipientEligibility } from "@/lib/api/campaign-eligibility";
 import type { CampaignAnalytics } from "@/lib/api/campaigns";
 import type { Campaign, VoiceCampaignAnalytics } from "@/types";
 
@@ -10,10 +11,16 @@ const {
   generateCampaignReportMock,
   getCampaignMock,
   getCampaignReportByCampaignMock,
+  getEligibilityMock,
   getSmsAnalyticsMock,
   getVoiceAnalyticsMock,
+  recordSmsConsentMock,
+  startCampaignMock,
   useWorkspaceIdMock,
 } = vi.hoisted(() => ({
+  getEligibilityMock: vi.fn(),
+  recordSmsConsentMock: vi.fn(),
+  startCampaignMock: vi.fn(),
   generateCampaignReportMock: vi.fn(),
   getCampaignMock: vi.fn(),
   getCampaignReportByCampaignMock: vi.fn(),
@@ -46,10 +53,24 @@ vi.mock("@/lib/api/campaigns", async () => {
       ...actual.campaignsApi,
       get: getCampaignMock,
       getAnalytics: getSmsAnalyticsMock,
-      start: vi.fn(),
+      start: startCampaignMock,
       pause: vi.fn(),
       resume: vi.fn(),
       cancel: vi.fn(),
+    },
+  };
+});
+
+vi.mock("@/lib/api/campaign-eligibility", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api/campaign-eligibility")>(
+    "@/lib/api/campaign-eligibility",
+  );
+  return {
+    ...actual,
+    campaignEligibilityApi: {
+      ...actual.campaignEligibilityApi,
+      forCampaign: getEligibilityMock,
+      recordSmsConsent: recordSmsConsentMock,
     },
   };
 });
@@ -182,11 +203,101 @@ function reportNotFoundError() {
   return { response: { status: 404, data: { detail: "Report not found for this campaign" } } };
 }
 
+function eligibilityFixture(overrides: Partial<RecipientEligibility> = {}): RecipientEligibility {
+  return {
+    channel: "sms",
+    consent_required: true,
+    checked_at: "2026-10-07T12:00:00Z",
+    selected_count: 3,
+    eligible_count: 0,
+    excluded_count: 3,
+    already_contacted_count: 0,
+    ready_to_send: false,
+    exclusions: [
+      {
+        reason: "missing_sms_consent",
+        label: "No SMS consent on file",
+        count: 3,
+        contact_ids: [11, 12, 13],
+        recoverable_with_consent: true,
+      },
+    ],
+    deferral_reason: null,
+    deferral_label: null,
+    deferral_details: {},
+    ...overrides,
+  };
+}
+
 describe("CampaignDetail", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useWorkspaceIdMock.mockReturnValue("workspace_1");
     getCampaignReportByCampaignMock.mockRejectedValue(reportNotFoundError());
+    getEligibilityMock.mockResolvedValue(eligibilityFixture({ eligible_count: 3, excluded_count: 0, exclusions: [], ready_to_send: true }));
+  });
+
+  it("blocks start and offers consent recovery when no SMS recipient is eligible", async () => {
+    getCampaignMock.mockResolvedValue(baseCampaign({ campaign_type: "sms", status: "draft" }));
+    getSmsAnalyticsMock.mockResolvedValue(smsAnalytics);
+    getEligibilityMock
+      .mockResolvedValueOnce(eligibilityFixture())
+      .mockResolvedValueOnce(
+        eligibilityFixture({
+          eligible_count: 3,
+          excluded_count: 0,
+          exclusions: [],
+          ready_to_send: true,
+        }),
+      );
+    recordSmsConsentMock.mockResolvedValue({
+      updated: 3,
+      already_opted_in: 0,
+      skipped_opted_out: [],
+      not_found: [],
+    });
+
+    renderCampaignDetail();
+
+    expect(await screen.findByText("Nobody can be texted yet")).toBeInTheDocument();
+    expect(screen.getByText("No SMS consent on file")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /start/i })).toBeDisabled();
+    expect(startCampaignMock).not.toHaveBeenCalled();
+
+    // Recovery path requires an explicit source and attestation.
+    fireEvent.click(screen.getByText(/Record SMS consent for 3 contacts/));
+    const save = screen.getByRole("button", { name: /record consent and re-check/i });
+    expect(save).toBeDisabled();
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(save).toBeDisabled(); // still no source chosen
+    expect(recordSmsConsentMock).not.toHaveBeenCalled();
+  });
+
+  it("shows sent, deferred, and excluded recipients separately", async () => {
+    getCampaignMock.mockResolvedValue(
+      baseCampaign({ campaign_type: "sms", status: "running", messages_sent: 2 }),
+    );
+    getSmsAnalyticsMock.mockResolvedValue({
+      ...smsAnalytics,
+      recipients: {
+        sent: 2,
+        queued: 1,
+        deferred: 4,
+        excluded: 5,
+        opted_out: 1,
+        failed: 0,
+        excluded_reasons: { missing_sms_consent: 5 },
+        deferred_reasons: { quiet_hours: 4 },
+      },
+    });
+
+    renderCampaignDetail();
+
+    const excludedLabel = await screen.findByText("Excluded (no consent, etc.)");
+    const deferredLabel = screen.getByText("Deferred (sending hours / limits)");
+    expect(excludedLabel.parentElement).toHaveTextContent("5");
+    expect(deferredLabel.parentElement).toHaveTextContent("4");
+    expect(getEligibilityMock).not.toHaveBeenCalled(); // running: no pre-launch panel
   });
 
   it("renders voice call statistics from voice campaign analytics", async () => {

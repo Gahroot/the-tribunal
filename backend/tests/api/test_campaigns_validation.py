@@ -423,6 +423,50 @@ class TestStartCampaign:
         assert response.status_code == 400
         assert "no contacts" in response.json()["detail"].lower()
 
+    async def test_start_with_no_eligible_recipients_returns_409_with_recovery(
+        self, client: AsyncClient
+    ) -> None:
+        """Zero eligible SMS recipients → 409 carrying counts and reasons."""
+        from datetime import UTC, datetime
+
+        from app.services.campaigns.campaign_lifecycle import CampaignNotSendableError
+        from app.services.campaigns.recipient_eligibility import (
+            RecipientEligibility,
+            RecipientExclusion,
+        )
+
+        eligibility = RecipientEligibility(
+            channel="sms",
+            consent_required=True,
+            checked_at=datetime.now(UTC),
+            selected_count=2,
+            exclusions=[
+                RecipientExclusion(reason="missing_sms_consent", count=2, contact_ids=[1, 2])
+            ],
+        )
+        draft = _make_mock_campaign(status="draft")
+        with (
+            patch("app.api.v1.campaigns.get_or_404", new=AsyncMock(return_value=draft)),
+            patch("app.api.v1.campaigns._validate_campaign_sender", new=AsyncMock()),
+            patch(
+                "app.api.v1.campaigns.start_campaign_lifecycle",
+                new=AsyncMock(side_effect=CampaignNotSendableError("nobody", eligibility)),
+            ),
+        ):
+            response = await client.post(
+                f"/api/v1/workspaces/{WS_ID}/campaigns/{CAMPAIGN_ID}/start"
+            )
+
+        assert response.status_code == 409
+        detail = response.json()["detail"]
+        assert detail["code"] == "no_eligible_recipients"
+        assert detail["details"]["eligible_count"] == 0
+        assert detail["details"]["ready_to_send"] is False
+        exclusion = detail["details"]["exclusions"][0]
+        assert exclusion["reason"] == "missing_sms_consent"
+        assert exclusion["recoverable_with_consent"] is True
+        assert exclusion["contact_ids"] == [1, 2]
+
 
 class TestPauseCampaign:
     """POST /campaigns/{id}/pause."""

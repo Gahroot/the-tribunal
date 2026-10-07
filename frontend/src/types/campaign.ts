@@ -62,6 +62,7 @@ export type CampaignContactStatus =
   | "failed"
   | "responded"
   | "opted_out"
+  | "excluded"
   | "skipped";
 
 export interface CampaignContact {

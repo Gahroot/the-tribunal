@@ -34,6 +34,7 @@ from app.models.phone_number import PhoneNumber
 from app.models.workspace import Workspace
 from app.services.autonomy_mandate import normalize_autonomy_mandate
 from app.services.compliance.outbound_compliance import (
+    RECIPIENT_EXCLUSION_REASONS,
     OutboundComplianceRequest,
     OutboundComplianceResult,
     OutboundComplianceService,
@@ -226,7 +227,12 @@ class CampaignWorker(BaseCampaignWorker):
                     "Contact missing phone number",
                     contact_id=campaign_contact.contact_id,
                 )
-                campaign_contact.status = CampaignContactStatus.FAILED
+                self.compliance_service.apply_suppression(
+                    campaign_contact,
+                    OutboundComplianceResult(allowed=False, reason="missing_phone_number"),
+                    datetime.now(UTC),
+                )
+                campaign_contact.status = CampaignContactStatus.EXCLUDED
                 campaign_contact.last_error = "missing_phone_number"
                 continue
 
@@ -255,6 +261,12 @@ class CampaignWorker(BaseCampaignWorker):
             if not compliance_result.allowed:
                 if compliance_result.reason == "global_opt_out":
                     campaign.contacts_opted_out += 1
+                elif compliance_result.reason in RECIPIENT_EXCLUSION_REASONS:
+                    # Recipient-level rule (e.g. no SMS consent): take the row
+                    # out of the send queue so it neither starves eligible
+                    # recipients nor keeps the campaign running forever.
+                    # Launch/resume re-evaluates EXCLUDED rows.
+                    campaign_contact.status = CampaignContactStatus.EXCLUDED
                 log.info(
                     "compliance_suppressed_campaign_contact",
                     campaign_id=str(campaign.id),
