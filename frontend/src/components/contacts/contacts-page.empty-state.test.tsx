@@ -10,6 +10,7 @@ const { routerReplaceMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("next/navigation", () => ({
+  usePathname: () => "/contacts",
   useRouter: () => ({ replace: routerReplaceMock }),
   useSearchParams: () => new URLSearchParams(),
 }));

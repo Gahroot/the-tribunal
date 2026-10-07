@@ -3,7 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Users, CheckSquare, X, Plus, Upload } from "lucide-react";
 import { AnimatePresence } from "motion/react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -47,6 +47,7 @@ import type { Contact, ContactStatus } from "@/types";
 export function ContactsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
 
   // Master-detail selection: ?contact=<id> reflows the detail panel in place —
   // the list column never unmounts, so scroll, filters, and sort survive.
@@ -64,21 +65,19 @@ export function ContactsPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isScrapeDialogOpen, setIsScrapeDialogOpen] = useState(false);
 
+  // ?import=true (e.g. the setup checklist's "Import contacts" step) opens the
+  // import dialog. Opening happens during render — on mount via the initial
+  // state, and on a client-side transition into the flag via the
+  // "adjust state when a prop changes" pattern — so there is no timer that an
+  // unmount or the URL cleanup below could cancel, and the dialog only opens
+  // on the false→true edge (rerenders never reopen it after the user closes it).
   const importRequested = searchParams.get("import") === "true";
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(importRequested);
-
-  // Auto-open import dialog when navigated here with ?import=true
-  useEffect(() => {
-    if (!importRequested) return undefined;
-
-    const timer = window.setTimeout(() => setIsImportDialogOpen(true), 0);
-    const urlParams = new URLSearchParams(searchParams.toString());
-    urlParams.delete("import");
-    const newUrl = urlParams.size > 0 ? `/?${urlParams.toString()}` : "/";
-    router.replace(newUrl, { scroll: false });
-
-    return () => window.clearTimeout(timer);
-  }, [importRequested, searchParams, router]);
+  const [seenImportRequested, setSeenImportRequested] = useState(importRequested);
+  if (importRequested !== seenImportRequested) {
+    setSeenImportRequested(importRequested);
+    if (importRequested) setIsImportDialogOpen(true);
+  }
 
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectAllMatchingIds, setSelectAllMatchingIds] = useState<Set<number> | null>(null);
@@ -118,11 +117,22 @@ export function ContactsPage() {
     } catch {
       // Ignore malformed filter params.
     }
+  }, [filtersParam, setFilters]);
+
+  // Strip the one-shot `import` / `filters` params from the current URL in a
+  // single replace (separate replaces from the same snapshot would undo each
+  // other), staying on this page and keeping every other param (e.g.
+  // ?contact=). Replacing — not pushing — means a reload or Back never
+  // re-triggers them, and once they are gone this effect is a no-op.
+  const hasOneShotParams = searchParams.has("import") || searchParams.has("filters");
+  useEffect(() => {
+    if (!hasOneShotParams) return;
     const urlParams = new URLSearchParams(searchParams.toString());
+    urlParams.delete("import");
     urlParams.delete("filters");
-    const newUrl = urlParams.size > 0 ? `/contacts?${urlParams.toString()}` : "/contacts";
-    router.replace(newUrl, { scroll: false });
-  }, [filtersParam, searchParams, router, setFilters]);
+    const query = urlParams.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }, [hasOneShotParams, searchParams, pathname, router]);
 
   // Debounced search input: local state updates immediately, store updates after delay
   const [inputValue, setInputValue] = useState(searchQuery);

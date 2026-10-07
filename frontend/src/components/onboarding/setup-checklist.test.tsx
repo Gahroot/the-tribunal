@@ -83,6 +83,8 @@ describe("SetupChecklist", () => {
     // Failures are neither success nor zero resources: every step is unknown.
     expect(stepLink("Connect a phone number")).toHaveAccessibleName(/couldn't check/);
     expect(stepLink("Create your first agent")).toHaveAttribute("href", "/agents/create");
+    // The import step deep-links into the Contacts import dialog, not the bare list.
+    expect(stepLink("Import contacts")).toHaveAttribute("href", "/contacts?import=true");
     expect(screen.getByText("0 of 5 complete, 5 not checked")).toBeInTheDocument();
     expect(screen.queryByText("You're all set!")).not.toBeInTheDocument();
     expect(screen.queryByText(/\(todo\)/)).not.toBeInTheDocument();

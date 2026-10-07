@@ -106,7 +106,8 @@ export const SETUP_STEP_DEFINITIONS: readonly SetupStepDefinition[] = [
     id: "contacts",
     title: "Import contacts",
     description: "Upload a CSV or sync a CRM to fill your pipeline.",
-    href: "/contacts",
+    // Opens the CSV import dialog on arrival (ContactsPage strips the flag).
+    href: "/contacts?import=true",
   },
   {
     id: "calendar",
