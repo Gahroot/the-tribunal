@@ -4,7 +4,9 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+from app.core.filter_validation import validate_membership_value
 
 
 class FilterRule(BaseModel):
@@ -13,6 +15,14 @@ class FilterRule(BaseModel):
     field: str
     operator: str
     value: str | int | float | bool | list[str] | list[int] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_membership(cls, data: Any) -> Any:
+        """Reject malformed membership values before Pydantic can coerce them."""
+        if isinstance(data, dict):
+            validate_membership_value(data.get("operator", ""), data.get("value"))
+        return data
 
 
 class FilterDefinition(BaseModel):

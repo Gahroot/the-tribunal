@@ -7,6 +7,12 @@ import { FilterChip } from "@/components/filters/filter-chip";
 import { SaveSegmentDialog } from "@/components/segments/save-segment-dialog";
 import { TagPicker } from "@/components/tags/tag-picker";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Popover,
@@ -340,6 +346,9 @@ export function ContactFilterBuilder({
             {rules.map((rule, index) => {
               const fieldConfig = FIELD_OPTIONS.find((f) => f.value === rule.field);
               const operators = fieldConfig?.operators ?? [];
+              const selectedValues = Array.isArray(rule.value)
+                ? rule.value.filter((value): value is string => typeof value === "string")
+                : [];
 
               return (
                 <div key={index} className="flex items-start gap-2">
@@ -370,7 +379,19 @@ export function ContactFilterBuilder({
                   {/* Operator select */}
                   <Select
                     value={rule.operator}
-                    onValueChange={(v) => updateRule(index, { operator: v })}
+                    onValueChange={(v) => {
+                      const membership = v === "in" || v === "not_in";
+                      updateRule(index, {
+                        operator: v,
+                        value: membership
+                          ? Array.isArray(rule.value)
+                            ? rule.value
+                            : rule.value ? [String(rule.value)] : []
+                          : fieldConfig?.valueType === "select" && Array.isArray(rule.value)
+                            ? rule.value[0] ?? ""
+                            : rule.value,
+                      });
+                    }}
                   >
                     <SelectTrigger className="w-32 h-8 text-xs">
                       <SelectValue />
@@ -396,6 +417,36 @@ export function ContactFilterBuilder({
                           }
                           allowCreate={false}
                         />
+                      ) : fieldConfig?.valueType === "select" &&
+                        (rule.operator === "in" || rule.operator === "not_in") ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" className="h-8 w-full justify-start text-xs">
+                              {Array.isArray(rule.value) && rule.value.length > 0
+                                ? fieldConfig.options?.filter((opt) => selectedValues.includes(opt.value)).map((opt) => opt.label).join(", ")
+                                : "No values selected"}
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start">
+                            {fieldConfig.options?.map((opt) => {
+                              const selected = selectedValues;
+                              return (
+                                <DropdownMenuCheckboxItem
+                                  key={opt.value}
+                                  checked={selected.includes(opt.value)}
+                                  onSelect={(event) => event.preventDefault()}
+                                  onCheckedChange={(checked) => updateRule(index, {
+                                    value: checked
+                                      ? [...selected, opt.value]
+                                      : selected.filter((value) => value !== opt.value),
+                                  })}
+                                >
+                                  {opt.label}
+                                </DropdownMenuCheckboxItem>
+                              );
+                            })}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       ) : fieldConfig?.valueType === "select" ? (
                         <Select
                           value={String(rule.value)}

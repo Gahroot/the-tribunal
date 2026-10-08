@@ -7,10 +7,12 @@ from datetime import datetime
 from typing import Any
 
 import structlog
+from pydantic import ValidationError as SchemaValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.pagination import PaginationResult
 from app.schemas.contact import ContactWithConversationResponse
+from app.schemas.segment import FilterDefinition
 from app.schemas.tag import TagResponse
 from app.services.contacts.contact_repository import (
     list_contact_ids as repo_list_contact_ids,
@@ -81,10 +83,10 @@ def parse_contact_filters(
     filter_logic = "and"
     if filters:
         try:
-            parsed = json.loads(filters)
-            filter_rules = parsed.get("rules")
-            filter_logic = parsed.get("logic", "and")
-        except (json.JSONDecodeError, AttributeError) as exc:
+            parsed = FilterDefinition.model_validate(json.loads(filters))
+            filter_rules = [rule.model_dump() for rule in parsed.rules]
+            filter_logic = parsed.logic
+        except (json.JSONDecodeError, SchemaValidationError) as exc:
             raise ContactValidationError("Invalid filters JSON") from exc
 
     return ParsedContactFilters(

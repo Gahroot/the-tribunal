@@ -25,6 +25,9 @@ from typing import Any, Protocol, cast
 from sqlalchemy import Select, and_, or_
 from sqlalchemy.sql.elements import ColumnElement
 
+from app.core.filter_validation import validate_membership_value
+from app.services.exceptions import ValidationError
+
 
 class ExtraResolver(Protocol):
     """Resolver for non-column fields (e.g. ``tags`` membership).
@@ -171,9 +174,14 @@ def build_condition(
     every resource-specific engine. Returns ``None`` for unknown
     operators so callers can decide whether to skip silently or raise.
     """
-    if operator == "in" and isinstance(value, list):
+    try:
+        validate_membership_value(operator, value)
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
+
+    if operator == "in":
         return cast("ColumnElement[bool]", column.in_(value))
-    if operator == "not_in" and isinstance(value, list):
+    if operator == "not_in":
         return cast("ColumnElement[bool]", column.notin_(value))
 
     comparison_ops: dict[str, Callable[[Any, Any], Any]] = {

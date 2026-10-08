@@ -1,5 +1,6 @@
 """Tests for contact query filter parsing and delegation."""
 
+import json
 import uuid
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
@@ -42,6 +43,15 @@ class TestParseContactFilters:
         assert parsed.enrichment_status == "enriched"
         assert parsed.filter_logic == "or"
         assert parsed.filter_rules == [{"field": "status", "operator": "equals", "value": "new"}]
+
+    @pytest.mark.parametrize("value", ["new", None, 1, {"status": "new"}, [["new"]]])
+    def test_malformed_membership_is_rejected(self, value: object) -> None:
+        with pytest.raises(ContactValidationError):
+            parse_contact_filters(
+                filters=json.dumps(
+                    {"rules": [{"field": "status", "operator": "in", "value": value}]}
+                )
+            )
 
     def test_invalid_json_raises_contact_validation_error(self) -> None:
         """Malformed filter JSON maps to a service-layer validation error."""

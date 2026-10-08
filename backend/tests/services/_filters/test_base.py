@@ -26,6 +26,7 @@ from app.services._filters import (
     range_filter_specs,
     search_filter,
 )
+from app.services.exceptions import ValidationError
 
 
 class _Base(DeclarativeBase):
@@ -112,8 +113,11 @@ class TestBuildCondition:
         sql = _compile(select(_Thing).where(expr))
         assert "IN" in sql.upper()
 
-    def test_in_with_non_list_returns_none(self) -> None:
-        assert build_condition("in", _Thing.bucket, "a") is None
+    @pytest.mark.parametrize("operator", ["in", "not_in"])
+    @pytest.mark.parametrize("value", ["a", None, 1, {"status": "a"}, [["a"]]])
+    def test_membership_with_malformed_value_raises(self, operator: str, value: Any) -> None:
+        with pytest.raises(ValidationError, match="requires a list"):
+            build_condition(operator, _Thing.bucket, value)
 
     def test_not_in(self) -> None:
         expr = build_condition("not_in", _Thing.bucket, ["a", "b"])

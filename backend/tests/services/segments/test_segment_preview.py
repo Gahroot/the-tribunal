@@ -6,16 +6,94 @@ live ``total`` derived from ``preview_segment_contacts`` without persisting
 anything.
 """
 
+import sqlite3
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import ValidationError as SchemaValidationError
+from sqlalchemy.dialects import sqlite
 
 from app.models.contact import Contact
 from app.models.segment import Segment
+from app.schemas.segment import (
+    FilterDefinition,
+    SegmentCreate,
+    SegmentPreviewRequest,
+    SegmentUpdate,
+)
+from app.services.exceptions import ValidationError
+from app.services.segments.segment_repository import build_segment_contacts_query
 from app.services.segments.segment_service import SegmentService
+
+
+@pytest.mark.parametrize(
+    "logic,extra,expected",
+    [
+        ("and", [], [1, 2]),
+        ("and", [{"field": "source", "operator": "equals", "value": "form"}], [1]),
+        ("or", [{"field": "source", "operator": "equals", "value": "import"}], [1, 2, 3]),
+    ],
+)
+def test_membership_executes_scoped_segment_query(logic: str, extra: list, expected: list) -> None:
+    workspace_id = uuid.uuid4()
+    definition = {
+        "logic": logic,
+        "rules": [{"field": "status", "operator": "in", "value": ["new", "qualified"]}, *extra],
+    }
+    query = build_segment_contacts_query(workspace_id, definition).with_only_columns(Contact.id)
+    sql = str(query.compile(dialect=sqlite.dialect(), compile_kwargs={"literal_binds": True}))
+    with sqlite3.connect(":memory:") as db:
+        db.execute(
+            "CREATE TABLE contacts (id INTEGER, workspace_id TEXT, status TEXT, source TEXT)"
+        )
+        db.executemany(
+            "INSERT INTO contacts VALUES (?, ?, ?, ?)",
+            [
+                (1, workspace_id.hex, "new", "form"),
+                (2, workspace_id.hex, "qualified", "other"),
+                (3, workspace_id.hex, "lost", "import"),
+                (4, uuid.uuid4().hex, "new", "import"),
+            ],
+        )
+        assert sorted(row[0] for row in db.execute(sql)) == expected
+
+
+@pytest.mark.parametrize("operator,expected", [("in", []), ("not_in", [1])])
+def test_empty_membership_has_explicit_sql_semantics(operator: str, expected: list) -> None:
+    workspace_id = uuid.uuid4()
+    definition = FilterDefinition.model_validate(
+        {"rules": [{"field": "status", "operator": operator, "value": []}]}
+    ).model_dump()
+    query = build_segment_contacts_query(workspace_id, definition).with_only_columns(Contact.id)
+    sql = str(query.compile(dialect=sqlite.dialect(), compile_kwargs={"literal_binds": True}))
+    with sqlite3.connect(":memory:") as db:
+        db.execute("CREATE TABLE contacts (id INTEGER, workspace_id TEXT, status TEXT)")
+        db.execute("INSERT INTO contacts VALUES (?, ?, ?)", (1, workspace_id.hex, "new"))
+        assert [row[0] for row in db.execute(sql)] == expected
+
+
+@pytest.mark.parametrize("operator", ["in", "not_in"])
+@pytest.mark.parametrize("value", ["new", None, 5, {"status": "new"}, [["new"]], [None]])
+def test_malformed_membership_rejected_in_saved_and_public_filters(
+    operator: str, value: object
+) -> None:
+    definition = {"rules": [{"field": "status", "operator": operator, "value": value}]}
+    with pytest.raises(ValidationError, match="requires a list"):
+        build_segment_contacts_query(uuid.uuid4(), definition)
+    for schema in (SegmentCreate, SegmentUpdate, SegmentPreviewRequest):
+        with pytest.raises(SchemaValidationError, match="requires a list"):
+            schema.model_validate({"name": "Test", "definition": definition})
+
+
+@pytest.mark.parametrize("operator", [["in"], {"operator": "in"}])
+def test_invalid_operator_is_a_schema_validation_error(operator: object) -> None:
+    with pytest.raises(SchemaValidationError):
+        SegmentPreviewRequest.model_validate(
+            {"definition": {"rules": [{"field": "status", "operator": operator, "value": ["new"]}]}}
+        )
 
 
 @pytest.fixture
