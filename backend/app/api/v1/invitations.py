@@ -28,6 +28,7 @@ from app.schemas.invitation import (
 )
 from app.services.email import email_delivery_configured, send_invitation_email
 from app.services.idempotency import derive_outbound_key
+from app.services.workspaces.membership import add_membership, lock_memberships
 
 router = APIRouter()
 logger = structlog.get_logger()
@@ -496,6 +497,9 @@ async def accept_invitation(
             detail="This invitation was sent to a different email address",
         )
 
+    # Serialize acceptance with brand creation/default changes and duplicate
+    # acceptance requests before checking membership.
+    await lock_memberships(db, current_user.id)
     # Check if already a member
     result = await db.execute(
         apply_workspace_scope(
@@ -518,13 +522,12 @@ async def accept_invitation(
         )
 
     # Create membership
-    membership = WorkspaceMembership(
+    await add_membership(
+        db,
         user_id=current_user.id,
         workspace_id=invitation.workspace_id,
         role=invitation.role,
-        is_default=False,
     )
-    db.add(membership)
 
     # Update invitation status
     invitation.status = "accepted"

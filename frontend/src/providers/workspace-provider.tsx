@@ -114,6 +114,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       ? workspaces.find((w) => w.workspace.id === selectedWorkspaceId)
       : null;
 
+    // Default is only a fallback, not the current-brand selection (RF-033).
+    // RF-032's API projects one effective default even for legacy duplicates.
     return selectedWorkspace ?? workspaces.find((w) => w.is_default) ?? workspaces[0] ?? null;
   }, [isAuthenticated, selectedWorkspaceId, workspaces]);
 

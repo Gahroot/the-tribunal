@@ -18,7 +18,6 @@ from app.core.security import (
 from app.core.utils import get_client_ip
 from app.db.session import get_db
 from app.models.user import User
-from app.models.workspace import WorkspaceMembership
 from app.schemas.user import (
     ChangePasswordRequest,
     Token,
@@ -45,6 +44,7 @@ from app.services.rate_limiting.auth_limiter import (
     enforce_ws_ticket_rate_limit,
 )
 from app.services.workspaces import ensure_personal_workspace
+from app.services.workspaces.membership import get_default_membership
 
 router = APIRouter()
 
@@ -310,15 +310,7 @@ async def issue_ws_ticket(current_user: CurrentUser) -> dict[str, str]:
 @router.get("/me", response_model=UserWithWorkspace)
 async def get_me(current_user: CurrentUser, db: DB) -> dict[str, Any]:
     """Get current user info with default workspace."""
-    result = await db.execute(
-        select(WorkspaceMembership)
-        .where(
-            WorkspaceMembership.user_id == current_user.id,
-            WorkspaceMembership.is_default.is_(True),
-        )
-        .limit(1)
-    )
-    membership = result.scalar_one_or_none()
+    membership = await get_default_membership(db, current_user.id)
 
     return {
         "id": current_user.id,

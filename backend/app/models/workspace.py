@@ -111,7 +111,12 @@ class Workspace(Base):
 
 
 class WorkspaceMembership(Base):
-    """User membership in a workspace."""
+    """User membership in a workspace.
+
+    Write through services.workspaces.membership to serialize per-user default
+    changes. No unique-default index yet: historical duplicates need an
+    approved, backed-up repair before such a constraint can be deployed.
+    """
 
     __tablename__ = "workspace_memberships"
     __table_args__ = (UniqueConstraint("user_id", "workspace_id", name="uq_user_workspace"),)

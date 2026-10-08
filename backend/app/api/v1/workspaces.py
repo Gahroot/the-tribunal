@@ -26,6 +26,12 @@ from app.schemas.workspace import (
 from app.services.agents import ensure_default_agent
 from app.services.autonomy_mandate import default_autonomy_mandate, normalize_autonomy_mandate
 from app.services.opportunities import ensure_default_pipeline
+from app.services.workspaces.membership import (
+    add_membership,
+    get_default_membership,
+    lock_memberships,
+    select_default_membership,
+)
 
 router = APIRouter()
 
@@ -41,15 +47,18 @@ async def list_workspaces(
         .join(Workspace, WorkspaceMembership.workspace_id == Workspace.id)
         .where(WorkspaceMembership.user_id == current_user.id)
         .where(Workspace.is_active.is_(True))
-        .order_by(WorkspaceMembership.created_at)
+        .order_by(WorkspaceMembership.created_at, WorkspaceMembership.id)
     )
     rows = result.all()
+    # Project one effective default without rewriting legacy flags. The rows
+    # already have the same deterministic age/UUID ordering as login fallback.
+    default = next((m for m, _ in rows if m.is_default), rows[0][0] if rows else None)
 
     return [
         WorkspaceWithMembership(
             workspace=WorkspaceResponse.model_validate(workspace),
             role=membership.role,
-            is_default=membership.is_default,
+            is_default=membership is default,
         )
         for membership, workspace in rows
     ]
@@ -62,6 +71,9 @@ async def create_workspace(
     db: DB,
 ) -> WorkspaceResponse:
     """Create a new workspace."""
+    # Use the same user-first lock order as personal provisioning, before
+    # inserting a workspace (including retries using its personal slug).
+    await lock_memberships(db, current_user.id)
     # Check if slug already exists
     result = await db.execute(select(Workspace).where(Workspace.slug == workspace_in.slug))
     if result.scalar_one_or_none() is not None:
@@ -82,13 +94,8 @@ async def create_workspace(
     await db.flush()
 
     # Create membership (owner)
-    membership = WorkspaceMembership(
-        user_id=current_user.id,
-        workspace_id=workspace.id,
-        role="owner",
-        is_default=True,
-    )
-    db.add(membership)
+    # First membership is default; additional brands do not replace it.
+    await add_membership(db, user_id=current_user.id, workspace_id=workspace.id, role="owner")
 
     # Provision a default pipeline so opportunities (e.g. ad-library promotions)
     # land in a real pipeline and the opportunities board has columns to render.
@@ -159,12 +166,10 @@ async def set_default_workspace(
     db: DB,
 ) -> WorkspaceWithMembership:
     """Set a workspace as the user's default workspace."""
-    # Clear is_default for all other memberships of this user
-    all_memberships_result = await db.execute(
-        select(WorkspaceMembership).where(WorkspaceMembership.user_id == membership.user_id)
-    )
-    for m in all_memberships_result.scalars().all():
-        m.is_default = m.workspace_id == workspace.id
+    try:
+        await select_default_membership(db, user_id=membership.user_id, workspace_id=workspace.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
     await db.commit()
     await db.refresh(membership)
@@ -264,6 +269,7 @@ async def remove_member(
             detail="Not authorized to manage members",
         )
 
+    await lock_memberships(db, user_id)
     # Get target membership
     target_result = await db.execute(
         select(WorkspaceMembership).where(
@@ -292,6 +298,14 @@ async def remove_member(
             detail="Admins cannot remove other admins",
         )
 
-    # Remove membership
+    # Replace a removed default within the same per-user transaction.
+    was_default = target_membership.is_default
     await db.delete(target_membership)
+    await db.flush()
+    if was_default:
+        replacement = await get_default_membership(db, user_id)
+        if replacement is not None:
+            await select_default_membership(
+                db, user_id=user_id, workspace_id=replacement.workspace_id
+            )
     await db.commit()

@@ -38,7 +38,7 @@ from app.models.phone_number import (
     TrustTier,
 )
 from app.models.user import User
-from app.models.workspace import Workspace, WorkspaceMembership
+from app.models.workspace import Workspace
 from app.services.autonomy_mandate import prestyj_autonomy_mandate
 from app.services.offers.prestyj_batch_video_ads import (
     ANCHOR_PACK,
@@ -50,6 +50,7 @@ from app.services.offers.prestyj_batch_video_ads import (
     UPSELL_PACK,
     format_price,
 )
+from app.services.workspaces.membership import add_membership
 from scripts.demo.seed_prestyj_batch_video_ads_offer import (
     PRESTYJ_BATCH_VIDEO_ADS_TEMPLATE,
 )
@@ -466,26 +467,10 @@ async def _upsert_workspace(db: AsyncSession) -> Workspace:
 
 
 async def _upsert_membership(db: AsyncSession, user: User, workspace: Workspace) -> None:
-    membership = (
-        await db.execute(
-            select(WorkspaceMembership).where(
-                WorkspaceMembership.user_id == user.id,
-                WorkspaceMembership.workspace_id == workspace.id,
-            )
-        )
-    ).scalar_one_or_none()
-    if membership is None:
-        db.add(
-            WorkspaceMembership(
-                user_id=user.id,
-                workspace_id=workspace.id,
-                role="owner",
-                is_default=True,
-            )
-        )
-    else:
-        membership.role = "owner"
-        membership.is_default = True
+    membership = await add_membership(
+        db, user_id=user.id, workspace_id=workspace.id, role="owner"
+    )
+    membership.role = "owner"
 
 
 async def _upsert_api_key(db: AsyncSession, user: User, workspace: Workspace) -> None:

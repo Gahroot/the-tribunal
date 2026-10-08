@@ -169,7 +169,10 @@ export function WorkspaceDetailsCard({
             </div>
             <Switch
               checked={currentWorkspace?.is_default ?? false}
-              onCheckedChange={() => setDefaultMutation.mutate()}
+              aria-label="Default Workspace"
+              onCheckedChange={(checked) => {
+                if (checked) setDefaultMutation.mutate();
+              }}
               disabled={
                 setDefaultMutation.isPending || currentWorkspace?.is_default
               }

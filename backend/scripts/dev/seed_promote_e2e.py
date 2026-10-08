@@ -39,7 +39,8 @@ from app.models.lead_prospect import (
 from app.models.opportunity import Opportunity
 from app.models.pipeline import Pipeline, PipelineStage
 from app.models.user import User
-from app.models.workspace import Workspace, WorkspaceMembership
+from app.models.workspace import Workspace
+from app.services.workspaces.membership import add_membership
 
 USER_EMAIL = "promote-e2e@example.com"
 USER_PASSWORD = "Passw0rd!2026"
@@ -121,23 +122,7 @@ async def main() -> None:
             await db.flush()
 
         # --- membership ---
-        member = (
-            await db.execute(
-                select(WorkspaceMembership).where(
-                    WorkspaceMembership.user_id == user.id,
-                    WorkspaceMembership.workspace_id == ws.id,
-                )
-            )
-        ).scalar_one_or_none()
-        if member is None:
-            db.add(
-                WorkspaceMembership(
-                    user_id=user.id,
-                    workspace_id=ws.id,
-                    role="owner",
-                    is_default=True,
-                )
-            )
+        await add_membership(db, user_id=user.id, workspace_id=ws.id, role="owner")
 
         # --- default pipeline ---
         pipeline = (

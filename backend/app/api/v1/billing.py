@@ -77,7 +77,9 @@ def _stripe_client() -> stripe.StripeClient:
 async def _get_user_workspace_id(current_user: CurrentUser, db: DB, request: Request) -> uuid.UUID:
     """Resolve and authorize the same legacy workspace billing account.
 
-    Several memberships can carry ``is_default``, so pick the oldest
+    RF-032 intentionally does not replace this resolver with the active-brand
+    login/list projection or rewrite WorkspaceIntegration Stripe mappings.
+    Several legacy memberships can carry ``is_default``, so pick the oldest
     deterministically rather than failing with a 500 on multiple rows.
     Selection is not authority: require owner/admin access on that exact
     workspace, including its active state and API-key binding. Never fall back

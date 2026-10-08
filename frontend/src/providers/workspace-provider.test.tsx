@@ -175,6 +175,25 @@ describe("WorkspaceProvider", () => {
     });
   });
 
+  it("keeps the current brand when the default changes on refresh (RF-032/RF-033)", async () => {
+    window.localStorage.setItem("current_workspace_id", "ws_c");
+    useAuthMock.mockReturnValue({ isAuthenticated: true, user: null });
+    listMock.mockResolvedValue(WORKSPACES);
+    renderWithProviders();
+    await waitFor(() => {
+      expect(screen.getByTestId("current").textContent).toBe("ws_c");
+    });
+    listMock.mockResolvedValue([
+      makeWorkspace("ws_a", { is_default: true }),
+      makeWorkspace("ws_b"),
+      makeWorkspace("ws_c"),
+    ]);
+    await userEvent.click(screen.getByRole("button", { name: "probe-retry" }));
+    await waitFor(() => expect(listMock).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId("current").textContent).toBe("ws_c");
+    expect(window.localStorage.getItem("current_workspace_id")).toBe("ws_c");
+  });
+
   it("ignores a stale stored id and picks the default instead", async () => {
     window.localStorage.setItem("current_workspace_id", "ws_gone");
     useAuthMock.mockReturnValue({ isAuthenticated: true, user: null });

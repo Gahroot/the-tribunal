@@ -13,6 +13,7 @@ from app.db.session import AsyncSessionLocal
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMembership
 from app.services.opportunities import ensure_default_pipeline
+from app.services.workspaces.membership import add_membership, lock_memberships
 from app.utils.pii import mask_email
 
 # Workspace ID used by frontend. Overridable via env var for non-default deployments;
@@ -87,6 +88,7 @@ async def create_workspace_membership(
     workspace: Workspace,
 ) -> WorkspaceMembership:
     """Create workspace membership if not exists."""
+    await lock_memberships(db, user.id)
     result = await db.execute(
         select(WorkspaceMembership).where(
             WorkspaceMembership.user_id == user.id,
@@ -99,13 +101,7 @@ async def create_workspace_membership(
         print(f"Membership already exists for user {mask_email(user.email)} in {workspace.name}")
         return existing
 
-    membership = WorkspaceMembership(
-        user_id=user.id,
-        workspace_id=workspace.id,
-        role="owner",
-        is_default=True,
-    )
-    db.add(membership)
+    membership = await add_membership(db, user_id=user.id, workspace_id=workspace.id, role="owner")
     await db.commit()
     await db.refresh(membership)
     print(f"Created membership for {mask_email(user.email)} in {workspace.name} (role=owner)")

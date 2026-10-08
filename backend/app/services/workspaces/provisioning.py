@@ -22,8 +22,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
-from app.models.workspace import Workspace, WorkspaceMembership
+from app.models.workspace import Workspace
 from app.services.opportunities import ensure_default_pipeline
+from app.services.workspaces.membership import (
+    add_membership,
+    get_default_membership,
+    lock_memberships,
+)
 
 logger = structlog.get_logger()
 
@@ -61,24 +66,17 @@ async def _unique_slug(db: AsyncSession, base: str) -> str:
 async def ensure_personal_workspace(db: AsyncSession, user: User) -> Workspace:
     """Return the user's default workspace, creating a personal one if absent.
 
-    Idempotent: if the user already has any membership, their default (or
-    earliest) workspace is returned unchanged. Otherwise a personal workspace
+    Idempotent: if the user already has an active membership, their effective
+    default workspace is returned unchanged. Otherwise a personal workspace
     with an owner membership and a default pipeline is provisioned. Flushes but
     does not commit; the caller owns the transaction.
     """
-    existing = await db.execute(
-        select(Workspace)
-        .join(WorkspaceMembership, WorkspaceMembership.workspace_id == Workspace.id)
-        .where(WorkspaceMembership.user_id == user.id)
-        .order_by(
-            WorkspaceMembership.is_default.desc(),
-            WorkspaceMembership.created_at.asc(),
-        )
-        .limit(1)
-    )
-    workspace = existing.scalar_one_or_none()
-    if workspace is not None:
-        return workspace
+    await lock_memberships(db, user.id)
+    existing = await get_default_membership(db, user.id)
+    if existing is not None:
+        workspace = await db.get(Workspace, existing.workspace_id)
+        if workspace is not None:
+            return workspace
 
     name = _workspace_name(user)
     slug = await _unique_slug(db, name)
@@ -86,14 +84,7 @@ async def ensure_personal_workspace(db: AsyncSession, user: User) -> Workspace:
     db.add(workspace)
     await db.flush()
 
-    db.add(
-        WorkspaceMembership(
-            user_id=user.id,
-            workspace_id=workspace.id,
-            role="owner",
-            is_default=True,
-        )
-    )
+    await add_membership(db, user_id=user.id, workspace_id=workspace.id, role="owner")
 
     # Mirror create_workspace: provision a default pipeline so the opportunities
     # board renders and the promotion flow has a pipeline to open into.
