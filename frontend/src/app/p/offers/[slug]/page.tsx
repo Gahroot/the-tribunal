@@ -128,7 +128,7 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
 
         <div className="grid gap-8 lg:grid-cols-5">
           {/* Left Column - Value Stack & Bonuses */}
-          <div className="lg:col-span-3 space-y-6">
+          <div className="min-w-0 lg:col-span-3 space-y-6">
             {/* Value Stack */}
             {offer.value_stack_items && offer.value_stack_items.length > 0 && (
               <Card>
@@ -179,7 +179,7 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
                       className="flex items-start gap-3 p-3 rounded-lg border bg-background"
                     >
                       <Gift className="size-5 text-primary mt-0.5 flex-shrink-0" />
-                      <div className="flex-1 space-y-3">
+                      <div className="min-w-0 flex-1 space-y-3">
                         <div className="flex items-center justify-between">
                           <span className="font-medium">{lm.name}</span>
                           {lm.estimated_value && (

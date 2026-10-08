@@ -3,15 +3,11 @@
 import { Download, ExternalLink, PlayCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import type {
-  CalculatorContent,
-  LeadMagnet,
-  QuizContent,
-  RichTextContent,
-} from "@/types";
+import type { CalculatorContent, LeadMagnet, QuizContent, RichTextContent } from "@/types";
 
 import { CalculatorRunner } from "./calculator-runner";
 import { QuizRunner } from "./quiz-runner";
+import { RichTextBody } from "./rich-text-body";
 
 interface LeadMagnetContentProps {
   magnet: Pick<
@@ -54,14 +50,17 @@ export function LeadMagnetContent({ magnet }: LeadMagnetContentProps) {
     return <CalculatorRunner content={content_data as CalculatorContent} />;
   }
 
-  if (magnet_type === "rich_text" && content_data) {
-    const rich = content_data as RichTextContent;
+  if (magnet_type === "rich_text") {
+    const rich = content_data as Partial<RichTextContent> | undefined;
     return (
-      <div className="space-y-2">
-        {rich.title && <h4 className="font-semibold">{rich.title}</h4>}
-        {rich.description && (
+      <div className="min-w-0 space-y-2">
+        {typeof rich?.title === "string" && rich.title && (
+          <h4 className="font-semibold">{rich.title}</h4>
+        )}
+        {typeof rich?.description === "string" && rich.description && (
           <p className="text-sm text-muted-foreground">{rich.description}</p>
         )}
+        <RichTextBody content={rich?.content} />
         {content_url && <DownloadButton magnet={magnet} />}
       </div>
     );
@@ -72,9 +71,7 @@ export function LeadMagnetContent({ magnet }: LeadMagnetContentProps) {
   }
 
   return (
-    <p className="text-sm text-muted-foreground">
-      This bonus will be delivered after you sign up.
-    </p>
+    <p className="text-sm text-muted-foreground">This bonus will be delivered after you sign up.</p>
   );
 }
 
