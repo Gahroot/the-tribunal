@@ -6,6 +6,7 @@ network. They prove transcript mapping, schema-validated scores, and
 failure propagation when model output cannot be trusted.
 """
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -17,7 +18,7 @@ from app.services.ai.roleplay import DEFAULT_PERSONAS
 from app.services.ai.roleplay.agent_responder import (
     _build_messages as build_agent_messages,
 )
-from app.services.ai.roleplay.agent_responder import generate_agent_reply
+from app.services.ai.roleplay.agent_responder import AgentGenerationError, generate_agent_reply
 from app.services.ai.roleplay.prospect_simulator import (
     _build_messages as build_prospect_messages,
 )
@@ -84,6 +85,25 @@ class TestAgentResponder:
             client=client, system_prompt="you are a rep", transcript=SAMPLE_TRANSCRIPT
         )
         assert reply == "Happy to explain the pricing!"
+
+    async def test_enforced_timeout_raises_safe_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def slow_response(**kwargs):
+            await asyncio.Event().wait()
+
+        client = _mock_client("unused")
+        client.chat.completions.create = AsyncMock(side_effect=slow_response)
+        monkeypatch.setattr("app.services.ai.roleplay.agent_responder._TIMEOUT_SECONDS", 0.001)
+        with pytest.raises(AgentGenerationError) as error:
+            await generate_agent_reply(client=client, system_prompt="rep", transcript=[])
+        assert error.value.reason == "timeout"
+        assert "retry" in str(error.value)
+
+    async def test_empty_response_is_not_a_canned_reply(self) -> None:
+        with pytest.raises(AgentGenerationError) as error:
+            await generate_agent_reply(client=_mock_client(" "), system_prompt="rep", transcript=[])
+        assert error.value.reason == "empty_response"
 
 
 class TestReportScorer:

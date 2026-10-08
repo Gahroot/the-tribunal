@@ -64,11 +64,7 @@ function FeedbackList({
 }) {
   if (items.length === 0) return null;
   const toneClass =
-    tone === "good"
-      ? "text-success"
-      : tone === "warn"
-        ? "text-warning"
-        : "text-info";
+    tone === "good" ? "text-success" : tone === "warn" ? "text-warning" : "text-info";
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -107,98 +103,113 @@ export function RehearsalReport({ run }: { run: RehearsalRun }) {
             {run.channel.toUpperCase()}
           </p>
         </div>
-        <div className="text-right">
-          <div className="text-xs uppercase text-muted-foreground">
-            Overall score
+        {run.status === "completed" ? (
+          <div className="text-right">
+            <div className="text-xs uppercase text-muted-foreground">Overall score</div>
+            <div className={`text-4xl font-bold ${scoreColor(run.overall_score)}`}>
+              {run.overall_score === null ? "—" : Math.round(run.overall_score)}
+            </div>
           </div>
-          <div className={`text-4xl font-bold ${scoreColor(run.overall_score)}`}>
-            {run.overall_score === null ? "—" : Math.round(run.overall_score)}
-          </div>
-        </div>
+        ) : null}
       </div>
 
-      {run.summary ? (
-        <Card>
-          <CardContent className="p-4 text-sm">{run.summary}</CardContent>
-        </Card>
+      {run.status === "completed" ? (
+        <>
+          {run.summary ? (
+            <Card>
+              <CardContent className="p-4 text-sm">{run.summary}</CardContent>
+            </Card>
+          ) : null}
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <ScoreStat
+              label="Objection coverage"
+              value={run.objection_coverage}
+              icon={<ShieldCheck className="size-4" />}
+            />
+            <ScoreStat
+              label={`Tone${toneLabel ? ` · ${toneLabel}` : ""}`}
+              value={run.tone_score}
+              icon={<Smile className="size-4" />}
+            />
+            <Card>
+              <CardContent className="flex flex-col gap-2 p-4">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  {run.booking_attempted ? (
+                    <CalendarCheck className="size-4" />
+                  ) : (
+                    <CalendarX className="size-4" />
+                  )}
+                  Attempted booking
+                </div>
+                <div className="text-2xl font-semibold">
+                  {run.booking_attempted === null ? (
+                    "—"
+                  ) : run.booking_attempted ? (
+                    <span className="text-success">Yes</span>
+                  ) : (
+                    <span className="text-destructive">No</span>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <FeedbackList
+              title="Strengths"
+              items={run.strengths}
+              icon={<CheckCircle2 className="size-4" />}
+              tone="good"
+            />
+            <FeedbackList
+              title="Gaps"
+              items={run.gaps}
+              icon={<TriangleAlert className="size-4" />}
+              tone="warn"
+            />
+            <FeedbackList
+              title="Suggested improvements"
+              items={run.suggestions}
+              icon={<Lightbulb className="size-4" />}
+              tone="info"
+            />
+          </div>
+
+          {breakdown.length > 0 ? (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Objection handling</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {breakdown.map((item, i) => (
+                  <div key={i} className="flex items-start gap-3 text-sm">
+                    {item.addressed ? (
+                      <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" />
+                    ) : (
+                      <XCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
+                    )}
+                    <div>
+                      <div className="font-medium">{item.objection}</div>
+                      {item.note ? <div className="text-muted-foreground">{item.note}</div> : null}
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          ) : null}
+        </>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <ScoreStat
-          label="Objection coverage"
-          value={run.objection_coverage}
-          icon={<ShieldCheck className="size-4" />}
-        />
-        <ScoreStat
-          label={`Tone${toneLabel ? ` · ${toneLabel}` : ""}`}
-          value={run.tone_score}
-          icon={<Smile className="size-4" />}
-        />
-        <Card>
-          <CardContent className="flex flex-col gap-2 p-4">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              {run.booking_attempted ? (
-                <CalendarCheck className="size-4" />
-              ) : (
-                <CalendarX className="size-4" />
-              )}
-              Attempted booking
-            </div>
-            <div className="text-2xl font-semibold">
-              {run.booking_attempted === null ? (
-                "—"
-              ) : run.booking_attempted ? (
-                <span className="text-success">Yes</span>
-              ) : (
-                <span className="text-destructive">No</span>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-3">
-        <FeedbackList
-          title="Strengths"
-          items={run.strengths}
-          icon={<CheckCircle2 className="size-4" />}
-          tone="good"
-        />
-        <FeedbackList
-          title="Gaps"
-          items={run.gaps}
-          icon={<TriangleAlert className="size-4" />}
-          tone="warn"
-        />
-        <FeedbackList
-          title="Suggested improvements"
-          items={run.suggestions}
-          icon={<Lightbulb className="size-4" />}
-          tone="info"
-        />
-      </div>
-
-      {breakdown.length > 0 ? (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Objection handling</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {breakdown.map((item, i) => (
-              <div key={i} className="flex items-start gap-3 text-sm">
-                {item.addressed ? (
-                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" />
-                ) : (
-                  <XCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
-                )}
-                <div>
-                  <div className="font-medium">{item.objection}</div>
-                  {item.note ? (
-                    <div className="text-muted-foreground">{item.note}</div>
-                  ) : null}
-                </div>
-              </div>
-            ))}
+      {run.status === "failed" ? (
+        <Card className="border-destructive/50 bg-background">
+          <CardContent role="alert" className="space-y-2 p-4 text-sm">
+            <Badge variant="destructive">Not evaluated</Badge>
+            <p>The rehearsal failed. No valid evaluation or score is available.</p>
+            <p>
+              The partial transcript is saved below. Use the rehearsal setup to retry with a new
+              run; if it keeps failing, check your workspace AI connection.
+            </p>
           </CardContent>
         </Card>
       ) : null}
@@ -211,19 +222,14 @@ export function RehearsalReport({ run }: { run: RehearsalRun }) {
           {run.transcript.map((turn, i) => {
             const isProspect = turn.role === "prospect";
             return (
-              <div
-                key={i}
-                className={`flex ${isProspect ? "justify-start" : "justify-end"}`}
-              >
+              <div key={i} className={`flex ${isProspect ? "justify-start" : "justify-end"}`}>
                 <div
                   className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
-                    isProspect
-                      ? "bg-muted"
-                      : "bg-primary text-primary-foreground"
+                    isProspect ? "bg-muted" : "bg-primary text-primary-foreground"
                   }`}
                 >
                   <div className="mb-1 text-xs opacity-70">
-                    {isProspect ? run.persona_name ?? "Prospect" : "Rep"}
+                    {isProspect ? (run.persona_name ?? "Prospect") : "Rep"}
                   </div>
                   {turn.content}
                 </div>
@@ -232,15 +238,6 @@ export function RehearsalReport({ run }: { run: RehearsalRun }) {
           })}
         </CardContent>
       </Card>
-
-      {run.status === "failed" && run.error ? (
-        <Card className="border-destructive/50 bg-background">
-          <CardContent className="flex items-center gap-2 p-4 text-sm text-destructive">
-            <Badge variant="destructive">Failed</Badge>
-            {run.error}
-          </CardContent>
-        </Card>
-      ) : null}
 
       <Separator />
     </div>

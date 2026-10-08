@@ -27,6 +27,7 @@ from app.services.ai.message_context_builder import get_workspace_timezone
 from app.services.ai.model_config import resolve_model
 from app.services.ai.openai_credentials import get_workspace_openai_bearer_token
 from app.services.ai.roleplay.agent_responder import (
+    AgentGenerationError,
     build_agent_system_prompt,
     generate_agent_reply,
 )
@@ -295,9 +296,14 @@ class RoleplayService:
             run.completed_at = datetime.now(UTC)
             await self._emit_completed_event(run)
         except Exception as exc:  # noqa: BLE001 - persist failure, never 500 silently
-            logger.exception("rehearsal_run_failed", run_id=str(run.id))
+            logger.warning("rehearsal_run_failed", run_id=str(run.id))
+            run.transcript = list(transcript)
             run.status = RehearsalStatus.FAILED
-            run.error = str(exc)
+            run.error = (
+                str(exc)
+                if isinstance(exc, AgentGenerationError)
+                else "The rehearsal could not be evaluated. Please start a new rehearsal to retry."
+            )
 
         await self.db.commit()
         await self.db.refresh(run)
@@ -340,6 +346,8 @@ class RoleplayService:
         run = await self.get_run(run_id, workspace_id)
         if run.status == RehearsalStatus.COMPLETED:
             return run
+        if run.status == RehearsalStatus.FAILED:
+            raise ValidationError("This rehearsal failed. Please start a new rehearsal to retry.")
         if not run.transcript:
             raise ValidationError("Nothing to score yet")
 
@@ -350,10 +358,10 @@ class RoleplayService:
             run.status = RehearsalStatus.COMPLETED
             run.completed_at = datetime.now(UTC)
             await self._emit_completed_event(run)
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("rehearsal_score_failed", run_id=str(run.id))
+        except Exception:  # noqa: BLE001
+            logger.warning("rehearsal_score_failed", run_id=str(run.id))
             run.status = RehearsalStatus.FAILED
-            run.error = str(exc)
+            run.error = "The rehearsal could not be scored. Please start a new rehearsal to retry."
         await self.db.commit()
         await self.db.refresh(run)
         return run

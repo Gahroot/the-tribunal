@@ -36,12 +36,14 @@ import { queryKeys } from "@/lib/query-keys";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 import type { RehearsalRun, RehearseeType } from "@/types/roleplay";
 
-const difficultyVariant: Record<string, "secondary" | "default" | "destructive"> =
-  {
-    easy: "secondary",
-    medium: "default",
-    hard: "destructive",
-  };
+const difficultyVariant: Record<
+  string,
+  "secondary" | "default" | "destructive"
+> = {
+  easy: "secondary",
+  medium: "default",
+  hard: "destructive",
+};
 
 export function PracticeArena({
   initialAgentId = "",
@@ -108,7 +110,7 @@ export function PracticeArena({
       }
       if (run.status === "failed") {
         toast.error("Rehearsal failed: check the report for details");
-      } else if (mode === "ai") {
+      } else if (run.status === "completed") {
         toast.success("Rehearsal complete");
       }
     },
@@ -134,7 +136,9 @@ export function PracticeArena({
     activeRun &&
     (activeRun.status === "completed" || activeRun.status === "failed");
   const showChat =
-    activeRun && activeRun.rehearsee === "human" && activeRun.status === "running";
+    activeRun &&
+    activeRun.rehearsee === "human" &&
+    activeRun.status === "running";
 
   return (
     <div className="space-y-6 p-6">
@@ -293,7 +297,11 @@ export function PracticeArena({
               ) : (
                 <>
                   <Play className="size-4" />
-                  {mode === "ai" ? "Run rehearsal" : "Start practice"}
+                  {activeRun?.status === "failed"
+                    ? "Retry rehearsal"
+                    : mode === "ai"
+                      ? "Run rehearsal"
+                      : "Start practice"}
                 </>
               )}
             </Button>

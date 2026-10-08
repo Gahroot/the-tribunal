@@ -31,6 +31,21 @@ _TIMEOUT_SECONDS = 30.0
 _MAX_TOKENS = 500
 
 
+class AgentGenerationError(Exception):
+    """Safe, structured failure for an agent turn that could not be evaluated."""
+
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        detail = {
+            "timeout": "The agent response timed out.",
+            "provider_error": "The agent response could not be generated.",
+            "empty_response": "The agent returned an empty response.",
+        }[reason]
+        super().__init__(
+            f"{detail} The agent was not evaluated. Please start a new rehearsal to retry."
+        )
+
+
 async def build_agent_system_prompt(
     db: AsyncSession,
     agent: Agent,
@@ -92,7 +107,10 @@ async def generate_agent_reply(
         seed: Optional OpenAI sampling seed for best-effort reproducibility.
 
     Returns:
-        The agent's next utterance, or a short fallback on failure.
+        The agent's next utterance.
+
+    Raises:
+        AgentGenerationError: A safe failure instead of a synthetic agent reply.
     """
     messages = _build_messages(system_prompt, transcript)
     create_kwargs: dict[str, Any] = {
@@ -109,11 +127,13 @@ async def generate_agent_reply(
             timeout=_TIMEOUT_SECONDS,
         )
         text = (response.choices[0].message.content or "").strip()
-        if text:
-            return text
-        logger.warning("agent_reply_empty")
     except TimeoutError:
-        logger.error("agent_reply_timeout")
+        logger.warning("agent_reply_timeout")
+        raise AgentGenerationError("timeout") from None
     except Exception:
-        logger.exception("agent_reply_failed")
-    return "Thanks for reaching out — happy to help with any questions you have."
+        logger.warning("agent_reply_failed")
+        raise AgentGenerationError("provider_error") from None
+    if not text:
+        logger.warning("agent_reply_empty")
+        raise AgentGenerationError("empty_response")
+    return text
