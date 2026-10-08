@@ -394,3 +394,18 @@ def test_iter_mulaw_frames_resamples_non_pcmu_audio():
     assert chunks
     # 48kHz -> 8kHz is a 6:1 reduction: 960 samples becomes 160 mu-law bytes.
     assert len(chunks[0]) == BYTES_PER_FRAME
+
+
+def test_knowledge_result_keeps_passages_not_only_instructions():
+    from app.services.ai.live_voice_agent import _render_result
+
+    rendered = _render_result(
+        {
+            "success": True,
+            "message": "Use only the returned passages.",
+            "passages": [{"title": "Refund FAQ", "content": "Refunds within 37 days."}],
+        }
+    )
+    assert "37 days" in rendered
+    assert "Refund FAQ" in rendered
+    assert "Use only the returned passages" in rendered

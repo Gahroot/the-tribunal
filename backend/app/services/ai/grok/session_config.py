@@ -24,6 +24,7 @@ from app.services.ai.tool_definitions import TOOL_DEFINITIONS
 from app.services.ai.voice_tools import (
     GROK_BUILTIN_TOOLS,
     get_booking_tools,
+    is_search_knowledge_enabled,
 )
 
 logger = structlog.get_logger()
@@ -174,6 +175,11 @@ class GrokSessionConfigBuilder:
             self._tools.append(TOOL_DEFINITIONS["navigate_booking_menu"].render("grok"))
             dtmf_reason = "ivr_detector_active" if ivr_detector_active else "explicit_config"
             self._logger.info("grok_dtmf_tool_enabled", reason=dtmf_reason)
+
+        if is_search_knowledge_enabled(
+            self._agent, has_ready_knowledge=self._prompt_builder.has_ready_knowledge
+        ):
+            self._tools.append(TOOL_DEFINITIONS["search_knowledge"].render("grok"))
 
         # Add Cal.com booking tools if enabled
         if enable_booking:

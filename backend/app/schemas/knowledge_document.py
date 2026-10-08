@@ -18,6 +18,7 @@ class KnowledgeDocumentResponse(BaseModel):
     token_count: int
     priority: int
     is_active: bool
+    retrieval_ready: bool = False
     metadata_: dict[str, Any] | None = Field(None, alias="metadata_")
     created_at: str
     updated_at: str

@@ -24,7 +24,7 @@ from app.models.agent import Agent
 from app.services.ai.elevenlabs_tts import ElevenLabsTTSSession, get_voice_id
 from app.services.ai.tool_definitions import TOOL_DEFINITIONS
 from app.services.ai.voice_agent_base import VoiceAgentBase
-from app.services.ai.voice_tools import GROK_BUILTIN_TOOLS
+from app.services.ai.voice_tools import GROK_BUILTIN_TOOLS, is_search_knowledge_enabled
 
 logger = structlog.get_logger()
 _TOOL_ARGUMENTS = TypeAdapter(dict[str, Any])
@@ -402,6 +402,11 @@ class ElevenLabsVoiceAgentSession(VoiceAgentBase):
         if "x_search" in agent_enabled_tools:
             tools.append(GROK_BUILTIN_TOOLS["x_search"])
             self.logger.info("grok_x_search_enabled")
+
+        if is_search_knowledge_enabled(
+            self.agent, has_ready_knowledge=self._prompt_builder.has_ready_knowledge
+        ):
+            tools.append(TOOL_DEFINITIONS["search_knowledge"].render("elevenlabs"))
 
         # Add Cal.com booking tools if enabled and configured
         if self._enable_tools:

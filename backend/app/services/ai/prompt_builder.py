@@ -74,6 +74,7 @@ class VoicePromptBuilder:
             raise ValueError("token_budget must be positive")
         self.token_budget = token_budget
         self.agent = agent
+        self.has_ready_knowledge = False
         self.timezone = timezone
         self._tz = self._get_timezone()
 
@@ -191,9 +192,11 @@ class VoicePromptBuilder:
         Returned only when the agent has the tool enabled. Instructs the agent to
         retrieve facts on demand rather than relying on prompt-stuffed context.
         """
-        if not self.agent or not self.agent.enabled_tools:
-            return ""
-        if "search_knowledge" not in self.agent.enabled_tools:
+        from app.services.ai.voice_tools import is_search_knowledge_enabled
+
+        if not is_search_knowledge_enabled(
+            self.agent, has_ready_knowledge=self.has_ready_knowledge
+        ):
             return ""
 
         return (

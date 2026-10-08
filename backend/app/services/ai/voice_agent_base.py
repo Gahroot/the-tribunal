@@ -19,6 +19,7 @@ import asyncio
 import base64
 import json
 import re
+import uuid
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
@@ -115,6 +116,17 @@ class VoiceAgentBase(ABC):
     # -------------------------------------------------------------------------
     # VoiceAgentProtocol implementations (shared logic)
     # -------------------------------------------------------------------------
+
+    async def prepare_knowledge(self, db: Any, workspace_id: uuid.UUID) -> None:
+        """Resolve retrieval readiness before connecting to a voice provider."""
+        from app.services.knowledge.knowledge_context_service import knowledge_context_service
+
+        self._prompt_builder.has_ready_knowledge = False
+        if self.agent and self.agent.workspace_id == workspace_id:
+            ready = await knowledge_context_service.get_ready_document_ids(
+                db, workspace_id, self.agent.id
+            )
+            self._prompt_builder.has_ready_knowledge = bool(ready)
 
     def observe_provider_event(self, event: dict[str, Any]) -> None:
         """Record fatal/rate-limit events without retaining provider payloads."""

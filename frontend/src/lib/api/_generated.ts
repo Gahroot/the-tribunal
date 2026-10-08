@@ -13304,6 +13304,11 @@ export interface components {
             } | null;
             /** Priority */
             priority: number;
+            /**
+             * Retrieval Ready
+             * @default false
+             */
+            retrieval_ready: boolean;
             /** Title */
             title: string;
             /** Token Count */

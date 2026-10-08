@@ -433,6 +433,28 @@ async def voice_test_endpoint(
                 await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
                 return
 
+            # Browser tests use the same readiness and scoped read-only executor.
+            async with AsyncSessionLocal() as db:
+                await voice_session.prepare_knowledge(db, uuid.UUID(workspace_id))
+
+            async def search_test_knowledge(
+                call_id: str, name: str, arguments: dict[str, Any]
+            ) -> dict[str, Any]:
+                from app.services.knowledge.search_tool import execute_knowledge_search
+
+                if name != "search_knowledge":
+                    return {"success": False, "error": "Tool unavailable in voice test"}
+                async with AsyncSessionLocal() as db:
+                    return await execute_knowledge_search(
+                        db,
+                        workspace_id=uuid.UUID(workspace_id),
+                        agent_id=agent.id,
+                        query=arguments.get("query", ""),
+                        top_k=arguments.get("top_k"),
+                    )
+
+            voice_session.set_tool_callback(search_test_knowledge)
+
             # Heartbeat + absolute duration backstop.
             heartbeat = HeartbeatMonitor(websocket, log)
             heartbeat.start()

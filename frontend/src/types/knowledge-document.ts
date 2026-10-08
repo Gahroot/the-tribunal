@@ -8,6 +8,7 @@ export interface KnowledgeDocument {
   token_count: number;
   priority: number;
   is_active: boolean;
+  retrieval_ready: boolean;
   metadata_: Record<string, unknown>;
   created_at: string;
   updated_at: string;

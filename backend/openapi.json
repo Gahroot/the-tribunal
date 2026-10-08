@@ -15090,6 +15090,11 @@
             "title": "Priority",
             "type": "integer"
           },
+          "retrieval_ready": {
+            "default": false,
+            "title": "Retrieval Ready",
+            "type": "boolean"
+          },
           "title": {
             "title": "Title",
             "type": "string"

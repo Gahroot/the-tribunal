@@ -108,7 +108,23 @@ class VoiceSessionFactory:
         agent: Agent | None = None,
         timezone: str = "America/New_York",
     ) -> tuple[VoiceSessionType | None, str | None]:
-        """Create a voice session using workspace-aware credentials when possible."""
+        """Create a workspace voice session with automatic indexed-knowledge retrieval."""
+        session, error = await self._create_session_for_workspace(
+            db, workspace_id, provider, agent, timezone
+        )
+        if session is not None:
+            await session.prepare_knowledge(db, workspace_id)
+        return session, error
+
+    async def _create_session_for_workspace(
+        self,
+        db: AsyncSession,
+        workspace_id: uuid.UUID,
+        provider: str,
+        agent: Agent | None,
+        timezone: str,
+    ) -> tuple[VoiceSessionType | None, str | None]:
+        """Resolve provider credentials without making a provider request."""
         provider_lower = provider.lower()
         if provider_lower == "live":
             # The Codex lane authenticates from the host's `codex login`, so

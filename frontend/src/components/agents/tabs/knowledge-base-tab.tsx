@@ -21,13 +21,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -72,7 +66,7 @@ const DOC_TYPES = [
 
 const docFormSchema = z.object({
   title: z.string().min(1, { error: "Title is required" }).max(255),
-  content: z.string().min(1, { error: "Content is required" }),
+  content: z.string().trim().min(1, { error: "Content is required" }),
   doc_type: z.enum(["general", "faq", "policy", "script", "product", "persona"]),
   priority: z
     .number()
@@ -104,7 +98,12 @@ export function KnowledgeBaseTab({ agentId }: KnowledgeBaseTabProps) {
     defaultValues: defaultDocValues,
   });
 
-  const { data: docList, isPending } = useQuery({
+  const {
+    data: docList,
+    isPending,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: queryKeys.agents.knowledgeDocs(workspaceId ?? "", agentId),
     queryFn: () => {
       if (!workspaceId) throw new Error("No workspace");
@@ -118,15 +117,32 @@ export function KnowledgeBaseTab({ agentId }: KnowledgeBaseTabProps) {
       if (!workspaceId) throw new Error("No workspace");
       return knowledgeDocumentsApi.create(workspaceId, agentId, data);
     },
-    onSuccess: () => {
-      toast.success("Document added");
+    onSuccess: (doc) => {
+      toast.success(
+        doc.retrieval_ready
+          ? "Document ready for voice and text answers"
+          : "Document saved but not ready for search",
+      );
       void queryClient.invalidateQueries({
         queryKey: queryKeys.agents.knowledgeDocs(workspaceId ?? "", agentId),
       });
       closeDialog();
     },
-    onError: (err: unknown) =>
-      toast.error(getApiErrorMessage(err, "Failed to add document")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to add document")),
+  });
+
+  const retryMutation = useMutation({
+    mutationFn: (doc: { id: string; content: string }) => {
+      if (!workspaceId) throw new Error("No workspace");
+      return knowledgeDocumentsApi.update(workspaceId, agentId, doc.id, { content: doc.content });
+    },
+    onSuccess: (doc) => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.agents.knowledgeDocs(workspaceId ?? "", agentId),
+      });
+      if (doc.retrieval_ready) toast.success("Document ready for answers");
+      else toast.error("No searchable content. Add a document with readable text.");
+    },
   });
 
   const deleteMutation = useMutation({
@@ -140,13 +156,13 @@ export function KnowledgeBaseTab({ agentId }: KnowledgeBaseTabProps) {
         queryKey: queryKeys.agents.knowledgeDocs(workspaceId ?? "", agentId),
       });
     },
-    onError: (err: unknown) =>
-      toast.error(getApiErrorMessage(err, "Failed to delete document")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to delete document")),
   });
 
   const closeDialog = () => {
     setShowAddDialog(false);
     form.reset(defaultDocValues);
+    createMutation.reset();
   };
 
   const handleCreate = (data: DocFormValues) => {
@@ -166,20 +182,30 @@ export function KnowledgeBaseTab({ agentId }: KnowledgeBaseTabProps) {
     );
   }
 
+  if (isError) {
+    return (
+      <div role="alert" className="space-y-3 py-6">
+        <p>Could not load knowledge documents. Check your connection and retry.</p>
+        <Button variant="outline" onClick={() => void refetch()}>
+          Retry loading
+        </Button>
+      </div>
+    );
+  }
+
   const totalTokens = docList?.total_tokens ?? 0;
-  const tokenBudget = docList?.token_budget ?? 128000;
-  const tokenPercent = tokenBudget > 0 ? Math.min((totalTokens / tokenBudget) * 100, 100) : 0;
 
   return (
     <div className="space-y-6">
-      {/* Token Budget */}
+      {/* Knowledge readiness */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>Knowledge Base</CardTitle>
               <CardDescription>
-                Documents that give your agent context and expertise
+                Ready documents are searched automatically for voice and text answers. No tool
+                setting is needed.
               </CardDescription>
             </div>
             <Button onClick={() => setShowAddDialog(true)}>
@@ -189,25 +215,9 @@ export function KnowledgeBaseTab({ agentId }: KnowledgeBaseTabProps) {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Token usage</span>
-              <span className="font-medium">
-                {formatNumber(totalTokens)} / {formatNumber(tokenBudget)} tokens
-              </span>
-            </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className={`h-full rounded-full transition-all ${
-                  tokenPercent > 90
-                    ? "bg-destructive"
-                    : tokenPercent > 70
-                      ? "bg-warning"
-                      : "bg-success"
-                }`}
-                style={{ width: `${tokenPercent}%` }}
-              />
-            </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Active reference text</span>
+            <span className="font-medium">{formatNumber(totalTokens)} tokens</span>
           </div>
         </CardContent>
       </Card>
@@ -219,7 +229,8 @@ export function KnowledgeBaseTab({ agentId }: KnowledgeBaseTabProps) {
             <BookOpen className="mb-4 h-12 w-12 text-muted-foreground" />
             <h3 className="mb-2 text-lg font-semibold">No Documents</h3>
             <p className="max-w-sm text-sm text-muted-foreground">
-              Add documents to give your agent knowledge about your business, products, and processes.
+              Add documents to give your agent knowledge about your business, products, and
+              processes.
             </p>
           </CardContent>
         </Card>
@@ -248,12 +259,42 @@ export function KnowledgeBaseTab({ agentId }: KnowledgeBaseTabProps) {
                       )}
                     </div>
                   </div>
-                  <p className="line-clamp-2 text-sm text-muted-foreground">
-                    {doc.content}
-                  </p>
+                  <Badge variant="outline" className="text-xs">
+                    {!doc.is_active
+                      ? "Inactive"
+                      : doc.retrieval_ready
+                        ? "Ready for answers"
+                        : "Not indexed"}
+                  </Badge>
+                  {doc.is_active && !doc.retrieval_ready && (
+                    <div className="space-y-2 text-sm">
+                      <p>
+                        This document is not searchable yet. Retry indexing before testing voice
+                        answers.
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={retryMutation.isPending}
+                        onClick={() => retryMutation.mutate(doc)}
+                      >
+                        {retryMutation.isPending && retryMutation.variables?.id === doc.id
+                          ? "Indexing..."
+                          : "Retry indexing"}
+                      </Button>
+                      {retryMutation.isError && retryMutation.variables?.id === doc.id && (
+                        <p role="alert">
+                          {getApiErrorMessage(
+                            retryMutation.error,
+                            "Indexing failed. Check the document text and retry.",
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  <p className="line-clamp-2 text-sm text-muted-foreground">{doc.content}</p>
                   <p className="text-xs text-muted-foreground">
-                    Added{" "}
-                    {formatRelative(doc.created_at)}
+                    Added {formatRelative(doc.created_at)}
                   </p>
                 </div>
                 <AlertDialog>
@@ -262,6 +303,7 @@ export function KnowledgeBaseTab({ agentId }: KnowledgeBaseTabProps) {
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                      aria-label={`Delete ${doc.title}`}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -270,8 +312,8 @@ export function KnowledgeBaseTab({ agentId }: KnowledgeBaseTabProps) {
                     <AlertDialogHeader>
                       <AlertDialogTitle>Delete document?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        This will permanently remove &ldquo;{doc.title}&rdquo; from the
-                        knowledge base.
+                        This will permanently remove &ldquo;{doc.title}&rdquo; from the knowledge
+                        base.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -377,16 +419,21 @@ export function KnowledgeBaseTab({ agentId }: KnowledgeBaseTabProps) {
                   <FormItem>
                     <FormLabel>Content</FormLabel>
                     <FormControl>
-                      <Textarea
-                        placeholder="Enter the document content..."
-                        rows={10}
-                        {...field}
-                      />
+                      <Textarea placeholder="Enter the document content..." rows={10} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+              {createMutation.isError && (
+                <p role="alert" className="text-sm text-destructive">
+                  {getApiErrorMessage(
+                    createMutation.error,
+                    "Indexing failed. Check the document text and retry.",
+                  )}{" "}
+                  The document was not added. Your text is still here; retry saving.
+                </p>
+              )}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={closeDialog}>
                   Cancel
@@ -395,7 +442,7 @@ export function KnowledgeBaseTab({ agentId }: KnowledgeBaseTabProps) {
                   {createMutation.isPending ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Adding...
+                      Indexing...
                     </>
                   ) : (
                     "Add Document"

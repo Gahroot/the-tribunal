@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.functions import func
 
+from app.models.knowledge_chunk import KnowledgeChunk
 from app.models.knowledge_document import KnowledgeDocument
 
 logger = structlog.get_logger()
@@ -95,6 +96,25 @@ class KnowledgeContextService:
         result = await db.execute(stmt)
         count: int = result.scalar_one()
         return count > 0
+
+    async def get_ready_document_ids(
+        self, db: AsyncSession, workspace_id: uuid.UUID, agent_id: uuid.UUID
+    ) -> set[uuid.UUID]:
+        """Active documents with ingested chunks, scoped to the selected agent."""
+        stmt = select(KnowledgeDocument.id).where(
+            KnowledgeDocument.workspace_id == workspace_id,
+            KnowledgeDocument.agent_id == agent_id,
+            KnowledgeDocument.is_active.is_(True),
+            select(KnowledgeChunk.id)
+            .where(
+                KnowledgeChunk.document_id == KnowledgeDocument.id,
+                KnowledgeChunk.workspace_id == workspace_id,
+                KnowledgeChunk.agent_id == agent_id,
+            )
+            .exists(),
+        )
+        result = await db.execute(stmt)
+        return set(result.scalars().all())
 
     def count_tokens(self, text: str) -> int:
         """Count tokens using a simple heuristic.

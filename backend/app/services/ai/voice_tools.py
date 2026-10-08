@@ -233,6 +233,7 @@ def get_tools_from_agent_config(
     *,
     enable_booking: bool = False,
     timezone: str = "America/New_York",
+    has_ready_knowledge: bool = False,
 ) -> list[dict[str, Any]]:
     """Build tools list from agent configuration.
 
@@ -275,7 +276,9 @@ def get_tools_from_agent_config(
         enable_dtmf=dtmf_enabled,
         enable_application_link_sms=application_link_sms_enabled,
         enable_transfer=is_transfer_enabled(agent),
-        enable_search_knowledge=is_search_knowledge_enabled(agent),
+        enable_search_knowledge=is_search_knowledge_enabled(
+            agent, has_ready_knowledge=has_ready_knowledge
+        ),
         enable_lookup_caller_record=is_lookup_caller_record_enabled(agent),
         enable_take_message=is_take_message_enabled(agent),
         enable_collect_payment=is_collect_payment_enabled(agent),
@@ -283,16 +286,11 @@ def get_tools_from_agent_config(
     )
 
 
-def is_search_knowledge_enabled(agent: Any) -> bool:
-    """Return whether the on-demand knowledge retrieval tool should be exposed.
-
-    Opt-in via ``"search_knowledge"`` in the agent's ``enabled_tools``. The tool
-    is only useful when the agent has an ingested knowledge base, so operators
-    enable it explicitly rather than paying the per-turn tool overhead always.
-    """
+def is_search_knowledge_enabled(agent: Any, *, has_ready_knowledge: bool = False) -> bool:
+    """Expose read-only retrieval for indexed knowledge or an existing explicit opt-in."""
     if not agent:
         return False
-    return "search_knowledge" in (agent.enabled_tools or [])
+    return has_ready_knowledge or "search_knowledge" in (agent.enabled_tools or [])
 
 
 def is_lookup_caller_record_enabled(agent: Any) -> bool:

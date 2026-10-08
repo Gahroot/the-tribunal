@@ -229,22 +229,32 @@ class LiveVoiceAgentSession(VoiceAgentBase):
             include_realism=True,
             include_booking=False,
         )
+        return RealtimeStartOptions(
+            prompt=self._append_delegation_tools(prompt),
+            realtime_start_instructions=_THREAD_NOOP_INSTRUCTIONS,
+            voice=self._resolved_voice(),
+            client_managed_handoffs=True,
+            delegation_ack_filler=True,
+        )
+
+    def _append_delegation_tools(self, prompt: str) -> str:
+        """Keep the tool catalog and knowledge handoff instructions across updates."""
         tools = get_tools_from_agent_config(
             self.agent,
+            has_ready_knowledge=self._prompt_builder.has_ready_knowledge,
             enable_booking=bool(self.agent and self.agent.calcom_event_type_id),
             timezone=self._timezone,
         )
         prompt = f"{prompt}\n\n{_DELEGATION_POLICY}"
         if tools:
             prompt = f"{prompt}\n\n{_render_tool_catalog(tools)}"
-
-        return RealtimeStartOptions(
-            prompt=prompt,
-            realtime_start_instructions=_THREAD_NOOP_INSTRUCTIONS,
-            voice=self._resolved_voice(),
-            client_managed_handoffs=True,
-            delegation_ack_filler=True,
-        )
+        if any(tool["name"] == "search_knowledge" for tool in tools):
+            prompt += (
+                "\nFor knowledge lookups, delegate with request text exactly "
+                "'search_knowledge: <your focused search query>'. "
+                "Use the returned passages to answer; never invent missing facts."
+            )
+        return prompt
 
     def _resolved_voice(self) -> str:
         """Map the agent voice onto a Codex realtime voice."""
@@ -556,8 +566,18 @@ class LiveVoiceAgentSession(VoiceAgentBase):
                 )
                 return
             try:
+                function_name = "delegation"
+                arguments = {"request": request_text}
+                tools = get_tools_from_agent_config(
+                    self.agent, has_ready_knowledge=self._prompt_builder.has_ready_knowledge
+                )
+                if request_text.startswith("search_knowledge:") and any(
+                    tool["name"] == "search_knowledge" for tool in tools
+                ):
+                    function_name = "search_knowledge"
+                    arguments = {"query": request_text.removeprefix("search_knowledge:").strip()}
                 result = await asyncio.wait_for(
-                    self._tool_callback(item_id, "delegation", {"request": request_text}),
+                    self._tool_callback(item_id, function_name, arguments),
                     timeout=TOOL_TIMEOUT_SECONDS,
                 )
                 await self._submit_delegation_result(item_id, _render_result(result))
@@ -636,7 +656,7 @@ class LiveVoiceAgentSession(VoiceAgentBase):
                 include_realism=True,
                 include_booking=False,
             )
-            session["prompt"] = f"{rebuilt}\n\n{_DELEGATION_POLICY}"
+            session["prompt"] = self._append_delegation_tools(rebuilt)
         if voice and voice in SUPPORTED_CODEX_VOICES:
             session["voice"] = voice
         if not session:
@@ -693,7 +713,7 @@ class LiveVoiceAgentSession(VoiceAgentBase):
         self._send_client_event(
             {
                 "type": "session.update",
-                "session": {"prompt": f"{full_instructions}\n\n{_DELEGATION_POLICY}"},
+                "session": {"prompt": self._append_delegation_tools(full_instructions)},
             }
         )
         self.logger.info(
@@ -764,6 +784,9 @@ def _render_result(result: Any) -> str:
     if isinstance(result, dict):
         if result.get("success") is False:
             return f"That did not work: {result.get('error', 'unknown error')}"
+        if isinstance(result.get("passages"), list):
+            # Search already bounds excerpts; keep them instead of only its message.
+            return json.dumps(result, ensure_ascii=False, default=str)[:10000]
         for key in ("message", "summary", "result", "text"):
             value = result.get(key)
             if isinstance(value, str) and value:

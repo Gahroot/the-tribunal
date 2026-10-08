@@ -43,11 +43,13 @@ async def _reindex_or_400(db: AsyncSession, doc: KnowledgeDocument) -> None:
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Failed to index knowledge document embeddings.",
+            detail="Indexing failed. The document was not saved. Check its text and retry saving.",
         ) from exc
 
 
-def _doc_to_response(doc: KnowledgeDocument) -> KnowledgeDocumentResponse:
+def _doc_to_response(
+    doc: KnowledgeDocument, *, retrieval_ready: bool = False
+) -> KnowledgeDocumentResponse:
     """Convert a KnowledgeDocument model to a KnowledgeDocumentResponse."""
     return KnowledgeDocumentResponse(
         id=doc.id,
@@ -59,6 +61,7 @@ def _doc_to_response(doc: KnowledgeDocument) -> KnowledgeDocumentResponse:
         token_count=doc.token_count,
         priority=doc.priority,
         is_active=doc.is_active,
+        retrieval_ready=retrieval_ready,
         metadata_=doc.metadata_,
         created_at=doc.created_at.isoformat(),
         updated_at=doc.updated_at.isoformat(),
@@ -114,8 +117,9 @@ async def list_documents(
     result = await paginate(db, query, page=page, page_size=page_size)
     total_tokens = await knowledge_context_service.get_total_tokens(db, agent_id)
 
+    ready_ids = await knowledge_context_service.get_ready_document_ids(db, workspace_id, agent_id)
     return KnowledgeDocumentListResponse(
-        items=[_doc_to_response(doc) for doc in result.items],
+        items=[_doc_to_response(doc, retrieval_ready=doc.id in ready_ids) for doc in result.items],
         total=result.total,
         total_tokens=total_tokens,
         token_budget=knowledge_context_service.TOKEN_BUDGET_DEFAULT,
@@ -171,7 +175,8 @@ async def create_document(
     await db.commit()
     await db.refresh(doc)
 
-    return _doc_to_response(doc)
+    ready_ids = await knowledge_context_service.get_ready_document_ids(db, workspace_id, agent_id)
+    return _doc_to_response(doc, retrieval_ready=doc.id in ready_ids)
 
 
 @router.get("/{doc_id}", response_model=KnowledgeDocumentResponse)
@@ -201,7 +206,8 @@ async def get_document(
             detail="Knowledge document not found",
         )
 
-    return _doc_to_response(doc)
+    ready_ids = await knowledge_context_service.get_ready_document_ids(db, workspace_id, agent_id)
+    return _doc_to_response(doc, retrieval_ready=doc.id in ready_ids)
 
 
 @router.patch("/{doc_id}", response_model=KnowledgeDocumentResponse)
@@ -245,7 +251,8 @@ async def update_document(
     await db.commit()
     await db.refresh(doc)
 
-    return _doc_to_response(doc)
+    ready_ids = await knowledge_context_service.get_ready_document_ids(db, workspace_id, agent_id)
+    return _doc_to_response(doc, retrieval_ready=doc.id in ready_ids)
 
 
 @router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)

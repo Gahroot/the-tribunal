@@ -380,6 +380,7 @@ class VoiceAgentSession(VoiceAgentBase):
         )
         tools = get_tools_from_agent_config(
             self.agent,
+            has_ready_knowledge=self._prompt_builder.has_ready_knowledge,
             enable_booking=bool(
                 self.agent
                 and (
@@ -450,6 +451,7 @@ class VoiceAgentSession(VoiceAgentBase):
         )
         tools = get_tools_from_agent_config(
             self.agent,
+            has_ready_knowledge=self._prompt_builder.has_ready_knowledge,
             enable_booking=bool(
                 self.agent
                 and (
@@ -979,6 +981,7 @@ class VoiceAgentSession(VoiceAgentBase):
 
         tools = get_tools_from_agent_config(
             self.agent,
+            has_ready_knowledge=self._prompt_builder.has_ready_knowledge,
             enable_booking=bool(
                 self.agent
                 and (

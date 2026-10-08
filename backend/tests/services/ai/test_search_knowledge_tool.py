@@ -85,6 +85,13 @@ class TestEnablement:
         tools = get_tools_from_agent_config(agent)
         assert "search_knowledge" not in _tool_names(tools)
 
+    def test_ready_knowledge_enables_without_mutating_agent_flags(self) -> None:
+        agent = SimpleNamespace(enabled_tools=[], tool_settings={})
+        tools = get_tools_from_agent_config(agent, has_ready_knowledge=True)
+        assert _tool_names(tools).count("search_knowledge") == 1
+        assert agent.enabled_tools == []
+        assert not is_search_knowledge_enabled(None, has_ready_knowledge=True)
+
 
 # ── Voice executor dispatch ─────────────────────────────────────────────────
 class TestVoiceExecutorDispatch:
