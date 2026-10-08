@@ -9,7 +9,7 @@ and prospect messages still fall through to the contact AI pipeline.
 from __future__ import annotations
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -142,6 +142,7 @@ async def test_confirmation_reply_skips_ai_but_not_operator_notification() -> No
     conversation = MagicMock()
     ai = AsyncMock()
     push = AsyncMock()
+    attribution = AsyncMock(return_value=False)
     pause = AsyncMock()
     campaign = AsyncMock()
     with (
@@ -149,6 +150,10 @@ async def test_confirmation_reply_skips_ai_but_not_operator_notification() -> No
         patch(
             "app.services.calendar.confirmation_reply.handle_confirmation_reply",
             AsyncMock(return_value=True),
+        ),
+        patch(
+            "app.services.message_tests.reply_attribution.attribute_message_test_reply",
+            attribution,
         ),
         patch.object(inbound_text, "_send_push_notification", push),
         patch.object(inbound_text, "_pause_drip_enrollments", pause),
@@ -161,6 +166,7 @@ async def test_confirmation_reply_skips_ai_but_not_operator_notification() -> No
             log=_make_log(),
             schedule_ai_response_fn=ai,
         )
+    attribution.assert_awaited_once_with(ANY, message, event.workspace_id, ANY)
     ai.assert_not_awaited()
     pause.assert_awaited_once()
     campaign.assert_awaited_once()

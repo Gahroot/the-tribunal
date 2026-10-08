@@ -49,7 +49,13 @@ async def handle_mac_relay_message(payload: dict[str, Any], log: Any) -> dict[st
             log.warning("mac_relay_phone_number_not_found", to_number=to_number)
             return {"status": "ignored", "reason": "phone_number_not_found"}
 
-        if await _message_already_ingested(db, provider_message_id, phone_record.workspace_id):
+        existing = await _find_ingested_message(db, provider_message_id, phone_record.workspace_id)
+        if existing is not None:
+            # Ingestion commits before outcomes. Recover attribution if the
+            # first delivery failed between those two durable writes.
+            from app.services.message_tests.reply_attribution import attribute_message_test_reply
+
+            await attribute_message_test_reply(db, existing, phone_record.workspace_id, log)
             log.info("mac_relay_duplicate_ignored", provider_message_id=provider_message_id)
             return {"status": "ok", "reason": "duplicate"}
 
@@ -100,11 +106,11 @@ def _build_mac_relay_ingestor(
     return ingest
 
 
-async def _message_already_ingested(
+async def _find_ingested_message(
     db: AsyncSession,
     provider_message_id: str,
     workspace_id: uuid.UUID,
-) -> bool:
+) -> Message | None:
     result = await db.execute(
         select(Message)
         .join(Conversation, Message.conversation_id == Conversation.id)
@@ -113,7 +119,7 @@ async def _message_already_ingested(
             Conversation.workspace_id == workspace_id,
         )
     )
-    return result.scalar_one_or_none() is not None
+    return result.scalar_one_or_none()
 
 
 async def _find_workspace_phone(db: AsyncSession, to_number: str) -> PhoneNumber | None:

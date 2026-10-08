@@ -178,6 +178,11 @@ async def run_inbound_text_side_effects(
     push_service: PushNotificationService = push_notification_service,
 ) -> None:
     """Run AI, drip, campaign, and notification side effects for an inbound text."""
+    # Outcomes are durable, not best-effort notifications: propagate failures
+    # so a provider retry can recover after ingestion has already committed.
+    from app.services.message_tests.reply_attribution import attribute_message_test_reply
+
+    await attribute_message_test_reply(db, message, event.workspace_id, log)
     conversation = await _load_conversation(db, message.conversation_id)
     if conversation is not None:
         from app.services.calendar.confirmation_reply import handle_confirmation_reply
