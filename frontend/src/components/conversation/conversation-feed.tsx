@@ -238,16 +238,19 @@ function ContactConversationFeed({
     if (!message.trim() || !selectedContact || !workspaceId || isSending) return;
 
     const messageBody = message.trim();
-    setMessage("");
     setIsSending(true);
 
     try {
-      await conversationsApi.sendMessageToContact(
+      const sent = await conversationsApi.sendMessageToContact(
         workspaceId,
         selectedContact.id,
         messageBody,
         activeFromNumber
       );
+
+      if (sent.status === "failed")
+        throw new Error("The message was not sent. Your draft is still here.");
+      if (alive.current) setMessage("");
 
       // Invalidate timeline so the sent message appears immediately
       void queryClient.invalidateQueries({
@@ -265,11 +268,14 @@ function ContactConversationFeed({
       // A completed old-brand operation must not restore a draft or announce
       // an error in the newly mounted brand session.
       if (!alive.current) return;
-      setMessage(messageBody);
       const errorMessage =
         error instanceof Error ? error.message : "Failed to send message";
       toast.error(errorMessage);
     } finally {
+      // Failed attempts are history too; refresh without discarding the draft.
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.contacts.timeline(workspaceId, selectedContact.id),
+      });
       if (alive.current) setIsSending(false);
     }
   };

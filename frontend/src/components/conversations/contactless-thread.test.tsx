@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ContactlessThread } from "@/components/conversations/contactless-thread";
 import type { InboxConversation } from "@/lib/api/conversations";
+import { queryKeys } from "@/lib/query-keys";
 
 const api = vi.hoisted(() => ({
   getMessages: vi.fn(),
@@ -85,15 +86,21 @@ describe("exact inbox thread", () => {
     expect(api.sendMessage).not.toHaveBeenCalled();
   });
 
-  it("preserves text after failure, and sends on the selected conversation", async () => {
-    api.sendMessage.mockRejectedValueOnce(new Error("Delivery unavailable"));
-    setup();
+  it.each(["rejection", "failed-object"])("preserves text after %s, refreshes history, and retries", async (outcome) => {
+    if (outcome === "rejection")
+      api.sendMessage.mockRejectedValueOnce(new Error("Delivery unavailable"));
+    else api.sendMessage.mockResolvedValueOnce({ status: "failed" });
+    const { client } = setup();
+    const invalidate = vi.spyOn(client, "invalidateQueries");
     await waitFor(() => expect(screen.getByRole("textbox")).toBeEnabled());
     const composer = screen.getByRole("textbox");
     fireEvent.change(composer, { target: { value: "My reply" } });
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
     await screen.findByRole("alert");
     expect(composer).toHaveValue("My reply");
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: queryKeys.conversations.messages("workspace-a", conversationFixture.id),
+    });
     expect(api.sendMessage).toHaveBeenCalledWith("workspace-a", conversationFixture.id, "My reply");
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
     await waitFor(() => expect(composer).toHaveValue(""));

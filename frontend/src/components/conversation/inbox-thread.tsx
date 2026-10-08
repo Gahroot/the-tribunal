@@ -173,6 +173,10 @@ export function InboxThread({
       if (alive.current) setSendError(text);
       toast.error(text);
     } finally {
+      // Provider rejection still creates a failed message in history.
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.conversations.messages(workspaceId, conversation.id),
+      });
       sending.current = false;
       if (alive.current) setIsSending(false);
     }
