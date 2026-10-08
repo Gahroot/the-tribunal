@@ -28,7 +28,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
-from tribunal_lead_capture import deliver_lead_magnet_to_lead
+from tribunal_lead_capture import deliver_lead_magnet_to_lead, lead_magnet_delivery_response
 from tribunal_lead_capture.models import LeadMagnet, LeadMagnetLead
 from tribunal_lead_capture.schemas import LeadMagnetResponse
 
@@ -480,13 +480,15 @@ async def submit_offer_optin(
     db: DB,
 ) -> OptInResponse:
     """Submit an opt-in for a public offer."""
-    # Get the offer
+    # Serialize capture for this offer so concurrent retries reuse the same records.
     result = await db.execute(
-        select(Offer).where(
+        select(Offer)
+        .where(
             Offer.public_slug == slug,
             Offer.is_public.is_(True),
             Offer.is_active.is_(True),
         )
+        .with_for_update()
     )
     offer = result.scalar_one_or_none()
 
@@ -548,40 +550,62 @@ async def submit_offer_optin(
     )
     offer_lead_magnets = olm_result.scalars().all()
 
+    leads = []
+    new_deliveries = []
     for olm in offer_lead_magnets:
-        lead = LeadMagnetLead(
-            lead_magnet_id=olm.lead_magnet_id,
-            workspace_id=offer.workspace_id,
-            email=identity.email,
-            phone_number=identity.phone_number,
-            name=identity.name,
-            contact_id=contact.id,
-            source_offer_id=offer.id,
-            delivered=False,
+        existing = await db.execute(
+            select(LeadMagnetLead)
+            .where(
+                LeadMagnetLead.workspace_id == offer.workspace_id,
+                LeadMagnetLead.source_offer_id == offer.id,
+                LeadMagnetLead.contact_id == contact.id,
+                LeadMagnetLead.lead_magnet_id == olm.lead_magnet_id,
+            )
+            .order_by(LeadMagnetLead.created_at)
+            .limit(1)
         )
-        db.add(lead)
-        await db.flush()
+        lead = existing.scalars().first()
+        if lead is None:
+            lead = LeadMagnetLead(
+                lead_magnet_id=olm.lead_magnet_id,
+                workspace_id=offer.workspace_id,
+                email=identity.email,
+                phone_number=identity.phone_number,
+                name=identity.name,
+                contact_id=contact.id,
+                source_offer_id=offer.id,
+                delivered=False,
+            )
+            db.add(lead)
+            await db.flush()
+            new_deliveries.append((lead, olm.lead_magnet))
+        leads.append(lead)
         if lead_magnet_lead_id is None:
             lead_magnet_lead_id = lead.id
-
-        await deliver_lead_magnet_to_lead(
-            lead=lead,
-            lead_magnet=olm.lead_magnet,
-            offer_name=offer.name,
-            db=db,
-            workspace_id=offer.workspace_id,
-        )
 
     # Increment opt-ins counter
     offer.opt_ins += 1
 
     await db.commit()
 
+    # Preserve capture before optional sending; retries never resend existing records.
+    for lead, magnet in new_deliveries:
+        await deliver_lead_magnet_to_lead(
+            lead=lead,
+            lead_magnet=magnet,
+            offer_name=offer.name,
+            db=db,
+            workspace_id=offer.workspace_id,
+        )
+    if new_deliveries:
+        await db.commit()
+
     return OptInResponse(
         success=True,
-        message="Thank you for signing up!",
+        message="Your signup is saved. Email delivery status is shown separately.",
         contact_id=contact.id,
         lead_magnet_lead_id=lead_magnet_lead_id,
+        deliveries=[lead_magnet_delivery_response(lead) for lead in leads],
     )
 
 

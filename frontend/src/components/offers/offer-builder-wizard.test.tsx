@@ -165,6 +165,47 @@ describe("RF-024 offer edits", () => {
     expect(screen.queryByText("Training")).not.toBeInTheDocument();
   });
 
+  it.each([
+    ["accepted", "accepted"], ["failed", "failed"], ["unavailable", "unavailable"],
+    ["accepted", "failed"], ["missing_email", "missing_email"], ["pending", "pending"],
+  ])("reports bonus acceptance truthfully (%s/%s) with direct recovery", async (first, second) => {
+    fixture({
+      require_email: true, require_phone: false,
+      lead_magnets: ["first", "second"].map((id) => ({
+        id, name: `${id} guide`, magnet_type: "pdf", delivery_method: "email",
+        content_url: `https://example.test/${id}.pdf`,
+      })),
+    });
+    let submissions = 0;
+    server.use(http.post("*/api/v1/p/offers/fixture/opt-in", () => {
+      submissions += 1;
+      return HttpResponse.json({ success: true, message: "Signup saved", deliveries: [
+        { lead_magnet_id: "first", status: first }, { lead_magnet_id: "second", status: second },
+      ] });
+    }));
+    const params = Object.assign(Promise.resolve({ slug: "fixture" }), { status: "fulfilled", value: { slug: "fixture" } });
+    render(<QueryClientProvider client={new QueryClient()}><Suspense fallback={null}>
+      <PublicOfferPage params={params} />
+    </Suspense></QueryClientProvider>);
+    fireEvent.change(await screen.findByLabelText(/Email/), { target: { value: "fixture@example.test" } });
+    fireEvent.click(screen.getByRole("button", { name: "Join" }));
+    expect(await screen.findByRole("heading", { name: "You're In!" })).toBeInTheDocument();
+    const accepted = [first, second].filter((state) => state === "accepted").length;
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("Your signup is saved.");
+    if (accepted) {
+      expect(status).toHaveTextContent(`${accepted} of 2 bonus emails accepted`);
+      expect(status).toHaveTextContent("does not confirm inbox receipt");
+    } else expect(status).not.toHaveTextContent("check your inbox");
+    expect(screen.queryByText(/will be delivered shortly/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Join" })).not.toBeInTheDocument();
+    const links = screen.getAllByRole("link", { name: "Access" });
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "https://example.test/first.pdf", "https://example.test/second.pdf",
+    ]);
+    expect(submissions).toBe(1);
+  });
+
   it("omits untouched fields including inactive/public flags and absent optional values", async () => {
     const { offer, writes } = fixture({ is_active: false, is_public: false, offer_price: null, guarantee_days: null });
     mount(offer);

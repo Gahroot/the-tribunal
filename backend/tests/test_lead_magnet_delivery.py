@@ -1,5 +1,6 @@
 """Tests for lead magnet opt-in delivery."""
 
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -14,7 +15,8 @@ from app.models.workspace import Workspace
 
 
 @pytest.fixture
-def db():
+def db(monkeypatch):
+    monkeypatch.setattr(lead_magnet_delivery, "resolve_outbound_credentials", AsyncMock())
     session = AsyncMock()
     session.get.return_value = Workspace(
         name="Workspace name", settings={"business_name": "Brand A"}, is_active=True
@@ -95,6 +97,29 @@ async def test_deliver_lead_magnet_sends_email_and_marks_delivered(
     assert sent["db"] is db
 
 
+async def test_deliver_lead_magnet_does_not_resend_provider_accepted_asset(monkeypatch, db):
+    magnet = _lead_magnet()
+    accepted_at = datetime.now(UTC)
+    lead = _lead(
+        workspace_id=magnet.workspace_id,
+        lead_magnet_id=magnet.id,
+        delivered=True,
+        delivered_at=accepted_at,
+    )
+    send = AsyncMock()
+    monkeypatch.setattr(lead_magnet_delivery, "send_automation_email", send)
+    assert await deliver_lead_magnet_to_lead(
+        lead=lead,
+        lead_magnet=magnet,
+        offer_name="Fixture",
+        db=db,
+        workspace_id=magnet.workspace_id,
+    )
+    send.assert_not_awaited()
+    db.get.assert_not_awaited()
+    assert lead.delivered_at == accepted_at
+
+
 async def test_deliver_lead_magnet_records_provider_failure(
     monkeypatch: pytest.MonkeyPatch,
     db,
@@ -122,7 +147,10 @@ async def test_deliver_lead_magnet_records_provider_failure(
     assert lead.delivered is False
     assert lead.delivered_at is None
     assert lead.delivery_attempted_at is not None
-    assert lead.delivery_error == "Email delivery service did not accept the lead magnet email."
+    assert (
+        lead.delivery_error
+        == "Email delivery service did not confirm acceptance of the lead magnet email."
+    )
 
 
 async def test_deliver_lead_magnet_records_missing_email_without_sending(

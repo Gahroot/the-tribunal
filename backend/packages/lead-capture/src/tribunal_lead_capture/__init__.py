@@ -50,13 +50,18 @@ from .models import (
 
 if TYPE_CHECKING:
     from .router import get_public_router, get_router
-    from .service import build_lead_magnet_email_body, deliver_lead_magnet_to_lead
+    from .service import (
+        build_lead_magnet_email_body,
+        deliver_lead_magnet_to_lead,
+        lead_magnet_delivery_response,
+    )
 
 # Lazy attribute -> (submodule, attribute) map for the heavy runtime surface.
 _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "get_router": (".router", "get_router"),
     "get_public_router": (".router", "get_public_router"),
     "deliver_lead_magnet_to_lead": (".service", "deliver_lead_magnet_to_lead"),
+    "lead_magnet_delivery_response": (".service", "lead_magnet_delivery_response"),
     "build_lead_magnet_email_body": (".service", "build_lead_magnet_email_body"),
 }
 
@@ -79,6 +84,7 @@ __all__ = [
     "get_public_router",
     # Public service API (lazy)
     "deliver_lead_magnet_to_lead",
+    "lead_magnet_delivery_response",
     "build_lead_magnet_email_body",
     # Models (eager — light, only the shared Base)
     "LeadMagnet",

@@ -21,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PageErrorState, PageLoadingState } from "@/components/ui/page-state";
 import { Separator } from "@/components/ui/separator";
-import { publicOffersApi, OptInRequest } from "@/lib/api/public-offers";
+import { publicOffersApi, type OptInRequest, type OptInResponse } from "@/lib/api/public-offers";
 import { queryKeys } from "@/lib/query-keys";
 import { getApiErrorMessage } from "@/lib/utils/errors";
 import { formatNumber } from "@/lib/utils/number";
@@ -36,7 +36,7 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
-  const [submitted, setSubmitted] = useState(false);
+  const [optInResult, setOptInResult] = useState<OptInResponse | null>(null);
 
   const { data: offer, isPending, error } = useQuery({
     queryKey: queryKeys.publicOffers.bySlug(slug),
@@ -47,8 +47,8 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
 
   const optInMutation = useMutation({
     mutationFn: (data: OptInRequest) => publicOffersApi.optIn(slug, data),
-    onSuccess: () => {
-      setSubmitted(true);
+    onSuccess: (result) => {
+      if (result.success) setOptInResult(result);
     },
   });
 
@@ -88,21 +88,44 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
     );
   }
 
-  if (submitted) {
+  if (optInResult) {
+    const deliveries = optInResult.deliveries ?? [];
+    const accepted = deliveries.filter((delivery) => delivery.status === "accepted").length;
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
         <Card className="max-w-md w-full">
           <CardContent className="pt-6 text-center">
             <CheckCircle2 className="size-16 text-success mx-auto mb-4" />
             <h1 className="text-2xl font-bold mb-2">You&apos;re In!</h1>
-            <p className="text-muted-foreground mb-4">
-              Thank you for signing up. Check your email for next steps.
+            <p className="text-muted-foreground mb-4" role="status">
+              Your signup is saved.
+              {accepted > 0 && ` ${accepted} of ${deliveries.length} bonus emails accepted by the email provider. This does not confirm inbox receipt; check your inbox and spam folder.`}
+              {deliveries.length > accepted && " Email acceptance could not be confirmed for some bonuses. You do not need to sign up again."}
             </p>
-            {offer.lead_magnets.length > 0 && (
-              <p className="text-sm text-muted-foreground">
-                Your bonuses will be delivered shortly.
-              </p>
-            )}
+            {deliveries.map((delivery) => {
+              const magnet = offer.lead_magnets.find((item) => item.id === delivery.lead_magnet_id);
+              const labels = {
+                accepted: "Email accepted by provider; inbox receipt not confirmed.",
+                failed: "Email acceptance could not be confirmed.",
+                unavailable: "Email delivery is currently unavailable.",
+                missing_email: "Email could not be sent because no email address was provided.",
+                pending: "Email acceptance has not been confirmed.",
+              };
+              return <p key={delivery.lead_magnet_id} className="text-sm text-muted-foreground mb-2">
+                {magnet?.name ?? "Bonus"}: {labels[delivery.status]}
+              </p>;
+            })}
+            {offer.lead_magnets.length > 0 && <>
+              <p className="text-sm text-muted-foreground mb-4">Access available bonuses below without another signup. If a bonus is unavailable, contact the business that shared this offer.</p>
+              {offer.lead_magnets.map((magnet) => (
+                <div key={magnet.id} className="text-left space-y-2 mb-4">
+                  <h3 className="font-semibold">{magnet.name}</h3>
+                  {magnet.content_url || magnet.content_data
+                    ? <LeadMagnetContent magnet={magnet} />
+                    : <p className="text-sm text-muted-foreground">This bonus is currently unavailable. Contact the business that shared this offer.</p>}
+                </div>
+              ))}
+            </>}
           </CardContent>
         </Card>
       </div>

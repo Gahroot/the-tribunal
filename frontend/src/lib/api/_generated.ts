@@ -13554,6 +13554,22 @@ export interface components {
             thumbnail_url?: string | null;
         };
         /**
+         * LeadMagnetDeliveryResponse
+         * @description Visitor-safe outcome; accepted means provider acceptance, not inbox receipt.
+         */
+        LeadMagnetDeliveryResponse: {
+            /**
+             * Lead Magnet Id
+             * Format: uuid
+             */
+            lead_magnet_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "accepted" | "failed" | "unavailable" | "missing_email" | "pending";
+        };
+        /**
          * LeadMagnetResponse
          * @description Schema for lead magnet response.
          */
@@ -15570,11 +15586,13 @@ export interface components {
         };
         /**
          * OptInResponse
-         * @description Response schema for successful opt-in.
+         * @description Signup capture is independent of bonus email provider acceptance.
          */
         OptInResponse: {
             /** Contact Id */
             contact_id?: number | null;
+            /** Deliveries */
+            deliveries?: components["schemas"]["LeadMagnetDeliveryResponse"][];
             /** Lead Magnet Lead Id */
             lead_magnet_lead_id?: string | null;
             /** Message */

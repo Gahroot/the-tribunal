@@ -14,7 +14,7 @@ from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
-from tribunal_lead_capture.schemas import LeadMagnetResponse
+from tribunal_lead_capture.schemas import LeadMagnetDeliveryResponse, LeadMagnetResponse
 
 
 # AI Generation Schemas
@@ -352,9 +352,10 @@ class OptInRequest(BaseModel):
 
 
 class OptInResponse(BaseModel):
-    """Response schema for successful opt-in."""
+    """Signup capture is independent of bonus email provider acceptance."""
 
     success: bool
     message: str
     contact_id: int | None = None
     lead_magnet_lead_id: uuid.UUID | None = None
+    deliveries: list[LeadMagnetDeliveryResponse] = Field(default_factory=list)

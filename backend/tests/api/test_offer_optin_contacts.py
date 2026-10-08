@@ -17,7 +17,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any, cast
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import APIRouter, FastAPI
@@ -43,6 +43,7 @@ from app.services.contacts.lead_contacts import (
     find_or_create_lead_contact,
     normalize_lead_identity,
 )
+from app.services.integration_credentials import IntegrationCredentialError
 
 WS_A = uuid.uuid4()
 WS_B = uuid.uuid4()
@@ -117,12 +118,28 @@ class FakeSession:
                     )
                 else:
                     result.all.return_value = [(a.lead_magnet_id,) for a in self.offer_lead_magnets]
-                return result
-            return _scalars(
-                sorted(
-                    (olm for olm in self.offer_lead_magnets if olm.offer_id in values),
-                    key=lambda olm: olm.sort_order,
+            else:
+                result = _scalars(
+                    sorted(
+                        (olm for olm in self.offer_lead_magnets if olm.offer_id in values),
+                        key=lambda olm: olm.sort_order,
+                    )
                 )
+            return result
+        if "from lead_magnet_leads" in sql:
+            assert "lead_magnet_leads.workspace_id =" in sql
+            assert "lead_magnet_leads.source_offer_id =" in sql
+            assert "lead_magnet_leads.contact_id =" in sql
+            assert "lead_magnet_leads.lead_magnet_id =" in sql
+            return _scalars(
+                [
+                    lead
+                    for lead in self.leads
+                    if lead.workspace_id in values
+                    and lead.source_offer_id in values
+                    and lead.contact_id in values
+                    and lead.lead_magnet_id in values
+                ]
             )
         if "from contacts" in sql:
             assert "contacts.workspace_id =" in sql, "contact lookup must be workspace scoped"
@@ -232,6 +249,7 @@ def _attach_bonus(session: FakeSession, offer: Offer) -> LeadMagnet:
 @pytest.fixture
 def sent_emails(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     sent: list[dict[str, Any]] = []
+    monkeypatch.setattr(lead_magnet_delivery, "resolve_outbound_credentials", AsyncMock())
 
     async def fake_send(**kwargs: Any) -> bool:
         sent.append(kwargs)
@@ -389,10 +407,12 @@ async def test_repeat_submissions_reuse_contact_and_keep_counting(
     assert contact.phone_number == "+14155550199"
     assert (contact.first_name, contact.last_name) == ("Pat", "Buyer")
     assert contact.notes == "Opted in via offer: Seller Launch"
-    # Every accepted submission still counts and gets its bonus record.
+    # Submissions count, but retries reuse the bonus and never repeat delivery.
     assert offer.opt_ins == 2
-    assert [lead.contact_id for lead in session.leads] == [contact.id, contact.id]
-    assert len(sent_emails) == 2
+    assert [lead.contact_id for lead in session.leads] == [contact.id]
+    assert len(sent_emails) == 1
+    assert first.json()["deliveries"] == second.json()["deliveries"]
+    assert first.json()["lead_magnet_lead_id"] == second.json()["lead_magnet_lead_id"]
     # Speed-to-lead only fires for brand-new contacts.
     assert speed_to_lead_jobs == []
 
@@ -503,6 +523,126 @@ async def test_unknown_or_unpublished_offer_is_404(make_client: Any) -> None:
 
     assert response.status_code == 404
     assert session.contacts == []
+
+
+# ── delivery reporting and retry safety (RF-022) ──────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        "accepted",
+        "failed",
+        "unavailable",
+        "partial",
+        "missing_email",
+        "exception",
+        "no_content",
+        "brand",
+    ],
+)
+async def test_optin_reports_delivery_without_losing_capture(
+    make_client, sent_emails, speed_to_lead_jobs, monkeypatch, outcome
+):
+    session = FakeSession()
+    offer = _offer()
+    offer.require_email = outcome != "missing_email"
+    session.offers.append(offer)
+    magnet = _attach_bonus(session, offer)
+    if outcome == "partial":
+        _attach_bonus(session, offer)
+    if outcome == "no_content":
+        magnet.content_url = None
+    if outcome == "brand":
+        monkeypatch.setattr(
+            lead_magnet_delivery,
+            "customer_email_brand_name",
+            AsyncMock(side_effect=IntegrationCredentialError("private brand detail")),
+        )
+    if outcome == "unavailable":
+        monkeypatch.setattr(
+            lead_magnet_delivery,
+            "resolve_outbound_credentials",
+            AsyncMock(side_effect=IntegrationCredentialError("private sender detail")),
+        )
+
+    async def send(**kwargs):
+        # Lead and attribution must be saved before the provider boundary.
+        assert session.commits >= 1
+        sent_emails.append(kwargs)
+        if outcome == "exception":
+            raise RuntimeError("private provider detail")
+        return outcome == "accepted" or (outcome == "partial" and len(sent_emails) == 1)
+
+    monkeypatch.setattr(lead_magnet_delivery, "send_automation_email", send)
+    payload = {"phone_number": "+14155550101"}
+    if outcome != "missing_email":
+        payload["email"] = "fixture@example.test"
+    first = await _opt_in(make_client(session), offer.public_slug, payload)
+    second = await _opt_in(make_client(session), offer.public_slug, payload)
+    assert first.status_code == second.status_code == 200
+    expected = {
+        "partial": ["accepted", "failed"],
+        "exception": ["failed"],
+        "no_content": ["unavailable"],
+        "brand": ["unavailable"],
+    }.get(outcome, [outcome])
+    assert [d["status"] for d in first.json()["deliveries"]] == expected
+    assert first.json()["deliveries"] == second.json()["deliveries"]
+    assert first.json()["success"] is True
+    assert "private" not in first.text
+    assert len(session.contacts) == 1
+    assert len(session.leads) == len(expected)
+    assert [bool(lead.delivered) for lead in session.leads] == [s == "accepted" for s in expected]
+    assert all(lead.delivery_attempted_at for lead in session.leads)
+    assert all(lead.delivery_error for lead in session.leads if not lead.delivered)
+    assert len(sent_emails) == (
+        len(expected) if outcome in ("accepted", "failed", "partial", "exception") else 0
+    )
+    if speed_to_lead_jobs:
+        assert len(speed_to_lead_jobs) == 1
+
+
+@pytest.mark.parametrize("accepted", [False, True])
+async def test_optin_reuses_persisted_pending_or_accepted_bonus(
+    make_client, sent_emails, speed_to_lead_jobs, accepted
+):
+    session = FakeSession()
+    offer = _offer()
+    session.offers.append(offer)
+    magnet = _attach_bonus(session, offer)
+    contact = Contact(
+        id=42,
+        workspace_id=offer.workspace_id,
+        email="fixture@example.test",
+        email_hash=hash_value("fixture@example.test"),
+        created_at=datetime.now(UTC),
+    )
+    session.contacts.append(contact)
+    lead = LeadMagnetLead(
+        id=uuid.uuid4(),
+        workspace_id=offer.workspace_id,
+        source_offer_id=offer.id,
+        lead_magnet_id=magnet.id,
+        contact_id=contact.id,
+        email=contact.email,
+        delivered=accepted,
+        delivery_error=None,
+        created_at=datetime.now(UTC),
+    )
+    session.leads.append(lead)
+    response = await _opt_in(make_client(session), offer.public_slug, {"email": contact.email})
+    assert response.status_code == 200
+    assert response.json()["lead_magnet_lead_id"] == str(lead.id)
+    assert response.json()["deliveries"] == [
+        {
+            "lead_magnet_id": str(magnet.id),
+            "status": "accepted" if accepted else "pending",
+        }
+    ]
+    assert len(session.leads) == 1
+    assert not sent_emails
+    assert not speed_to_lead_jobs
 
 
 # ── publication contract (RF-020) ────────────────────────────────────────────

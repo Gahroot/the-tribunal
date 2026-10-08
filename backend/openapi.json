@@ -15678,6 +15678,33 @@
         "title": "LeadMagnetCreate",
         "type": "object"
       },
+      "LeadMagnetDeliveryResponse": {
+        "description": "Visitor-safe outcome; accepted means provider acceptance, not inbox receipt.",
+        "properties": {
+          "lead_magnet_id": {
+            "format": "uuid",
+            "title": "Lead Magnet Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "failed",
+              "unavailable",
+              "missing_email",
+              "pending"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lead_magnet_id",
+          "status"
+        ],
+        "title": "LeadMagnetDeliveryResponse",
+        "type": "object"
+      },
       "LeadMagnetResponse": {
         "description": "Schema for lead magnet response.",
         "properties": {
@@ -21681,7 +21708,7 @@
         "type": "object"
       },
       "OptInResponse": {
-        "description": "Response schema for successful opt-in.",
+        "description": "Signup capture is independent of bonus email provider acceptance.",
         "properties": {
           "contact_id": {
             "anyOf": [
@@ -21693,6 +21720,13 @@
               }
             ],
             "title": "Contact Id"
+          },
+          "deliveries": {
+            "items": {
+              "$ref": "#/components/schemas/LeadMagnetDeliveryResponse"
+            },
+            "title": "Deliveries",
+            "type": "array"
           },
           "lead_magnet_lead_id": {
             "anyOf": [

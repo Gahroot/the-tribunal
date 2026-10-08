@@ -10,25 +10,42 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.email import customer_email_brand_name, send_automation_email
-from app.services.integration_credentials import IntegrationCredentialError
+from app.services.integration_credentials import (
+    IntegrationCredentialError,
+    resolve_outbound_credentials,
+)
 
 from .models import LeadMagnet, LeadMagnetLead
+from .schemas import LeadMagnetDeliveryResponse
 
 logger = structlog.get_logger()
 
 _FAILURE_NO_EMAIL = "No email address was provided for lead magnet delivery."
 _FAILURE_NO_CONTENT = "Lead magnet has no delivery link or content configured."
-_FAILURE_PROVIDER = "Email delivery service did not accept the lead magnet email."
+_FAILURE_PROVIDER = "Email delivery service did not confirm acceptance of the lead magnet email."
 
 
-def _truncate_error(message: str) -> str:
-    return message[:500]
+_FAILURE_CONFIGURATION = "Lead magnet email delivery is not configured."
+
+
+def lead_magnet_delivery_response(lead: LeadMagnetLead) -> LeadMagnetDeliveryResponse:
+    """Project persisted state without exposing provider or credential errors."""
+    status: Literal["accepted", "failed", "unavailable", "missing_email", "pending"] = "pending"
+    if lead.delivered:
+        status = "accepted"
+    elif lead.delivery_error == _FAILURE_NO_EMAIL:
+        status = "missing_email"
+    elif lead.delivery_error in (_FAILURE_NO_CONTENT, _FAILURE_CONFIGURATION):
+        status = "unavailable"
+    elif lead.delivery_error:
+        status = "failed"
+    return LeadMagnetDeliveryResponse(lead_magnet_id=lead.lead_magnet_id, status=status)
 
 
 def _format_content_data(content_data: dict[str, Any] | None) -> list[str]:
@@ -97,51 +114,54 @@ async def deliver_lead_magnet_to_lead(
     db: AsyncSession,
     workspace_id: uuid.UUID,
 ) -> bool:
-    """Email one lead magnet and update the lead delivery fields in-place."""
+    """Email one lead magnet; ``delivered`` records provider acceptance only."""
+    if (
+        lead.workspace_id != workspace_id
+        or lead_magnet.workspace_id != workspace_id
+        or lead.lead_magnet_id != lead_magnet.id
+    ):
+        lead.delivery_error = "Lead magnet does not belong to this brand."
+        return False
+    if lead.delivered:
+        return True
+
     lead.delivery_attempted_at = datetime.now(UTC)
     lead.delivered = False
     lead.delivered_at = None
+    lead.delivery_error = None
 
-    if not lead.email:
-        lead.delivery_error = _FAILURE_NO_EMAIL
+    if not lead.email or (not lead_magnet.content_url and not lead_magnet.content_data):
+        lead.delivery_error = _FAILURE_NO_EMAIL if not lead.email else _FAILURE_NO_CONTENT
         logger.warning(
-            "lead_magnet_delivery_skipped_no_email",
+            "lead_magnet_delivery_unavailable",
             lead_magnet_lead_id=str(lead.id),
             lead_magnet_id=str(lead_magnet.id),
         )
         return False
 
-    if not lead_magnet.content_url and not lead_magnet.content_data:
-        lead.delivery_error = _FAILURE_NO_CONTENT
-        logger.warning(
-            "lead_magnet_delivery_skipped_no_content",
-            lead_magnet_lead_id=str(lead.id),
-            lead_magnet_id=str(lead_magnet.id),
-        )
-        return False
-
+    brand_name = None
     try:
-        if (
-            lead.workspace_id != workspace_id
-            or lead_magnet.workspace_id != workspace_id
-            or lead.lead_magnet_id != lead_magnet.id
-        ):
-            raise IntegrationCredentialError("Lead magnet does not belong to this brand.")
         brand_name = await customer_email_brand_name(db, workspace_id)
-    except IntegrationCredentialError as exc:
-        lead.delivery_error = str(exc)
+        # Use the same scoped sender policy as the send; never a global readiness shortcut.
+        await resolve_outbound_credentials(db, workspace_id, "resend")
+    except IntegrationCredentialError:
+        lead.delivery_error = _FAILURE_CONFIGURATION
+    except Exception:
+        lead.delivery_error = _FAILURE_PROVIDER
+        logger.warning("lead_magnet_delivery_preflight_failed", lead_magnet_lead_id=str(lead.id))
+    if lead.delivery_error:
         return False
 
-    subject = f"Your {lead_magnet.name}"
-    body = build_lead_magnet_email_body(
-        lead_magnet=lead_magnet,
-        offer_name=offer_name,
-        recipient_name=lead.name,
-        brand_name=brand_name,
-    )
     idempotency_key = lead.id if isinstance(lead.id, uuid.UUID) else None
 
     try:
+        subject = f"Your {lead_magnet.name}"
+        body = build_lead_magnet_email_body(
+            lead_magnet=lead_magnet,
+            offer_name=offer_name,
+            recipient_name=lead.name,
+            brand_name=brand_name or "",
+        )
         accepted = await send_automation_email(
             to_email=lead.email,
             subject=subject,
@@ -150,15 +170,14 @@ async def deliver_lead_magnet_to_lead(
             workspace_id=workspace_id,
             idempotency_key=idempotency_key,
         )
-    except Exception as exc:  # pragma: no cover
-        # send_automation_email normally catches provider errors; keep this as a hard guard.
-        lead.delivery_error = _truncate_error(f"Lead magnet email delivery failed: {exc}")
-        logger.exception(
+    except Exception:
+        # Do not persist or expose raw provider exceptions (which can contain secrets).
+        accepted = False
+        logger.warning(
             "lead_magnet_delivery_failed",
             lead_magnet_lead_id=str(lead.id),
             lead_magnet_id=str(lead_magnet.id),
         )
-        return False
 
     if not accepted:
         lead.delivery_error = _FAILURE_PROVIDER

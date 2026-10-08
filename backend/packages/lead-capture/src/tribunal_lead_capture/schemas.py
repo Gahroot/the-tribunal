@@ -93,6 +93,13 @@ class LeadMagnetResponse(LeadMagnetBase):
     updated_at: datetime
 
 
+class LeadMagnetDeliveryResponse(BaseModel):
+    """Visitor-safe outcome; accepted means provider acceptance, not inbox receipt."""
+
+    lead_magnet_id: uuid.UUID
+    status: Literal["accepted", "failed", "unavailable", "missing_email", "pending"]
+
+
 class PaginatedLeadMagnets(BaseModel):
     """Paginated lead magnets response."""
 

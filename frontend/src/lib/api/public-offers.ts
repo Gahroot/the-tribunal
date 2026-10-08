@@ -1,6 +1,8 @@
 import { apiGet, apiPost } from "@/lib/api";
 import type { ValueStackItem, LeadMagnet } from "@/types";
 
+import type { components } from "./_generated";
+
 // Public Offer Types
 export interface PublicOffer {
   name: string;
@@ -32,12 +34,7 @@ export interface OptInRequest {
   name?: string;
 }
 
-export interface OptInResponse {
-  success: boolean;
-  message: string;
-  contact_id?: number;
-  lead_magnet_lead_id?: string;
-}
+export type OptInResponse = components["schemas"]["OptInResponse"];
 
 // Public Offers API (no auth required)
 export const publicOffersApi = {
