@@ -421,7 +421,24 @@ class AutomationWorker(RetryableWorker, BaseWorker):
         db: AsyncSession,
     ) -> None:
         """Execute all actions for *automation* against a polling-matched *contact*."""
+        # Existing executions (including legacy pending/failed rows) are not
+        # resumed: they have no per-step checkpoint and may already have sent.
+        existing = await db.execute(
+            select(AutomationExecution.id)
+            .where(
+                AutomationExecution.automation_id == automation.id,
+                AutomationExecution.contact_id == contact.id,
+                AutomationExecution.event_id.is_(None),
+            )
+            .limit(1)
+        )
+        if existing.first() is not None:
+            return
+
         execution = AutomationExecution(
+            # Match the polling unique index. Stable even if a crash rolls back
+            # the execution row after a provider accepted an email.
+            id=derive_outbound_key("automation_execution_poll", automation.id, contact.id),
             automation_id=automation.id,
             contact_id=contact.id,
             status="pending",
@@ -455,6 +472,8 @@ class AutomationWorker(RetryableWorker, BaseWorker):
             return
 
         execution = AutomationExecution(
+            # Match the event unique index, not the recipient or payload.
+            id=derive_outbound_key("automation_execution_event", automation.id, event.id),
             automation_id=automation.id,
             contact_id=event.contact_id,
             event_id=event.id,
@@ -480,6 +499,9 @@ class AutomationWorker(RetryableWorker, BaseWorker):
         template tokens (e.g. ``{rating}``, ``{stage}``) for message rendering.
         Never raises — failures are recorded on the execution row.
         """
+        if execution.status == "completed":
+            return
+
         log = self.logger.bind(
             automation_id=str(automation.id),
             contact_id=contact.id if contact else None,
@@ -491,7 +513,7 @@ class AutomationWorker(RetryableWorker, BaseWorker):
             if incomplete:
                 raise AutomationActionError(incomplete)
 
-            for action in automation.actions:
+            for step_index, action in enumerate(automation.actions):
                 action_type: str = str(action.get("type", "")).lower()
                 action_config: dict[str, Any] = action.get("config") or {}
 
@@ -508,6 +530,8 @@ class AutomationWorker(RetryableWorker, BaseWorker):
                     context={
                         "source": "automation",
                         "automation_id": str(automation.id),
+                        "execution_id": str(execution.id),
+                        "step_index": step_index,
                         "contact_id": contact.id if contact else None,
                     },
                 )
@@ -529,10 +553,28 @@ class AutomationWorker(RetryableWorker, BaseWorker):
                     )
 
                 if action_type == "send_sms" and contact is not None:
-                    await self._action_send_sms(automation, contact, action_config, payload, db)
+                    await self._action_send_sms(
+                        automation,
+                        contact,
+                        action_config,
+                        payload,
+                        db,
+                        idempotency_key=derive_outbound_key(
+                            "automation_sms_step", execution.id, step_index
+                        ),
+                    )
 
                 elif action_type == "send_email" and contact is not None:
-                    await self._action_send_email(automation, contact, action_config, payload, db)
+                    await self._action_send_email(
+                        automation,
+                        contact,
+                        action_config,
+                        payload,
+                        db,
+                        idempotency_key=derive_outbound_key(
+                            "automation_email_step", execution.id, step_index
+                        ),
+                    )
 
                 elif action_type == "make_call" and contact is not None:
                     await self._action_make_call(automation, contact, action_config, db)
@@ -624,6 +666,8 @@ class AutomationWorker(RetryableWorker, BaseWorker):
         config: dict[str, Any],
         payload: dict[str, Any],
         db: AsyncSession,
+        *,
+        idempotency_key: uuid.UUID,
     ) -> None:
         """Send an SMS to the contact.
 
@@ -660,8 +704,7 @@ class AutomationWorker(RetryableWorker, BaseWorker):
                 from_=from_number,
                 body=message_body,
                 contact=contact,
-                idempotency_scope="automation_sms",
-                idempotency_parts=(automation.id, contact.id),
+                idempotency_key=idempotency_key,
                 action_type="automation_sms",
                 # Existing automation policy: consent is not required, but
                 # opted-out recipients are always blocked by the delivery gate.
@@ -685,6 +728,8 @@ class AutomationWorker(RetryableWorker, BaseWorker):
         config: dict[str, Any],
         payload: dict[str, Any],
         db: AsyncSession,
+        *,
+        idempotency_key: uuid.UUID,
     ) -> None:
         """Send a transactional email to the contact via Resend.
 
@@ -706,7 +751,6 @@ class AutomationWorker(RetryableWorker, BaseWorker):
 
         subject = self._render_template(subject_template, contact, payload)
         body = self._render_template(body_template, contact, payload)
-        idempotency_key = derive_outbound_key("automation_email", automation.id, contact.id)
 
         sent = await send_automation_email(
             to_email=contact.email,

@@ -311,6 +311,134 @@ async def test_make_call_honors_returned_status(call_status: str) -> None:
     provider.close.assert_awaited_once()
 
 
+class SimulatedWorkerCrash(BaseException):
+    """Process loss after acceptance, before the execution transaction commits."""
+
+
+def _assert_retry_steps(
+    interrupted: AutomationExecution,
+    completed: AutomationExecution,
+    attempts: list[uuid.UUID],
+    accepted: set[uuid.UUID],
+) -> None:
+    assert interrupted.id == completed.id
+    assert completed.status == "completed"
+    assert attempts[0] == attempts[1]  # acceptance-before-crash retry
+    assert attempts[1] != attempts[2]  # identical text, different steps
+    assert len(accepted) == 2
+
+
+@pytest.mark.parametrize("channel", ["sms", "email"])
+@pytest.mark.parametrize("trigger_path", ["event", "poll"])
+async def test_send_steps_survive_crash_and_distinguish_executions(
+    channel: str, trigger_path: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Real dispatch, with isolated providers that dedupe accepted retry keys."""
+    from app.models.automation_event import AutomationEvent
+    from app.services import email
+
+    automation = _automation(
+        [
+            {"type": f"send_{channel}", "config": {"subject": "Hi", "message": "Hello"}},
+            {"type": f"send_{channel}", "config": {"subject": "Hi", "message": "Hello"}},
+        ]
+    )
+    worker = AutomationWorker()
+    contact = _contact()
+    db = MagicMock()
+    # No committed execution: model a rollback after each interrupted attempt.
+    db.execute = AsyncMock(return_value=MagicMock(first=MagicMock(return_value=None)))
+    db.flush = AsyncMock()
+    attempts: list[uuid.UUID] = []
+    accepted: set[uuid.UUID] = set()
+    crash = True
+
+    def accept(key: uuid.UUID, workspace_id: uuid.UUID) -> None:
+        nonlocal crash
+        assert workspace_id == WORKSPACE_ID
+        attempts.append(key)
+        accepted.add(key)
+        if crash:
+            crash = False
+            raise SimulatedWorkerCrash()
+
+    class DedupingTextProvider(FakeTextProvider):
+        async def send_message(self, **kwargs: Any) -> Message:
+            accept(kwargs["idempotency_key"], kwargs["workspace_id"])
+            return await super().send_message(**kwargs)
+
+    async def send_email(params: dict[str, Any], **kwargs: Any) -> dict[str, str]:
+        assert params["to"] == [contact.email]
+        assert kwargs["db"] is db
+        accept(kwargs["idempotency_key"], kwargs["workspace_id"])
+        return {"id": "fixture-email"}
+
+    monkeypatch.setattr(
+        "app.workers.automation_worker.get_text_message_provider",
+        lambda *_a, **_k: DedupingTextProvider(),
+    )
+    monkeypatch.setattr(
+        "app.services.rate_limiting.opt_out_manager.OptOutManager.check_opt_out",
+        AsyncMock(return_value=False),
+    )
+    monkeypatch.setattr(worker, "_resolve_from_number", AsyncMock(return_value=FROM_NUMBER))
+    monkeypatch.setattr(email, "customer_email_brand_name", AsyncMock(return_value="Fixture"))
+    monkeypatch.setattr(email, "_send", send_email)
+    event = AutomationEvent(
+        id=uuid.uuid4(), workspace_id=WORKSPACE_ID, contact_id=contact.id, payload={}
+    )
+
+    async def dispatch() -> None:
+        if trigger_path == "event":
+            await worker._execute_event_for_automation(automation, event, contact, db)
+        else:
+            await worker._execute_for_contact(automation, contact, db)
+
+    with pytest.raises(SimulatedWorkerCrash):
+        await dispatch()
+    interrupted = db.add.call_args.args[0]
+    await dispatch()
+    completed = db.add.call_args.args[0]
+    _assert_retry_steps(interrupted, completed, attempts, accepted)
+
+    # A second event for the same contact is a legitimate new execution.
+    # Polling intentionally allows only one execution per automation/contact.
+    if trigger_path == "event":
+        event.id = uuid.uuid4()
+        await dispatch()
+        assert db.add.call_args.args[0].id != completed.id
+        assert len(accepted) == 4
+        assert len(set(attempts[3:])) == 2
+
+    # Completed actions cannot be replayed, even by direct action dispatch.
+    await worker._run_actions(automation, contact, {}, completed, db)
+    assert len(attempts) == (5 if trigger_path == "event" else 3)
+
+
+@pytest.mark.parametrize("trigger_path", ["event", "poll"])
+@pytest.mark.parametrize("status", ["completed", "pending", "failed"])
+async def test_legacy_execution_is_not_replayed(trigger_path: str, status: str) -> None:
+    """No safe legacy step checkpoint exists: never reset keys or resume rows."""
+    from app.models.automation_event import AutomationEvent
+
+    worker = AutomationWorker()
+    automation = _automation([{"type": "send_sms", "config": {"message": "Hi"}}])
+    legacy = _execution(automation)
+    legacy.status = status
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=MagicMock(first=MagicMock(return_value=(legacy.id,))))
+    db.flush = AsyncMock()
+    with patch.object(worker, "_run_actions", AsyncMock()) as run:
+        if trigger_path == "event":
+            event = AutomationEvent(id=uuid.uuid4(), contact_id=42, payload={})
+            await worker._execute_event_for_automation(automation, event, _contact(), db)
+        else:
+            await worker._execute_for_contact(automation, _contact(), db)
+    run.assert_not_awaited()
+    db.add.assert_not_called()
+    assert legacy.status == status
+
+
 async def test_polling_skips_incomplete_automation() -> None:
     """Incomplete automations never fan out to (and burn) matching contacts."""
     worker = AutomationWorker()

@@ -434,6 +434,7 @@ class TestAdditionalRetrySendKeys:
 
         worker = AutomationWorker()
         automation_id = uuid4()
+        send_key = derive("automation_sms_step", uuid4(), 0)
         contact_id = 123
         automation = SimpleNamespace(id=automation_id, workspace_id=uuid4())
         contact = SimpleNamespace(id=contact_id, phone_number="+12025551234", first_name="A")
@@ -462,10 +463,11 @@ class TestAdditionalRetrySendKeys:
                 {"message": "hi"},
                 {},
                 db,
+                idempotency_key=send_key,
             )
 
         call_kwargs = sms_instance.send_message.call_args.kwargs
-        assert call_kwargs["idempotency_key"] == derive("automation_sms", automation_id, contact_id)
+        assert call_kwargs["idempotency_key"] == send_key
 
     async def test_sms_fallback_forwards_campaign_contact_key(self) -> None:
         from app.services.campaigns import sms_fallback
