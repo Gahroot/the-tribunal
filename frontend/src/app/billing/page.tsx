@@ -61,8 +61,9 @@ function useCheckoutReturnNotice() {
     } else {
       toast("Checkout canceled. You weren't charged.");
     }
-    router.replace("/billing");
-  }, [outcome, queryClient, router]);
+    const accountId = searchParams.get("billing_account_id");
+    router.replace(accountId ? `/billing?billing_account_id=${encodeURIComponent(accountId)}` : "/billing");
+  }, [outcome, queryClient, router, searchParams]);
 }
 
 function BillingContent() {
@@ -112,7 +113,9 @@ function BillingContent() {
           </ul>
 
           {/* Live subscription state + working actions (shared with Settings → Billing) */}
-          <SubscriptionSummary subscribeMode="checkout" />
+          <Suspense fallback={<p role="status">Loading billing account…</p>}>
+            <SubscriptionSummary subscribeMode="checkout" />
+          </Suspense>
 
           {subscribed && (
             <Button

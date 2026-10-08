@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 import stripe
 import structlog
@@ -30,7 +30,14 @@ _STRIPE_INTEGRATION_TYPE = "stripe"
 
 
 class CheckoutRequest(BaseModel):
+    billing_account_id: uuid.UUID
     price_id: str | None = None
+
+
+class BillingAccount(BaseModel):
+    id: uuid.UUID
+    name: str
+    kind: Literal["workspace"] = "workspace"
 
 
 class CheckoutResponse(BaseModel):
@@ -42,6 +49,7 @@ class PortalResponse(BaseModel):
 
 
 class BillingStatus(BaseModel):
+    billing_account: BillingAccount
     subscribed: bool
     plan: str | None = None
     status: str | None = None
@@ -63,10 +71,10 @@ class BillingStatus(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _billing_return_url(outcome: str | None = None) -> str:
+def _billing_return_url(workspace_id: uuid.UUID, outcome: str | None = None) -> str:
     """Frontend billing page URL used for Stripe checkout/portal returns."""
-    base = f"{settings.frontend_url}/billing"
-    return f"{base}?checkout={outcome}" if outcome else base
+    base = f"{settings.frontend_url}/billing?billing_account_id={workspace_id}"
+    return f"{base}&checkout={outcome}" if outcome else base
 
 
 def _stripe_client() -> stripe.StripeClient:
@@ -83,8 +91,8 @@ async def _get_user_workspace_id(current_user: CurrentUser, db: DB, request: Req
     deterministically rather than failing with a 500 on multiple rows.
     Selection is not authority: require owner/admin access on that exact
     workspace, including its active state and API-key binding. Never fall back
-    to another account based on role. RF-031 must preserve this pairing when
-    explicit billing-account selection replaces the legacy default lookup.
+    to another account based on role. RF-031 uses this only for account
+    discovery; status/checkout/portal require an explicit authorized account.
     """
     result = await db.execute(
         select(WorkspaceMembership)
@@ -165,6 +173,24 @@ def _get_customer_id(integration: WorkspaceIntegration | None) -> str | None:
 # ---------------------------------------------------------------------------
 
 
+@router.get("/account", response_model=BillingAccount)
+async def get_billing_account(
+    current_user: CurrentUser,
+    db: DB,
+    request: Request,
+    billing_account_id: uuid.UUID | None = None,
+) -> BillingAccount:
+    """Expose the authorized legacy account, independent of sidebar brand.
+
+    Only discovery uses the legacy default. Explicit targets never fall back.
+    Organization billing awaits ORG-001's approved mapping and migration.
+    """
+    if billing_account_id is None:
+        billing_account_id = await _get_user_workspace_id(current_user, db, request)
+    workspace = await get_workspace_admin(request, billing_account_id, current_user, db)
+    return BillingAccount(id=workspace.id, name=workspace.name)
+
+
 @router.post("/checkout", response_model=CheckoutResponse)
 async def create_checkout(
     request: CheckoutRequest,
@@ -173,7 +199,10 @@ async def create_checkout(
     http_request: Request,
 ) -> CheckoutResponse:
     """Create a Stripe Checkout session for a new subscription."""
-    workspace_id = await _get_user_workspace_id(current_user, db, http_request)
+    workspace = await get_workspace_admin(
+        http_request, request.billing_account_id, current_user, db
+    )
+    workspace_id = workspace.id
     if not settings.stripe_secret_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -199,8 +228,8 @@ async def create_checkout(
     params: dict[str, Any] = {
         "mode": "subscription",
         "line_items": [{"price": price_id, "quantity": 1}],
-        "success_url": _billing_return_url("success"),
-        "cancel_url": _billing_return_url("canceled"),
+        "success_url": _billing_return_url(workspace_id, "success"),
+        "cancel_url": _billing_return_url(workspace_id, "canceled"),
         "metadata": {"workspace_id": str(workspace_id)},
     }
     if customer_id:
@@ -235,9 +264,11 @@ async def create_portal(
     current_user: CurrentUser,
     db: DB,
     request: Request,
+    billing_account_id: uuid.UUID,
 ) -> PortalResponse:
     """Create a Stripe Customer Portal session for subscription management."""
-    workspace_id = await _get_user_workspace_id(current_user, db, request)
+    workspace = await get_workspace_admin(request, billing_account_id, current_user, db)
+    workspace_id = workspace.id
     if not settings.stripe_secret_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -256,7 +287,7 @@ async def create_portal(
     client = _stripe_client()
 
     try:
-        return_url = _billing_return_url()
+        return_url = _billing_return_url(workspace_id)
         session = client.billing_portal.sessions.create(
             params={"customer": customer_id, "return_url": return_url},
         )
@@ -285,17 +316,21 @@ async def get_billing_status(
     current_user: CurrentUser,
     db: DB,
     request: Request,
+    billing_account_id: uuid.UUID,
 ) -> BillingStatus:
-    """Return the subscription status for the current workspace.
+    """Return the subscription status for the explicitly authorized billing account.
 
     Also reports which billing actions can actually work so clients never show
     a checkout/portal control that is guaranteed to fail. A Stripe lookup
     failure is surfaced as a 502 rather than reported as "not subscribed",
     which would wrongly invite a paying customer to subscribe again.
     """
-    workspace_id = await _get_user_workspace_id(current_user, db, request)
+    workspace = await get_workspace_admin(request, billing_account_id, current_user, db)
+    workspace_id = workspace.id
     if not settings.stripe_secret_key:
-        return BillingStatus(subscribed=False)
+        return BillingStatus(
+            billing_account=BillingAccount(id=workspace.id, name=workspace.name), subscribed=False
+        )
 
     checkout_available = bool(settings.stripe_price_id)
     existing = await _get_stripe_integration(workspace_id, db)
@@ -303,6 +338,7 @@ async def get_billing_status(
 
     if not customer_id:
         return BillingStatus(
+            billing_account=BillingAccount(id=workspace.id, name=workspace.name),
             subscribed=False,
             configured=True,
             checkout_available=checkout_available,
@@ -327,6 +363,7 @@ async def get_billing_status(
 
     if not subscriptions.data:
         return BillingStatus(
+            billing_account=BillingAccount(id=workspace.id, name=workspace.name),
             subscribed=False,
             configured=True,
             checkout_available=checkout_available,
@@ -352,6 +389,7 @@ async def get_billing_status(
         period_end = datetime.fromtimestamp(int(trial_end), tz=UTC)
 
     return BillingStatus(
+        billing_account=BillingAccount(id=workspace.id, name=workspace.name),
         subscribed=is_active,
         plan=plan_name,
         status=sub.status,

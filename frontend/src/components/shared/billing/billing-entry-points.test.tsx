@@ -11,6 +11,8 @@ import { queryKeys } from "@/lib/query-keys";
 
 const mocks = vi.hoisted(() => ({
   getBillingStatus: vi.fn(),
+  getBillingAccount: vi.fn(),
+  user: { id: 1 },
   createCheckout: vi.fn(),
   createPortal: vi.fn(),
   navigate: vi.fn(),
@@ -20,9 +22,15 @@ const mocks = vi.hoisted(() => ({
   replace: vi.fn(),
   push: vi.fn(),
   searchParams: { value: new URLSearchParams() },
+  activeBrand: "Brand B",
+}));
+
+vi.mock("@/providers/auth-provider", () => ({
+  useAuth: () => ({ user: mocks.user }),
 }));
 
 vi.mock("@/lib/api/billing", () => ({
+  getBillingAccount: mocks.getBillingAccount,
   getBillingStatus: mocks.getBillingStatus,
   createCheckout: mocks.createCheckout,
   createPortal: mocks.createPortal,
@@ -33,7 +41,7 @@ vi.mock("@/components/shared/billing/billing-navigation", () => ({
 }));
 
 vi.mock("@/components/layout/app-sidebar", () => ({
-  AppSidebar: ({ children }: { children: ReactNode }) => <>{children}</>,
+  AppSidebar: ({ children }: { children: ReactNode }) => <><span>Selected brand: {mocks.activeBrand}</span>{children}</>,
 }));
 
 vi.mock("sonner", () => ({
@@ -51,6 +59,7 @@ vi.mock("next/navigation", () => ({
 
 function status(overrides: Partial<BillingStatus> = {}): BillingStatus {
   return {
+    billing_account: { id: "brand-a", name: "Brand A", kind: "workspace" },
     subscribed: false,
     plan: null,
     status: null,
@@ -79,6 +88,10 @@ const ENTRY_POINTS = [
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.searchParams.value = new URLSearchParams();
+  mocks.user = { id: 1 };
+  mocks.activeBrand = "Brand B";
+  window.history.replaceState({}, "", "/billing");
+  mocks.getBillingAccount.mockResolvedValue({ id: "brand-a", name: "Brand A", kind: "workspace" });
 });
 
 describe.each(ENTRY_POINTS)("$name", ({ ui }) => {
@@ -91,12 +104,16 @@ describe.each(ENTRY_POINTS)("$name", ({ ui }) => {
 
     expect(await screen.findByText("Realtor Monthly")).toBeInTheDocument();
     expect(screen.getByText("Active")).toBeInTheDocument();
+    expect(screen.getByText("Billing account: Brand A")).toBeInTheDocument();
+    expect(screen.getByText(/Shared company billing is not available yet/)).toBeInTheDocument();
+    expect(mocks.getBillingStatus).toHaveBeenCalledWith("brand-a");
     // No fictional plan / card / invoice claims.
     expect(screen.queryByText(/Pro Plan|4242|Visa|Expires 12\/25/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /get started|subscribe/i })).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Manage subscription" }));
     await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith("https://billing.stripe.test/p"));
+    expect(mocks.createPortal).toHaveBeenCalledWith("brand-a");
   });
 
   it("surfaces a portal failure instead of a dead click", async () => {
@@ -168,13 +185,63 @@ describe.each(ENTRY_POINTS)("$name", ({ ui }) => {
   });
 });
 
+describe("billing account isolation", () => {
+  it("shows account A with brand B selected and does not retarget on a sidebar switch", async () => {
+    mocks.getBillingStatus.mockResolvedValue(status({ subscribed: true, portal_available: true }));
+    mocks.createPortal.mockResolvedValue({ portal_url: "https://billing.stripe.test/a" });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = renderWithClient(<BillingPage />, client);
+    expect(await screen.findByText("Billing account: Brand A")).toBeInTheDocument();
+    expect(screen.getByText("Selected brand: Brand B")).toBeInTheDocument();
+    mocks.activeBrand = "Brand A";
+    // Parent re-render after the sidebar context changes, keeping the query client.
+    view.rerender(<QueryClientProvider client={client}><BillingPage /></QueryClientProvider>);
+    expect(await screen.findByText("Billing account: Brand A")).toBeInTheDocument();
+    expect(screen.getByText("Selected brand: Brand A")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Manage subscription" }));
+    expect(mocks.createPortal).toHaveBeenCalledWith("brand-a");
+    expect(mocks.getBillingStatus.mock.calls.every(([id]) => id === "brand-a")).toBe(true);
+  });
+
+  it("pins a returned explicit account instead of rediscovering a changed default", async () => {
+    mocks.searchParams.value = new URLSearchParams("billing_account_id=brand-b");
+    mocks.getBillingAccount.mockResolvedValue({ id: "brand-b", name: "Brand B", kind: "workspace" });
+    mocks.getBillingStatus.mockResolvedValue(status({ billing_account: { id: "brand-b", name: "Brand B", kind: "workspace" }, subscribed: true, portal_available: true }));
+    mocks.createPortal.mockResolvedValue({ portal_url: "https://billing.stripe.test/b" });
+    renderWithClient(<BillingPage />);
+    expect(await screen.findByText("Billing account: Brand B")).toBeInTheDocument();
+    expect(mocks.getBillingAccount).toHaveBeenCalledWith("brand-b");
+    expect(mocks.getBillingStatus).toHaveBeenCalledWith("brand-b");
+    await userEvent.click(screen.getByRole("button", { name: "Manage subscription" }));
+    expect(mocks.createPortal).toHaveBeenCalledWith("brand-b");
+  });
+  it("keys cached status by user and account, never by the active brand", () => {
+    expect(queryKeys.billing.status(1, "brand-a")).not.toEqual(queryKeys.billing.status(1, "brand-b"));
+    expect(queryKeys.billing.status(1, "brand-a")).not.toEqual(queryKeys.billing.status(2, "brand-a"));
+    expect(queryKeys.billing.account(1)).not.toEqual(queryKeys.billing.account(2));
+  });
+
+  it("does not expose a cached owner's account to a different signed-in user", async () => {
+    mocks.user = { id: 2 };
+    mocks.getBillingAccount.mockRejectedValue(new Error("Admin access required"));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(queryKeys.billing.account(1), { id: "brand-a", name: "Brand A", kind: "workspace" });
+    client.setQueryData(queryKeys.billing.status(1, "brand-a"), status({ subscribed: true }));
+    renderWithClient(<BillingSettingsTab />, client);
+    expect(await screen.findByText("Couldn't load billing status")).toBeInTheDocument();
+    expect(screen.queryByText("Billing account: Brand A")).not.toBeInTheDocument();
+    expect(mocks.getBillingStatus).not.toHaveBeenCalled();
+    expect(mocks.createPortal).not.toHaveBeenCalled();
+  });
+});
+
 describe("unsubscribed accounts", () => {
   it("Settings hands off to the billing page so the price is seen before checkout", async () => {
     mocks.getBillingStatus.mockResolvedValue(status());
     renderWithClient(<BillingSettingsTab />);
 
     const link = await screen.findByRole("link", { name: "View plan and subscribe" });
-    expect(link).toHaveAttribute("href", "/billing");
+    expect(link).toHaveAttribute("href", "/billing?billing_account_id=brand-a");
     expect(screen.getByText("No active subscription")).toBeInTheDocument();
     expect(mocks.createCheckout).not.toHaveBeenCalled();
   });
@@ -193,6 +260,7 @@ describe("unsubscribed accounts", () => {
     expect(screen.getByText("No active subscription")).toBeInTheDocument();
     await userEvent.click(button);
     expect(button).toBeDisabled();
+    expect(mocks.createCheckout).toHaveBeenCalledWith("brand-a");
     resolveCheckout({ checkout_url: "https://checkout.stripe.test/cs" });
     await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith("https://checkout.stripe.test/cs"));
   });

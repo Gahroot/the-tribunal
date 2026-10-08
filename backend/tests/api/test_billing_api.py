@@ -43,7 +43,7 @@ def _membership_db(memberships: list[SimpleNamespace]) -> AsyncMock:
         result = MagicMock()
         if stmt.column_descriptions[0]["entity"] is Workspace:
             result.scalar_one_or_none.return_value = SimpleNamespace(
-                id=params["id_1"], is_active=True
+                id=params["id_1"], name="Brand A", is_active=True
             )
             return result
 
@@ -136,7 +136,7 @@ async def test_status_reports_unconfigured_billing(
     client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(app_settings, "stripe_secret_key", "")
-    resp = await client.get("/api/v1/billing/status")
+    resp = await client.get(f"/api/v1/billing/status?billing_account_id={WS_ID}")
     assert resp.status_code == 200
     body = resp.json()
     assert body["subscribed"] is False
@@ -148,10 +148,11 @@ async def test_status_reports_unconfigured_billing(
 async def test_status_without_customer_offers_checkout_only(
     client: AsyncClient, stripe_env: dict[str, Any]
 ) -> None:
-    resp = await client.get("/api/v1/billing/status")
+    resp = await client.get(f"/api/v1/billing/status?billing_account_id={WS_ID}")
     assert resp.status_code == 200
     body = resp.json()
     assert body == {
+        "billing_account": {"id": str(WS_ID), "name": "Brand A", "kind": "workspace"},
         "subscribed": False,
         "plan": None,
         "status": None,
@@ -166,7 +167,7 @@ async def test_status_without_price_disables_checkout(
     client: AsyncClient, stripe_env: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(app_settings, "stripe_price_id", "")
-    body = (await client.get("/api/v1/billing/status")).json()
+    body = (await client.get(f"/api/v1/billing/status?billing_account_id={WS_ID}")).json()
     assert body["configured"] is True
     assert body["checkout_available"] is False
 
@@ -181,7 +182,7 @@ async def test_status_active_subscription(client: AsyncClient, stripe_env: dict[
     )
     stripe_env["client"].subscriptions.list.return_value = SimpleNamespace(data=[sub])
 
-    body = (await client.get("/api/v1/billing/status")).json()
+    body = (await client.get(f"/api/v1/billing/status?billing_account_id={WS_ID}")).json()
     assert body["subscribed"] is True
     assert body["plan"] == "Realtor Monthly"
     assert body["status"] == "active"
@@ -195,7 +196,7 @@ async def test_status_stripe_failure_is_an_error_not_unsubscribed(
     connection_error = cast(Any, stripe.APIConnectionError)("down")
     stripe_env["client"].subscriptions.list.side_effect = connection_error
 
-    resp = await client.get("/api/v1/billing/status")
+    resp = await client.get(f"/api/v1/billing/status?billing_account_id={WS_ID}")
     assert resp.status_code == 502
     assert "sk_test_fake" not in resp.text
 
@@ -230,30 +231,43 @@ async def test_checkout_and_portal_return_to_billing_page(
     stripe_client.checkout.sessions.create.return_value = SimpleNamespace(
         id="cs_test", url="https://checkout.stripe.test/cs_test"
     )
-    resp = await client.post("/api/v1/billing/checkout", json={})
+    resp = await client.post("/api/v1/billing/checkout", json={"billing_account_id": str(WS_ID)})
     assert resp.status_code == 200
     params = stripe_client.checkout.sessions.create.call_args.kwargs["params"]
-    assert params["success_url"] == "https://app.example.test/billing?checkout=success"
-    assert params["cancel_url"] == "https://app.example.test/billing?checkout=canceled"
+    assert (
+        params["success_url"]
+        == f"https://app.example.test/billing?billing_account_id={WS_ID}&checkout=success"
+    )
+    assert (
+        params["cancel_url"]
+        == f"https://app.example.test/billing?billing_account_id={WS_ID}&checkout=canceled"
+    )
     assert params["metadata"] == {"workspace_id": str(WS_ID)}
 
     stripe_env["customer_id"] = "cus_test"
     stripe_client.billing_portal.sessions.create.return_value = SimpleNamespace(
         url="https://billing.stripe.test/p"
     )
-    resp = await client.post("/api/v1/billing/portal")
+    resp = await client.post(f"/api/v1/billing/portal?billing_account_id={WS_ID}")
     assert resp.status_code == 200
     assert resp.json() == {"portal_url": "https://billing.stripe.test/p"}
     portal_params = stripe_client.billing_portal.sessions.create.call_args.kwargs["params"]
-    assert portal_params["return_url"] == "https://app.example.test/billing"
+    assert (
+        portal_params["return_url"]
+        == f"https://app.example.test/billing?billing_account_id={WS_ID}"
+    )
     assert portal_params["customer"] == "cus_test"
 
 
 async def _billing_request(client: AsyncClient, endpoint: str) -> Any:
     url = f"/api/v1/billing/{endpoint}"
+    if endpoint in ("status", "portal"):
+        url += f"?billing_account_id={WS_ID}"
     if endpoint == "status":
         return await client.get(url)
-    return await client.post(url, json={} if endpoint == "checkout" else None)
+    return await client.post(
+        url, json={"billing_account_id": str(WS_ID)} if endpoint == "checkout" else None
+    )
 
 
 @pytest.mark.parametrize("endpoint", ["checkout", "portal", "status"])
@@ -370,4 +384,120 @@ async def test_billing_member_denied_even_when_provider_unconfigured(
 
     assert response.status_code == 403
     billing_module._get_stripe_integration.assert_not_awaited()
+    stripe_env["client_factory"].assert_not_called()
+
+
+@pytest.mark.parametrize("default_b", [False, True])
+async def test_explicit_account_survives_default_and_active_brand_changes(
+    default_b: bool, stripe_env: dict[str, Any]
+) -> None:
+    brand_b = uuid.uuid4()
+    db = _membership_db(
+        [
+            _membership(is_default=not default_b),
+            _membership(brand_b, role="admin", is_default=default_b, created_at=1),
+        ]
+    )
+    stripe_env["customer_id"] = "cus_original_a"
+    provider = stripe_env["client"]
+    provider.subscriptions.list.return_value = SimpleNamespace(data=[])
+    provider.billing_portal.sessions.create.return_value = SimpleNamespace(
+        url="https://billing.stripe.test/a"
+    )
+    provider.checkout.sessions.create.return_value = SimpleNamespace(
+        id="cs_a", url="https://checkout.stripe.test/a"
+    )
+    async with AsyncClient(
+        transport=ASGITransport(app=_app(db)), base_url="http://testserver"
+    ) as ac:
+        account = await ac.get("/api/v1/billing/account")
+        assert account.json()["id"] == str(brand_b if default_b else WS_ID)
+        # A captured account remains A even with B selected/default. Sidebar
+        # context is not billing authority and must not override the target.
+        pinned = await ac.get(
+            f"/api/v1/billing/account?billing_account_id={WS_ID}",
+            headers={"X-Workspace-ID": str(brand_b)},
+        )
+        assert pinned.json()["id"] == str(WS_ID)
+        for endpoint in ("status", "portal", "checkout"):
+            response = await _billing_request(ac, endpoint)
+            assert response.status_code == 200
+            if endpoint == "status":
+                assert response.json()["billing_account"]["id"] == str(WS_ID)
+    for call in billing_module._get_stripe_integration.await_args_list:
+        assert call.args == (WS_ID, db)
+    for operation in (
+        provider.subscriptions.list,
+        provider.billing_portal.sessions.create,
+        provider.checkout.sessions.create,
+    ):
+        assert operation.call_args.kwargs["params"]["customer"] == "cus_original_a"
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.parametrize("endpoint", ["account", "status", "portal", "checkout"])
+@pytest.mark.parametrize("failure", ["missing", "inactive", "member"])
+async def test_explicit_account_fails_closed_without_fallback(
+    endpoint: str, failure: str, stripe_env: dict[str, Any]
+) -> None:
+    db = _membership_db(
+        [
+            *(
+                []
+                if failure == "missing"
+                else [_membership(role="member" if failure == "member" else "owner")]
+            ),
+            _membership(uuid.uuid4(), role="owner", created_at=1),
+        ]
+    )
+    original_execute = db.execute.side_effect
+
+    async def execute(stmt: Any) -> MagicMock:
+        result = await original_execute(stmt)
+        if failure == "inactive" and stmt.column_descriptions[0]["entity"] is Workspace:
+            result.scalar_one_or_none.return_value.is_active = False
+        return result
+
+    db.execute.side_effect = execute
+    async with AsyncClient(
+        transport=ASGITransport(app=_app(db)), base_url="http://testserver"
+    ) as ac:
+        response = (
+            await ac.get(f"/api/v1/billing/account?billing_account_id={WS_ID}")
+            if endpoint == "account"
+            else await _billing_request(ac, endpoint)
+        )
+    assert response.status_code == (403 if failure == "member" else 404)
+    billing_module._get_stripe_integration.assert_not_awaited()
+    stripe_env["client_factory"].assert_not_called()
+
+
+@pytest.mark.parametrize("endpoint", ["status", "portal", "checkout"])
+async def test_billing_operations_require_explicit_account(
+    endpoint: str, stripe_env: dict[str, Any]
+) -> None:
+    async with AsyncClient(transport=ASGITransport(app=_app()), base_url="http://testserver") as ac:
+        response = (
+            await ac.get(f"/api/v1/billing/{endpoint}")
+            if endpoint == "status"
+            else await ac.post(f"/api/v1/billing/{endpoint}", json={})
+        )
+    assert response.status_code == 422
+    stripe_env["client_factory"].assert_not_called()
+
+
+async def test_discovery_does_not_replace_member_default_with_owned_brand(
+    stripe_env: dict[str, Any],
+) -> None:
+    db = _membership_db(
+        [
+            _membership(role="member"),
+            _membership(uuid.uuid4(), role="owner", is_default=False, created_at=1),
+        ]
+    )
+    async with AsyncClient(
+        transport=ASGITransport(app=_app(db)), base_url="http://testserver"
+    ) as ac:
+        response = await ac.get("/api/v1/billing/account")
+    assert response.status_code == 403
     stripe_env["client_factory"].assert_not_called()

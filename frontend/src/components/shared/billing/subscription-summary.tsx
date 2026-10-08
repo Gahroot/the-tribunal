@@ -51,8 +51,29 @@ export interface SubscriptionSummaryProps {
  * controls that would fail.
  */
 export function SubscriptionSummary({ subscribeMode }: SubscriptionSummaryProps) {
-  const { data, isPending, isError, error, refetch, isFetching } = useBillingStatus();
-  const { pending, startCheckout, openPortal } = useBillingActions();
+  const billing = useBillingStatus();
+  return (
+    <div className="space-y-4">
+      {billing.data && (
+        <div className="rounded-lg border p-4">
+          <h3 className="font-semibold">Billing account: {billing.data.billing_account.name}</h3>
+          <p className="text-xs text-muted-foreground break-all">Workspace ID: {billing.data.billing_account.id}</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            This workspace billing account is separate from the sidebar brand selection.
+            Shared company billing is not available yet.
+          </p>
+        </div>
+      )}
+      <SubscriptionDetails subscribeMode={subscribeMode} billing={billing} />
+    </div>
+  );
+}
+
+function SubscriptionDetails({ subscribeMode, billing }: SubscriptionSummaryProps & {
+  billing: ReturnType<typeof useBillingStatus>;
+}) {
+  const { data, isPending, isError, error, refetch, isFetching } = billing;
+  const { pending, startCheckout, openPortal } = useBillingActions(data?.billing_account.id);
 
   if (isPending) {
     return (
@@ -79,6 +100,8 @@ export function SubscriptionSummary({ subscribeMode }: SubscriptionSummaryProps)
       </Alert>
     );
   }
+
+  if (!data) return null;
 
   if (!data.configured) {
     return (
@@ -157,7 +180,7 @@ export function SubscriptionSummary({ subscribeMode }: SubscriptionSummaryProps)
     </Button>
   ) : (
     <Button asChild>
-      <Link href="/billing">View plan and subscribe</Link>
+      <Link href={`/billing?billing_account_id=${encodeURIComponent(data.billing_account.id)}`}>View plan and subscribe</Link>
     </Button>
   );
 

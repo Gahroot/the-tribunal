@@ -160,6 +160,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Billing Account
+         * @description Expose the authorized legacy account, independent of sidebar brand.
+         *
+         *     Only discovery uses the legacy default. Explicit targets never fall back.
+         *     Organization billing awaits ORG-001's approved mapping and migration.
+         */
+        get: operations["get_billing_account_api_v1_billing_account_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/checkout": {
         parameters: {
             query?: never;
@@ -209,7 +232,7 @@ export interface paths {
         };
         /**
          * Get Billing Status
-         * @description Return the subscription status for the current workspace.
+         * @description Return the subscription status for the explicitly authorized billing account.
          *
          *     Also reports which billing actions can actually work so clients never show
          *     a checkout/portal control that is guaranteed to fail. A Stripe lookup
@@ -9282,8 +9305,25 @@ export interface components {
             /** Success */
             success: boolean;
         };
+        /** BillingAccount */
+        BillingAccount: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @default workspace
+             * @constant
+             */
+            kind: "workspace";
+            /** Name */
+            name: string;
+        };
         /** BillingStatus */
         BillingStatus: {
+            billing_account: components["schemas"]["BillingAccount"];
             /**
              * Checkout Available
              * @default false
@@ -10760,6 +10800,11 @@ export interface components {
         };
         /** CheckoutRequest */
         CheckoutRequest: {
+            /**
+             * Billing Account Id
+             * Format: uuid
+             */
+            billing_account_id: string;
             /** Price Id */
             price_id?: string | null;
         };
@@ -20147,6 +20192,37 @@ export interface operations {
             };
         };
     };
+    get_billing_account_api_v1_billing_account_get: {
+        parameters: {
+            query?: {
+                billing_account_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingAccount"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_checkout_api_v1_billing_checkout_post: {
         parameters: {
             query?: never;
@@ -20182,7 +20258,9 @@ export interface operations {
     };
     create_portal_api_v1_billing_portal_post: {
         parameters: {
-            query?: never;
+            query: {
+                billing_account_id: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -20198,11 +20276,22 @@ export interface operations {
                     "application/json": components["schemas"]["PortalResponse"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     get_billing_status_api_v1_billing_status_get: {
         parameters: {
-            query?: never;
+            query: {
+                billing_account_id: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -20216,6 +20305,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BillingStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

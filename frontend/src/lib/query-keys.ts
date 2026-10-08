@@ -176,7 +176,10 @@ export const queryKeys = {
   },
   billing: {
     all: (workspaceId: string) => ["billing", workspaceId] as const,
-    status: () => ["billing-status"] as const,
+    account: (userId: number | string, requestedId?: string) => ["billing", "account", userId, requestedId] as const,
+    status: (userId?: number | string, accountId?: string) => userId === undefined
+      ? ["billing-status"] as const
+      : ["billing-status", userId, accountId] as const,
     subscription: (workspaceId: string) => ["billing", workspaceId, "subscription"] as const,
     invoices: (workspaceId: string) => ["billing", workspaceId, "invoices"] as const,
     usage: (workspaceId: string) => ["billing", workspaceId, "usage"] as const,

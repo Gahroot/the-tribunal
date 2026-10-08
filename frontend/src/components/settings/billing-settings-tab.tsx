@@ -1,6 +1,9 @@
+"use client";
+
 import Link from "next/link";
 
 import { SubscriptionSummary } from "@/components/shared/billing/subscription-summary";
+import { useBillingStatus } from "@/components/shared/billing/use-billing";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -17,6 +20,8 @@ import {
  * operator sees the plan and price before checkout.
  */
 export function BillingSettingsTab() {
+  const { data } = useBillingStatus();
+  const href = data ? `/billing?billing_account_id=${encodeURIComponent(data.billing_account.id)}` : "/billing";
   return (
     <Card>
       <CardHeader>
@@ -30,7 +35,7 @@ export function BillingSettingsTab() {
       </CardContent>
       <CardFooter>
         <Button asChild variant="link" className="h-auto px-0">
-          <Link href="/billing">Open billing page</Link>
+          <Link href={href}>Open billing page</Link>
         </Button>
       </CardFooter>
     </Card>

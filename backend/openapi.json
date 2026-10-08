@@ -4888,8 +4888,36 @@
         "title": "BatchQualifyResponse",
         "type": "object"
       },
+      "BillingAccount": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "workspace",
+            "default": "workspace",
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "BillingAccount",
+        "type": "object"
+      },
       "BillingStatus": {
         "properties": {
+          "billing_account": {
+            "$ref": "#/components/schemas/BillingAccount"
+          },
           "checkout_available": {
             "default": false,
             "title": "Checkout Available",
@@ -4945,6 +4973,7 @@
           }
         },
         "required": [
+          "billing_account",
           "subscribed"
         ],
         "title": "BillingStatus",
@@ -8631,6 +8660,11 @@
       },
       "CheckoutRequest": {
         "properties": {
+          "billing_account_id": {
+            "format": "uuid",
+            "title": "Billing Account Id",
+            "type": "string"
+          },
           "price_id": {
             "anyOf": [
               {
@@ -8643,6 +8677,9 @@
             "title": "Price Id"
           }
         },
+        "required": [
+          "billing_account_id"
+        ],
         "title": "CheckoutRequest",
         "type": "object"
       },
@@ -33458,6 +33495,62 @@
         ]
       }
     },
+    "/api/v1/billing/account": {
+      "get": {
+        "description": "Expose the authorized legacy account, independent of sidebar brand.\n\nOnly discovery uses the legacy default. Explicit targets never fall back.\nOrganization billing awaits ORG-001's approved mapping and migration.",
+        "operationId": "get_billing_account_api_v1_billing_account_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "billing_account_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Billing Account Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingAccount"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Billing Account",
+        "tags": [
+          "Billing"
+        ]
+      }
+    },
     "/api/v1/billing/checkout": {
       "post": {
         "description": "Create a Stripe Checkout session for a new subscription.",
@@ -33509,6 +33602,18 @@
       "post": {
         "description": "Create a Stripe Customer Portal session for subscription management.",
         "operationId": "create_portal_api_v1_billing_portal_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "billing_account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Billing Account Id",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -33519,6 +33624,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -33534,8 +33649,20 @@
     },
     "/api/v1/billing/status": {
       "get": {
-        "description": "Return the subscription status for the current workspace.\n\nAlso reports which billing actions can actually work so clients never show\na checkout/portal control that is guaranteed to fail. A Stripe lookup\nfailure is surfaced as a 502 rather than reported as \"not subscribed\",\nwhich would wrongly invite a paying customer to subscribe again.",
+        "description": "Return the subscription status for the explicitly authorized billing account.\n\nAlso reports which billing actions can actually work so clients never show\na checkout/portal control that is guaranteed to fail. A Stripe lookup\nfailure is surfaced as a 502 rather than reported as \"not subscribed\",\nwhich would wrongly invite a paying customer to subscribe again.",
         "operationId": "get_billing_status_api_v1_billing_status_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "billing_account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Billing Account Id",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -33546,6 +33673,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
