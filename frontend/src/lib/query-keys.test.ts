@@ -250,6 +250,14 @@ describe("queryKeys factory composition", () => {
     expect(atRisk.slice(0, all.length)).toEqual([...all]);
   });
 
+  it("isolates filtered contact payloads while retaining the mutation invalidation prefix", () => {
+    const prefix = queryKeys.conversations.byContact("ws_1", 101);
+    const scoped = queryKeys.conversations.scopedContact("ws_1", 101);
+    expect(scoped).toEqual([...prefix, "scoped"]);
+    expect(scoped).not.toEqual(queryKeys.conversations.scopedContact("ws_2", 101));
+    expect(scoped).not.toEqual(queryKeys.conversations.scopedContact("ws_1", 102));
+  });
+
   it("builds workspace-independent auth keys", () => {
     expect(queryKeys.auth.currentUser()).toEqual(["auth", "currentUser"]);
     expect(queryKeys.auth.session()).toEqual(["auth", "session"]);

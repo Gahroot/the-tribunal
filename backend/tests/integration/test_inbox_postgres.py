@@ -22,6 +22,7 @@ from sqlalchemy.schema import CreateTable
 from app.api.v1.conversations import router
 from app.core.security import create_access_token
 from app.db.session import get_db
+from app.models.campaign import CampaignContact
 from app.models.contact import Contact
 from app.models.conversation import Conversation, ConversationStatus, Message
 from app.models.user import User
@@ -346,3 +347,42 @@ async def test_call_metadata_is_preserved(db: AsyncSession, client: httpx.AsyncC
         45,
         "https://example.test/fixture.wav",
     )
+
+
+@pytest.mark.asyncio
+async def test_contact_filter_precedes_first_100_and_keeps_channel_order(
+    db: AsyncSession, client: httpx.AsyncClient
+) -> None:
+    # Legacy list also checks campaign membership. No campaigns are seeded.
+    connection = await db.connection()
+    await connection.execute(
+        CreateTable(CampaignContact.__table__, include_foreign_key_constraints=[])
+    )
+    db.add_all([thread(i, last_message_at=STAMP + timedelta(minutes=i)) for i in range(1, 106)])
+    db.add_all(
+        [
+            thread(121, contact_id=1, channel="sms", ai_enabled=True),
+            thread(122, contact_id=1, channel="email", last_message_at=STAMP - timedelta(days=1)),
+            thread(200, workspace_id=OTHER_WORKSPACE, contact_id=1),
+        ]
+    )
+    await db.commit()
+    root = f"/api/v1/workspaces/{WORKSPACE}/conversations"
+    first = await client.get(root, params={"page_size": 100})
+    assert first.status_code == 200
+    assert all(row["contact_id"] != 1 for row in first.json()["items"])
+    selected = await client.get(root, params={"contact_id": 1, "page_size": 100})
+    assert selected.status_code == 200
+    payload = selected.json()
+    assert payload["total"] == 2 and payload["pages"] == 1
+    assert [row["id"] for row in payload["items"]] == [str(uuid.UUID(int=i)) for i in (121, 122)]
+    assert payload["items"][0]["ai_enabled"] is True
+    assert all(row["workspace_id"] == str(WORKSPACE) for row in payload["items"])
+    empty = await client.get(root, params={"contact_id": 999})
+    assert empty.status_code == 200 and empty.json()["items"] == []
+    denied = await client.get(
+        f"/api/v1/workspaces/{OTHER_WORKSPACE}/conversations", params={"contact_id": 1}
+    )
+    assert denied.status_code == 404
+    client.headers.pop("Authorization")
+    assert (await client.get(root, params={"contact_id": 1})).status_code == 401

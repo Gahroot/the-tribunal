@@ -1,6 +1,5 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { RefreshCw, Send, Sparkles, Clock, RotateCcw, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -18,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { useContactConversations } from "@/hooks/useContactConversations";
 import {
   useFollowupSettings,
   useUpdateFollowupSettings,
@@ -26,9 +26,7 @@ import {
   useResetFollowupCounter,
 } from "@/hooks/useFollowups";
 import { useWorkspaceId } from "@/hooks/useWorkspaceId";
-import { conversationsApi } from "@/lib/api/conversations";
 import { useContactStore } from "@/lib/contact-store";
-import { queryKeys } from "@/lib/query-keys";
 import { formatRelative } from "@/lib/utils/date";
 import type { Conversation } from "@/types";
 
@@ -59,14 +57,8 @@ export function FollowupSection() {
     useState<Record<string, string>>({});
 
   // Fetch conversations to find the one for the current contact
-  const { data: conversationsData } = useQuery({
-    queryKey: queryKeys.conversations.byContact(workspaceId ?? "", selectedContact?.id),
-    queryFn: () =>
-      workspaceId
-        ? conversationsApi.list(workspaceId, { page: 1, page_size: 100 })
-        : Promise.resolve({ items: [], total: 0, page: 1, page_size: 100, pages: 0 }),
-    enabled: !!workspaceId && !!selectedContact,
-  });
+  const { data: conversationsData, isPending: isLoadingConversations, isError: conversationsError } =
+    useContactConversations(workspaceId, selectedContact?.id);
 
   // Find the conversation for the current contact
   const contactConversation: Conversation | undefined = conversationsData?.items?.find(
@@ -86,7 +78,7 @@ export function FollowupSection() {
   };
 
   // Hooks for followup management
-  const { data: settings, isPending: isLoadingSettings } = useFollowupSettings(
+  const { data: settings, isPending: isLoadingSettings, isError: settingsError } = useFollowupSettings(
     workspaceId ?? "",
     conversationId
   );
@@ -180,6 +172,14 @@ export function FollowupSection() {
       <div className="text-center py-8 text-sm text-muted-foreground">
         Select a contact to manage follow-ups
       </div>
+    );
+  }
+
+  if (isLoadingConversations || conversationsError || (contactConversation && (isLoadingSettings || settingsError))) {
+    return (
+      <p role={conversationsError || settingsError ? "alert" : "status"} className="text-xs text-muted-foreground">
+        {conversationsError || settingsError ? "Unable to load follow-up settings. Please try again." : "Loading follow-up settings…"}
+      </p>
     );
   }
 

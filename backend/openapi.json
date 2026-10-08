@@ -44952,6 +44952,23 @@
               "title": "Unread Only",
               "type": "boolean"
             }
+          },
+          {
+            "in": "query",
+            "name": "contact_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Contact Id"
+            }
           }
         ],
         "responses": {

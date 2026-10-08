@@ -249,6 +249,12 @@ export const queryKeys = {
         page: 1,
         page_size: 100,
       }),
+    scopedContact: (workspaceId: string, contactId: number | undefined) =>
+      [...conversations.list(workspaceId, {
+        contact_id: contactId ?? null,
+        page: 1,
+        page_size: 100,
+      }), "scoped"] as const,
     messages: (workspaceId: string, conversationId: string) =>
       [...conversations.detail(workspaceId, conversationId), "messages"] as const,
     messageSnapshot: (workspaceId: string, conversationId: string, stamp: string | null, unread: number) =>

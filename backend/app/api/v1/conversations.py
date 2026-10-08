@@ -75,6 +75,7 @@ async def list_conversations(
     status_filter: str | None = None,
     channel_filter: str | None = None,
     unread_only: bool = False,
+    contact_id: int | None = Query(None, ge=1),
 ) -> PaginatedConversations:
     """List conversations in a workspace."""
     svc = ConversationService(db)
@@ -85,6 +86,7 @@ async def list_conversations(
         status_filter=status_filter,
         channel_filter=channel_filter,
         unread_only=unread_only,
+        contact_id=contact_id,
     )
 
 

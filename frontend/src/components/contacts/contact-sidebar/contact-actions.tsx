@@ -39,6 +39,8 @@ function QuickAction({
 interface ContactActionsProps {
   hasPhoneNumber: boolean;
   aiEnabled: boolean;
+  aiLoading?: boolean;
+  aiError?: boolean;
   isCalling: boolean;
   isTogglingAi: boolean;
   onCall: () => void;
@@ -51,6 +53,8 @@ interface ContactActionsProps {
 export function ContactActions({
   hasPhoneNumber,
   aiEnabled,
+  aiLoading,
+  aiError,
   isCalling,
   isTogglingAi,
   onCall,
@@ -85,7 +89,8 @@ export function ContactActions({
         />
         <QuickAction
           icon={<Bot className="h-4 w-4" />}
-          label={aiEnabled ? "AI On" : "AI Off"}
+          label={aiLoading ? "Loading AI" : aiError ? "AI unavailable" : aiEnabled ? "AI On" : "AI Off"}
+          disabled={aiLoading || aiError}
           onClick={onToggleAi}
           loading={isTogglingAi}
           variant={aiEnabled ? "primary" : "default"}

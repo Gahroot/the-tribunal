@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData, type QueryKey } from "@tanstack/react-query";
 
 import {
   contactsApi,
@@ -24,8 +24,8 @@ interface ContactConversationsCache {
 
 /**
  * Apply an optimistic patch to a contact's cached conversation so AI/agent
- * controls update instantly. This cache holds all of the workspace's threads
- * (the feed filters client-side), so we patch ONLY the thread linked by
+ * controls update instantly. Legacy feed and scoped sidebar caches share a
+ * contact-key prefix, so we patch ONLY the threads linked by
  * `contact_id` — never a positional fallback, which could touch an unrelated
  * contact. When no linked thread is cached yet (phone-linked but not
  * backfilled, or not created), we skip the optimistic patch and let the
@@ -36,23 +36,18 @@ function patchContactConversationCache(
   workspaceId: string,
   contactId: number,
   patch: Partial<Conversation>,
-): ContactConversationsCache | undefined {
+): [QueryKey, ContactConversationsCache | undefined][] {
   const queryKey = queryKeys.conversations.byContact(workspaceId, contactId);
-  const previous = queryClient.getQueryData<ContactConversationsCache>(queryKey);
-  if (!previous) return undefined;
-
-  const hasLinkedThread = previous.items.some(
-    (conv) => conv.contact_id === contactId,
-  );
-  if (!hasLinkedThread) return previous;
-
-  queryClient.setQueryData<ContactConversationsCache>(queryKey, {
-    ...previous,
-    items: previous.items.map((conv) =>
-      conv.contact_id === contactId ? { ...conv, ...patch } : conv,
-    ),
-  });
-
+  const previous = queryClient.getQueriesData<ContactConversationsCache>({ queryKey });
+  for (const [key, current] of previous) {
+    if (!current?.items.some((conv) => conv.contact_id === contactId)) continue;
+    queryClient.setQueryData<ContactConversationsCache>(key, {
+      ...current,
+      items: current.items.map((conv) =>
+        conv.contact_id === contactId ? { ...conv, ...patch } : conv,
+      ),
+    });
+  }
   return previous;
 }
 
@@ -170,12 +165,9 @@ export function useToggleContactAI(workspaceId: string) {
       );
       return { previous };
     },
-    onError: (_err, variables, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(
-          queryKeys.conversations.byContact(workspaceId, variables.contactId),
-          context.previous,
-        );
+    onError: (_err, _variables, context) => {
+      for (const [key, previous] of context?.previous ?? []) {
+        queryClient.setQueryData(key, previous);
       }
     },
     onSettled: (_data, _err, variables) => {
@@ -215,12 +207,9 @@ export function useAssignContactAgent(workspaceId: string) {
       );
       return { previous };
     },
-    onError: (_err, variables, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(
-          queryKeys.conversations.byContact(workspaceId, variables.contactId),
-          context.previous,
-        );
+    onError: (_err, _variables, context) => {
+      for (const [key, previous] of context?.previous ?? []) {
+        queryClient.setQueryData(key, previous);
       }
     },
     onSettled: (_data, _err, variables) => {

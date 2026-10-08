@@ -77,6 +77,8 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
     appointmentsLoading,
     phoneNumbers,
     aiEnabled,
+    aiLoading,
+    aiError,
     setAiEnabled,
     initiateCallMutation,
     toggleAIMutation,
@@ -103,7 +105,7 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
   };
 
   const handleAIEngage = () => {
-    if (!selectedContact) return;
+    if (!selectedContact || aiLoading || aiError) return;
 
     // Optimistic toggle
     const newState = !aiEnabled;
@@ -173,6 +175,8 @@ export function ContactSidebar({ className, onClose }: ContactSidebarProps) {
           <ContactActions
             hasPhoneNumber={!!selectedContact.phone_number}
             aiEnabled={aiEnabled}
+            aiLoading={aiLoading}
+            aiError={aiError}
             isCalling={initiateCallMutation.isPending}
             isTogglingAi={toggleAIMutation.isPending}
             onCall={handleCall}

@@ -26327,6 +26327,7 @@ export interface operations {
                 status_filter?: string | null;
                 channel_filter?: string | null;
                 unread_only?: boolean;
+                contact_id?: number | null;
             };
             header?: never;
             path: {

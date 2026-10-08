@@ -28,6 +28,7 @@ export interface ConversationsListParams {
   status?: "active" | "archived" | "blocked";
   channel?: string;
   unread_only?: boolean;
+  contact_id?: number;
   [key: string]: unknown;
 }
 
@@ -63,6 +64,13 @@ const baseConversationsApiWithGet = baseConversationsApi as {
 
 export const conversationsApi = {
   ...baseConversationsApiWithGet,
+
+  listForContact: (workspaceId: string, contactId: number) =>
+    baseConversationsApiWithGet.list(workspaceId, {
+      contact_id: contactId,
+      page: 1,
+      page_size: 100,
+    } satisfies ConversationsListParams),
 
   inbox: (workspaceId: string, params: InboxParams, signal?: AbortSignal) =>
     params.q

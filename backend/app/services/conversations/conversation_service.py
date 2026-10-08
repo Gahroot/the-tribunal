@@ -259,10 +259,13 @@ class ConversationService:
         status_filter: str | None = None,
         channel_filter: str | None = None,
         unread_only: bool = False,
+        contact_id: int | None = None,
     ) -> PaginatedConversations:
         """List conversations in a workspace with batch campaign sync."""
         query = select(Conversation).where(Conversation.workspace_id == workspace_id)
 
+        if contact_id is not None:
+            query = query.where(Conversation.contact_id == contact_id)
         if status_filter:
             query = query.where(Conversation.status == status_filter)
         if channel_filter:
