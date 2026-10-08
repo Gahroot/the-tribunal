@@ -31,6 +31,7 @@ from app.services.providers.http import (
     ProviderHTTPError,
     ProviderRetryPolicy,
 )
+from app.services.telephony.text_delivery import require_text_accepted
 from app.utils.phone import normalize_phone_e164, phone_lookup_variants
 from app.utils.pii import mask_phone
 
@@ -184,7 +185,10 @@ class TelnyxSMSService:
                 is effectively non-idempotent across retries.
 
         Returns:
-            Created (or pre-existing) Message record.
+            Accepted (or pre-existing accepted) Message record.
+
+        Raises:
+            TextDeliveryError: After committing a failed attempt to history.
         """
         # Normalize outbound addresses before persistence/provider handoff.
         to_number = self._normalize_outbound_to(to_number)
@@ -207,7 +211,7 @@ class TelnyxSMSService:
                 message_id=str(existing.id),
                 status=existing.status,
             )
-            return existing
+            return require_text_accepted(existing)
 
         log.info(
             "sending_text_message",
@@ -271,6 +275,16 @@ class TelnyxSMSService:
             )
             data = response_data.get("data", {})
             message.provider_message_id = data.get("id")
+            recipients = data.get("to") or []
+            rejected = data.get("status") in {"failed", "sending_failed", "delivery_failed"} or any(
+                recipient.get("status") in {"failed", "sending_failed", "delivery_failed"}
+                for recipient in recipients
+                if isinstance(recipient, dict)
+            )
+            if rejected or not message.provider_message_id:
+                raise ValueError(
+                    "The provider did not accept the text. Check messaging configuration."
+                )
             message.status = MessageStatus.SENT
             message.sent_at = datetime.now(UTC)
             observe_sms_sent(workspace_id, direction="outbound")
@@ -278,6 +292,7 @@ class TelnyxSMSService:
         except ProviderHTTPError as e:
             message.status = MessageStatus.FAILED
             message.error_message = e.message
+            message.error_code = e.code
             log.error(
                 "text_send_failed",
                 status_code=e.status_code,
@@ -305,7 +320,7 @@ class TelnyxSMSService:
         await db.commit()
         await db.refresh(message)
 
-        return message
+        return require_text_accepted(message)
 
     async def _post_workspace_message(
         self,

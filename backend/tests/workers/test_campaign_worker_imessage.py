@@ -5,8 +5,11 @@ from __future__ import annotations
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from app.models.campaign import CampaignContactStatus
 from app.models.conversation import Message, MessageChannel, MessageStatus
+from app.services.telephony.text_delivery import TextDeliveryError
 from app.workers.campaign_worker import CampaignWorker
 from tests.factories import (
     CampaignContactFactory,
@@ -130,9 +133,25 @@ async def test_initial_message_uses_mac_relay_for_imessage_sender() -> None:
     assert compliance_request.action_type == "campaign_initial_imessage"
 
 
-async def test_initial_message_uses_telnyx_for_sms_sender() -> None:
+@pytest.mark.parametrize(
+    "delivery_status, raises",
+    [
+        (MessageStatus.SENT, False),
+        (MessageStatus.FAILED, False),
+        (MessageStatus.FAILED, True),
+    ],
+)
+@pytest.mark.parametrize("followup", [False, True])
+async def test_initial_message_uses_telnyx_for_sms_sender(
+    delivery_status, raises, followup
+) -> None:
     workspace_id = uuid.uuid4()
-    campaign = CampaignFactory.build(workspace_id=workspace_id, initial_message="Hi {first_name}")
+    campaign = CampaignFactory.build(
+        workspace_id=workspace_id,
+        initial_message="Hi {first_name}",
+        follow_up_message="Hi {first_name}",
+        max_follow_ups=3,
+    )
     contact = ContactFactory.build(id=124, workspace_id=workspace_id, first_name="Sam")
     campaign_contact = CampaignContactFactory.build(
         campaign=campaign,
@@ -152,10 +171,12 @@ async def test_initial_message_uses_telnyx_for_sms_sender() -> None:
         direction="outbound",
         channel=MessageChannel.SMS,
         body="Hi Sam",
-        status=MessageStatus.SENT,
+        status=delivery_status,
     )
     text_service = AsyncMock()
     text_service.send_message = AsyncMock(return_value=outbound_message)
+    if raises:
+        text_service.send_message.side_effect = TextDeliveryError(outbound_message)
 
     worker = CampaignWorker()
     worker.rate_limiter.check_campaign_rate_limit = AsyncMock(return_value=True)
@@ -175,14 +196,36 @@ async def test_initial_message_uses_telnyx_for_sms_sender() -> None:
         "app.workers.campaign_worker.get_text_message_provider",
         MagicMock(return_value=text_service),
     ) as get_provider:
-        await worker._process_initial_messages(campaign, {}, db, MagicMock())
+        if followup:
+            campaign_contact.status = CampaignContactStatus.SENT
+            await worker._process_follow_ups(campaign, {}, db, MagicMock())
+        else:
+            await worker._process_initial_messages(campaign, {}, db, MagicMock())
 
     get_provider.assert_called_once_with(None, mac_relay_service=None)
     send_kwargs = text_service.send_message.await_args.kwargs
     assert send_kwargs["from_number"] == from_phone.phone_number
     compliance_request = worker.compliance_service.evaluate.await_args.args[0]
     assert compliance_request.channel == "sms"
-    assert compliance_request.action_type == "campaign_initial_sms"
+    assert compliance_request.action_type == (
+        "campaign_follow_up_sms" if followup else "campaign_initial_sms"
+    )
+    if delivery_status == MessageStatus.FAILED:
+        assert campaign_contact.status == (
+            CampaignContactStatus.SENT if followup else CampaignContactStatus.FAILED
+        )
+        assert campaign_contact.follow_ups_sent == 0
+        assert campaign.messages_sent == 0
+        assert campaign.messages_failed == 1
+        assert campaign_contact.messages_sent == 0
+        assert campaign_contact.next_follow_up_at is None
+        worker.reputation_tracker.increment_sent.assert_not_awaited()
+    else:
+        assert campaign_contact.status == CampaignContactStatus.SENT
+        assert campaign.messages_sent == 1
+        assert campaign_contact.messages_sent == 1
+        assert campaign_contact.follow_ups_sent == (1 if followup else 0)
+        worker.reputation_tracker.increment_sent.assert_awaited_once()
 
 
 async def test_initial_send_rechecks_consent_and_excludes_without_sending() -> None:

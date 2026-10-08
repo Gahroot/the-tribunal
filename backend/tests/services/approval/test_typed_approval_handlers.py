@@ -23,6 +23,7 @@ from app.services.approval.approval_gate_service import (
 )
 from app.services.approval.command_processor_service import CommandProcessorService
 from app.services.idempotency import derive_outbound_key
+from app.services.telephony.text_delivery import TextDeliveryError
 from app.workers.approval_worker import ApprovalWorker
 
 
@@ -206,7 +207,8 @@ async def test_deal_coach_follow_up_sends_sms_via_contact_send_path() -> None:
 
 
 @pytest.mark.asyncio
-async def test_deal_coach_failed_send_result_keeps_action_out_of_executed() -> None:
+@pytest.mark.parametrize("raises", [False, True])
+async def test_deal_coach_failed_send_result_keeps_action_out_of_executed(raises) -> None:
     service = ApprovalGateService(action_handlers=(DealCoachFollowUpActionHandler(),))
     action = PendingAction(
         id=uuid.uuid4(),
@@ -224,10 +226,13 @@ async def test_deal_coach_failed_send_result_keeps_action_out_of_executed() -> N
         send_message.return_value = SimpleNamespace(
             id=uuid.uuid4(), status="failed", error_message="carrier rejected"
         )
+        if raises:
+            send_message.side_effect = TextDeliveryError(send_message.return_value)
 
         result = await service.execute_approved_action(db, action)
 
     assert result["error"] == "message_send_failed"
+    assert "carrier rejected" not in result["detail"]
     assert action.status == "failed"
     assert action.execution_result == result
     db.commit.assert_awaited_once()

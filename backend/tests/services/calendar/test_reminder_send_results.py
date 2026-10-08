@@ -1,7 +1,7 @@
 """Reminder provider-acceptance contract (RF-009).
 
-``TelnyxSMSService.send_message`` returns a ``FAILED`` Message instead of
-raising when the provider rejects a send. Manual and scheduled reminders must
+``TelnyxSMSService.send_message`` persists a ``FAILED`` Message and raises a
+text delivery error when the provider rejects a send. Manual and scheduled reminders must
 only report "sent" / mark reminder flags when the provider accepted the
 message, must surface a failure with a recovery path, and must never send a
 second accepted message for the same reminder.
@@ -29,6 +29,7 @@ from app.services.calendar.reminder_service import (
     send_appointment_reminder,
 )
 from app.services.idempotency import derive_outbound_key
+from app.services.telephony.text_delivery import require_text_accepted
 from app.workers.reminder_worker import ReminderWorker
 
 SCHEDULED_AT = "2026-10-08T15:00:00+00:00"
@@ -42,7 +43,7 @@ class FakeProvider:
     """Mimics ``TelnyxSMSService.send_message`` idempotency + status contract.
 
     Messages are stored per idempotency key. An existing non-queued row is
-    returned unchanged (the real service's ``text_send_idempotent_skip``).
+    returned unchanged if accepted, or raises if failed (the real service's replay contract).
     ``outcomes`` drives each fresh provider call: a status string or an
     exception raised before the provider responds.
     """
@@ -59,7 +60,7 @@ class FakeProvider:
     async def send_message(self, *, idempotency_key: uuid.UUID, **_kw: Any) -> SimpleNamespace:
         existing = self.store.get(idempotency_key)
         if existing is not None and existing.status != MessageStatus.QUEUED:
-            return existing
+            return require_text_accepted(cast(Message, existing))
         self.provider_calls.append(idempotency_key)
         outcome = self.outcomes.pop(0)
         if isinstance(outcome, Exception):
@@ -68,7 +69,7 @@ class FakeProvider:
         msg.status = outcome
         msg.error_message = "Invalid destination number" if outcome == "failed" else None
         self.store[idempotency_key] = msg
-        return msg
+        return require_text_accepted(cast(Message, msg))
 
     @property
     def accepted_count(self) -> int:
@@ -160,7 +161,8 @@ async def test_manual_failed_message_is_not_reported_sent() -> None:
     assert result["success"] is False
     assert result["status"] == "failed"
     assert result["retryable"] is True
-    assert "Invalid destination number" in result["message"]
+    assert "Check the recipient" in result["message"]
+    assert "Invalid destination number" not in result["message"]
     assert result["sent_to"] is None
     assert h.appointment.reminder_sent_at is None
     assert h.flag_updates == 0

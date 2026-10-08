@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, 
 from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser, get_workspace
-from app.api.service_errors import ServiceErrorRoute
+from app.api.service_errors import ServiceErrorRoute, raise_service_error
 from app.models.contact import Contact
 from app.models.workspace import Workspace
 from app.schemas.contact import (
@@ -48,6 +48,7 @@ from app.services.contacts.exceptions import (
     ContactNotFoundError,
 )
 from app.services.exceptions import NotFoundError, ServiceUnavailableError, ValidationError
+from app.services.telephony.text_delivery import TextDeliveryError
 
 router = APIRouter(route_class=ServiceErrorRoute)
 
@@ -286,6 +287,8 @@ async def send_message_to_contact(
         )
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except TextDeliveryError as e:
+        raise_service_error(e)
     except ServiceUnavailableError as e:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)) from e
     except ValidationError as e:

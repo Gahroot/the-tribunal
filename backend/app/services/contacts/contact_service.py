@@ -31,6 +31,7 @@ from app.services.contacts.exceptions import (
 )
 from app.services.contacts.query_service import ContactQueryService
 from app.services.contacts.timeline_service import ContactTimelineService
+from app.services.telephony.text_delivery import require_text_accepted
 from app.services.telephony.text_provider import get_text_message_provider
 
 logger = structlog.get_logger()
@@ -315,7 +316,7 @@ class ContactService:
                 phone_number_id=workspace_phone.id,
                 idempotency_key=idempotency_key,
             )
-            return message
+            return require_text_accepted(message)
         finally:
             await sms_service.close()
 

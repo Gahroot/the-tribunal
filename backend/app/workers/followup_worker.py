@@ -17,6 +17,7 @@ from app.models.conversation import Conversation
 from app.services.ai.openai_credentials import get_openai_bearer_token
 from app.services.ai.text_response_generator import generate_followup_message
 from app.services.idempotency import derive_outbound_key, derive_worker_retry_key
+from app.services.telephony.text_delivery import require_text_accepted
 from app.services.telephony.text_provider import get_text_message_provider
 from app.workers.base import BaseWorker, WorkerRegistry
 from app.workers.retryable import RetryableWorker
@@ -127,6 +128,8 @@ class FollowupWorker(RetryableWorker, BaseWorker):
                 workspace_id=conversation.workspace_id,
                 idempotency_key=idempotency_key,
             )
+
+            require_text_accepted(message)
 
             log.info(
                 "Follow-up sent",

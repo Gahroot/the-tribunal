@@ -36,6 +36,7 @@ from app.services.ai.openai_credentials import get_openai_bearer_token
 from app.services.ai.text_response_generator import generate_followup_message
 from app.services.campaigns.conversation_syncer import CampaignConversationSyncer
 from app.services.conversations.conversation_filters import human_reply_needed_filters
+from app.services.telephony.text_delivery import TextDeliveryError, require_text_accepted
 from app.services.telephony.text_provider import get_text_message_provider
 
 logger = structlog.get_logger()
@@ -366,7 +367,7 @@ class ConversationService:
                 db=self.db,
                 workspace_id=workspace_id,
             )
-            return message
+            return require_text_accepted(message)
         finally:
             await sms_service.close()
 
@@ -575,6 +576,8 @@ class ConversationService:
                 workspace_id=workspace_id,
             )
 
+            require_text_accepted(sent_msg)
+
             # Update follow-up tracking
             conversation.followup_count_sent += 1
             conversation.last_followup_at = datetime.now(UTC)
@@ -597,7 +600,7 @@ class ConversationService:
                 message_id=str(sent_msg.id),
                 message_body=message_body,
             )
-        except HTTPException:
+        except (HTTPException, TextDeliveryError):
             raise
         except Exception as e:
             raise HTTPException(

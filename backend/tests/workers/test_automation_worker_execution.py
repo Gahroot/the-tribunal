@@ -12,7 +12,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,6 +20,8 @@ import pytest
 from app.api.v1.automations import _to_response
 from app.models.automation import Automation
 from app.models.automation_execution import AutomationExecution
+from app.models.conversation import Message
+from app.services.telephony.text_delivery import require_text_accepted
 from app.workers.automation_worker import AutomationWorker
 
 WORKSPACE_ID = uuid.uuid4()
@@ -34,14 +36,15 @@ class FakeTextProvider:
         self._status = status
         self._error = error
 
-    async def send_message(self, **kwargs: Any) -> SimpleNamespace:
+    async def send_message(self, **kwargs: Any) -> Message:
         self.sent.append(kwargs)
-        return SimpleNamespace(
+        message = SimpleNamespace(
             id=uuid.uuid4(),
             status=self._status,
             provider_message_id="fake-1",
             error_message=self._error,
         )
+        return require_text_accepted(cast(Message, message))
 
     async def close(self) -> None:
         return None
@@ -175,7 +178,7 @@ async def test_unconfigured_default_sms_automation_fails_visibly() -> None:
         (
             {"provider": FakeTextProvider(status="failed", error="carrier rejected")},
             {},
-            "did not accept the message (carrier rejected)",
+            "Check the recipient, sender configuration and messaging permissions before retrying.",
         ),
     ],
 )
@@ -188,6 +191,7 @@ async def test_sms_prerequisite_failures_are_recorded(
 
     assert execution.status == "failed"
     assert expected_error in (execution.error or "")
+    assert "carrier rejected" not in (execution.error or "")
     assert execution.executed_at is not None
 
 

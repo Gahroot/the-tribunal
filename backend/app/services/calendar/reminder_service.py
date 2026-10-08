@@ -27,6 +27,7 @@ from app.models.workspace import Workspace
 from app.services.idempotency import derive_outbound_key, find_message_by_idempotency_key
 from app.services.rate_limiting.opt_out_manager import OptOutManager
 from app.services.telephony.telnyx import TelnyxSMSService
+from app.services.telephony.text_delivery import TextDeliveryError
 
 logger = structlog.get_logger()
 
@@ -251,9 +252,8 @@ class ReminderSendResult:
 def is_provider_accepted(message: Message) -> bool:
     """Return True when ``message`` was accepted by the messaging provider.
 
-    ``TelnyxSMSService.send_message`` returns a ``FAILED`` Message (rather than
-    raising) when the provider rejects the request, so callers must check this
-    before reporting a reminder as sent or updating reminder flags.
+    Failed text attempts raise at the provider boundary. This check also
+    supports persisted history and result adapters before updating reminder flags.
     """
     return message.status in _PROVIDER_ACCEPTED_STATUSES
 
@@ -301,15 +301,24 @@ async def send_reminder_sms(
             if existing.status != MessageStatus.QUEUED:
                 continue  # this attempt failed; try the next key
 
-        message = await sms_service.send_message(
-            to_number=to_number,
-            from_number=from_number,
-            body=body,
-            db=db,
-            workspace_id=workspace_id,
-            agent_id=agent_id,
-            idempotency_key=key,
-        )
+        try:
+            message = await sms_service.send_message(
+                to_number=to_number,
+                from_number=from_number,
+                body=body,
+                db=db,
+                workspace_id=workspace_id,
+                agent_id=agent_id,
+                idempotency_key=key,
+            )
+        except TextDeliveryError as exc:
+            return ReminderSendResult(
+                ReminderSendStatus.FAILED,
+                exc.failed_message,
+                attempt,
+                max_attempts,
+                error=exc.message,
+            )
         if is_provider_accepted(message):
             return ReminderSendResult(ReminderSendStatus.ACCEPTED, message, attempt, max_attempts)
         error = (message.error_message or "Provider did not accept the message")[:_MAX_ERROR_DETAIL]

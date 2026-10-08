@@ -24,6 +24,7 @@ from app.core.config import settings
 from app.services.ai.base_tool_executor import BaseToolExecutor
 from app.services.ai.tool_definitions import gate_exempt_tools
 from app.services.approval.approval_gate_service import approval_gate_service
+from app.services.telephony.text_delivery import TextDeliveryError
 
 if TYPE_CHECKING:
     from app.services.calendar.booking import BookingService
@@ -547,6 +548,12 @@ class VoiceToolExecutor(BaseToolExecutor):
                     campaign_id=call_message.campaign_id,
                     idempotency_key=idempotency_key,
                 )
+            except TextDeliveryError as exc:
+                return {
+                    "success": False,
+                    "application_url": PRESTYJ_APPLICATION_URL,
+                    "error": exc.message,
+                }
             finally:
                 await provider.close()
 
@@ -806,6 +813,9 @@ class VoiceToolExecutor(BaseToolExecutor):
                 campaign_id=call_message.campaign_id,
                 idempotency_key=idempotency_key,
             )
+        except TextDeliveryError as exc:
+            # Keep the failed row linked to the already-created Checkout link.
+            return exc.failed_message
         finally:
             await provider.close()
 

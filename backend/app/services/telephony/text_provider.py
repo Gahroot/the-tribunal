@@ -15,7 +15,12 @@ from app.services.telephony.telnyx import TelnyxSMSService
 
 
 class TextMessageProvider(Protocol):
-    """Common interface for outbound text message providers."""
+    """Text sends return an accepted Message, never a failed attempt.
+
+    Provider rejection persists failed history then raises TextDeliveryError.
+    Replaying a failed idempotency key raises without another provider send.
+    Result-oriented callers can catch it and use ``failed_message``.
+    """
 
     async def send_message(
         self,

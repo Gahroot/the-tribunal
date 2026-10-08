@@ -19,6 +19,7 @@ from app.services.ai.tool_executor import (
     VoiceToolExecutor,
 )
 from app.services.ai.voice_tools import get_tools_from_agent_config
+from app.services.telephony.text_delivery import TextDeliveryError
 
 
 class _ExecuteResult:
@@ -103,7 +104,8 @@ def test_application_link_tool_only_exposed_when_explicitly_enabled() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_application_link_sends_fixed_sms_to_current_caller() -> None:
+@pytest.mark.parametrize("rejected", [False, True])
+async def test_send_application_link_sends_fixed_sms_to_current_caller(rejected) -> None:
     agent = _make_agent()
     call_message = _make_call_message(agent)
     sent_message = Message(
@@ -119,6 +121,9 @@ async def test_send_application_link_sends_fixed_sms_to_current_caller() -> None
     )
     provider = AsyncMock()
     provider.send_message = AsyncMock(return_value=sent_message)
+    if rejected:
+        sent_message.status = MessageStatus.FAILED
+        provider.send_message.side_effect = TextDeliveryError(sent_message)
     provider.close = AsyncMock()
 
     with (
@@ -134,11 +139,16 @@ async def test_send_application_link_sends_fixed_sms_to_current_caller() -> None
             call_control_id="call-control-1",
         ).execute("send_application_link", {})
 
-    assert result == {
-        "success": True,
-        "application_url": PRESTYJ_APPLICATION_URL,
-        "message": "Application link sent by SMS.",
-    }
+    if rejected:
+        assert result["success"] is False
+        assert result["application_url"] == PRESTYJ_APPLICATION_URL
+        assert "Check the recipient" in result["error"]
+    else:
+        assert result == {
+            "success": True,
+            "application_url": PRESTYJ_APPLICATION_URL,
+            "message": "Application link sent by SMS.",
+        }
     factory.assert_called_once_with("telnyx")
     provider.send_message.assert_awaited_once()
     kwargs = provider.send_message.await_args.kwargs

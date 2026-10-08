@@ -24,6 +24,7 @@ from app.services.compliance.outbound_compliance import (
 )
 from app.services.idempotency import derive_outbound_key
 from app.services.rate_limiting.opt_out_manager import OptOutManager
+from app.services.telephony.text_delivery import TextDeliveryError
 from app.services.telephony.text_provider import TextMessageProvider, get_text_message_provider
 
 logger = structlog.get_logger()
@@ -484,6 +485,8 @@ class OutboundDeliveryService:
                 phone_number_id=request.phone_number_id,
                 idempotency_key=idempotency_key,
             )
+        except TextDeliveryError as exc:
+            message = exc.failed_message
         finally:
             await provider.close()
 
@@ -495,7 +498,7 @@ class OutboundDeliveryService:
             provider_message_id=message.provider_message_id,
             message=message,
             idempotency_key=idempotency_key,
-            reason=message.error_message if failed else None,
+            reason=TextDeliveryError(message).message if failed else None,
             details={"message_id": str(message.id)},
         )
 

@@ -16,6 +16,7 @@ from app.services.outbound.delivery import (
     OutboundDeliveryService,
     OutboundDeliveryStatus,
 )
+from app.services.telephony.text_delivery import TextDeliveryError
 
 
 class _FakeOptOutManager:
@@ -109,7 +110,8 @@ class _FakePushProvider:
 
 
 @pytest.mark.asyncio
-async def test_imessage_delivery_uses_mac_relay_preference_and_idempotency_key() -> None:
+@pytest.mark.parametrize("rejected", [False, True])
+async def test_imessage_delivery_uses_mac_relay_preference_and_idempotency_key(rejected) -> None:
     workspace_id = uuid.uuid4()
     key = uuid.uuid4()
     message = SimpleNamespace(
@@ -119,6 +121,10 @@ async def test_imessage_delivery_uses_mac_relay_preference_and_idempotency_key()
         error_message=None,
     )
     provider = _FakeTextProvider(message)
+    if rejected:
+        message.status = MessageStatus.FAILED
+        message.error_message = "private provider detail"
+        provider.send_message.side_effect = TextDeliveryError(message)
     provider_calls: list[tuple[str | None, str | None]] = []
 
     def provider_factory(
@@ -150,7 +156,12 @@ async def test_imessage_delivery_uses_mac_relay_preference_and_idempotency_key()
         ),
     )
 
-    assert result.status is OutboundDeliveryStatus.SENT
+    assert result.status is (
+        OutboundDeliveryStatus.FAILED if rejected else OutboundDeliveryStatus.SENT
+    )
+    if rejected:
+        assert "private provider detail" not in result.reason
+        assert result.message is message
     assert result.provider == "mac_relay"
     assert result.provider_message_id == "mac-relay:abc"
     assert result.idempotency_key == key

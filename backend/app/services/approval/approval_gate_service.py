@@ -23,6 +23,7 @@ from app.models.pending_action import PendingAction
 from app.models.workspace import Workspace
 from app.services.approval.booking_approval import BookAppointmentActionHandler
 from app.services.autonomy_mandate import autonomy_allows_action
+from app.services.telephony.text_delivery import TextDeliveryError
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +135,8 @@ class DealCoachFollowUpActionHandler:
                 agent_id=action.agent_id,
                 idempotency_key=idempotency_key,
             )
+        except TextDeliveryError as exc:
+            message = exc.failed_message
         except (
             ContactNotFoundError,
             ContactPhoneNotConfiguredError,
@@ -163,7 +166,7 @@ class DealCoachFollowUpActionHandler:
                 "contact_id": contact_id,
                 "message_id": str(getattr(message, "id", "")),
                 "message_status": message_status,
-                "detail": getattr(message, "error_message", None),
+                "detail": TextDeliveryError(message).message,
             }
         return result
 
@@ -250,13 +253,21 @@ class SendSmsActionHandler:
                     "to": payload["to_number"],
                     "message_id": str(getattr(message, "id", "")),
                     "message_status": message_status,
-                    "detail": getattr(message, "error_message", None),
+                    "detail": TextDeliveryError(message).message,
                 }
             return {
                 "status": "sent",
                 "to": payload["to_number"],
                 "message_id": str(getattr(message, "id", "")),
                 "message_status": message_status,
+            }
+        except TextDeliveryError as exc:
+            return {
+                "error": "message_send_failed",
+                "to": payload["to_number"],
+                "message_id": str(exc.failed_message.id),
+                "message_status": "failed",
+                "detail": exc.message,
             }
         finally:
             await sms_service.close()

@@ -51,6 +51,7 @@ from app.services.rate_limiting.opt_out_manager import OptOutManager
 from app.services.rate_limiting.rate_limiter import RateLimiter
 from app.services.rate_limiting.reputation_tracker import ReputationTracker
 from app.services.rate_limiting.warming_scheduler import WarmingScheduler
+from app.services.telephony.text_delivery import require_text_accepted
 from app.services.telephony.text_provider import TextMessageProvider, get_text_message_provider
 from app.workers.base import WorkerRegistry
 from app.workers.base_campaign_worker import BaseCampaignWorker
@@ -344,6 +345,8 @@ class CampaignWorker(BaseCampaignWorker):
                     idempotency_key=initial_key,
                 )
 
+                require_text_accepted(message)
+
                 # Update phone number last_sent_at
                 from_phone.last_sent_at = datetime.now(UTC)
 
@@ -592,6 +595,8 @@ class CampaignWorker(BaseCampaignWorker):
                     phone_number_id=from_phone.id,
                     idempotency_key=followup_key,
                 )
+
+                require_text_accepted(message)
 
                 # Update phone number and stats
                 from_phone.last_sent_at = datetime.now(UTC)

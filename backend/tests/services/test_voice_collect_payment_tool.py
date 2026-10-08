@@ -21,7 +21,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -42,6 +42,7 @@ from app.services.payments.call_payment_service import (
     CheckoutSessionResult,
     SessionStatus,
 )
+from app.services.telephony.text_delivery import require_text_accepted
 
 CALL_CONTROL_ID = "caller-ccid-collect-payment-1"
 
@@ -122,7 +123,9 @@ class _FakeProvider:
 
     async def send_message(self, **kwargs: Any) -> Any:
         self.sent.append(kwargs)
-        return SimpleNamespace(id=uuid.uuid4(), status=self.status)
+        return require_text_accepted(
+            cast(Message, SimpleNamespace(id=uuid.uuid4(), status=self.status))
+        )
 
     async def close(self) -> None:
         return None
@@ -241,14 +244,15 @@ async def test_collect_payment_rejects_invalid_amount_without_persist() -> None:
 
 
 @pytest.mark.asyncio
-async def test_collect_payment_creates_pending_payment_and_texts_link() -> None:
+@pytest.mark.parametrize("status", ["sent", "failed"])
+async def test_collect_payment_creates_pending_payment_and_texts_link(status) -> None:
     agent = _make_agent()
     workspace_id = agent.workspace_id
     conversation = _make_conversation(workspace_id, contact_id=42)
     message = _make_call_message(agent, conversation)
     session = _Session(message=message)
 
-    provider = _FakeProvider(status="sent")
+    provider = _FakeProvider(status=status)
     checkout = CheckoutSessionResult(
         session_id="cs_test_123",
         url="https://checkout.stripe.test/pay/cs_test_123",
@@ -275,9 +279,12 @@ async def test_collect_payment_creates_pending_payment_and_texts_link() -> None:
             {"amount": 50, "description": "Booking deposit", "currency": "USD"},
         )
 
-    assert result["success"] is True
-    assert result["amount"] == 50.0
-    assert result["currency"] == "usd"
+    assert result["success"] is (status == "sent")
+    if status == "sent":
+        assert result["amount"] == 50.0
+        assert result["currency"] == "usd"
+    else:
+        assert "couldn't text it" in result["error"]
 
     # Persisted exactly one CallPayment, scoped to the call, with Stripe refs.
     payments = [o for o in session.added if isinstance(o, CallPayment)]
@@ -294,6 +301,7 @@ async def test_collect_payment_creates_pending_payment_and_texts_link() -> None:
     assert pay.status == CallPaymentStatus.PENDING
     assert pay.stripe_checkout_session_id == "cs_test_123"
     assert pay.payment_link_url == checkout.url
+    assert pay.sms_message_id is not None
 
     # Stripe session created in payment mode with secure metadata; amount in cents.
     create_mock.assert_awaited_once()
