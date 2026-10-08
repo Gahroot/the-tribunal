@@ -97,12 +97,16 @@ export function FindLeadsPage() {
     searchMutation.mutate();
   };
 
+  const filteredResults = applyLeadFilters(results, filters);
+  // Hidden selections are remembered, but only visible selections are imported.
+  const selectedLeads = filteredResults.filter((r) => selectedIds.has(r.place_id));
+  const selectedCount = selectedLeads.length;
+
   const handleImport = () => {
-    if (selectedIds.size === 0) {
+    if (selectedCount === 0) {
       toast.error(messages.findLeads.selectionRequired);
       return;
     }
-    const selectedLeads = results.filter((r) => selectedIds.has(r.place_id));
     importMutation.mutate({ leads: selectedLeads, default_status: defaultStatus });
   };
 
@@ -115,17 +119,11 @@ export function FindLeadsPage() {
     });
   };
 
-  const filteredResults = applyLeadFilters(results, filters);
-
   const toggleSelectAll = () => {
     const allSelected = filteredResults.every((r) => selectedIds.has(r.place_id));
     if (allSelected) setSelectedIds(new Set());
     else setSelectedIds(new Set(filteredResults.map((r) => r.place_id)));
   };
-
-  const selectedCount = [...selectedIds].filter((id) =>
-    filteredResults.some((r) => r.place_id === id)
-  ).length;
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
