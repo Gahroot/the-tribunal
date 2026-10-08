@@ -1,13 +1,16 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { LoginClient } from "@/app/login/login-client";
 import type { User } from "@/lib/api/auth";
 import { AuthProvider, useAuth } from "@/providers/auth-provider";
 
-const { getCurrentUserMock, loginApiMock, pathnameRef, mockRouter } = vi.hoisted(() => ({
+const { getCurrentUserMock, loginApiMock, registerApiMock, pathnameRef, mockRouter } = vi.hoisted(() => ({
   getCurrentUserMock: vi.fn(),
   loginApiMock: vi.fn(),
+  registerApiMock: vi.fn(),
   pathnameRef: { current: "/" },
   mockRouter: {
     push: vi.fn(),
@@ -22,6 +25,7 @@ const { getCurrentUserMock, loginApiMock, pathnameRef, mockRouter } = vi.hoisted
 vi.mock("@/lib/api/auth", () => ({
   getCurrentUser: getCurrentUserMock,
   login: loginApiMock,
+  register: registerApiMock,
 }));
 
 vi.mock("@/lib/api", () => ({
@@ -79,6 +83,7 @@ const router = () => mockRouter;
 beforeEach(() => {
   getCurrentUserMock.mockReset();
   loginApiMock.mockReset();
+  registerApiMock.mockReset();
   router().replace.mockReset();
   auth = null;
 });
@@ -118,6 +123,77 @@ describe("AuthProvider on invitation pages (RF-003)", () => {
 
     await waitFor(() => expect(screen.getByTestId("loading").textContent).toBe("no"));
     expect(getCurrentUserMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("Invited account creation (RF-001)", () => {
+  function renderRegistration() {
+    visit("/login?redirect=%2Finvite%2Ftok_1&mode=register");
+    render(<AuthProvider><LoginClient redirectTo="/invite/tok_1" initialRegister /></AuthProvider>);
+  }
+
+  it("validates, creates an account, signs in with cookies and returns to the original invitation", async () => {
+    registerApiMock.mockResolvedValue(USER);
+    loginApiMock.mockResolvedValue({});
+    getCurrentUserMock.mockResolvedValue(USER);
+    renderRegistration();
+    await userEvent.type(await screen.findByLabelText("Email"), USER.email);
+    await userEvent.type(screen.getByLabelText("Password"), "short");
+    await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+    expect(await screen.findByText("Password must be at least 8 characters")).toBeVisible();
+    expect(registerApiMock).not.toHaveBeenCalled();
+    await userEvent.clear(screen.getByLabelText("Password"));
+    await userEvent.type(screen.getByLabelText("Password"), "Test-password-123");
+    await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+    await waitFor(() => expect(router().replace).toHaveBeenCalledWith("/invite/tok_1"));
+    expect(registerApiMock).toHaveBeenCalledWith({ email: USER.email, password: "Test-password-123" });
+    expect(registerApiMock.mock.invocationCallOrder[0]).toBeLessThan(loginApiMock.mock.invocationCallOrder[0]!);
+    expect(getCurrentUserMock).toHaveBeenCalled();
+    for (const [target] of router().replace.mock.calls) expect(target).toBe("/invite/tok_1");
+  });
+
+  it("disables submission and mode switching while registration is pending", async () => {
+    let complete!: (value: User) => void;
+    registerApiMock.mockReturnValue(new Promise<User>((resolve) => { complete = resolve; }));
+    loginApiMock.mockResolvedValue({});
+    getCurrentUserMock.mockResolvedValue(USER);
+    renderRegistration();
+    await userEvent.type(await screen.findByLabelText("Email"), USER.email);
+    await userEvent.type(screen.getByLabelText("Password"), "Test-password-123");
+    await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+    expect(await screen.findByRole("button", { name: "Creating account…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Already have an account? Sign in" })).toBeDisabled();
+    expect(screen.getByLabelText("Email")).toBeDisabled();
+    await act(async () => complete(USER));
+    await waitFor(() => expect(router().replace).toHaveBeenCalledWith("/invite/tok_1"));
+  });
+
+  it("shows server failure and retries without losing the invitation", async () => {
+    registerApiMock.mockRejectedValueOnce({ response: { data: { detail: "Please try again" } } }).mockResolvedValue(USER);
+    loginApiMock.mockResolvedValue({});
+    getCurrentUserMock.mockResolvedValue(USER);
+    renderRegistration();
+    await userEvent.type(await screen.findByLabelText("Email"), USER.email);
+    await userEvent.type(screen.getByLabelText("Password"), "Test-password-123");
+    await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Please try again");
+    expect(loginApiMock).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+    await waitFor(() => expect(router().replace).toHaveBeenCalledWith("/invite/tok_1"));
+  });
+
+  it("retries sign-in instead of registering again when the account was already created", async () => {
+    registerApiMock.mockResolvedValue(USER);
+    loginApiMock.mockRejectedValueOnce(new Error("Network failure")).mockResolvedValue({});
+    getCurrentUserMock.mockResolvedValue(USER);
+    renderRegistration();
+    await userEvent.type(await screen.findByLabelText("Email"), USER.email);
+    await userEvent.type(screen.getByLabelText("Password"), "Test-password-123");
+    await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Your account was created");
+    await userEvent.click(screen.getByRole("button", { name: /^Sign In$/ }));
+    await waitFor(() => expect(router().replace).toHaveBeenCalledWith("/invite/tok_1"));
+    expect(registerApiMock).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -10,5 +10,5 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;
   // Untrusted query input: only a permitted local path survives (RF-003).
   const redirectTo = getSafeReturnTo(params[RETURN_TO_PARAM]);
-  return <LoginClient redirectTo={redirectTo} />;
+  return <LoginClient redirectTo={redirectTo} initialRegister={params.mode === "register"} />;
 }

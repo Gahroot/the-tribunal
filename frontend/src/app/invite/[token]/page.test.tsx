@@ -118,6 +118,17 @@ describe("Invitation page (RF-003)", () => {
     expect(acceptMock).not.toHaveBeenCalled();
   });
 
+  it("offers account creation without accepting and preserves the original invitation", async () => {
+    signedOut();
+    getByTokenMock.mockResolvedValue(INVITATION);
+    renderPage();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Create an Account to Accept" }));
+
+    expect(router().push).toHaveBeenCalledWith(`/login?redirect=%2Finvite%2F${TOKEN}&mode=register`);
+    expect(acceptMock).not.toHaveBeenCalled();
+  });
+
   it("lets a signed-in invitee accept and selects the joined workspace", async () => {
     signedIn();
     getByTokenMock.mockResolvedValue(INVITATION);

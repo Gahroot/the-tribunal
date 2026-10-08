@@ -16,12 +16,18 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { register } from "@/lib/api/auth";
 import { cn } from "@/lib/utils";
+import { getApiErrorMessage } from "@/lib/utils/errors";
 import { useAuth } from "@/providers/auth-provider";
 
 const loginSchema = z.object({
   email: z.email({ error: "Please enter a valid email address" }),
   password: z.string().min(1, { error: "Password is required" }),
+});
+
+const registerSchema = loginSchema.extend({
+  password: z.string().min(8, { error: "Password must be at least 8 characters" }),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
@@ -30,15 +36,22 @@ interface LoginFormProps {
   className?: string;
   /** Local path to return to after sign-in; re-validated by the auth provider. */
   redirectTo?: string | null;
+  isRegister?: boolean;
+  onModeChange?: (isRegister: boolean) => void;
 }
 
-export function LoginForm({ className, redirectTo = null }: LoginFormProps) {
+export function LoginForm({
+  className,
+  redirectTo = null,
+  isRegister = false,
+  onModeChange,
+}: LoginFormProps) {
   const { login } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const form = useForm<LoginFormValues>({
-    resolver: zodResolver(loginSchema),
+    resolver: zodResolver(isRegister ? registerSchema : loginSchema),
     defaultValues: {
       email: "",
       password: "",
@@ -49,13 +62,24 @@ export function LoginForm({ className, redirectTo = null }: LoginFormProps) {
     setIsLoading(true);
     setError(null);
 
+    let accountCreated = false;
     try {
+      if (isRegister) {
+        await register(data);
+        accountCreated = true;
+      }
+      // Registration does not issue cookies. Use the existing cookie login and
+      // provider return-path validation; membership still requires accepting.
       await login(data, { redirectTo });
     } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
+      if (accountCreated) {
+        onModeChange?.(false);
+        setError("Your account was created, but sign-in failed. Sign in below to try again.");
       } else {
-        setError("Invalid email or password");
+        setError(getApiErrorMessage(
+          err,
+          isRegister ? "Couldn't create your account. Please try again." : "Invalid email or password",
+        ));
       }
     } finally {
       setIsLoading(false);
@@ -65,7 +89,7 @@ export function LoginForm({ className, redirectTo = null }: LoginFormProps) {
   return (
     <div className={cn("grid gap-6", className)}>
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" aria-busy={isLoading}>
           <FormField
             control={form.control}
             name="email"
@@ -97,7 +121,7 @@ export function LoginForm({ className, redirectTo = null }: LoginFormProps) {
                   <Input
                     type="password"
                     placeholder="Enter your password"
-                    autoComplete="current-password"
+                    autoComplete={isRegister ? "new-password" : "current-password"}
                     disabled={isLoading}
                     {...field}
                   />
@@ -107,14 +131,25 @@ export function LoginForm({ className, redirectTo = null }: LoginFormProps) {
             )}
           />
           {error && (
-            <div className="text-destructive text-sm text-center">{error}</div>
+            <div role="alert" className="text-destructive text-sm text-center">{error}</div>
           )}
           <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Sign In
+            {isLoading
+              ? (isRegister ? "Creating account…" : "Signing in…")
+              : (isRegister ? "Create Account" : "Sign In")}
           </Button>
         </form>
       </Form>
+      {onModeChange && (
+        <Button type="button" variant="link" disabled={isLoading} onClick={() => {
+          setError(null);
+          form.clearErrors();
+          onModeChange(!isRegister);
+        }}>
+          {isRegister ? "Already have an account? Sign in" : "New here? Create an account"}
+        </Button>
+      )}
     </div>
   );
 }

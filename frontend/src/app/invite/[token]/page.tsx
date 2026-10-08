@@ -259,7 +259,7 @@ export default function InviteAcceptPage({ params }: PageProps) {
           {!isAuthenticated && (
             <div className="rounded-lg border bg-background p-3 text-center text-sm">
               <p className="text-foreground">
-                Sign in as {invitation.email} to accept this invitation.
+                Sign in or create an account with {invitation.email} to accept this invitation.
               </p>
             </div>
           )}
@@ -284,9 +284,14 @@ export default function InviteAcceptPage({ params }: PageProps) {
         </CardContent>
         <CardFooter className="flex flex-col gap-2">
           {!isAuthenticated ? (
-            <Button className="w-full" onClick={goToSignIn}>
-              Sign in to Accept
-            </Button>
+            <>
+              <Button className="w-full" onClick={goToSignIn}>
+                Sign in to Accept
+              </Button>
+              <Button variant="outline" className="w-full" onClick={() => router.push(`${buildLoginHref(returnPath)}&mode=register`)}>
+                Create an Account to Accept
+              </Button>
+            </>
           ) : needsReauth ? (
             <Button className="w-full" onClick={switchAccount}>
               Sign in as {invitation.email}
