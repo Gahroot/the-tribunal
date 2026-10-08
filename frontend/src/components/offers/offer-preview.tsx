@@ -23,13 +23,13 @@ interface OfferPreviewData {
   headline?: string;
   subheadline?: string;
   description?: string;
-  regular_price?: number;
-  offer_price?: number;
-  savings_amount?: number;
+  regular_price?: number | null;
+  offer_price?: number | null;
+  savings_amount?: number | null;
   discount_type?: DiscountType | "";
   discount_value?: number;
   guarantee_type?: GuaranteeType | "";
-  guarantee_days?: number;
+  guarantee_days?: number | null;
   guarantee_text?: string;
   urgency_type?: UrgencyType | "";
   urgency_text?: string;
@@ -69,7 +69,7 @@ export function OfferPreview({ offer, leadMagnets = [] }: OfferPreviewProps) {
   );
 
   const totalValue = valueStackTotal + leadMagnetTotal;
-  const savings = offer.savings_amount || (offer.regular_price && offer.offer_price
+  const savings = offer.savings_amount ?? (offer.regular_price != null && offer.offer_price != null
     ? offer.regular_price - offer.offer_price
     : 0);
 

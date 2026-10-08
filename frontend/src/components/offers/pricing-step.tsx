@@ -52,7 +52,7 @@ export function PricingStep({ formData, onFieldChange }: PricingStepProps) {
             id="discount_value"
             type="number"
             min="0"
-            value={formData.discount_value || ""}
+            value={formData.discount_value}
             onChange={(e) =>
               onFieldChange({
                 discount_value: parseFloat(e.target.value) || 0,
@@ -73,10 +73,10 @@ export function PricingStep({ formData, onFieldChange }: PricingStepProps) {
             type="number"
             min="0"
             placeholder="e.g., 997"
-            value={formData.regular_price || ""}
+            value={formData.regular_price ?? ""}
             onChange={(e) =>
               onFieldChange({
-                regular_price: parseFloat(e.target.value) || 0,
+                regular_price: e.target.value === "" ? null : parseFloat(e.target.value),
               })
             }
           />
@@ -92,10 +92,10 @@ export function PricingStep({ formData, onFieldChange }: PricingStepProps) {
             type="number"
             min="0"
             placeholder="e.g., 497"
-            value={formData.offer_price || ""}
+            value={formData.offer_price ?? ""}
             onChange={(e) =>
               onFieldChange({
-                offer_price: parseFloat(e.target.value) || 0,
+                offer_price: e.target.value === "" ? null : parseFloat(e.target.value),
               })
             }
           />
@@ -113,14 +113,14 @@ export function PricingStep({ formData, onFieldChange }: PricingStepProps) {
           min="0"
           placeholder="Auto-calculated or custom"
           value={
-            formData.savings_amount ||
-            (formData.regular_price > 0 && formData.offer_price > 0
-              ? formData.regular_price - formData.offer_price
+            formData.savings_amount ??
+            (formData.regular_price != null && formData.offer_price != null
+              ? Math.max(0, formData.regular_price - formData.offer_price)
               : "")
           }
           onChange={(e) =>
             onFieldChange({
-              savings_amount: parseFloat(e.target.value) || 0,
+              savings_amount: e.target.value === "" ? null : parseFloat(e.target.value),
             })
           }
         />

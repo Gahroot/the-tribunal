@@ -25,32 +25,32 @@ export interface OffersListResponse {
 
 export interface CreateOfferRequest {
   name: string;
-  description?: string;
+  description?: string | null;
   discount_type: DiscountType;
   discount_value: number;
-  terms?: string;
-  valid_from?: string;
-  valid_until?: string;
+  terms?: string | null;
+  valid_from?: string | null;
+  valid_until?: string | null;
   is_active?: boolean;
   // Hormozi-style fields
-  headline?: string;
-  subheadline?: string;
-  regular_price?: number;
-  offer_price?: number;
-  savings_amount?: number;
-  guarantee_type?: GuaranteeType;
-  guarantee_days?: number;
-  guarantee_text?: string;
-  urgency_type?: UrgencyType;
-  urgency_text?: string;
-  scarcity_count?: number;
-  value_stack_items?: ValueStackItem[];
-  cta_text?: string;
-  cta_subtext?: string;
+  headline?: string | null;
+  subheadline?: string | null;
+  regular_price?: number | null;
+  offer_price?: number | null;
+  savings_amount?: number | null;
+  guarantee_type?: GuaranteeType | null;
+  guarantee_days?: number | null;
+  guarantee_text?: string | null;
+  urgency_type?: UrgencyType | null;
+  urgency_text?: string | null;
+  scarcity_count?: number | null;
+  value_stack_items?: ValueStackItem[] | null;
+  cta_text?: string | null;
+  cta_subtext?: string | null;
   lead_magnet_ids?: string[];
   // Public landing page fields
   is_public?: boolean;
-  public_slug?: string;
+  public_slug?: string | null;
   require_email?: boolean;
   require_phone?: boolean;
   require_name?: boolean;
@@ -58,31 +58,31 @@ export interface CreateOfferRequest {
 
 export interface UpdateOfferRequest {
   name?: string;
-  description?: string;
+  description?: string | null;
   discount_type?: DiscountType;
   discount_value?: number;
-  terms?: string;
-  valid_from?: string;
-  valid_until?: string;
+  terms?: string | null;
+  valid_from?: string | null;
+  valid_until?: string | null;
   is_active?: boolean;
   // Hormozi-style fields
-  headline?: string;
-  subheadline?: string;
-  regular_price?: number;
-  offer_price?: number;
-  savings_amount?: number;
-  guarantee_type?: GuaranteeType;
-  guarantee_days?: number;
-  guarantee_text?: string;
-  urgency_type?: UrgencyType;
-  urgency_text?: string;
-  scarcity_count?: number;
-  value_stack_items?: ValueStackItem[];
-  cta_text?: string;
-  cta_subtext?: string;
+  headline?: string | null;
+  subheadline?: string | null;
+  regular_price?: number | null;
+  offer_price?: number | null;
+  savings_amount?: number | null;
+  guarantee_type?: GuaranteeType | null;
+  guarantee_days?: number | null;
+  guarantee_text?: string | null;
+  urgency_type?: UrgencyType | null;
+  urgency_text?: string | null;
+  scarcity_count?: number | null;
+  value_stack_items?: ValueStackItem[] | null;
+  cta_text?: string | null;
+  cta_subtext?: string | null;
   // Public landing page fields
   is_public?: boolean;
-  public_slug?: string;
+  public_slug?: string | null;
   require_email?: boolean;
   require_phone?: boolean;
   require_name?: boolean;

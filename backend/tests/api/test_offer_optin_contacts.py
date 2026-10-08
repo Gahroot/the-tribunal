@@ -573,6 +573,76 @@ async def test_publication_defaults_and_validation(make_client: Any) -> None:
     assert Offer.__table__.c.public_slug.unique is True
 
 
+# ── explicit clears and free pricing (RF-024) ─────────────────────────────────
+
+
+async def test_offer_update_preserves_explicit_empty_and_zero_values(make_client: Any) -> None:
+    session = FakeSession()
+    path = f"/api/v1/workspaces/{WS_A}/offers"
+    original = {
+        "name": "Free pricing fixture",
+        "description": "Old description",
+        "headline": "Old headline",
+        "guarantee_type": "money_back",
+        "guarantee_days": 30,
+        "guarantee_text": "Old guarantee",
+        "value_stack_items": [{"name": "Training", "value": 100, "included": True}],
+        "regular_price": 100,
+        "offer_price": 50,
+        "discount_type": "fixed",
+        "discount_value": 10,
+        "terms": "Keep terms",
+        "is_public": True,
+        "public_slug": "free-pricing-fixture",
+        "require_email": False,
+        "require_phone": True,
+        "require_name": False,
+    }
+    changes = {
+        "description": "",
+        "headline": None,
+        "guarantee_text": None,
+        "guarantee_days": 0,
+        "value_stack_items": [],
+        "offer_price": 0,
+    }
+    async with make_client(session) as client:
+        created = await client.post(path, json=original)
+        assert created.status_code == 201
+        offer_path = f"{path}/{created.json()['id']}"
+        updated = await client.put(offer_path, json=changes)
+        assert updated.status_code == 200
+        for response in (updated, await client.get(offer_path)):
+            assert response.status_code == 200
+            assert {key: response.json()[key] for key in changes} == changes
+            untouched = original.keys() - changes.keys()
+            assert {key: response.json()[key] for key in untouched} == {
+                key: original[key] for key in untouched
+            }
+        public = await client.get("/api/v1/p/offers/free-pricing-fixture")
+        assert public.status_code == 200
+        assert {key: public.json()[key] for key in changes} == changes
+        assert public.json()["regular_price"] == 100
+        assert public.json()["require_phone"] is True
+
+        # Null removes pricing; omission does not restore it or reset flags.
+        cleared = await client.put(offer_path, json={"offer_price": None, "is_active": False})
+        assert cleared.status_code == 200
+        renamed = await client.put(offer_path, json={"name": "Still inactive"})
+        assert renamed.json()["offer_price"] is None
+        assert renamed.json()["is_active"] is False
+        assert renamed.json()["is_public"] is True
+        assert (await client.get("/api/v1/p/offers/free-pricing-fixture")).status_code == 404
+        for invalid in (
+            {"offer_price": -1},
+            {"regular_price": -1},
+            {"guarantee_days": -1},
+            {"value_stack_items": [{"name": "Invalid", "value": -1}]},
+        ):
+            assert (await client.put(offer_path, json=invalid)).status_code == 422
+        assert (await client.get(offer_path)).json()["offer_price"] is None
+
+
 # ── service-level ────────────────────────────────────────────────────────────
 
 

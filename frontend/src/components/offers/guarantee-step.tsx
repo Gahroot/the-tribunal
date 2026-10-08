@@ -51,10 +51,10 @@ export function GuaranteeStep({ formData, onFieldChange }: GuaranteeStepProps) {
               id="guarantee_days"
               type="number"
               min="0"
-              value={formData.guarantee_days || ""}
+              value={formData.guarantee_days ?? ""}
               onChange={(e) =>
                 onFieldChange({
-                  guarantee_days: parseInt(e.target.value) || 0,
+                  guarantee_days: e.target.value === "" ? null : parseInt(e.target.value),
                 })
               }
             />

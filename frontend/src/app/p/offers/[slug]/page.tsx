@@ -241,11 +241,13 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
                     Total Value: ${formatNumber(offer.total_value)}
                   </p>
                 )}
-                {offer.regular_price && offer.offer_price && (
+                {offer.offer_price != null && (
                   <div className="flex items-center justify-center gap-3 mb-2">
-                    <span className="text-2xl text-muted-foreground line-through">
-                      ${formatNumber(offer.regular_price)}
-                    </span>
+                    {offer.regular_price != null && offer.regular_price > offer.offer_price && (
+                      <span className="text-2xl text-muted-foreground line-through">
+                        ${formatNumber(offer.regular_price)}
+                      </span>
+                    )}
                     <span className="text-4xl font-bold text-primary">
                       ${formatNumber(offer.offer_price)}
                     </span>

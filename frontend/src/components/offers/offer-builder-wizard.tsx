@@ -22,7 +22,7 @@ import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { leadMagnetsApi } from "@/lib/api/lead-magnets";
-import { offersApi, CreateOfferRequest } from "@/lib/api/offers";
+import { offersApi, type CreateOfferRequest, type UpdateOfferRequest } from "@/lib/api/offers";
 import { queryKeys } from "@/lib/query-keys";
 import type {
   Offer,
@@ -73,13 +73,13 @@ interface FormData {
   subheadline: string;
   discount_type: DiscountType;
   discount_value: number;
-  regular_price: number;
-  offer_price: number;
-  savings_amount: number;
+  regular_price: number | null;
+  offer_price: number | null;
+  savings_amount: number | null;
   value_stack_items: ValueStackItem[];
   lead_magnet_ids: string[];
   guarantee_type: GuaranteeType | "";
-  guarantee_days: number;
+  guarantee_days: number | null;
   guarantee_text: string;
   urgency_type: UrgencyType | "";
   urgency_text: string;
@@ -137,6 +137,7 @@ export function OfferBuilderWizard({
   const queryClient = useQueryClient();
 
   const [currentStep, setCurrentStep] = useState(0);
+  const [editedFields, setEditedFields] = useState<Partial<FormData>>({});
   const [formData, setFormData] = useState<FormData>(() => {
     if (existingOffer) {
       return {
@@ -147,18 +148,18 @@ export function OfferBuilderWizard({
         subheadline: existingOffer.subheadline || "",
         discount_type: existingOffer.discount_type,
         discount_value: existingOffer.discount_value,
-        regular_price: existingOffer.regular_price || 0,
-        offer_price: existingOffer.offer_price || 0,
-        savings_amount: existingOffer.savings_amount || 0,
+        regular_price: existingOffer.regular_price ?? null,
+        offer_price: existingOffer.offer_price ?? null,
+        savings_amount: existingOffer.savings_amount ?? null,
         value_stack_items: existingOffer.value_stack_items || [],
         lead_magnet_ids: existingOffer.lead_magnets?.map((lm) => lm.id) || [],
         guarantee_type: existingOffer.guarantee_type || "",
-        guarantee_days: existingOffer.guarantee_days || 30,
+        guarantee_days: existingOffer.guarantee_days ?? null,
         guarantee_text: existingOffer.guarantee_text || "",
         urgency_type: existingOffer.urgency_type || "",
         urgency_text: existingOffer.urgency_text || "",
         scarcity_count: existingOffer.scarcity_count || 0,
-        cta_text: existingOffer.cta_text || "Get Started Now",
+        cta_text: existingOffer.cta_text ?? "Get Started Now",
         cta_subtext: existingOffer.cta_subtext || "",
         terms: existingOffer.terms || "",
         is_active: existingOffer.is_active,
@@ -186,10 +187,10 @@ export function OfferBuilderWizard({
 
   // Create/update mutation
   const createMutation = useMutation({
-    mutationFn: async (data: CreateOfferRequest) => {
-      const offer = existingOffer
-        ? await offersApi.update(workspaceId, existingOffer.id, data)
-        : await offersApi.create(workspaceId, data);
+    mutationFn: async (data: { create: CreateOfferRequest } | { update: UpdateOfferRequest; id: string }) => {
+      const offer = "update" in data
+        ? await offersApi.update(workspaceId, data.id, data.update)
+        : await offersApi.create(workspaceId, data.create);
 
       // Attach lead magnets if any
       if (formData.lead_magnet_ids.length > 0) {
@@ -232,6 +233,7 @@ export function OfferBuilderWizard({
   const updateFormData = useCallback(
     (updates: Partial<FormData>) => {
       setFormData((prev) => ({ ...prev, ...updates }));
+      setEditedFields((prev) => ({ ...prev, ...updates }));
     },
     []
   );
@@ -249,6 +251,18 @@ export function OfferBuilderWizard({
   };
 
   const handleSubmit = () => {
+    // Omitted update fields are untouched; empty strings clear nullable columns.
+    // Lead magnets have their own reconciliation path, not OfferUpdate fields.
+    const edits = Object.fromEntries(
+      Object.entries(editedFields)
+        .filter(([key]) => key !== "lead_magnet_ids")
+        .map(([key, value]) => [key, value === "" ? null : value])
+    ) as UpdateOfferRequest;
+    if (existingOffer) {
+      createMutation.mutate({ update: edits, id: existingOffer.id });
+      return;
+    }
+
     const offerData: CreateOfferRequest = {
       name: formData.name,
       description: formData.description || undefined,
@@ -280,7 +294,9 @@ export function OfferBuilderWizard({
       require_name: formData.require_name,
     };
 
-    createMutation.mutate(offerData);
+    // Keep create defaults for untouched optional fields, but never discard a
+    // deliberate zero, null, empty string, or empty list.
+    createMutation.mutate({ create: { ...offerData, ...edits, name: formData.name } });
   };
 
   const renderStepContent = () => {

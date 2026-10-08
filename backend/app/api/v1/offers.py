@@ -391,7 +391,7 @@ async def get_public_offer(
 
     # Convert raw dicts to response models
     value_stack: list[ValueStackItem] | None = None
-    if offer.value_stack_items:
+    if offer.value_stack_items is not None:
         value_stack = [ValueStackItem.model_validate(item) for item in offer.value_stack_items]
 
     package_options: list[OfferPack] | None = None
