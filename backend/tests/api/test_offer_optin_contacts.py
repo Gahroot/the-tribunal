@@ -74,6 +74,10 @@ class FakeSession:
         self.contacts: list[Contact] = []
         self.leads: list[LeadMagnetLead] = []
         self.commits = 0
+        self.rollbacks = 0
+        self.fail_commit = False
+        self.magnets: list[LeadMagnet] = []
+        self._snapshot: tuple[list[OfferLeadMagnet], list[str]] | None = None
         self._next_contact_id = 1
 
     async def get(self, model: Any, key: uuid.UUID) -> Workspace:
@@ -83,7 +87,14 @@ class FakeSession:
     async def execute(self, statement: Any) -> MagicMock:
         sql = str(statement.compile()).lower()
         params = dict(statement.compile().params)
-        values = set(params.values())
+        values = {
+            v for value in params.values() for v in (value if isinstance(value, list) else [value])
+        }
+        if "from lead_magnets" in sql:
+            assert "lead_magnets.workspace_id =" in sql
+            return _scalars(
+                [m for m in self.magnets if m.workspace_id in values and m.id in values]
+            )
         if "from offers" in sql:
             if "offers.workspace_id =" in sql:
                 assert "offers.id =" in sql
@@ -97,6 +108,16 @@ class FakeSession:
                 [o for o in self.offers if o.public_slug in values and o.is_public and o.is_active]
             )
         if "from offer_lead_magnets" in sql:
+            self._snapshot = (list(self.offer_lead_magnets), [o.name for o in self.offers])
+            if "max(" in sql or "select offer_lead_magnets.lead_magnet_id" in sql:
+                result = MagicMock()
+                if "max(" in sql:
+                    result.scalar.return_value = max(
+                        (a.sort_order for a in self.offer_lead_magnets), default=0
+                    )
+                else:
+                    result.all.return_value = [(a.lead_magnet_id,) for a in self.offer_lead_magnets]
+                return result
             return _scalars(
                 sorted(
                     (olm for olm in self.offer_lead_magnets if olm.offer_id in values),
@@ -119,6 +140,10 @@ class FakeSession:
             obj.created_at = obj.updated_at = datetime.now(UTC)
             obj.page_views = obj.opt_ins = 0
             self.offers.append(obj)
+        elif isinstance(obj, OfferLeadMagnet):
+            obj.lead_magnet = next(m for m in self.magnets if m.id == obj.lead_magnet_id)
+            self.offer_lead_magnets.append(obj)
+            next(o for o in self.offers if o.id == obj.offer_id).offer_lead_magnets.append(obj)
         elif isinstance(obj, Contact):
             obj.id = self._next_contact_id
             self._next_contact_id += 1
@@ -133,8 +158,26 @@ class FakeSession:
     async def flush(self) -> None:
         return None
 
+    async def delete(self, obj: Any) -> None:
+        assert isinstance(obj, OfferLeadMagnet), "only associations may be removed"
+        self.offer_lead_magnets.remove(obj)
+        next(o for o in self.offers if o.id == obj.offer_id).offer_lead_magnets.remove(obj)
+
+    async def rollback(self) -> None:
+        self.rollbacks += 1
+        if self._snapshot:
+            self.offer_lead_magnets, names = self._snapshot
+            for offer, name in zip(self.offers, names, strict=True):
+                offer.name = name
+                offer.offer_lead_magnets = [
+                    a for a in self.offer_lead_magnets if a.offer_id == offer.id
+                ]
+
     async def commit(self) -> None:
+        if self.fail_commit:
+            raise RuntimeError("fixture commit failure")
         self.commits += 1
+        self._snapshot = None
 
 
 def _offer(
@@ -149,6 +192,8 @@ def _offer(
         id=uuid.uuid4(),
         workspace_id=workspace_id,
         name="Seller Launch",
+        discount_type="percentage",
+        discount_value=0,
         public_slug=slug,
         is_public=True,
         is_active=True,
@@ -171,12 +216,16 @@ def _attach_bonus(session: FakeSession, offer: Offer) -> LeadMagnet:
         content_url="https://cdn.example.test/guide.pdf",
         is_active=True,
         download_count=0,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
     olm = OfferLeadMagnet(
         id=uuid.uuid4(), offer_id=offer.id, lead_magnet_id=magnet.id, sort_order=0
     )
     olm.lead_magnet = magnet
     session.offer_lead_magnets.append(olm)
+    offer.offer_lead_magnets.append(olm)
+    session.magnets.append(magnet)
     return magnet
 
 
@@ -641,6 +690,102 @@ async def test_offer_update_preserves_explicit_empty_and_zero_values(make_client
         ):
             assert (await client.put(offer_path, json=invalid)).status_code == 422
         assert (await client.get(offer_path)).json()["offer_price"] is None
+
+
+# ── exact bonus selection (RF-023) ───────────────────────────────────────────
+
+
+@pytest.mark.parametrize("initial, retained", [(2, 1), (1, 0), (2, 0), (2, 2)])
+async def test_edit_reconciles_bonus_set(make_client: Any, initial: int, retained: int) -> None:
+    session = FakeSession()
+    offer = _offer()
+    offer.created_at = offer.updated_at = datetime.now(UTC)
+    session.offers.append(offer)
+    magnets = [_attach_bonus(session, offer) for _ in range(initial)]
+    associations = list(session.offer_lead_magnets)
+    for index, association in enumerate(associations):
+        association.sort_order = index + 4
+        association.is_bonus = index == 1
+    history = LeadMagnetLead(id=uuid.uuid4(), source_offer_id=offer.id)
+    session.leads.append(history)
+    path = f"/api/v1/workspaces/{WS_A}/offers/{offer.id}"
+    async with make_client(session) as client:
+        response = await client.put(
+            path, json={"lead_magnet_ids": [str(m.id) for m in magnets[:retained]]}
+        )
+        assert response.status_code == 200
+        reopened = await client.get(f"{path}/with-lead-magnets")
+        assert reopened.status_code == 200
+        assert [m["id"] for m in reopened.json()["lead_magnets"]] == [
+            str(m.id) for m in magnets[:retained]
+        ]
+    assert session.offer_lead_magnets == associations[:retained]
+    assert [(a.sort_order, a.is_bonus) for a in session.offer_lead_magnets] == [
+        (i + 4, i == 1) for i in range(retained)
+    ]
+    assert session.magnets == magnets
+    assert session.leads == [history]
+
+
+async def test_bonus_reconciliation_validates_and_rolls_back(make_client: Any) -> None:
+    session = FakeSession()
+    offer = _offer()
+    offer.created_at = offer.updated_at = datetime.now(UTC)
+    session.offers.append(offer)
+    magnet = _attach_bonus(session, offer)
+    original = list(session.offer_lead_magnets)
+    foreign = LeadMagnet(id=uuid.uuid4(), workspace_id=WS_B, name="Foreign fixture")
+    session.magnets.append(foreign)
+    path = f"/api/v1/workspaces/{WS_A}/offers/{offer.id}"
+    async with make_client(session) as client:
+        for invalid_id in (foreign.id, uuid.uuid4()):
+            rejected = await client.put(
+                path, json={"name": "Must not save", "lead_magnet_ids": [str(invalid_id)]}
+            )
+            assert rejected.status_code == 404
+            assert offer.name == "Seller Launch"
+            assert session.offer_lead_magnets == original
+        assert (
+            await client.put(path.replace(str(WS_A), str(WS_B)), json={"lead_magnet_ids": []})
+        ).status_code == 404
+        session.fail_commit = True
+        with pytest.raises(RuntimeError, match="fixture commit failure"):
+            await client.put(path, json={"name": "Must roll back", "lead_magnet_ids": []})
+        assert offer.name == "Seller Launch"
+        assert session.offer_lead_magnets == original
+        assert session.rollbacks == 3
+        session.fail_commit = False
+        # Additive callers still retain the current set and metadata.
+        extra = LeadMagnet(
+            id=uuid.uuid4(),
+            workspace_id=WS_A,
+            name="New fixture",
+            content_url="https://example.test/fixture.pdf",
+            magnet_type=LeadMagnetType.PDF,
+            delivery_method=DeliveryMethod.EMAIL,
+            is_active=True,
+            download_count=0,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+        session.magnets.append(extra)
+        attached = await client.post(f"{path}/lead-magnets", json=[str(extra.id)])
+        assert attached.status_code == 200
+        assert {a.lead_magnet_id for a in session.offer_lead_magnets} == {magnet.id, extra.id}
+        assert session.offer_lead_magnets[0] is original[0]
+        assert session.offer_lead_magnets[1].sort_order == 1
+        # Reconcile removes one, retains metadata and adds each new ID only once.
+        new_magnet = LeadMagnet(id=uuid.uuid4(), workspace_id=WS_A, name="Selected fixture")
+        session.magnets.append(new_magnet)
+        updated = await client.put(
+            path, json={"lead_magnet_ids": [str(extra.id), str(new_magnet.id), str(new_magnet.id)]}
+        )
+        assert updated.status_code == 200
+        assert [a.lead_magnet_id for a in session.offer_lead_magnets] == [extra.id, new_magnet.id]
+        assert [(a.sort_order, a.is_bonus) for a in session.offer_lead_magnets] == [
+            (1, True),
+            (2, True),
+        ]
 
 
 # ── service-level ────────────────────────────────────────────────────────────

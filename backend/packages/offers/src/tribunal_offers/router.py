@@ -48,6 +48,7 @@ from app.services.contacts.lead_contacts import (
     normalize_lead_identity,
 )
 
+from .attachments import reconcile_lead_magnets
 from .models import Offer, OfferLeadMagnet
 from .schemas import (
     GeneratedOfferContent,
@@ -167,12 +168,17 @@ async def update_offer(
     """Update an offer."""
     offer = await get_or_404(db, Offer, offer_id, workspace_id=workspace_id)
 
-    # Update fields
     update_data = offer_in.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(offer, field, value)
-
-    await db.commit()
+    lead_magnet_ids = update_data.pop("lead_magnet_ids", None)
+    try:
+        if lead_magnet_ids is not None:
+            await reconcile_lead_magnets(db, workspace_id, offer_id, lead_magnet_ids)
+        for field, value in update_data.items():
+            setattr(offer, field, value)
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
     await db.refresh(offer)
 
     return offer

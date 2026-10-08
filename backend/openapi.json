@@ -20245,6 +20245,21 @@
             ],
             "title": "Is Public"
           },
+          "lead_magnet_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead Magnet Ids"
+          },
           "name": {
             "anyOf": [
               {

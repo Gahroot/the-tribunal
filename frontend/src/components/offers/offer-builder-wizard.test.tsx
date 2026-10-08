@@ -59,10 +59,10 @@ function fixture(overrides: Record<string, unknown> = {}) {
   return { offer: saved as unknown as Offer, writes };
 }
 
-function mount(existingOffer?: Offer) {
+function mount(existingOffer?: Offer, onSuccess = vi.fn()) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(<QueryClientProvider client={client}>
-    <OfferBuilderWizard workspaceId="workspace-fixture" existingOffer={existingOffer} onSuccess={() => {}} />
+    <OfferBuilderWizard workspaceId="workspace-fixture" existingOffer={existingOffer} onSuccess={onSuccess} />
   </QueryClientProvider>);
 }
 
@@ -70,6 +70,53 @@ async function save(edit = true) {
   fireEvent.click(screen.getByRole("button", { name: "Review" }));
   fireEvent.click(screen.getByRole("button", { name: edit ? "Update Offer" : "Create Offer" }));
 }
+
+describe("RF-023 exact bonus selection", () => {
+  const magnets = ["First", "Second"].map((name, index) => ({
+    id: `magnet-${index}`, name, magnet_type: "pdf", delivery_method: "email",
+    is_active: true, download_count: 0,
+  }));
+
+  it.each([[2, 1], [1, 0], [2, 2]])("saves %s bonuses as %s without additive calls", async (initial, retained) => {
+    const { offer, writes } = fixture({ lead_magnets: magnets.slice(0, initial) });
+    server.use(http.get("*/api/v1/workspaces/workspace-fixture/lead-magnets", () => HttpResponse.json({ items: magnets })));
+    const onSuccess = vi.fn();
+    mount(offer, onSuccess);
+    fireEvent.click(screen.getByRole("button", { name: "Lead Magnets" }));
+    await screen.findByText("First");
+    expect(screen.getAllByRole("checkbox").slice(0, initial).every((box) => box.getAttribute("data-state") === "checked")).toBe(true);
+    for (let index = retained; index < initial; index++) {
+      fireEvent.click(screen.getAllByRole("checkbox")[index]);
+    }
+    await save();
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce());
+    expect(writes).toEqual([initial === retained ? {} : { lead_magnet_ids: magnets.slice(0, retained).map((m) => m.id) }]);
+  });
+
+  it("keeps edits and does not report success after reconciliation fails", async () => {
+    const { offer } = fixture({ lead_magnets: magnets.slice(0, 1) });
+    const attempts: unknown[] = [];
+    server.use(
+      http.get("*/api/v1/workspaces/workspace-fixture/lead-magnets", () => HttpResponse.json({ items: magnets })),
+      http.put("*/api/v1/workspaces/workspace-fixture/offers/offer-fixture", async ({ request }) => {
+        attempts.push(await request.json());
+        return HttpResponse.json({ detail: "Fixture transaction failed" }, { status: 500 });
+      }),
+    );
+    const onSuccess = vi.fn();
+    mount(offer, onSuccess);
+    fireEvent.click(screen.getByRole("button", { name: "Lead Magnets" }));
+    await screen.findByText("First");
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    await save();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not save");
+    expect(onSuccess).not.toHaveBeenCalled();
+    expect(attempts).toEqual([{ lead_magnet_ids: [] }]);
+    fireEvent.click(screen.getByRole("button", { name: "Update Offer" }));
+    await waitFor(() => expect(attempts).toHaveLength(2));
+    expect(attempts[1]).toEqual({ lead_magnet_ids: [] });
+  });
+});
 
 describe("RF-024 offer edits", () => {
   it.each([

@@ -15094,6 +15094,8 @@ export interface components {
             is_active?: boolean | null;
             /** Is Public */
             is_public?: boolean | null;
+            /** Lead Magnet Ids */
+            lead_magnet_ids?: string[] | null;
             /** Name */
             name?: string | null;
             /** Negotiation Sequence */

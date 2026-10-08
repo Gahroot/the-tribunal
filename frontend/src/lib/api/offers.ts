@@ -57,6 +57,8 @@ export interface CreateOfferRequest {
 }
 
 export interface UpdateOfferRequest {
+  // Exact attachment set, saved atomically with offer fields; [] clears all.
+  lead_magnet_ids?: string[];
   name?: string;
   description?: string | null;
   discount_type?: DiscountType;

@@ -219,6 +219,9 @@ class OfferCreate(OfferBase):
 class OfferUpdate(BaseModel):
     """Schema for updating an offer."""
 
+    # Omitted/null leaves associations alone; [] removes every attachment.
+    lead_magnet_ids: list[uuid.UUID] | None = None
+
     name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = None
     discount_type: DiscountType | None = None

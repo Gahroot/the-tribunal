@@ -192,8 +192,8 @@ export function OfferBuilderWizard({
         ? await offersApi.update(workspaceId, data.id, data.update)
         : await offersApi.create(workspaceId, data.create);
 
-      // Attach lead magnets if any
-      if (formData.lead_magnet_ids.length > 0) {
+      // Creation uses the additive helper; edits reconcile in the update transaction.
+      if ("create" in data && formData.lead_magnet_ids.length > 0) {
         await offersApi.attachLeadMagnets(
           workspaceId,
           offer.id,
@@ -252,13 +252,17 @@ export function OfferBuilderWizard({
 
   const handleSubmit = () => {
     // Omitted update fields are untouched; empty strings clear nullable columns.
-    // Lead magnets have their own reconciliation path, not OfferUpdate fields.
     const edits = Object.fromEntries(
       Object.entries(editedFields)
         .filter(([key]) => key !== "lead_magnet_ids")
         .map(([key, value]) => [key, value === "" ? null : value])
     ) as UpdateOfferRequest;
     if (existingOffer) {
+      const originalIds = existingOffer.lead_magnets?.map((lm) => lm.id) || [];
+      if (originalIds.length !== formData.lead_magnet_ids.length ||
+          originalIds.some((id) => !formData.lead_magnet_ids.includes(id))) {
+        edits.lead_magnet_ids = [...formData.lead_magnet_ids];
+      }
       createMutation.mutate({ update: edits, id: existingOffer.id });
       return;
     }
@@ -386,6 +390,12 @@ export function OfferBuilderWizard({
           </AnimatePresence>
         </CardContent>
       </Card>
+
+      {createMutation.isError && (
+        <p role="alert" className="text-sm text-destructive">
+          Could not save the offer. Your changes are still here; please try again.
+        </p>
+      )}
 
       {/* Navigation */}
       <div className="flex items-center justify-between">
