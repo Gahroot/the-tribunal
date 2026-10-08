@@ -126,14 +126,14 @@ async def update_profile(
     db: DB,
 ) -> UserProfileResponse:
     """Update current user's profile."""
-    if profile_update.full_name is not None:
-        current_user.full_name = profile_update.full_name
-    if profile_update.phone_number is not None:
-        current_user.phone_number = profile_update.phone_number
+    updates = profile_update.model_dump(exclude_unset=True)
+    # Only explicitly supplied nullable profile fields may be cleared. Keep
+    # identity/auth fields read-only and null timezone updates as a no-op.
+    for field in ("full_name", "phone_number", "avatar_url"):
+        if field in updates:
+            setattr(current_user, field, updates[field])
     if profile_update.timezone is not None:
         current_user.timezone = profile_update.timezone
-    if profile_update.avatar_url is not None:
-        current_user.avatar_url = profile_update.avatar_url
 
     await db.commit()
     await db.refresh(current_user)
