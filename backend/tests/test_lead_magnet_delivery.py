@@ -1,6 +1,7 @@
 """Tests for lead magnet opt-in delivery."""
 
 from typing import Any
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -9,6 +10,16 @@ from tribunal_lead_capture import service as lead_magnet_delivery
 
 from app.models.lead_magnet import DeliveryMethod, LeadMagnet, LeadMagnetType
 from app.models.lead_magnet_lead import LeadMagnetLead
+from app.models.workspace import Workspace
+
+
+@pytest.fixture
+def db():
+    session = AsyncMock()
+    session.get.return_value = Workspace(
+        name="Workspace name", settings={"business_name": "Brand A"}, is_active=True
+    )
+    return session
 
 
 def _lead_magnet(**overrides: Any) -> LeadMagnet:
@@ -43,6 +54,7 @@ def _lead(**overrides: Any) -> LeadMagnetLead:
 
 async def test_deliver_lead_magnet_sends_email_and_marks_delivered(
     monkeypatch: pytest.MonkeyPatch,
+    db,
 ) -> None:
     sent: dict[str, Any] = {}
 
@@ -56,12 +68,14 @@ async def test_deliver_lead_magnet_sends_email_and_marks_delivered(
         fake_send_automation_email,
     )
     lead = _lead()
-    magnet = _lead_magnet(id=lead.lead_magnet_id)
+    magnet = _lead_magnet(id=lead.lead_magnet_id, workspace_id=lead.workspace_id)
 
     delivered = await deliver_lead_magnet_to_lead(
         lead=lead,
         lead_magnet=magnet,
         offer_name="Home Seller Launch Offer",
+        db=db,
+        workspace_id=lead.workspace_id,
     )
 
     assert delivered is True
@@ -74,10 +88,16 @@ async def test_deliver_lead_magnet_sends_email_and_marks_delivered(
     assert sent["idempotency_key"] == lead.id
     assert "https://cdn.example.com/seller-guide.pdf" in sent["body"]
     assert "Home Seller Launch Offer" in sent["body"]
+    assert "— Brand A" in sent["body"]
+    assert "The Tribunal" not in sent["body"]
+    assert "reply to this email" not in sent["body"]
+    assert sent["workspace_id"] == lead.workspace_id
+    assert sent["db"] is db
 
 
 async def test_deliver_lead_magnet_records_provider_failure(
     monkeypatch: pytest.MonkeyPatch,
+    db,
 ) -> None:
     async def fake_send_automation_email(**kwargs: Any) -> bool:
         return False
@@ -88,12 +108,14 @@ async def test_deliver_lead_magnet_records_provider_failure(
         fake_send_automation_email,
     )
     lead = _lead()
-    magnet = _lead_magnet(id=lead.lead_magnet_id)
+    magnet = _lead_magnet(id=lead.lead_magnet_id, workspace_id=lead.workspace_id)
 
     delivered = await deliver_lead_magnet_to_lead(
         lead=lead,
         lead_magnet=magnet,
         offer_name="Home Seller Launch Offer",
+        db=db,
+        workspace_id=lead.workspace_id,
     )
 
     assert delivered is False
@@ -105,6 +127,7 @@ async def test_deliver_lead_magnet_records_provider_failure(
 
 async def test_deliver_lead_magnet_records_missing_email_without_sending(
     monkeypatch: pytest.MonkeyPatch,
+    db,
 ) -> None:
     async def unexpected_send_automation_email(**kwargs: Any) -> bool:
         raise AssertionError("email should not be sent without a recipient")
@@ -115,12 +138,14 @@ async def test_deliver_lead_magnet_records_missing_email_without_sending(
         unexpected_send_automation_email,
     )
     lead = _lead(email=None)
-    magnet = _lead_magnet(id=lead.lead_magnet_id)
+    magnet = _lead_magnet(id=lead.lead_magnet_id, workspace_id=lead.workspace_id)
 
     delivered = await deliver_lead_magnet_to_lead(
         lead=lead,
         lead_magnet=magnet,
         offer_name="Home Seller Launch Offer",
+        db=db,
+        workspace_id=lead.workspace_id,
     )
 
     assert delivered is False
@@ -128,3 +153,24 @@ async def test_deliver_lead_magnet_records_missing_email_without_sending(
     assert lead.delivered_at is None
     assert lead.delivery_attempted_at is not None
     assert lead.delivery_error == "No email address was provided for lead magnet delivery."
+
+
+@pytest.mark.parametrize("mismatch", ["brand", "magnet"])
+async def test_delivery_rejects_cross_brand_or_wrong_magnet(monkeypatch, db, mismatch):
+    send = AsyncMock(return_value=True)
+    monkeypatch.setattr(lead_magnet_delivery, "send_automation_email", send)
+    lead = _lead()
+    magnet = _lead_magnet(
+        id=lead.lead_magnet_id if mismatch == "brand" else uuid4(),
+        workspace_id=uuid4() if mismatch == "brand" else lead.workspace_id,
+    )
+    assert not await deliver_lead_magnet_to_lead(
+        lead=lead,
+        lead_magnet=magnet,
+        offer_name="Offer",
+        db=db,
+        workspace_id=lead.workspace_id,
+    )
+    send.assert_not_awaited()
+    db.get.assert_not_awaited()
+    assert lead.delivery_error == "Lead magnet does not belong to this brand."

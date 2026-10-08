@@ -562,6 +562,8 @@ async def submit_offer_optin(
             lead=lead,
             lead_magnet=olm.lead_magnet,
             offer_name=offer.name,
+            db=db,
+            workspace_id=offer.workspace_id,
         )
 
     # Increment opt-ins counter

@@ -693,6 +693,9 @@ class AutomationWorker(RetryableWorker, BaseWorker):
             message / body (str): Body template (placeholders supported). Plain
                 text is rendered into a simple HTML paragraph block.
         """
+        if contact.workspace_id != automation.workspace_id:
+            raise AutomationActionError("The email contact does not belong to this brand.")
+
         subject_template: str = config.get("subject", "")
         body_template: str = config.get("message") or config.get("body") or ""
         if not subject_template or not body_template:

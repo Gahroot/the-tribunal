@@ -207,6 +207,14 @@ async def get_integrations(
                     if connected
                     else "Platform-managed transport; this brand has no saved provider connection."
                 )
+                if provider == "resend":
+                    description += (
+                        " Resend requires a verified sending domain; "
+                        "configuration is not verification."
+                        if connected
+                        else " Customer emails use this brand's business name (or brand name) "
+                        "via The Tribunal, from the platform sender."
+                    )
                 if provider == "telnyx":
                     description += " SMS uses this account; live voice remains platform-managed."
             except IntegrationCredentialError as exc:

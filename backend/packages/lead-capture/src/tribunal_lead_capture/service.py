@@ -13,8 +13,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 import structlog
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.email import send_automation_email
+from app.services.email import customer_email_brand_name, send_automation_email
+from app.services.integration_credentials import IntegrationCredentialError
 
 from .models import LeadMagnet, LeadMagnetLead
 
@@ -51,6 +53,7 @@ def build_lead_magnet_email_body(
     lead_magnet: LeadMagnet,
     offer_name: str,
     recipient_name: str | None = None,
+    brand_name: str = "The team",
 ) -> str:
     """Build the plain-text body sent through the shared automation email service."""
     greeting = (
@@ -78,9 +81,9 @@ def build_lead_magnet_email_body(
     lines.extend(
         [
             "",
-            "If you have any trouble accessing it, just reply to this email and we'll help.",
+            "If you have any trouble accessing it, contact the business through the offer page.",
             "",
-            "— The Tribunal",
+            f"— {brand_name}",
         ]
     )
     return "\n".join(lines)
@@ -91,6 +94,8 @@ async def deliver_lead_magnet_to_lead(
     lead: LeadMagnetLead,
     lead_magnet: LeadMagnet,
     offer_name: str,
+    db: AsyncSession,
+    workspace_id: uuid.UUID,
 ) -> bool:
     """Email one lead magnet and update the lead delivery fields in-place."""
     lead.delivery_attempted_at = datetime.now(UTC)
@@ -115,11 +120,24 @@ async def deliver_lead_magnet_to_lead(
         )
         return False
 
+    try:
+        if (
+            lead.workspace_id != workspace_id
+            or lead_magnet.workspace_id != workspace_id
+            or lead.lead_magnet_id != lead_magnet.id
+        ):
+            raise IntegrationCredentialError("Lead magnet does not belong to this brand.")
+        brand_name = await customer_email_brand_name(db, workspace_id)
+    except IntegrationCredentialError as exc:
+        lead.delivery_error = str(exc)
+        return False
+
     subject = f"Your {lead_magnet.name}"
     body = build_lead_magnet_email_body(
         lead_magnet=lead_magnet,
         offer_name=offer_name,
         recipient_name=lead.name,
+        brand_name=brand_name,
     )
     idempotency_key = lead.id if isinstance(lead.id, uuid.UUID) else None
 
@@ -128,6 +146,8 @@ async def deliver_lead_magnet_to_lead(
             to_email=lead.email,
             subject=subject,
             body=body,
+            db=db,
+            workspace_id=workspace_id,
             idempotency_key=idempotency_key,
         )
     except Exception as exc:  # pragma: no cover

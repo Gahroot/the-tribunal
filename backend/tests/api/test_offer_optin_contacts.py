@@ -33,6 +33,7 @@ from app.models.lead_magnet import DeliveryMethod, LeadMagnet, LeadMagnetType
 from app.models.lead_magnet_lead import LeadMagnetLead
 from app.models.offer import Offer
 from app.models.offer_lead_magnet import OfferLeadMagnet
+from app.models.workspace import Workspace
 from app.services.contacts.lead_contacts import (
     LeadIdentity,
     LeadIdentityError,
@@ -71,6 +72,10 @@ class FakeSession:
         self.leads: list[LeadMagnetLead] = []
         self.commits = 0
         self._next_contact_id = 1
+
+    async def get(self, model: Any, key: uuid.UUID) -> Workspace:
+        assert model is Workspace
+        return Workspace(id=key, name=f"Brand {key}", settings={}, is_active=True)
 
     async def execute(self, statement: Any) -> MagicMock:
         sql = str(statement.compile()).lower()

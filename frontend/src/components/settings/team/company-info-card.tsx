@@ -47,17 +47,16 @@ interface CompanyInfoCardProps {
  * on `workspace.settings`. Form values flow through react-hook-form so the
  * parent tab can stay focused on layout.
  */
-export function CompanyInfoCard({
-  workspaceId,
-  canEditWorkspace,
-}: CompanyInfoCardProps) {
+export function CompanyInfoCard({ workspaceId, canEditWorkspace }: CompanyInfoCardProps) {
   const { currentWorkspace } = useWorkspace();
   const queryClient = useQueryClient();
   const [saved, setSaved] = useState(false);
 
-  const workspaceSettings = currentWorkspace?.workspace.settings as
-    | Record<string, unknown>
-    | undefined;
+  const matchingWorkspace = currentWorkspace?.workspace.id === workspaceId;
+  const canEdit = canEditWorkspace && matchingWorkspace && !!workspaceId;
+  const workspaceSettings = (
+    matchingWorkspace ? currentWorkspace?.workspace.settings : undefined
+  ) as Record<string, unknown> | undefined;
 
   const form = useForm<CompanyFormValues>({
     resolver: zodResolver(companyFormSchema),
@@ -67,7 +66,10 @@ export function CompanyInfoCard({
   const timezone = useWatch({ control: form.control, name: "timezone" });
 
   useEffect(() => {
-    if (!currentWorkspace) return;
+    if (!currentWorkspace || !matchingWorkspace) {
+      form.reset(emptyCompanyFormValues);
+      return;
+    }
     const s = workspaceSettings;
     form.reset({
       business_name: (s?.business_name as string) ?? "",
@@ -80,7 +82,7 @@ export function CompanyInfoCard({
       country: (s?.country as string) ?? "",
       timezone: (s?.timezone as string) ?? "America/New_York",
     });
-  }, [currentWorkspace, workspaceSettings, form]);
+  }, [currentWorkspace, matchingWorkspace, workspaceSettings, form]);
 
   const updateMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
@@ -97,15 +99,14 @@ export function CompanyInfoCard({
       setTimeout(() => setSaved(false), 2000);
     },
     onError: (err: unknown) => {
-      toast.error(
-        getApiErrorMessage(err, "Failed to update company information"),
-      );
+      toast.error(getApiErrorMessage(err, "Failed to update company information"));
     },
   });
 
   const onSubmit = (data: CompanyFormValues) => {
+    if (!canEdit) return;
     updateMutation.mutate({
-      business_name: data.business_name || undefined,
+      business_name: data.business_name.trim(),
       phone: data.phone || undefined,
       website: data.website || undefined,
       address: data.address || undefined,
@@ -123,8 +124,9 @@ export function CompanyInfoCard({
         <CardHeader>
           <CardTitle>Company Information</CardTitle>
           <CardDescription>
-            Business details for this workspace (GoHighLevel-style subaccount
-            info)
+            Business details for this brand only. Customer emails use the business name, or the
+            brand name when blank. Configure a verified sender in Integrations; platform delivery is
+            labeled “via The Tribunal”.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -134,7 +136,7 @@ export function CompanyInfoCard({
               <Input
                 id="businessName"
                 placeholder="Acme Inc."
-                disabled={!canEditWorkspace}
+                disabled={!canEdit}
                 {...form.register("business_name")}
               />
             </div>
@@ -144,7 +146,7 @@ export function CompanyInfoCard({
                 id="companyPhone"
                 type="tel"
                 placeholder="+1 (555) 123-4567"
-                disabled={!canEditWorkspace}
+                disabled={!canEdit}
                 {...form.register("phone")}
               />
             </div>
@@ -155,7 +157,7 @@ export function CompanyInfoCard({
               id="companyWebsite"
               type="url"
               placeholder="https://example.com"
-              disabled={!canEditWorkspace}
+              disabled={!canEdit}
               {...form.register("website")}
             />
           </div>
@@ -165,7 +167,7 @@ export function CompanyInfoCard({
             <Input
               id="companyAddress"
               placeholder="123 Main Street"
-              disabled={!canEditWorkspace}
+              disabled={!canEdit}
               {...form.register("address")}
             />
           </div>
@@ -175,7 +177,7 @@ export function CompanyInfoCard({
               <Input
                 id="companyCity"
                 placeholder="San Francisco"
-                disabled={!canEditWorkspace}
+                disabled={!canEdit}
                 {...form.register("city")}
               />
             </div>
@@ -184,7 +186,7 @@ export function CompanyInfoCard({
               <Input
                 id="companyState"
                 placeholder="CA"
-                disabled={!canEditWorkspace}
+                disabled={!canEdit}
                 {...form.register("state")}
               />
             </div>
@@ -193,7 +195,7 @@ export function CompanyInfoCard({
               <Input
                 id="companyPostalCode"
                 placeholder="94105"
-                disabled={!canEditWorkspace}
+                disabled={!canEdit}
                 {...form.register("postal_code")}
               />
             </div>
@@ -204,7 +206,7 @@ export function CompanyInfoCard({
               <Input
                 id="companyCountry"
                 placeholder="United States"
-                disabled={!canEditWorkspace}
+                disabled={!canEdit}
                 {...form.register("country")}
               />
             </div>
@@ -212,10 +214,8 @@ export function CompanyInfoCard({
               <Label htmlFor="companyTimezone">Timezone</Label>
               <Select
                 value={timezone}
-                onValueChange={(value) =>
-                  form.setValue("timezone", value, { shouldDirty: true })
-                }
-                disabled={!canEditWorkspace}
+                onValueChange={(value) => form.setValue("timezone", value, { shouldDirty: true })}
+                disabled={!canEdit}
               >
                 <SelectTrigger id="companyTimezone">
                   <SelectValue />
@@ -230,14 +230,14 @@ export function CompanyInfoCard({
               </Select>
             </div>
           </div>
-          {!canEditWorkspace && (
+          {!canEdit && (
             <p className="text-sm text-muted-foreground">
               Only workspace owners and admins can edit company information.
             </p>
           )}
         </CardContent>
         <CardFooter>
-          {canEditWorkspace && (
+          {canEdit && (
             <Button type="submit" disabled={updateMutation.isPending}>
               {updateMutation.isPending ? (
                 <>

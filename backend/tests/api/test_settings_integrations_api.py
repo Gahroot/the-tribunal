@@ -256,6 +256,47 @@ async def test_status_matches_outbound_account(auth_client, mock_db, monkeypatch
     assert WS_ID in statement.compile().params.values()
 
 
+@pytest.mark.parametrize("state", ["brand", "managed", "placeholder", "invalid", "disabled"])
+async def test_resend_readiness_is_honest(auth_client, mock_db, monkeypatch, state):
+    from app.core.config import settings
+    from app.core.encryption import encrypt_json
+    from app.models.workspace import WorkspaceIntegration
+
+    monkeypatch.setattr(settings, "resend_api_key", "platform-fixture")
+    monkeypatch.setattr(
+        settings,
+        "resend_from_email",
+        ("noreply@example.com" if state == "placeholder" else "platform@example.org"),
+    )
+    record = WorkspaceIntegration(
+        workspace_id=WS_ID,
+        integration_type="resend",
+        is_active=state != "disabled",
+        encrypted_credentials=encrypt_json(
+            {
+                "api_key": "brand-fixture",
+                "from_email": "not-an-email" if state == "invalid" else "brand@example.org",
+            }
+        ),
+    )
+    mock_db.execute.return_value.scalars.return_value.all.return_value = (
+        [] if state in {"managed", "placeholder"} else [record]
+    )
+    response = await auth_client.get(f"/api/v1/workspaces/{WS_ID}/integrations")
+    assert response.status_code == 200
+    status = next(
+        item for item in response.json()["integrations"] if item["integration_type"] == "resend"
+    )
+    assert status["credential_source"] == (
+        "workspace" if state == "brand" else "platform" if state == "managed" else "unavailable"
+    )
+    if state == "brand":
+        assert "configuration is not verification" in status["description"]
+    if state == "managed":
+        assert "via The Tribunal" in status["description"]
+    assert "fixture" not in response.text
+
+
 @pytest.mark.parametrize("provider", ["telnyx", "resend"])
 async def test_disconnect_does_not_reactivate_managed_account(mock_db, provider):
     from app.core.encryption import encrypt_json

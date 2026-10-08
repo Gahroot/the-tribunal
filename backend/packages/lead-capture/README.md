@@ -46,6 +46,24 @@ change the `/p/leads` prefix.
 | `build_lead_magnet_email_body(...)` | — | public helper to render the magnet email body |
 | `tribunal_lead_capture.models` | tables only | `LeadMagnet` / `LeadMagnetLead` / `LeadSource` on the shared `Base` |
 
+`deliver_lead_magnet_to_lead` requires the caller's `db` session and authorized
+`workspace_id` (for public opt-ins, the published offer's workspace). Both the
+lead and magnet must belong to that workspace, and the magnet must match the
+lead. ORG-001 retains workspaces as isolated brand containers; this uses existing
+`workspace.settings.business_name`, falling back to `workspace.name`, without
+adding an organization or sender schema.
+
+Customer email signatures use that brand name. RF-018 resolves only the brand's
+Resend connection; its configured `from_name` takes precedence in the envelope,
+otherwise the brand name is used. With no saved connection, a configured
+platform sender is labeled `<brand> via The Tribunal`. Business contact emails
+are never promoted to From addresses. Disabled/unreadable/incomplete brand
+connections and rejected/unverified senders fail without a platform retry.
+Resend enforces sending-domain verification; integration status reports
+configuration, not proof of verification. A missing or placeholder platform
+sender is unavailable. Account/auth/billing emails keep the platform identity.
+The body does not promise that replies to a platform sender reach the business.
+
 This block owns no background workers, so it exposes no `register_workers`.
 
 ## Static PDF assets (host dependency)

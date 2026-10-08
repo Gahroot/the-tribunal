@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from email.utils import formataddr
 from html import escape as html_escape
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
@@ -10,6 +11,7 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.models.workspace import Workspace
 from app.services.integration_credentials import (
     IntegrationCredentialError,
     resolve_outbound_credentials,
@@ -42,9 +44,25 @@ class _ResendModule(Protocol):
 
 
 def _from_address() -> str:
-    name = settings.resend_from_name or "AI CRM"
+    """Platform identity only; customer sends replace this from scoped settings."""
+    name = settings.resend_from_name or "The Tribunal"
     email = settings.resend_from_email or "noreply@example.com"
-    return f"{name} <{email}>"
+    return formataddr((name, email))
+
+
+async def customer_email_brand_name(db: AsyncSession, workspace_id: uuid.UUID) -> str:
+    """Read only the caller-authorized brand container, never a user's default."""
+    workspace = await db.get(Workspace, workspace_id)
+    if workspace is None or not workspace.is_active:
+        raise IntegrationCredentialError("The email brand is unavailable.")
+    name = (workspace.settings or {}).get("business_name") or workspace.name
+    if (
+        not isinstance(name, str)
+        or not name.strip()
+        or any(ord(c) < 32 or ord(c) == 127 for c in name)
+    ):
+        raise IntegrationCredentialError("Configure a valid brand business name.")
+    return name.strip()
 
 
 def email_delivery_configured() -> bool:
@@ -65,11 +83,13 @@ async def _send(
             return None
         try:
             credentials = await resolve_outbound_credentials(db, workspace_id, "resend")
+            brand_name = await customer_email_brand_name(db, workspace_id)
             params = dict(params)
-            if credentials.source == "workspace":
-                name = html_escape(str(credentials.values.get("from_name") or ""))
-                sender = credentials.values["from_email"]
-                params["from"] = f"{name} <{sender}>" if name else sender
+            sender = credentials.values["from_email"]
+            name = credentials.values.get("from_name") or brand_name
+            if credentials.source == "platform":
+                name = f"{brand_name} via The Tribunal"
+            params["from"] = formataddr((name, sender))
             headers = {"Authorization": f"Bearer {credentials.api_key}"}
             if idempotency_key:
                 headers["Idempotency-Key"] = str(idempotency_key)
@@ -224,11 +244,16 @@ async def send_automation_email(
     ``body`` is rendered template text (placeholders already substituted by the
     automation worker). Returns True only when the provider accepted the send.
     """
+    try:
+        brand_name = await customer_email_brand_name(db, workspace_id)
+    except IntegrationCredentialError:
+        return False
+    text = f"{body}\n\nSent by {brand_name}"
     params: dict[str, Any] = {
-        "from": _from_address(),
         "to": [to_email],
         "subject": subject,
-        "html": _text_to_html(body),
+        "text": text,
+        "html": _text_to_html(text),
     }
 
     response = await _send(

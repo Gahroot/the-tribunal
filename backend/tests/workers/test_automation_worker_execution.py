@@ -220,6 +220,17 @@ async def test_email_without_contact_address_fails_execution() -> None:
     assert "no email address" in (execution.error or "")
 
 
+async def test_email_cross_brand_contact_is_rejected_before_sending() -> None:
+    automation = _automation(
+        [{"type": "send_email", "config": {"subject": "Hi", "message": "Hello"}}]
+    )
+    with patch("app.workers.automation_worker.send_automation_email", AsyncMock()) as send:
+        execution, _ = await _run(automation, _contact(workspace_id=uuid.uuid4()))
+    send.assert_not_awaited()
+    assert execution.status == "failed"
+    assert "does not belong to this brand" in execution.error
+
+
 async def test_apply_tag_action_completes() -> None:
     automation = _automation([{"type": "apply_tag", "config": {"tag": "no-show"}}])
     with patch("app.workers.automation_worker.TagService") as tag_service:

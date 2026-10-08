@@ -8,6 +8,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from pydantic import EmailStr, TypeAdapter, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +25,23 @@ class OutboundCredentials:
     api_key: str = field(repr=False)
     source: Literal["workspace", "platform"]
     values: dict[str, Any] = field(repr=False)
+
+
+def validate_email_sender(values: dict[str, Any]) -> None:
+    """Validate header syntax, not domain ownership (Resend enforces verification)."""
+    sender = values.get("from_email")
+    name = values.get("from_name", "")
+    if (
+        not isinstance(sender, str)
+        or any(c in sender for c in "\r\n<>")
+        or not isinstance(name, str)
+        or any(ord(c) < 32 or ord(c) == 127 for c in name)
+    ):
+        raise IntegrationCredentialError("Configure a valid Resend sender email and name.")
+    try:
+        TypeAdapter(EmailStr).validate_python(sender)
+    except ValidationError as exc:
+        raise IntegrationCredentialError("Configure a valid Resend sender email.") from exc
 
 
 def outbound_credentials_from_record(
@@ -45,16 +63,7 @@ def outbound_credentials_from_record(
         if not isinstance(key, str) or not key.strip():
             raise IntegrationCredentialError(f"The brand's {provider} connection needs an API key.")
         if provider == "resend":
-            sender = values.get("from_email")
-            if (
-                not isinstance(sender, str)
-                or "@" not in sender
-                or any(c in sender for c in "\r\n<>")
-            ):
-                raise IntegrationCredentialError("Configure this brand's Resend sender email.")
-            name = values.get("from_name", "")
-            if not isinstance(name, str) or any(c in name for c in "\r\n"):
-                raise IntegrationCredentialError("Configure a valid brand sender name.")
+            validate_email_sender(values)
         return OutboundCredentials(key.strip(), "workspace", values)
 
     key = settings.telnyx_api_key if provider == "telnyx" else settings.resend_api_key
@@ -62,7 +71,16 @@ def outbound_credentials_from_record(
         raise IntegrationCredentialError(
             f"Connect {provider} for this brand in Settings → Integrations."
         )
-    return OutboundCredentials(key, "platform", {})
+    platform_values: dict[str, Any] = {}
+    if provider == "resend":
+        platform_values = {
+            "from_email": settings.resend_from_email,
+            "from_name": settings.resend_from_name or "The Tribunal",
+        }
+        validate_email_sender(platform_values)
+        if platform_values["from_email"] == "noreply@example.com":
+            raise IntegrationCredentialError("Configure the platform's verified Resend sender.")
+    return OutboundCredentials(key, "platform", platform_values)
 
 
 async def resolve_outbound_credentials(
