@@ -1,9 +1,10 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AxiosError } from "axios";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
+import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -75,7 +76,7 @@ const INTEGRATION_CONFIGS: Record<IntegrationType, IntegrationConfig> = {
         label: "Event Type ID",
         placeholder: "123456",
         description:
-          "Optional reference. AI agents book on the event type set in each agent's settings (or its staff routing).",
+          "Reference only; this does not configure AI booking. Set the default agent's Cal.com Event Type ID or staff calendars in agent settings.",
       },
     ],
   },
@@ -250,6 +251,13 @@ export function IntegrationConfigDialog({
 }: IntegrationConfigDialogProps) {
   const workspaceId = useWorkspaceId();
   const queryClient = useQueryClient();
+  const readiness = useQuery({
+    queryKey: queryKeys.integrations.bookingReadiness(workspaceId ?? ""),
+    queryFn: () => integrationsApi.bookingReadiness(workspaceId!),
+    enabled: !!workspaceId && open && integrationType === "calcom",
+    retry: false,
+    throwOnError: false,
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [testResult, setTestResult] = useState<{
     success: boolean;
@@ -485,6 +493,17 @@ export function IntegrationConfigDialog({
                   )}
                 </div>
               </div>
+
+              {integrationType === "calcom" && (
+                <Button variant="link" asChild>
+                  <Link
+                    href={readiness.data?.href ?? "/onboarding"}
+                    onClick={() => onOpenChange(false)}
+                  >
+                    Configure booking calendar
+                  </Link>
+                </Button>
+              )}
 
             <DialogFooter>
               <Button

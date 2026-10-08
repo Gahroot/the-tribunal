@@ -14,7 +14,7 @@ import {
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { use, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
@@ -159,7 +159,9 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const workspaceId = useWorkspaceId();
-  const [activeTab, setActiveTab] = useState("overview");
+  const calendarSetup = useSearchParams().get("setup") === "calendar";
+  const [activeTab, setActiveTab] = useState(calendarSetup ? "behavior" : "overview");
+  const [advancedOpen, setAdvancedOpen] = useState(calendarSetup);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isVoiceTestOpen, setIsVoiceTestOpen] = useState(false);
   const [isEmbedDialogOpen, setIsEmbedDialogOpen] = useState(false);
@@ -190,6 +192,14 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
     isPending,
     error,
   } = useAgent(workspaceId ?? "", agentId);
+
+  useEffect(() => {
+    if (!calendarSetup || !agent) return;
+    const frame = requestAnimationFrame(() => {
+      document.getElementById("agent-booking-settings")?.scrollIntoView({ block: "start" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [calendarSetup, agent]);
 
   // Redirect to agents list when agent is not found (404)
   useEffect(() => {
@@ -283,6 +293,7 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
       form.reset(data);
       toast.success(messages.agents.updated);
       await queryClient.invalidateQueries({ queryKey: queryKeys.agents.all(workspaceId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.integrations.bookingReadiness(workspaceId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(workspaceId, agentId) });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : messages.agents.updateFailed;
@@ -469,6 +480,9 @@ export default function EditAgentPage({ params }: EditAgentPageProps) {
 
               <FoldSection
                 title="Advanced"
+                id="agent-booking-settings"
+                open={advancedOpen}
+                onOpenChange={setAdvancedOpen}
                 description="Timing, transfers, reminders, IVR, and channel settings"
                 icon={<Settings2 className="h-4 w-4" />}
               >

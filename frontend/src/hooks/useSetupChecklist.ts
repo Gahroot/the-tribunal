@@ -82,7 +82,7 @@ export interface SetupChecklistStatus {
  *                 (backend's delivery prerequisite in SetupPrerequisiteService)
  *  2. agent     — the workspace has at least one agent (any active state)
  *  3. contacts  — the workspace has imported at least one contact
- *  4. calendar  — an active Cal.com integration is connected
+ *  4. calendar  — usable credentials and a booking calendar for the default agent
  *  5. campaign  — at least one campaign has left draft (i.e. it was launched)
  *
  * Mutations for each resource invalidate these same query keys, so the
@@ -112,7 +112,7 @@ export const SETUP_STEP_DEFINITIONS: readonly SetupStepDefinition[] = [
   {
     id: "calendar",
     title: "Connect your calendar",
-    description: "Let leads book time with you through Cal.com.",
+    description: "Connect Cal.com and configure your default agent's booking calendar.",
     href: "/settings?tab=integrations",
   },
   {
@@ -174,8 +174,8 @@ export function useSetupChecklist(): SetupChecklistStatus {
   });
 
   const integrationQuery = useQuery({
-    queryKey: queryKeys.integrations.all(workspaceId ?? ""),
-    queryFn: () => integrationsApi.list(workspaceId!),
+    queryKey: queryKeys.integrations.bookingReadiness(workspaceId ?? ""),
+    queryFn: () => integrationsApi.bookingReadiness(workspaceId!),
     enabled,
     staleTime,
     throwOnError: false,
@@ -220,11 +220,7 @@ export function useSetupChecklist(): SetupChecklistStatus {
     phone: phoneQuery.data ? phoneQuery.data.total > 0 : undefined,
     agent: agentQuery.data ? agentQuery.data.total > 0 : undefined,
     contacts: contactQuery.data ? contactQuery.data.total > 0 : undefined,
-    calendar: integrationQuery.data
-      ? integrationQuery.data.some(
-          (integration) => integration.integration_type === "calcom" && integration.is_active,
-        )
-      : undefined,
+    calendar: integrationQuery.data?.ready,
     campaign: campaignQuery.data
       ? campaignQuery.data.items.some((campaign) => campaign.status !== "draft")
       : undefined,
@@ -239,6 +235,9 @@ export function useSetupChecklist(): SetupChecklistStatus {
       done === undefined ? (hasNoResult(probe) ? "unknown" : "todo") : done ? "done" : "todo";
     return {
       ...step,
+      ...(step.id === "calendar" && integrationQuery.data
+        ? { description: integrationQuery.data.description, href: integrationQuery.data.href }
+        : {}),
       done: state === "done",
       state,
       stale: probe.isError && done !== undefined,

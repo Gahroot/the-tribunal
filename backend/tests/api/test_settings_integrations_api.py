@@ -118,6 +118,108 @@ def _credentials_app(mock_db: AsyncMock) -> FastAPI:
     return app
 
 
+@pytest.mark.parametrize(
+    ("strategy", "event_type", "staff_event", "staff_active", "expected"),
+    [
+        ("single", None, None, True, False),
+        ("single", 42, None, True, True),
+        ("single", None, 43, True, False),
+        ("round_robin", None, 43, True, True),
+        ("skill_based", None, 43, True, True),
+        ("round_robin", None, None, True, False),
+        ("round_robin", None, 43, False, False),
+        ("skill_based", 42, None, True, True),
+    ],
+)
+async def test_default_agent_booking_readiness(
+    mock_db, strategy, event_type, staff_event, staff_active, expected
+):
+    from app.core.encryption import encrypt_json
+    from app.models.workspace import WorkspaceIntegration
+
+    integration = WorkspaceIntegration(
+        workspace_id=WS_ID,
+        integration_type="calcom",
+        is_active=True,
+        encrypted_credentials=encrypt_json({"api_key": "local-fixture-key"}),
+    )
+    agent = SimpleNamespace(
+        id=uuid.uuid4(), assignment_strategy=strategy, calcom_event_type_id=event_type
+    )
+    staff = SimpleNamespace(
+        name="Fixture",
+        skills=["sales"],
+        is_active=staff_active,
+        calcom_event_type_id=staff_event,
+        priority=0,
+        assignment_count=0,
+        last_assigned_at=None,
+    )
+    credential_result = MagicMock()
+    credential_result.scalar_one_or_none.return_value = integration
+    agent_result = MagicMock()
+    agent_result.scalar_one_or_none.return_value = agent
+    staff_result = MagicMock()
+    staff_result.scalars.return_value.all.return_value = [staff]
+    mock_db.execute.side_effect = [credential_result, agent_result, staff_result]
+    async with AsyncClient(
+        transport=ASGITransport(app=_credentials_app(mock_db)), base_url="http://testserver"
+    ) as client:
+        response = await client.get(
+            f"/api/v1/workspaces/{WS_ID}/integrations/calcom/booking-readiness"
+        )
+    assert response.status_code == 200
+    assert response.json()["ready"] is expected
+    assert response.json()["href"] == f"/agents/{agent.id}?setup=calendar"
+    assert "local-fixture-key" not in response.text
+    mock_db.commit.assert_not_called()
+    # Every lookup is restricted to this workspace; staff additionally to the agent.
+    for call in mock_db.execute.call_args_list:
+        assert WS_ID in call.args[0].compile().params.values()
+
+
+@pytest.mark.parametrize("credentials", [None, {}, {"api_key": "   "}])
+async def test_calendar_readiness_requires_usable_credentials(mock_db, monkeypatch, credentials):
+    from app.core.config import settings
+    from app.core.encryption import encrypt_json
+    from app.models.workspace import WorkspaceIntegration
+
+    monkeypatch.setattr(settings, "calcom_api_key", "")
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = (
+        None
+        if credentials is None
+        else WorkspaceIntegration(
+            workspace_id=WS_ID,
+            integration_type="calcom",
+            is_active=True,
+            encrypted_credentials=encrypt_json(credentials),
+        )
+    )
+    mock_db.execute.return_value = result
+    async with AsyncClient(
+        transport=ASGITransport(app=_credentials_app(mock_db)), base_url="http://testserver"
+    ) as client:
+        response = await client.get(
+            f"/api/v1/workspaces/{WS_ID}/integrations/calcom/booking-readiness"
+        )
+    assert response.status_code == 200
+    assert response.json()["ready"] is False
+    assert response.json()["href"] == "/settings?tab=integrations"
+
+
+async def test_calendar_readiness_does_not_turn_database_failure_into_incomplete(mock_db):
+    mock_db.execute.side_effect = RuntimeError("Fixture database unavailable")
+    async with AsyncClient(
+        transport=ASGITransport(app=_credentials_app(mock_db), raise_app_exceptions=False),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get(
+            f"/api/v1/workspaces/{WS_ID}/integrations/calcom/booking-readiness"
+        )
+    assert response.status_code == 500
+
+
 class _FakeAsyncClient:
     """Minimal httpx.AsyncClient stand-in returning a canned response."""
 

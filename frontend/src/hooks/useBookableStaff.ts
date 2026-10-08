@@ -6,6 +6,7 @@ import {
   type CreateBookableStaffRequest,
   type UpdateBookableStaffRequest,
 } from "@/lib/api/bookable-staff";
+import { queryKeys } from "@/lib/query-keys";
 
 const bookableStaffKey = (workspaceId: string, agentId: string) =>
   ["bookableStaff", workspaceId, agentId] as const;
@@ -26,6 +27,7 @@ export function useCreateBookableStaff(workspaceId: string, agentId: string) {
       bookableStaffApi.create(workspaceId, agentId, body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: bookableStaffKey(workspaceId, agentId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.integrations.bookingReadiness(workspaceId) });
     },
   });
 }
@@ -37,6 +39,7 @@ export function useUpdateBookableStaff(workspaceId: string, agentId: string) {
       bookableStaffApi.update(workspaceId, agentId, staffId, body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: bookableStaffKey(workspaceId, agentId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.integrations.bookingReadiness(workspaceId) });
     },
   });
 }
@@ -47,6 +50,7 @@ export function useDeleteBookableStaff(workspaceId: string, agentId: string) {
     mutationFn: (staffId: string) => bookableStaffApi.remove(workspaceId, agentId, staffId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: bookableStaffKey(workspaceId, agentId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.integrations.bookingReadiness(workspaceId) });
     },
   });
 }

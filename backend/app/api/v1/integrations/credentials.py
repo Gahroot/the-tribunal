@@ -10,14 +10,22 @@ from sqlalchemy import select
 from app.api.deps import DB, CurrentUser, WorkspaceAccess, WorkspaceAdminAccess
 from app.core.config import settings
 from app.core.encryption import encrypt_json
+from app.models.agent import Agent
+from app.models.bookable_staff import BookableStaff
 from app.models.workspace import WorkspaceIntegration
 from app.schemas.integration import (
+    CalendarBookingReadiness,
     IntegrationCreate,
     IntegrationTestRequest,
     IntegrationTestResult,
     IntegrationUpdate,
     IntegrationWithMaskedCredentials,
 )
+from app.services.calendar.calcom_credentials import (
+    CalComCredentialError,
+    resolve_calcom_credentials,
+)
+from app.services.calendar.staff_assignment import select_staff_member
 from app.services.followupboss import FollowUpBossClient
 
 router = APIRouter()
@@ -79,6 +87,67 @@ async def list_integrations(
         )
         for i in integrations
     ]
+
+
+@router.get("/calcom/booking-readiness", response_model=CalendarBookingReadiness)
+async def get_calendar_booking_readiness(
+    workspace: WorkspaceAccess,
+    db: DB,
+) -> CalendarBookingReadiness:
+    """Check the default active agent without provider calls or routing writes."""
+    try:
+        await resolve_calcom_credentials(db, workspace.id)
+    except CalComCredentialError as exc:
+        return CalendarBookingReadiness(
+            ready=False,
+            description=exc.message,
+            href="/settings?tab=integrations",
+        )
+
+    result = await db.execute(
+        select(Agent)
+        .where(Agent.workspace_id == workspace.id, Agent.is_active.is_(True))
+        .order_by(Agent.created_at.asc())
+        .limit(1)
+    )
+    agent = result.scalar_one_or_none()
+    if agent is None:
+        return CalendarBookingReadiness(
+            ready=False,
+            description="Create an active agent, then configure its booking calendar.",
+            href="/agents/create",
+        )
+
+    href = f"/agents/{agent.id}?setup=calendar"
+    strategy = agent.assignment_strategy or "single"
+    ready = bool(agent.calcom_event_type_id)
+    if not ready and strategy in {"round_robin", "skill_based"}:
+        staff_result = await db.execute(
+            select(BookableStaff).where(
+                BookableStaff.workspace_id == workspace.id,
+                BookableStaff.agent_id == agent.id,
+                BookableStaff.is_active.is_(True),
+            )
+        )
+        ready = select_staff_member(list(staff_result.scalars().all()), strategy) is not None
+
+    return CalendarBookingReadiness(
+        ready=ready,
+        description=(
+            "Your default agent has credentials and a booking calendar configured."
+            if ready
+            else (
+                "Configure an active staff calendar or a fallback Cal.com event type "
+                "for your default agent."
+                if strategy in {"round_robin", "skill_based"}
+                else (
+                    "Set the Cal.com Event Type ID for your default agent. "
+                    "Connecting Cal.com alone does not enable booking."
+                )
+            )
+        ),
+        href=href,
+    )
 
 
 @router.get("/{integration_type}", response_model=IntegrationWithMaskedCredentials)

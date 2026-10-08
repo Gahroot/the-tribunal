@@ -37,6 +37,12 @@ export interface UpdateIntegrationRequest {
   is_active?: boolean;
 }
 
+export interface CalendarBookingReadiness {
+  ready: boolean;
+  description: string;
+  href: string;
+}
+
 export interface IntegrationTestResult {
   success: boolean;
   message: string;
@@ -97,6 +103,11 @@ export const integrationsApi = {
     const result = await baseIntegrationsApi.list(workspaceId);
     return result.items;
   },
+
+  bookingReadiness: (workspaceId: string) =>
+    apiGet<CalendarBookingReadiness>(
+      `/api/v1/workspaces/${workspaceId}/integrations/calcom/booking-readiness`,
+    ),
 
   get: baseIntegrationsApi.get!,
   create: baseIntegrationsApi.create!,

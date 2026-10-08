@@ -7,13 +7,37 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import pytest
 
 from app.core.config import settings
 from app.core.encryption import encrypt_json
+from app.models.agent import Agent
 from app.models.workspace import WorkspaceIntegration
 from app.services.ai.live_voice_agent import LiveVoiceAgentSession
 from app.services.ai.voice_agent import OPENAI_REALTIME_CLIENT_SECRETS_URL, VoiceAgentSession
 from app.services.ai.voice_session_factory import VoiceSessionFactory
+
+
+@pytest.mark.parametrize("strategy", ["round_robin", "skill_based"])
+def test_staff_calendar_agent_exposes_booking_tools_without_default_event_type(strategy):
+    agent = Agent(
+        name="Fixture",
+        system_prompt="You are a helpful assistant.",
+        calcom_event_type_id=None,
+        assignment_strategy=strategy,
+        enabled_tools=[],
+        tool_settings={},
+        voice_id="marin",
+        turn_detection_mode="server_vad",
+        turn_detection_threshold=0.5,
+        silence_duration_ms=700,
+    )
+    session = VoiceAgentSession("fixture-key", agent=agent)
+    config = session._build_initial_session_config()
+    assert "book_appointment" in {tool["name"] for tool in config["tools"]}
+    factory = VoiceSessionFactory(settings)
+    assert factory._should_enable_tools(agent, calcom_ready=True)
+    assert not factory._should_enable_tools(agent, calcom_ready=False)
 
 
 class _ScalarResult:

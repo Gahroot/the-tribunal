@@ -6145,6 +6145,30 @@
         "title": "CalculatorSelectOption",
         "type": "object"
       },
+      "CalendarBookingReadiness": {
+        "description": "Local booking configuration readiness; never calls Cal.com.",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "href": {
+            "title": "Href",
+            "type": "string"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ready",
+          "description",
+          "href"
+        ],
+        "title": "CalendarBookingReadiness",
+        "type": "object"
+      },
       "CallCreate": {
         "description": "Request to initiate a call.",
         "properties": {
@@ -46963,6 +46987,55 @@
           }
         ],
         "summary": "Create Integration",
+        "tags": [
+          "Integrations"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/integrations/calcom/booking-readiness": {
+      "get": {
+        "description": "Check the default active agent without provider calls or routing writes.",
+        "operationId": "get_calendar_booking_readiness_api_v1_workspaces__workspace_id__integrations_calcom_booking_readiness_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarBookingReadiness"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Calendar Booking Readiness",
         "tags": [
           "Integrations"
         ]

@@ -380,7 +380,14 @@ class VoiceAgentSession(VoiceAgentBase):
         )
         tools = get_tools_from_agent_config(
             self.agent,
-            enable_booking=bool(self.agent and self.agent.calcom_event_type_id),
+            enable_booking=bool(
+                self.agent
+                and (
+                    self.agent.calcom_event_type_id
+                    or getattr(self.agent, "assignment_strategy", "single")
+                    in {"round_robin", "skill_based"}
+                )
+            ),
             timezone=self._timezone,
         )
         return build_realtime_session_config(
@@ -443,7 +450,14 @@ class VoiceAgentSession(VoiceAgentBase):
         )
         tools = get_tools_from_agent_config(
             self.agent,
-            enable_booking=bool(self.agent and self.agent.calcom_event_type_id),
+            enable_booking=bool(
+                self.agent
+                and (
+                    self.agent.calcom_event_type_id
+                    or getattr(self.agent, "assignment_strategy", "single")
+                    in {"round_robin", "skill_based"}
+                )
+            ),
             timezone=self._timezone,
         )
         session_config = build_realtime_session_config(
@@ -965,7 +979,14 @@ class VoiceAgentSession(VoiceAgentBase):
 
         tools = get_tools_from_agent_config(
             self.agent,
-            enable_booking=bool(self.agent and self.agent.calcom_event_type_id),
+            enable_booking=bool(
+                self.agent
+                and (
+                    self.agent.calcom_event_type_id
+                    or getattr(self.agent, "assignment_strategy", "single")
+                    in {"round_robin", "skill_based"}
+                )
+            ),
             timezone=self._timezone,
         )
         session_config = build_realtime_session_config(

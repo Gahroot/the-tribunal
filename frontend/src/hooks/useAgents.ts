@@ -11,6 +11,7 @@ const {
   useDelete: useDeleteAgent,
 } = createResourceHooks({
   resourceKey: "agents",
+  invalidateKeys: ["integrations"],
   apiClient: agentsApi as ApiClient<Agent, CreateAgentRequest, UpdateAgentRequest>,
 });
 

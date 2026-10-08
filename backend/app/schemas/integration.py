@@ -119,6 +119,14 @@ class IntegrationWithMaskedCredentials(IntegrationResponse):
     )
 
 
+class CalendarBookingReadiness(BaseModel):
+    """Local booking configuration readiness; never calls Cal.com."""
+
+    ready: bool
+    description: str
+    href: str
+
+
 class IntegrationTestRequest(BaseModel):
     """Optional request body for testing an integration.
 

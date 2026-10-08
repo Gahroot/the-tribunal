@@ -3922,6 +3922,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/integrations/calcom/booking-readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Calendar Booking Readiness
+         * @description Check the default active agent without provider calls or routing writes.
+         */
+        get: operations["get_calendar_booking_readiness_api_v1_workspaces__workspace_id__integrations_calcom_booking_readiness_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/integrations/openai/oauth": {
         parameters: {
             query?: never;
@@ -9795,6 +9815,18 @@ export interface components {
             multiplier?: number | null;
             /** Value */
             value: string;
+        };
+        /**
+         * CalendarBookingReadiness
+         * @description Local booking configuration readiness; never calls Cal.com.
+         */
+        CalendarBookingReadiness: {
+            /** Description */
+            description: string;
+            /** Href */
+            href: string;
+            /** Ready */
+            ready: boolean;
         };
         /**
          * CallCreate
@@ -27365,6 +27397,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IntegrationWithMaskedCredentials"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_calendar_booking_readiness_api_v1_workspaces__workspace_id__integrations_calcom_booking_readiness_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarBookingReadiness"];
                 };
             };
             /** @description Validation Error */

@@ -274,6 +274,8 @@ export const queryKeys = {
   },
   integrations: {
     ...integrations,
+    bookingReadiness: (workspaceId: string) =>
+      [...integrations.all(workspaceId), "booking-readiness"] as const,
     openAIOAuth: (workspaceId: string) =>
       [...integrations.all(workspaceId), "openai-oauth"] as const,
   },

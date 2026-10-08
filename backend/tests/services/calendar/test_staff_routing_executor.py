@@ -134,7 +134,7 @@ def _round_robin_agent() -> Any:
         id=uuid.uuid4(),
         workspace_id=uuid.uuid4(),
         assignment_strategy="round_robin",
-        calcom_event_type_id=1,  # agent default that should NOT be used
+        calcom_event_type_id=None,  # staff routing needs no agent fallback
     )
 
 

@@ -311,7 +311,7 @@ class VoiceSessionFactory:
         """Determine if tools should be enabled for an agent.
 
         Tools require:
-        - Agent with calcom_event_type_id configured
+        - Agent with an event type or supported staff-calendar routing configured
         - Usable Cal.com credentials for the agent's workspace (``calcom_ready``),
           or — only when no workspace context was resolved — the documented
           global ``CALCOM_API_KEY`` fallback
@@ -326,7 +326,9 @@ class VoiceSessionFactory:
         if not agent:
             return False
 
-        if not agent.calcom_event_type_id:
+        if not agent.calcom_event_type_id and getattr(
+            agent, "assignment_strategy", "single"
+        ) not in {"round_robin", "skill_based"}:
             return False
 
         if calcom_ready is not None:

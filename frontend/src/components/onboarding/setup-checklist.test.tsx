@@ -20,7 +20,7 @@ vi.mock("@/providers/workspace-provider", () => ({
 vi.mock("@/lib/api/phone-numbers", () => ({ phoneNumbersApi: { list: vi.fn() } }));
 vi.mock("@/lib/api/agents", () => ({ agentsApi: { list: vi.fn() } }));
 vi.mock("@/lib/api/contacts", () => ({ contactsApi: { list: vi.fn() } }));
-vi.mock("@/lib/api/integrations", () => ({ integrationsApi: { list: vi.fn() } }));
+vi.mock("@/lib/api/integrations", () => ({ integrationsApi: { bookingReadiness: vi.fn() } }));
 vi.mock("@/lib/api/campaigns", () => ({ campaignsApi: { list: vi.fn() } }));
 
 const { toastSuccess } = vi.hoisted(() => ({ toastSuccess: vi.fn() }));
@@ -29,7 +29,7 @@ vi.mock("sonner", () => ({ toast: { success: toastSuccess } }));
 const phoneList = vi.mocked(phoneNumbersApi.list);
 const agentList = vi.mocked(agentsApi.list);
 const contactList = vi.mocked(contactsApi.list);
-const integrationList = vi.mocked(integrationsApi.list);
+const integrationList = vi.mocked(integrationsApi.bookingReadiness);
 const campaignList = vi.mocked(campaignsApi.list);
 
 const page = (total: number, items: unknown[] = []) =>
@@ -41,9 +41,11 @@ function respondAll(done: boolean) {
   phoneList.mockResolvedValue(page(done ? 1 : 0));
   agentList.mockResolvedValue(page(done ? 2 : 0));
   contactList.mockResolvedValue(page(done ? 40 : 0));
-  integrationList.mockResolvedValue(
-    (done ? [{ integration_type: "calcom", is_active: true }] : []) as never,
-  );
+  integrationList.mockResolvedValue({
+    ready: done,
+    description: done ? "Booking calendar configured." : "Connect Cal.com.",
+    href: "/settings?tab=integrations",
+  });
   campaignList.mockResolvedValue(page(done ? 1 : 0, done ? [{ status: "running" }] : []));
 }
 
@@ -152,6 +154,41 @@ describe("SetupChecklist", () => {
     expect(alert).toHaveTextContent("Showing your last known progress.");
     expect(stepLink("Create your first agent")).toHaveAccessibleName(/\(complete\)/);
     expect(screen.getByText("1 of 5 complete")).toBeInTheDocument();
+  });
+
+  it("keeps an active connection with no event type incomplete and links to the control", async () => {
+    respondAll(true);
+    integrationList.mockResolvedValue({
+      ready: false,
+      description: "Set the Cal.com Event Type ID for your default agent.",
+      href: "/agents/default?setup=calendar",
+    });
+    renderWithClient(<SetupChecklist />);
+    expect(await screen.findByText("4 of 5 complete")).toBeInTheDocument();
+    expect(stepLink("Connect your calendar")).toHaveAttribute("href", "/agents/default?setup=calendar");
+    expect(stepLink("Connect your calendar")).toHaveAccessibleName(/\(todo\)/);
+    expect(screen.getByText(/Set the Cal.com Event Type ID/)).toBeInTheDocument();
+  });
+
+  it("preserves calendar readiness as unknown on failure and recovers on retry", async () => {
+    respondAll(true);
+    integrationList.mockRejectedValue(serverError());
+    renderWithClient(<SetupChecklist />);
+    expect(await screen.findByText("4 of 5 complete, 1 not checked")).toBeInTheDocument();
+    expect(stepLink("Connect your calendar")).toHaveAccessibleName(/couldn't check/);
+    respondAll(true);
+    await userEvent.click(screen.getByRole("button", { name: "Retry check" }));
+    expect(await screen.findByText("You're all set!")).toBeInTheDocument();
+  });
+
+  it("keeps cached calendar readiness stale when a refresh fails", async () => {
+    respondAll(true);
+    const { queryClient } = renderWithClient(<SetupChecklist />);
+    await screen.findByText("You're all set!");
+    integrationList.mockRejectedValue(serverError());
+    await queryClient.invalidateQueries();
+    expect(await screen.findByRole("alert")).toHaveTextContent("last known progress");
+    expect(stepLink("Connect your calendar")).toHaveAccessibleName(/\(complete\)/);
   });
 
   it("celebrates a genuinely completed setup without an error notice", async () => {
