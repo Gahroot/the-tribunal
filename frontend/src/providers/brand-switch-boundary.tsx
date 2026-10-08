@@ -32,9 +32,11 @@ function BrandSession({
  */
 export function BrandSwitchBoundary({
   workspaceId,
+  switchDestination = null,
   children,
 }: {
   workspaceId: string | null;
+  switchDestination?: string | null;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -48,7 +50,7 @@ export function BrandSwitchBoundary({
   // new-brand fetch using the old route while Next's replace is outstanding.
   if (previousId !== workspaceId) {
     setPreviousId(workspaceId);
-    setDestination(previousId ? brandSwitchDestination(pathname, search) : null);
+    setDestination(switchDestination ?? (previousId ? brandSwitchDestination(pathname, search) : null));
   }
 
   if (destination && destination === location) setDestination(null);

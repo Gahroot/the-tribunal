@@ -1,6 +1,7 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
+import { useState } from "react";
 import { toast } from "sonner";
 import * as z from "zod";
 
@@ -15,9 +16,9 @@ import {
 import { FormDialog } from "@/components/ui/form-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { workspacesApi, type CreateWorkspaceRequest } from "@/lib/api/workspaces";
+import { workspacesApi, type CreateWorkspaceRequest, type WorkspaceResponse } from "@/lib/api/workspaces";
 import { useFormDialog } from "@/lib/forms/use-form-dialog";
-import { queryKeys } from "@/lib/query-keys";
+import { useWorkspace } from "@/providers/workspace-provider";
 
 const workspaceFormSchema = z.object({
   name: z.string().min(1, { error: "Name is required" }).max(200, { error: "Name must be 200 characters or less" }),
@@ -52,14 +53,14 @@ interface CreateWorkspaceDialogProps {
 }
 
 export function CreateWorkspaceDialog({ open, onOpenChange }: CreateWorkspaceDialogProps) {
-  const queryClient = useQueryClient();
+  const { activateCreatedWorkspace } = useWorkspace();
+  const [createdWorkspace, setCreatedWorkspace] = useState<WorkspaceResponse | null>(null);
+
+  // Closing abandons only the local handoff, not the committed workspace.
+  if (!open && createdWorkspace) setCreatedWorkspace(null);
 
   const createWorkspaceMutation = useMutation({
     mutationFn: (data: CreateWorkspaceRequest) => workspacesApi.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.all() });
-      toast.success("Workspace created successfully!");
-    },
   });
 
   const dialog = useFormDialog<WorkspaceFormValues>({
@@ -70,6 +71,10 @@ export function CreateWorkspaceDialog({ open, onOpenChange }: CreateWorkspaceDia
     errorFallback: "Failed to create workspace. Please try again.",
     // Map a known slug collision to a field error; anything else is a toast.
     onTopLevelError: (message) => {
+      if (createdWorkspace) {
+        toast.error(`${createdWorkspace.name} was created, but could not be activated. Retry opening setup or select it later from the workspace menu.`);
+        return;
+      }
       if (message.includes("slug already exists")) {
         dialog.form.setError("slug", { message: "This slug is already taken" });
         return;
@@ -77,11 +82,20 @@ export function CreateWorkspaceDialog({ open, onOpenChange }: CreateWorkspaceDia
       toast.error("Failed to create workspace. Please try again.");
     },
     onSubmit: async (data) => {
-      await createWorkspaceMutation.mutateAsync({
+      const workspace = createdWorkspace ?? await createWorkspaceMutation.mutateAsync({
         name: data.name,
         slug: data.slug,
         description: data.description || undefined,
       });
+      setCreatedWorkspace(workspace);
+      try {
+        await activateCreatedWorkspace(workspace.id);
+      } catch {
+        // Creation committed: never invite a duplicate create or claim activation.
+        toast.error(`${workspace.name} was created, but could not be activated. Retry opening setup or select it later from the workspace menu.`);
+        return;
+      }
+      toast.success(`${workspace.name} is active. Continue setup.`);
       onOpenChange(false);
     },
   });
@@ -103,10 +117,12 @@ export function CreateWorkspaceDialog({ open, onOpenChange }: CreateWorkspaceDia
     <FormDialog
       dialog={dialog}
       open={open}
-      title="Create Workspace"
-      description="Create a new workspace to organize your contacts, campaigns, and team."
-      submitLabel="Create Workspace"
-      submitBusyLabel="Creating..."
+      title={createdWorkspace ? `Set up ${createdWorkspace.name}` : "Create Workspace"}
+      description={createdWorkspace
+        ? `${createdWorkspace.name} has been created. Open its setup after confirming your workspace membership.`
+        : "Create a new workspace to organize your contacts, campaigns, and team."}
+      submitLabel={createdWorkspace ? "Open setup" : "Create Workspace"}
+      submitBusyLabel={createdWorkspace ? "Opening setup..." : "Creating..."}
       className="sm:max-w-[450px]"
     >
       <FormField
@@ -116,7 +132,7 @@ export function CreateWorkspaceDialog({ open, onOpenChange }: CreateWorkspaceDia
           <FormItem>
             <FormLabel>Name *</FormLabel>
             <FormControl>
-              <Input placeholder="My Company" {...field} onChange={handleNameChange} />
+              <Input placeholder="My Company" {...field} onChange={handleNameChange} disabled={!!createdWorkspace} />
             </FormControl>
             <FormMessage />
           </FormItem>
@@ -130,7 +146,7 @@ export function CreateWorkspaceDialog({ open, onOpenChange }: CreateWorkspaceDia
           <FormItem>
             <FormLabel>Slug *</FormLabel>
             <FormControl>
-              <Input placeholder="my-company" {...field} />
+              <Input placeholder="my-company" {...field} disabled={!!createdWorkspace} />
             </FormControl>
             <FormDescription>
               URL-friendly identifier (lowercase, numbers, hyphens only)
@@ -148,6 +164,7 @@ export function CreateWorkspaceDialog({ open, onOpenChange }: CreateWorkspaceDia
             <FormLabel>Description</FormLabel>
             <FormControl>
               <Textarea
+                disabled={!!createdWorkspace}
                 placeholder="A brief description of this workspace..."
                 className="min-h-[80px]"
                 {...field}

@@ -49,6 +49,8 @@ interface WorkspaceContextType {
   /** Re-request the workspace list. */
   retry: () => void;
   setCurrentWorkspace: (workspaceId: string) => void;
+  /** Confirm membership before entering a newly created brand's setup. */
+  activateCreatedWorkspace: (workspaceId: string) => Promise<void>;
 }
 
 const NO_WORKSPACES: WorkspaceWithMembership[] = [];
@@ -81,6 +83,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(() =>
     getStoredWorkspaceId(),
   );
+
+  const [switchDestination, setSwitchDestination] = useState<string | null>(null);
 
   const listQuery = useQuery({
     queryKey: queryKeys.workspaces.all(),
@@ -133,14 +137,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
   }, [currentWorkspaceId]);
 
-  const setCurrentWorkspace = useCallback(
-    (workspaceId: string) => {
+  const switchWorkspace = useCallback(
+    (workspaceId: string, destination: string | null = null, refresh = true) => {
       // Accept only a permitted brand, and do not reset a same-brand session.
       if (
         workspaceId === currentWorkspaceId ||
-        !workspaces.some((w) => w.workspace.id === workspaceId)
+        !queryClient.getQueryData<WorkspaceWithMembership[]>(queryKeys.workspaces.all())
+          ?.some((w) => w.workspace.id === workspaceId)
       )
         return;
+      setSwitchDestination(destination);
       setSelectedWorkspaceId(workspaceId);
       setStoredWorkspaceId(workspaceId);
       // The membership list is user-scoped, so retain its last good response
@@ -159,11 +165,28 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       queryClient.removeQueries(brandQueries);
       if (membershipList) {
         queryClient.setQueryData(queryKeys.workspaces.all(), membershipList);
-        void queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.all() });
+        if (refresh) void queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.all() });
       }
     },
-    [queryClient, currentWorkspaceId, workspaces],
+    [queryClient, currentWorkspaceId],
   );
+
+  const setCurrentWorkspace = useCallback(
+    (workspaceId: string) => switchWorkspace(workspaceId),
+    [switchWorkspace],
+  );
+
+  const activateCreatedWorkspace = useCallback(async (workspaceId: string) => {
+    // Do not invent membership/default flags from a WorkspaceResponse. The
+    // authenticated list confirms access and RF-032's effective login default.
+    await queryClient.cancelQueries({ queryKey: queryKeys.workspaces.all() });
+    const result = await refetch({ throwOnError: true });
+    if (!result.data?.some((membership) => membership.workspace.id === workspaceId)) {
+      throw new Error("Created workspace is not in the membership list yet");
+    }
+    // This list is already fresh; avoid a second refresh racing the handoff.
+    switchWorkspace(workspaceId, "/onboarding", false);
+  }, [queryClient, refetch, switchWorkspace]);
 
   const value = useMemo(
     () => ({
@@ -177,6 +200,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       error: listError,
       retry,
       setCurrentWorkspace,
+      activateCreatedWorkspace,
     }),
     [
       workspaces,
@@ -190,13 +214,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       listError,
       retry,
       setCurrentWorkspace,
+      activateCreatedWorkspace,
     ],
   );
 
   return (
     <WorkspaceContext value={value}>
       <Suspense fallback={null}>
-        <BrandSwitchBoundary workspaceId={currentWorkspaceId}>{children}</BrandSwitchBoundary>
+        <BrandSwitchBoundary workspaceId={currentWorkspaceId} switchDestination={switchDestination}>
+          {children}
+        </BrandSwitchBoundary>
       </Suspense>
     </WorkspaceContext>
   );

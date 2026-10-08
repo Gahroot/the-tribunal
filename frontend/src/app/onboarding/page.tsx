@@ -1,8 +1,11 @@
+"use client";
+
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { SetupChecklist } from "@/components/onboarding/setup-checklist";
+import { useWorkspace } from "@/providers/workspace-provider";
 
 /**
  * Persistent "Finish setup" checklist — the first-run onboarding experience.
@@ -14,10 +17,11 @@ import { SetupChecklist } from "@/components/onboarding/setup-checklist";
  * /onboarding/wizard as a guided alternative.
  */
 export default function OnboardingPage() {
+  const { currentWorkspace } = useWorkspace();
   return (
     <AppSidebar>
       <div className="mx-auto w-full max-w-3xl px-6 py-10">
-        <h1 className="sr-only">Finish setup</h1>
+        <h1 className="mb-4 text-xl font-semibold">Finish setup{currentWorkspace ? `: ${currentWorkspace.workspace.name}` : ""}</h1>
         <SetupChecklist />
         <p className="mt-5 text-center text-sm text-muted-foreground">
           Prefer a guided walkthrough?{" "}
