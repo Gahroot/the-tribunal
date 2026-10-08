@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from structlog.testing import capture_logs
 
 from app.services.ai.model_config import Selection
 from app.workers import transcript_analysis_worker as worker_module
@@ -152,3 +153,33 @@ async def test_worker_noop_on_empty_queue() -> None:
 
     mocked_analyze.assert_not_awaited()
     session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_judge_failure_logs_cause_without_transcript_text() -> None:
+    outcome = SimpleNamespace(signals={})
+    msg = MagicMock()
+    msg.id = "msg-judge"
+    msg.transcript = "private caller words"
+    msg.call_outcome = outcome
+    session = _fake_session([msg])
+    fake_sessionmaker = MagicMock(return_value=session.__ctx__)
+
+    with (
+        patch.object(worker_module, "AsyncSessionLocal", fake_sessionmaker),
+        patch.object(worker_module, "analyze_transcript", AsyncMock(return_value={})),
+        patch.object(
+            worker_module,
+            "judge_call",
+            AsyncMock(side_effect=ValueError("Unverifiable evidence: opening")),
+        ),
+        patch.object(worker_module, "record_bandit_reward", AsyncMock()),
+        capture_logs() as logs,
+    ):
+        await worker_module.TranscriptAnalysisWorker()._process_items()
+
+    event = next(entry for entry in logs if entry["event"] == "call_judge_failed")
+    assert event["error_type"] == "ValueError"
+    assert event["error"] == "Unverifiable evidence: opening"
+    assert "private caller words" not in str(event)
+    assert outcome.signals["judge"]["error"] == "evaluation_failed"

@@ -8,6 +8,7 @@ from typing import Any
 from unittest.mock import ANY, AsyncMock
 
 import pytest
+from structlog.testing import capture_logs
 
 from app.models.conversation import MessageStatus
 from app.services.outbound.delivery import (
@@ -285,3 +286,43 @@ async def test_push_delivery_blocks_disabled_user_preference() -> None:
     assert result.status is OutboundDeliveryStatus.BLOCKED
     assert result.reason == "recipient_push_disabled"
     assert push_provider.user_calls == []
+
+
+@pytest.mark.asyncio
+async def test_failed_text_logs_stored_cause_but_not_in_result() -> None:
+    message = SimpleNamespace(
+        id=uuid.uuid4(),
+        status=MessageStatus.FAILED,
+        provider_message_id=None,
+        error_message="Client error '404 Not Found' for url 'https://relay.example/v1/messages'",
+        error_code="relay_404",
+    )
+    provider = _FakeTextProvider(message)
+    provider.send_message.side_effect = TextDeliveryError(message)
+    service = OutboundDeliveryService(
+        text_provider_factory=lambda preferred_provider=None, *, mac_relay_service=None: provider,
+        email_provider=_FakeEmailProvider(),
+        push_provider=_FakePushProvider(),
+        opt_out_manager=_FakeOptOutManager(),
+    )
+
+    with capture_logs() as logs:
+        result = await service.deliver(
+            AsyncMock(),
+            OutboundDeliveryRequest(
+                workspace_id=uuid.uuid4(),
+                channel=OutboundDeliveryChannel.IMESSAGE,
+                to="+15555550100",
+                from_="+15555550101",
+                body="Hello",
+                idempotency_key=uuid.uuid4(),
+                action_type="nudge_sms",
+            ),
+        )
+
+    assert result.status is OutboundDeliveryStatus.FAILED
+    assert "relay.example" not in (result.reason or "")
+    event = next(entry for entry in logs if entry["event"] == "outbound_text_failed")
+    assert event["error_code"] == "relay_404"
+    assert "404 Not Found" in event["error"]
+    assert event["provider"] == "mac_relay"

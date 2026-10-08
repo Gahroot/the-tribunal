@@ -9,6 +9,7 @@ import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from pydantic import ValidationError
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -24,6 +25,19 @@ from app.workers.base import BaseWorker, WorkerRegistry
 from app.workers.retryable import RetryableWorker
 
 BATCH_SIZE = 10
+
+
+def _failure_detail(exc: BaseException) -> dict[str, object]:
+    """Describe an evaluation failure without echoing transcript text into logs."""
+    detail: dict[str, object] = {"error_type": type(exc).__name__}
+    if isinstance(exc, ValidationError):
+        detail["invalid_fields"] = [
+            ".".join(str(part) for part in err["loc"]) for err in exc.errors(include_input=False)
+        ][:10]
+    elif isinstance(exc, ValueError):
+        # validate_judgment raises short, transcript-free reasons (e.g. "Unverifiable evidence").
+        detail["error"] = str(exc)[:200]
+    return detail
 
 
 async def _load_policies(
@@ -140,13 +154,21 @@ class TranscriptAnalysisWorker(RetryableWorker, BaseWorker):
                 analysis: object
                 judgment: object
                 if isinstance(evaluation_result, BaseException):
-                    self.logger.error("call_evaluation_failed", message_id=str(msg.id))
+                    self.logger.error(
+                        "call_evaluation_failed",
+                        message_id=str(msg.id),
+                        **_failure_detail(evaluation_result),
+                    )
                     analysis, judgment = evaluation_result, evaluation_result
                 else:
                     analysis, judgment = evaluation_result
                 if "analyzed" not in current or (current["analyzed"] == "unavailable" and _text):
                     if isinstance(analysis, BaseException):
-                        self.logger.error("transcript_analysis_failed", message_id=str(msg.id))
+                        self.logger.error(
+                            "transcript_analysis_failed",
+                            message_id=str(msg.id),
+                            **_failure_detail(analysis),
+                        )
                         current["analyzed"] = "error"
                     elif isinstance(analysis, dict):
                         current.update(analysis)
@@ -159,7 +181,9 @@ class TranscriptAnalysisWorker(RetryableWorker, BaseWorker):
                     and _text
                 ):
                     if isinstance(judgment, BaseException):
-                        self.logger.error("call_judge_failed", message_id=str(msg.id))
+                        self.logger.error(
+                            "call_judge_failed", message_id=str(msg.id), **_failure_detail(judgment)
+                        )
                         attempts = current.get("judge_attempts")
                         current["judge_attempts"] = (attempts if type(attempts) is int else 0) + 1
                         current["judge"] = {"human_review": True, "error": "evaluation_failed"}

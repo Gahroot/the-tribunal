@@ -491,6 +491,16 @@ class OutboundDeliveryService:
             await provider.close()
 
         failed = message.status in {MessageStatus.FAILED, MessageStatus.FAILED.value}
+        if failed:
+            # The caller-facing reason is deliberately generic, so keep the stored
+            # provider cause in the operator log (bounded; never returned to clients).
+            logger.warning(
+                "outbound_text_failed",
+                provider=provider_preference or "telnyx",
+                message_id=str(message.id),
+                error_code=getattr(message, "error_code", None),
+                error=(message.error_message or "")[:200] or None,
+            )
         return OutboundDeliveryResult(
             channel=request.channel,
             status=OutboundDeliveryStatus.FAILED if failed else OutboundDeliveryStatus.SENT,
