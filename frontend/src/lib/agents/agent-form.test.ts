@@ -134,6 +134,31 @@ describe("createAgentFormSchema + defaults", () => {
 });
 
 describe("buildCreateAgentRequest", () => {
+  it("preserves an entered greeting through create, read-back, and edit", () => {
+    const greeting = "Hi! I'm Sam. How can I help you today?";
+    const req = buildCreateAgentRequest(createAgentFormSchema.parse({
+      ...CREATE_AGENT_FORM_DEFAULTS,
+      name: "Sales Bot",
+      systemPrompt: "You are a helpful assistant.",
+      initialGreeting: greeting,
+    }));
+    expect(req.initial_greeting).toBe(greeting);
+
+    // The existing API returns the persisted snake_case field.
+    const saved = makeAgent({ initial_greeting: req.initial_greeting });
+    const reopened = editAgentFormSchema.parse(agentToEditFormValues(saved));
+    expect(reopened.initialGreeting).toBe(greeting);
+    expect(buildUpdateAgentRequest(reopened).initial_greeting).toBe(greeting);
+  });
+
+  it.each(["", undefined])("uses the default greeting for blank/omitted input %s", (initialGreeting) => {
+    const req = buildCreateAgentRequest({ ...CREATE_AGENT_FORM_DEFAULTS, initialGreeting });
+    expect(req.initial_greeting).toBeNull();
+    const reopened = agentToEditFormValues(makeAgent({ initial_greeting: null }));
+    expect(reopened.initialGreeting).toBe("");
+    expect(buildUpdateAgentRequest(reopened).initial_greeting).toBeNull();
+  });
+
   it("derives voice provider from the pricing tier and maps fields", () => {
     const req = buildCreateAgentRequest({
       ...CREATE_AGENT_FORM_DEFAULTS,
@@ -226,6 +251,12 @@ describe("ZONE_FIELDS", () => {
 });
 
 describe("agentToEditFormValues round-trips through buildUpdateAgentRequest", () => {
+  it("clears a saved greeting explicitly so the backend uses its default", () => {
+    const values = agentToEditFormValues(makeAgent({ initial_greeting: "Welcome!" }));
+    expect(buildUpdateAgentRequest({ ...values, initialGreeting: "" }).initial_greeting).toBeNull();
+    expect(agentToEditFormValues(makeAgent({ initial_greeting: "" })).initialGreeting).toBe("");
+  });
+
   it("maps agent record to form values", () => {
     const values = agentToEditFormValues(makeAgent());
     expect(values.name).toBe("Test Agent");

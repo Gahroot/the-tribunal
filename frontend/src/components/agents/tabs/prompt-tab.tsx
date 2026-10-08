@@ -377,6 +377,27 @@ export function PromptTab({ form, agentId, onShowVersions, onShowTests }: Prompt
             )}
           />
 
+          <FormField
+            control={form.control}
+            name="initialGreeting"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Initial Greeting (Optional)</FormLabel>
+                <FormControl>
+                  <Textarea
+                    placeholder="Hello! Thank you for calling. How can I help you today?"
+                    className="min-h-[80px]"
+                    {...field}
+                  />
+                </FormControl>
+                <FormDescription>
+                  What the agent says when the call starts. Leave empty for a natural start.
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
           {/* Temperature */}
           <FormField
             control={form.control}

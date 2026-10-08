@@ -145,6 +145,7 @@ export function AgentsList() {
         voice_id: agent.voice_id,
         language: agent.language,
         system_prompt: agent.system_prompt,
+        initial_greeting: agent.initial_greeting,
         temperature: agent.temperature,
         text_response_delay_ms: clampTextResponseDelayMs(agent.text_response_delay_ms),
         text_max_context_messages: agent.text_max_context_messages,

@@ -30,6 +30,7 @@ export interface CreateAgentRequest {
   /** Reasoning effort for gpt-realtime-2.x models: minimal|low|medium|high|xhigh. */
   reasoning_effort?: string;
   system_prompt: string;
+  initial_greeting?: string | null;
   temperature?: number;
   text_response_delay_ms?: number;
   text_max_context_messages?: number;
@@ -67,6 +68,7 @@ export interface UpdateAgentRequest {
   realtime_model?: string | null;
   reasoning_effort?: string;
   system_prompt?: string;
+  initial_greeting?: string | null;
   temperature?: number;
   text_response_delay_ms?: number;
   text_max_context_messages?: number;
