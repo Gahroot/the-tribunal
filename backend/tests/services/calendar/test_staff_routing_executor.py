@@ -129,17 +129,20 @@ class _FakeBookingService:
         pass
 
 
-def _round_robin_agent() -> Any:
+def _round_robin_agent(event_type_id: int | None = 1) -> Any:
     return SimpleNamespace(
         id=uuid.uuid4(),
         workspace_id=uuid.uuid4(),
         assignment_strategy="round_robin",
-        calcom_event_type_id=None,  # staff routing needs no agent fallback
+        calcom_event_type_id=event_type_id,
     )
 
 
 @pytest.mark.asyncio
-async def test_book_appointment_routes_to_selected_staff_event_type() -> None:
+@pytest.mark.parametrize("event_type_id", [1, None])
+async def test_book_appointment_routes_to_selected_staff_event_type(
+    event_type_id: int | None,
+) -> None:
     _FakeBookingService.captured_event_type_id = None
     # Bob has fewer assignments -> round-robin should pick Bob (event type 555).
     pool = [
@@ -147,7 +150,7 @@ async def test_book_appointment_routes_to_selected_staff_event_type() -> None:
         _FakeStaff("Bob", event_type_id=555, count=0),
     ]
 
-    executor = VoiceToolExecutor(agent=_round_robin_agent())
+    executor = VoiceToolExecutor(agent=_round_robin_agent(event_type_id))
 
     with (
         patch.object(
@@ -181,7 +184,7 @@ async def test_book_appointment_routes_to_selected_staff_event_type() -> None:
         )
 
     assert result["success"] is True
-    # Booked against Bob's event type, not the agent's default (1) or Alice's (444).
+    # Bob's calendar wins with or without an agent fallback, never Alice's (444).
     assert _FakeBookingService.captured_event_type_id == 555
     assert executor.assigned_staff is not None
     assert executor.assigned_staff["name"] == "Bob"
