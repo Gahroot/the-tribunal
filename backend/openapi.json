@@ -14519,6 +14519,11 @@
       "IntegrationStatus": {
         "description": "Schema for integration status.",
         "properties": {
+          "credential_source": {
+            "default": "unavailable",
+            "title": "Credential Source",
+            "type": "string"
+          },
           "description": {
             "title": "Description",
             "type": "string"

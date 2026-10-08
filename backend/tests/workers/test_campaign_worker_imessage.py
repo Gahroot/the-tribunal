@@ -39,6 +39,24 @@ class _ExecuteResult:
         return {"enabled": False, "auto_send_first_touches": False}
 
 
+def test_provider_cache_is_scoped_by_brand() -> None:
+    worker = CampaignWorker()
+    cache = {}
+    phones = [
+        PhoneNumberFactory.build(workspace_id=uuid.uuid4(), imessage_enabled=False)
+        for _ in range(2)
+    ]
+    providers = [MagicMock(), MagicMock()]
+    with patch(
+        "app.workers.campaign_worker.get_text_message_provider", side_effect=providers
+    ) as factory:
+        assert worker._get_text_provider(phones[0], cache) is providers[0]
+        assert worker._get_text_provider(phones[1], cache) is providers[1]
+        assert worker._get_text_provider(phones[0], cache) is providers[0]
+    assert factory.call_count == 2
+    assert len(cache) == 2
+
+
 async def test_initial_message_uses_mac_relay_for_imessage_sender() -> None:
     workspace_id = uuid.uuid4()
     campaign = CampaignFactory.build(

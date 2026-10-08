@@ -162,7 +162,11 @@ class PushDeliveryProvider(Protocol):
 
 
 class ResendEmailDeliveryProvider:
-    """Email provider adapter backed by the existing Resend helper."""
+    """Email provider adapter bound to one delivery's brand context."""
+
+    def __init__(self, db: AsyncSession, workspace_id: uuid.UUID) -> None:
+        self.db = db
+        self.workspace_id = workspace_id
 
     async def send_email(
         self,
@@ -173,7 +177,9 @@ class ResendEmailDeliveryProvider:
         """Send one email via Resend."""
         from app.services import email as email_service
 
-        return await email_service._send(params, idempotency_key=idempotency_key)
+        return await email_service._send(
+            params, idempotency_key=idempotency_key, db=self.db, workspace_id=self.workspace_id
+        )
 
 
 @dataclass(slots=True, frozen=True)
@@ -197,7 +203,7 @@ class OutboundDeliveryService:
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._text_provider_factory = text_provider_factory
-        self._email_provider = email_provider or ResendEmailDeliveryProvider()
+        self._email_provider = email_provider
         if push_provider is None:
             from app.services.push_notifications import push_notification_service
 
@@ -261,7 +267,7 @@ class OutboundDeliveryService:
             if request.channel in TEXT_CHANNELS:
                 result = await self._deliver_text(db, request, idempotency_key)
             elif request.channel is OutboundDeliveryChannel.EMAIL:
-                result = await self._deliver_email(request, idempotency_key)
+                result = await self._deliver_email(db, request, idempotency_key)
             elif request.channel is OutboundDeliveryChannel.PUSH:
                 result = await self._deliver_push(db, request, idempotency_key)
             else:  # pragma: no cover - StrEnum exhaustiveness guard
@@ -495,6 +501,7 @@ class OutboundDeliveryService:
 
     async def _deliver_email(
         self,
+        db: AsyncSession,
         request: OutboundDeliveryRequest,
         idempotency_key: uuid.UUID | None,
     ) -> OutboundDeliveryResult:
@@ -521,7 +528,8 @@ class OutboundDeliveryService:
         if text:
             params["text"] = text
 
-        response = await self._email_provider.send_email(params, idempotency_key=idempotency_key)
+        provider = self._email_provider or ResendEmailDeliveryProvider(db, request.workspace_id)
+        response = await provider.send_email(params, idempotency_key=idempotency_key)
         if response is None:
             return OutboundDeliveryResult(
                 channel=request.channel,

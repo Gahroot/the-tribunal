@@ -67,10 +67,6 @@ async def _process_campaign(campaign: DripCampaign, db: AsyncSession) -> None:
         log.debug("drip_outside_sending_hours")
         return
 
-    if not settings.telnyx_api_key:
-        log.warning("no_telnyx_api_key")
-        return
-
     now = datetime.now(UTC)
 
     # Get enrollments that are due

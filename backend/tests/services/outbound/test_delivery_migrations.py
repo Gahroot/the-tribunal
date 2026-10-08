@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.core.config import settings
 from app.models.campaign import CampaignContactStatus
 from app.services.approval import approval_delivery_service as approval_module
 from app.services.approval.approval_delivery_service import (
@@ -123,7 +124,7 @@ async def test_nudge_delivery_uses_outbound_for_push_and_sms(
     monkeypatch.setattr(nudge_module, "outbound_delivery_service", fake_service)
     phone = SimpleNamespace(id=uuid.uuid4(), phone_number="+12025550199")
     monkeypatch.setattr(nudge_module, "get_workspace_sms_number", AsyncMock(return_value=phone))
-    monkeypatch.setattr(nudge_module.settings, "telnyx_api_key", "telnyx-key")
+    monkeypatch.setattr(settings, "telnyx_api_key", "")
     workspace_id = uuid.uuid4()
     user = SimpleNamespace(id=7, is_active=True, notification_sms=True, phone_number="+12025550123")
     workspace = SimpleNamespace(

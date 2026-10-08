@@ -82,7 +82,7 @@ const INTEGRATION_CONFIGS: Record<IntegrationType, IntegrationConfig> = {
   },
   telnyx: {
     name: "Telnyx",
-    description: "Connect Telnyx for voice calls and SMS messaging",
+    description: "Configure this brand's Telnyx account for SMS. Live voice remains platform-managed.",
     fields: [
       {
         key: "api_key",
@@ -102,7 +102,7 @@ const INTEGRATION_CONFIGS: Record<IntegrationType, IntegrationConfig> = {
         key: "phone_number",
         label: "Default Phone Number",
         placeholder: "+1234567890",
-        description: "Default outbound phone number",
+        description: "Reference only. Select an active sender assigned to this brand in phone number settings.",
       },
     ],
   },
@@ -167,7 +167,8 @@ const INTEGRATION_CONFIGS: Record<IntegrationType, IntegrationConfig> = {
         key: "from_email",
         label: "From Email",
         placeholder: "noreply@example.com",
-        description: "Default sender email address",
+        description: "Required brand sender address on a verified domain in this Resend account.",
+        required: true,
         type: "email",
       },
       {
@@ -308,7 +309,7 @@ export function IntegrationConfigDialog({
       queryClient.invalidateQueries({
         queryKey: queryKeys.integrations.all(workspaceId ?? ""),
       });
-      toast.success(`${config.name} connected successfully!`);
+      toast.success(`${config.name} credentials saved. Test the connection to verify access.`);
       onOpenChange(false);
     },
     onError: (error: Error) => {
@@ -323,7 +324,7 @@ export function IntegrationConfigDialog({
 
   const updateMutation = useMutation({
     mutationFn: (credentials: Record<string, string>) =>
-      integrationsApi.update(workspaceId!, integrationType, { credentials }),
+      integrationsApi.update(workspaceId!, integrationType, { credentials, is_active: true }),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.settings.integrations(workspaceId ?? ""),

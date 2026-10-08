@@ -129,17 +129,17 @@ export function IntegrationsSettingsTab() {
                       </div>
                     </div>
                     {integration.is_connected ? (
-                      <StatusBadge dotClass="bg-success">Connected</StatusBadge>
+                      <StatusBadge dotClass="bg-success">Brand configured</StatusBadge>
                     ) : (
-                      <Badge variant="outline">Not Connected</Badge>
+                      <Badge variant="outline">
+                        {integration.credential_source === "platform" ? "Platform managed" : "Not Connected"}
+                      </Badge>
                     )}
                   </div>
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-muted-foreground">
-                    {integration.is_connected
-                      ? `${integration.display_name} is connected and ready to use.`
-                      : `Connect ${integration.display_name} to enable this integration.`}
+                    {integration.description}
                   </p>
                 </CardContent>
                 <CardFooter>

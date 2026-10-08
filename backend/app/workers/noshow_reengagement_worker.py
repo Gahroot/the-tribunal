@@ -187,10 +187,6 @@ class NoshowReengagementWorker(RetryableWorker, BaseWorker):
         )
 
         telnyx_key = settings.telnyx_api_key
-        if not telnyx_key:
-            log.warning("No Telnyx API key configured")
-            return
-
         contact_phone = contact.phone_number
         if not contact_phone:
             log.warning("Contact has no phone number")

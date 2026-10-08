@@ -400,16 +400,6 @@ async def send_appointment_reminder(
     log = logger.bind(appointment_id=appointment.id, trigger="manual")
 
     telnyx_key = settings.telnyx_api_key
-    if not telnyx_key:
-        log.warning("no_telnyx_api_key")
-        return {
-            "success": False,
-            "status": "not_sent",
-            "message": "Telnyx API key not configured",
-            "sent_to": None,
-            "retryable": False,
-        }
-
     contact_phone = contact.phone_number
     if not contact_phone:
         log.warning("contact_has_no_phone", contact_id=contact.id)

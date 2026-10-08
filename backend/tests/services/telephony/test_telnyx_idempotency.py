@@ -33,6 +33,87 @@ from app.models.conversation import MessageStatus
 from app.services.telephony.telnyx import TelnyxSMSService
 from app.services.telephony.telnyx_voice import TelnyxVoiceService
 
+
+@pytest.mark.parametrize(
+    "state",
+    ["brand", "managed", "disabled", "unreadable", "empty", "rejected", "wrong_sender", "no_key"],
+)
+async def test_workspace_sms_account_selection(monkeypatch, state):
+    from app.core.config import settings
+    from app.core.encryption import encrypt_json
+    from app.models.workspace import WorkspaceIntegration
+    from app.services.integration_credentials import IntegrationCredentialError
+    from app.services.providers.http import ProviderHTTPError
+
+    brands = [uuid.uuid4(), uuid.uuid4()]
+    monkeypatch.setattr(
+        settings, "telnyx_api_key", "" if state in {"brand", "no_key"} else "platform-fixture"
+    )
+    requests = []
+
+    def handle(request):
+        requests.append(request)
+        return httpx.Response(401 if state == "rejected" else 200, json={"data": {"id": "fixture"}})
+
+    real_client = httpx.AsyncClient
+
+    def fixture_client(**kwargs):
+        kwargs["transport"] = httpx.MockTransport(handle)
+        return real_client(**kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", fixture_client)
+    svc = TelnyxSMSService("stale-or-other-brand-key")
+    try:
+        for index, brand in enumerate(brands):
+            record = (
+                None
+                if state in {"managed", "no_key"}
+                else WorkspaceIntegration(
+                    workspace_id=brand,
+                    integration_type="telnyx",
+                    is_active=state != "disabled",
+                    encrypted_credentials="unreadable"
+                    if state == "unreadable"
+                    else encrypt_json(
+                        {"api_key": "" if state == "empty" else f"brand-fixture-{index}"}
+                    ),
+                )
+            )
+            db = AsyncMock()
+
+            async def execute(statement):
+                assert brand in statement.compile().params.values()
+                is_phone = "phone_numbers" in str(statement)
+                value = (None if state == "wrong_sender" else object()) if is_phone else record
+                return MagicMock(scalar_one_or_none=MagicMock(return_value=value))
+
+            db.execute.side_effect = execute
+            payload = {
+                "from": "+12025550101",
+                "to": "+12025550102",
+                "text": "fixture",
+                "type": "SMS",
+            }
+            if state in {"brand", "managed"}:
+                assert await svc._post_workspace_message(payload, db, brand) == {
+                    "data": {"id": "fixture"}
+                }
+            else:
+                with pytest.raises(
+                    ProviderHTTPError if state == "rejected" else IntegrationCredentialError
+                ):
+                    await svc._post_workspace_message(payload, db, brand)
+    finally:
+        await svc.close()
+    expected = (
+        [f"Bearer brand-fixture-{i}" for i in range(2)]
+        if state in {"brand", "rejected"}
+        else (["Bearer platform-fixture"] * 2 if state == "managed" else [])
+    )
+    assert [request.headers["Authorization"] for request in requests] == expected
+    assert svc.api_key == "stale-or-other-brand-key"
+
+
 # ---------------------------------------------------------------------------
 # SMS: header forwarding on the low-level POST
 # ---------------------------------------------------------------------------
@@ -203,7 +284,7 @@ class TestSendMessageDedupe:
                 "_get_or_create_conversation",
                 AsyncMock(return_value=conversation),
             ),
-            patch.object(svc, "_post_message", post_mock),
+            patch.object(svc, "_post_workspace_message", post_mock),
             patch(
                 "app.services.telephony.telnyx.shorten_urls_in_text",
                 AsyncMock(side_effect=lambda body, **kw: body),

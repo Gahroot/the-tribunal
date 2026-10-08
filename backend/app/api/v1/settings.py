@@ -1,5 +1,7 @@
 """Settings endpoints for user profile, notifications, and workspace integrations."""
 
+from typing import Literal, cast
+
 from fastapi import APIRouter
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -25,6 +27,10 @@ from app.schemas.user import (
     TeamMemberResponse,
     UserProfileResponse,
     UserProfileUpdate,
+)
+from app.services.integration_credentials import (
+    IntegrationCredentialError,
+    outbound_credentials_from_record,
 )
 from app.services.sla.speed_to_lead import (
     SETTINGS_KEY as SPEED_TO_LEAD_KEY,
@@ -176,20 +182,44 @@ async def get_integrations(
     integrations_result = await db.execute(
         select(WorkspaceIntegration).where(
             WorkspaceIntegration.workspace_id == workspace.id,
-            WorkspaceIntegration.is_active.is_(True),
         )
     )
-    existing_integrations = {wi.integration_type for wi in integrations_result.scalars().all()}
+    existing_integrations = {wi.integration_type: wi for wi in integrations_result.scalars().all()}
 
     # Build response with known integrations
     integrations = []
     for known in KNOWN_INTEGRATIONS:
+        provider = known["integration_type"]
+        record = existing_integrations.get(provider)
+        connected = bool(record and record.is_active and record.safe_credentials())
+        source = "workspace" if connected else "unavailable"
+        description = known["description"]
+        if provider in {"telnyx", "resend"}:
+            try:
+                credentials = outbound_credentials_from_record(
+                    record, cast(Literal["telnyx", "resend"], provider)
+                )
+                source = credentials.source
+                connected = source == "workspace"
+                description = (
+                    "Brand credentials configured. "
+                    "Provider permissions and sender identity must be valid."
+                    if connected
+                    else "Platform-managed transport; this brand has no saved provider connection."
+                )
+                if provider == "telnyx":
+                    description += " SMS uses this account; live voice remains platform-managed."
+            except IntegrationCredentialError as exc:
+                source = "unavailable"
+                connected = False
+                description = str(exc)
         integrations.append(
             IntegrationStatus(
                 integration_type=known["integration_type"],
-                is_connected=known["integration_type"] in existing_integrations,
+                is_connected=connected,
+                credential_source=source,
                 display_name=known["display_name"],
-                description=known["description"],
+                description=description,
             )
         )
 

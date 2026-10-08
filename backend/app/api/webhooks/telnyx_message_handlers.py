@@ -56,10 +56,6 @@ async def handle_inbound_message(payload: dict[str, Any], log: Any) -> None:  # 
         workspace_id = phone_record.workspace_id
 
         telnyx_api_key = settings.telnyx_api_key
-        if not telnyx_api_key:
-            log.error("no_telnyx_api_key")
-            return
-
         sms_service = TelnyxSMSService(telnyx_api_key)
         try:
             event = InboundTextEvent(
@@ -115,10 +111,6 @@ async def handle_delivery_status(payload: dict[str, Any], log: Any) -> None:  # 
 
     async with AsyncSessionLocal() as db:
         telnyx_api_key = settings.telnyx_api_key
-        if not telnyx_api_key:
-            log.error("no_telnyx_api_key")
-            return
-
         sms_service = TelnyxSMSService(telnyx_api_key)
         try:
             # Update message status with bounce classification. We capture the

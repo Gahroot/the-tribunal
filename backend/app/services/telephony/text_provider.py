@@ -46,7 +46,9 @@ def get_text_message_provider(
     provider = (preferred_provider or settings.text_message_provider).strip().lower()
     if provider in {"mac_relay", "mac-relay", "imessage"} and _mac_relay_configured():
         return build_configured_mac_relay_service(mac_relay_service)
-    return TelnyxSMSService(settings.telnyx_api_key)
+    # This is a routing object, not the credential authority. send_message
+    # resolves the explicit workspace account on every provider handoff.
+    return TelnyxSMSService("")
 
 
 def _mac_relay_configured() -> bool:

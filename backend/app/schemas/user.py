@@ -106,6 +106,7 @@ class IntegrationStatus(BaseModel):
 
     integration_type: str
     is_connected: bool
+    credential_source: str = "unavailable"
     display_name: str
     description: str
 

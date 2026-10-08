@@ -325,10 +325,6 @@ async def send_lifecycle_sms(
     """
     try:
         telnyx_key = settings.telnyx_api_key
-        if not telnyx_key:
-            logger.warning("lifecycle_sms_no_telnyx_key", contact_id=contact.id)
-            return False
-
         contact_phone = contact.phone_number
         if not contact_phone:
             logger.debug("lifecycle_sms_skipped_no_phone", contact_id=contact.id)

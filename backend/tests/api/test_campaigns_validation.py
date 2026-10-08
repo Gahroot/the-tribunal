@@ -600,7 +600,12 @@ class TestSharedCampaignReadiness:
         )
         count_result = MagicMock()
         count_result.scalar.return_value = 1
-        mock_db.execute.side_effect = [sender_result, count_result]
+        integration_result = MagicMock()
+        integration_result.scalar_one_or_none.return_value = None
+        mock_db.execute.side_effect = (
+            [sender_result, integration_result, count_result]
+            if sms and not imessage else [sender_result, count_result]
+        )
         eligibility = RecipientEligibility(
             channel="sms" if sms else "imessage",
             consent_required=sms,

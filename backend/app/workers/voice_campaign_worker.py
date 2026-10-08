@@ -132,7 +132,7 @@ class VoiceCampaignWorker(BaseCampaignWorker):
 
     async def _process_scheduled_sms(self, campaign: Campaign, db: AsyncSession, log: Any) -> None:
         """Send due SMS between calls, bounded by the campaign message caps."""
-        if not campaign.sms_fallback_enabled or not settings.telnyx_api_key:
+        if not campaign.sms_fallback_enabled:
             return
         if not campaign.sms_fallback_template and not (
             campaign.sms_fallback_use_ai and campaign.sms_fallback_agent_id
@@ -392,7 +392,7 @@ class VoiceCampaignWorker(BaseCampaignWorker):
     ) -> bool:
         if entry.last_call_status == RECOVERY:
             return False  # Recovery SMS is not a two-hour marketing cadence touch.
-        if settings.telnyx_api_key and sms_touch_pending(campaign, entry):
+        if sms_touch_pending(campaign, entry):
             # The SMS slot comes before the next call, even when overdue.
             return True
         if (

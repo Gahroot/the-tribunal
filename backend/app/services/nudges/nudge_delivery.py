@@ -8,7 +8,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.config import settings
 from app.models.human_nudge import HumanNudge
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMembership
@@ -120,7 +119,7 @@ class NudgeDeliveryService:
     ) -> bool:
         """Send SMS to eligible users. Returns True if at least one sent."""
         phone = await get_workspace_sms_number(db, nudge.workspace_id)
-        if phone is None or not settings.telnyx_api_key:
+        if phone is None:
             return False
         from_number = phone.phone_number
 

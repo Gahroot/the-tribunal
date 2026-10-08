@@ -15,7 +15,7 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from app.api.deps import get_current_user, get_db, get_workspace
+from app.api.deps import get_current_user, get_db, get_workspace, get_workspace_admin
 from app.api.v1 import settings as settings_module
 from app.api.v1.integrations import credentials as credentials_module
 
@@ -111,6 +111,7 @@ def _credentials_app(mock_db: AsyncMock) -> FastAPI:
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_workspace] = override_get_workspace
     app.dependency_overrides[get_current_user] = override_get_current_user
+    app.dependency_overrides[get_workspace_admin] = override_get_workspace
     app.include_router(
         credentials_module.router,
         prefix="/api/v1/workspaces/{workspace_id}/integrations",
@@ -218,6 +219,64 @@ async def test_calendar_readiness_does_not_turn_database_failure_into_incomplete
             f"/api/v1/workspaces/{WS_ID}/integrations/calcom/booking-readiness"
         )
     assert response.status_code == 500
+
+
+@pytest.mark.parametrize("state", ["brand", "managed", "disabled", "unreadable", "empty", "no_key"])
+async def test_status_matches_outbound_account(auth_client, mock_db, monkeypatch, state):
+    from app.core.config import settings
+    from app.core.encryption import encrypt_json
+    from app.models.workspace import WorkspaceIntegration
+
+    monkeypatch.setattr(
+        settings, "telnyx_api_key", "" if state in {"brand", "no_key"} else "platform-fixture"
+    )
+    record = WorkspaceIntegration(
+        workspace_id=WS_ID,
+        integration_type="telnyx",
+        is_active=state != "disabled",
+        encrypted_credentials="unreadable"
+        if state == "unreadable"
+        else encrypt_json({"api_key": "" if state == "empty" else "brand-fixture"}),
+    )
+    mock_db.execute.return_value.scalars.return_value.all.return_value = (
+        [] if state in {"managed", "no_key"} else [record]
+    )
+    response = await auth_client.get(f"/api/v1/workspaces/{WS_ID}/integrations")
+    assert response.status_code == 200
+    status = next(
+        item for item in response.json()["integrations"] if item["integration_type"] == "telnyx"
+    )
+    assert status["is_connected"] is (state == "brand")
+    assert status["credential_source"] == (
+        "workspace" if state == "brand" else "platform" if state == "managed" else "unavailable"
+    )
+    assert "brand-fixture" not in response.text
+    assert "platform-fixture" not in response.text
+    statement = mock_db.execute.call_args.args[0]
+    assert WS_ID in statement.compile().params.values()
+
+
+@pytest.mark.parametrize("provider", ["telnyx", "resend"])
+async def test_disconnect_does_not_reactivate_managed_account(mock_db, provider):
+    from app.core.encryption import encrypt_json
+    from app.models.workspace import WorkspaceIntegration
+
+    record = WorkspaceIntegration(
+        workspace_id=WS_ID,
+        integration_type=provider,
+        is_active=True,
+        encrypted_credentials=encrypt_json({"api_key": "fixture"}),
+    )
+    mock_db.execute.return_value.scalar_one_or_none.return_value = record
+    async with AsyncClient(
+        transport=ASGITransport(app=_credentials_app(mock_db)), base_url="http://testserver"
+    ) as client:
+        response = await client.delete(f"/api/v1/workspaces/{WS_ID}/integrations/{provider}")
+    assert response.status_code == 204
+    assert record.is_active is False
+    assert record.safe_credentials() == {}
+    mock_db.delete.assert_not_called()
+    mock_db.commit.assert_awaited_once()
 
 
 class _FakeAsyncClient:

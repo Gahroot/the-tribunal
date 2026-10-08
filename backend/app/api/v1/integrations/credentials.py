@@ -178,7 +178,7 @@ async def get_integration(
         is_active=integration.is_active,
         created_at=integration.created_at,
         updated_at=integration.updated_at,
-        masked_credentials=mask_credentials(integration.credentials),
+        masked_credentials=mask_credentials(integration.safe_credentials() or {}),
     )
 
 
@@ -234,7 +234,7 @@ async def create_integration(
         is_active=integration.is_active,
         created_at=integration.created_at,
         updated_at=integration.updated_at,
-        masked_credentials=mask_credentials(integration.credentials),
+        masked_credentials=mask_credentials(integration.safe_credentials() or {}),
     )
 
 
@@ -283,7 +283,7 @@ async def update_integration(
         is_active=integration.is_active,
         created_at=integration.created_at,
         updated_at=integration.updated_at,
-        masked_credentials=mask_credentials(integration.credentials),
+        masked_credentials=mask_credentials(integration.safe_credentials() or {}),
     )
 
 
@@ -309,7 +309,12 @@ async def delete_integration(
             detail=f"Integration '{integration_type}' not found",
         )
 
-    await db.delete(integration)
+    if integration_type in {"telnyx", "resend"}:
+        # An explicit disconnect must not silently opt back into managed sending.
+        integration.is_active = False
+        integration.credentials = {}
+    else:
+        await db.delete(integration)
     await db.commit()
 
     logger.info(
@@ -642,6 +647,9 @@ async def test_integration(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Integration '{integration_type}' not found",
         )
+
+    if not integration.is_active:
+        return IntegrationTestResult(success=False, message="This brand connection is disabled.")
 
     stored = integration.safe_credentials()
     if stored is None:

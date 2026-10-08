@@ -202,6 +202,8 @@ async def test_email_provider_unavailable_fails_execution() -> None:
 
     send.assert_awaited_once()
     assert send.await_args.kwargs["body"] == "Hello Ada"
+    assert send.await_args.kwargs["workspace_id"] == automation.workspace_id
+    assert send.await_args.kwargs["db"] is not None
     assert execution.status == "failed"
     assert "email provider" in (execution.error or "")
 

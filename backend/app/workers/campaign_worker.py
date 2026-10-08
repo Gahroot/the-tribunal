@@ -59,7 +59,7 @@ logger = structlog.get_logger()
 
 # Worker configuration
 MAX_MESSAGES_PER_TICK = 20
-TextProviderCache = dict[tuple[str | None, str | None], TextMessageProvider]
+TextProviderCache = dict[tuple[uuid.UUID, str | None, str | None], TextMessageProvider]
 
 
 def _preferred_provider_for_phone(phone_number: PhoneNumber) -> str | None:
@@ -157,7 +157,7 @@ class CampaignWorker(BaseCampaignWorker):
         mac_relay_service = None
         if phone_number.imessage_enabled:
             mac_relay_service = phone_number.mac_relay_service
-        cache_key = (preferred_provider, mac_relay_service)
+        cache_key = (phone_number.workspace_id, preferred_provider, mac_relay_service)
         provider = text_providers.get(cache_key)
         if provider is None:
             provider = get_text_message_provider(

@@ -108,11 +108,18 @@ async def _validate_campaign_sender(
             detail="iMessage relay is not configured for campaign sending",
         )
 
-    if sender.sms_enabled and not sender.imessage_enabled and not settings.telnyx_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Telnyx SMS is not configured for campaign sending",
+    if sender.sms_enabled and not sender.imessage_enabled:
+        from app.services.integration_credentials import (
+            IntegrationCredentialError,
+            resolve_outbound_credentials,
         )
+
+        try:
+            await resolve_outbound_credentials(db, workspace_id, "telnyx")
+        except IntegrationCredentialError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=f"Telnyx SMS: {exc}"
+            ) from exc
 
 
 @router.get("", response_model=PaginatedCampaigns)

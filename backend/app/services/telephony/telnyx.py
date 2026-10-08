@@ -266,7 +266,9 @@ class TelnyxSMSService:
                 body=body,
                 idempotency_key=effective_key,
             )
-            response_data = await self._post_message(payload, idempotency_key=effective_key)
+            response_data = await self._post_workspace_message(
+                payload, db, workspace_id, idempotency_key=effective_key
+            )
             data = response_data.get("data", {})
             message.provider_message_id = data.get("id")
             message.status = MessageStatus.SENT
@@ -304,6 +306,43 @@ class TelnyxSMSService:
         await db.refresh(message)
 
         return message
+
+    async def _post_workspace_message(
+        self,
+        payload: dict[str, str],
+        db: AsyncSession,
+        workspace_id: uuid.UUID,
+        idempotency_key: uuid.UUID | None = None,
+    ) -> dict[str, Any]:
+        """Authenticate each send for its brand, without mutating a cached client."""
+        from app.models.phone_number import PhoneNumber, PhoneNumberProvider
+        from app.services.integration_credentials import (
+            IntegrationCredentialError,
+            resolve_outbound_credentials,
+        )
+
+        sender = await db.execute(
+            select(PhoneNumber).where(
+                PhoneNumber.workspace_id == workspace_id,
+                PhoneNumber.phone_number == payload["from"],
+                PhoneNumber.provider == PhoneNumberProvider.TELNYX,
+                PhoneNumber.is_active.is_(True),
+                PhoneNumber.sms_enabled.is_(True),
+            )
+        )
+        if sender.scalar_one_or_none() is None:
+            raise IntegrationCredentialError(
+                "Select an active Telnyx SMS sender assigned to this brand."
+            )
+        credentials = await resolve_outbound_credentials(db, workspace_id, "telnyx")
+        profile = credentials.values.get("messaging_profile_id")
+        if isinstance(profile, str) and profile.strip():
+            payload = {**payload, "messaging_profile_id": profile.strip()}
+        service = TelnyxSMSService(credentials.api_key)
+        try:
+            return await service._post_message(payload, idempotency_key=idempotency_key)
+        finally:
+            await service.close()
 
     def _normalize_outbound_to(self, to_number: str) -> str:
         """Normalize an outbound recipient address for this provider."""

@@ -13034,6 +13034,11 @@ export interface components {
          * @description Schema for integration status.
          */
         IntegrationStatus: {
+            /**
+             * Credential Source
+             * @default unavailable
+             */
+            credential_source: string;
             /** Description */
             description: string;
             /** Display Name */

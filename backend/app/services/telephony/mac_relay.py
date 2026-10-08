@@ -4,6 +4,7 @@ import uuid
 from typing import Any, Literal, cast
 
 import httpx
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.conversation import MessageChannel
@@ -87,6 +88,16 @@ class MacRelayMessageService(TelnyxSMSService):
             "service": self.service,
             "client_message_id": str(idempotency_key),
         }
+
+    async def _post_workspace_message(
+        self,
+        payload: dict[str, str],
+        db: AsyncSession,
+        workspace_id: uuid.UUID,
+        idempotency_key: uuid.UUID | None = None,
+    ) -> dict[str, Any]:
+        """Keep the explicitly selected relay transport independent of Telnyx."""
+        return await self._post_message(payload, idempotency_key=idempotency_key)
 
     async def _post_message(
         self,

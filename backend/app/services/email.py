@@ -5,9 +5,15 @@ from datetime import datetime
 from html import escape as html_escape
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
+import httpx
 import structlog
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.services.integration_credentials import (
+    IntegrationCredentialError,
+    resolve_outbound_credentials,
+)
 
 try:
     import resend
@@ -50,8 +56,43 @@ async def _send(
     params: dict[str, Any],
     *,
     idempotency_key: uuid.UUID | None = None,
+    db: AsyncSession | None = None,
+    workspace_id: uuid.UUID | None = None,
 ) -> dict[str, Any] | None:
     """Send an email via Resend, returning the response dict or None on failure."""
+    if workspace_id is not None:
+        if db is None:
+            return None
+        try:
+            credentials = await resolve_outbound_credentials(db, workspace_id, "resend")
+            params = dict(params)
+            if credentials.source == "workspace":
+                name = html_escape(str(credentials.values.get("from_name") or ""))
+                sender = credentials.values["from_email"]
+                params["from"] = f"{name} <{sender}>" if name else sender
+            headers = {"Authorization": f"Bearer {credentials.api_key}"}
+            if idempotency_key:
+                headers["Idempotency-Key"] = str(idempotency_key)
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    "https://api.resend.com/emails", json=params, headers=headers
+                )
+                response.raise_for_status()
+                data = response.json()
+                return dict(data) if isinstance(data, dict) else None
+        except (IntegrationCredentialError, httpx.HTTPError, ValueError, TypeError):
+            logger.warning("brand_email_send_failed", workspace_id=str(workspace_id))
+            return None
+
+    if db is not None:
+        return None
+    return await _send_platform(params, idempotency_key=idempotency_key)
+
+
+async def _send_platform(
+    params: dict[str, Any], *, idempotency_key: uuid.UUID | None = None
+) -> dict[str, Any] | None:
+    """Platform account for auth and operator notifications, not customer sends."""
     if not RESEND_AVAILABLE:
         logger.warning("resend_not_installed", hint="Install with: uv add resend")
         return None
@@ -66,7 +107,7 @@ async def _send(
     try:
         response = await resend_module.Emails.send_async(params, options)
     except Exception as exc:
-        logger.error("resend_send_failed", error=str(exc), to=params.get("to"))
+        logger.error("resend_send_failed", error_type=type(exc).__name__, to=params.get("to"))
         return None
     return dict(response) if response else {}
 
@@ -174,6 +215,9 @@ async def send_automation_email(
     subject: str,
     body: str,
     idempotency_key: uuid.UUID | None = None,
+    *,
+    db: AsyncSession,
+    workspace_id: uuid.UUID,
 ) -> bool:
     """Send an automation-triggered email to a contact via Resend.
 
@@ -187,7 +231,9 @@ async def send_automation_email(
         "html": _text_to_html(body),
     }
 
-    response = await _send(params, idempotency_key=idempotency_key)
+    response = await _send(
+        params, idempotency_key=idempotency_key, db=db, workspace_id=workspace_id
+    )
     if response is None:
         return False
 

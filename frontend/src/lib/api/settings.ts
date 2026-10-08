@@ -53,6 +53,7 @@ export interface UpdateNotificationRequest {
 export interface IntegrationStatus {
   integration_type: string;
   is_connected: boolean;
+  credential_source?: "workspace" | "platform" | "unavailable";
   display_name: string;
   description: string;
 }

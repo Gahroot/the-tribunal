@@ -710,6 +710,8 @@ class AutomationWorker(RetryableWorker, BaseWorker):
             subject=subject,
             body=body,
             idempotency_key=idempotency_key,
+            db=db,
+            workspace_id=automation.workspace_id,
         )
         if not sent:
             raise AutomationActionError(
