@@ -3,6 +3,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
+  Suspense,
   useCallback,
   useContext,
   useEffect,
@@ -16,6 +17,7 @@ import { queryKeys } from "@/lib/query-keys";
 import { STATIC } from "@/lib/query-options";
 
 import { useAuth } from "./auth-provider";
+import { BrandSwitchBoundary } from "./brand-switch-boundary";
 
 const WORKSPACE_STORAGE_KEY = "current_workspace_id";
 
@@ -77,7 +79,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(() =>
-    getStoredWorkspaceId()
+    getStoredWorkspaceId(),
   );
 
   const listQuery = useQuery({
@@ -133,23 +135,34 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const setCurrentWorkspace = useCallback(
     (workspaceId: string) => {
+      // Accept only a permitted brand, and do not reset a same-brand session.
+      if (
+        workspaceId === currentWorkspaceId ||
+        !workspaces.some((w) => w.workspace.id === workspaceId)
+      )
+        return;
       setSelectedWorkspaceId(workspaceId);
       setStoredWorkspaceId(workspaceId);
-      // The membership list is user-scoped (not workspace-scoped), so carry it
-      // across the cache wipe below; otherwise a failed refetch right after a
-      // switch would drop the selection and look like an empty account.
+      // The membership list is user-scoped, so retain its last good response
+      // through the refresh; an outage must not collapse the selected brand.
       const membershipList = queryClient.getQueryData<WorkspaceWithMembership[]>(
-        queryKeys.workspaces.all()
+        queryKeys.workspaces.all(),
       );
-      // Clear all cached queries when switching workspaces to ensure fresh data
-      // Using clear() instead of invalidateQueries() to remove stale workspace data
-      queryClient.clear();
+      // Remove queries, not mutations: legitimate old-brand server operations
+      // remain alive and keep their original workspace-aware cache keys.
+      // Membership and other user-scoped query data are not brand-owned.
+      const brandQueries = {
+        predicate: (query: { queryKey: readonly unknown[] }) =>
+          query.queryKey.length > 1 && query.queryKey[1] === currentWorkspaceId,
+      };
+      void queryClient.cancelQueries(brandQueries);
+      queryClient.removeQueries(brandQueries);
       if (membershipList) {
         queryClient.setQueryData(queryKeys.workspaces.all(), membershipList);
         void queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.all() });
       }
     },
-    [queryClient]
+    [queryClient, currentWorkspaceId, workspaces],
   );
 
   const value = useMemo(
@@ -177,10 +190,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       listError,
       retry,
       setCurrentWorkspace,
-    ]
+    ],
   );
 
-  return <WorkspaceContext value={value}>{children}</WorkspaceContext>;
+  return (
+    <WorkspaceContext value={value}>
+      <Suspense fallback={null}>
+        <BrandSwitchBoundary workspaceId={currentWorkspaceId}>{children}</BrandSwitchBoundary>
+      </Suspense>
+    </WorkspaceContext>
+  );
 }
 
 export function useWorkspace() {

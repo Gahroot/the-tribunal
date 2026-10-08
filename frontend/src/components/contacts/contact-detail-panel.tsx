@@ -33,16 +33,24 @@ export function ContactDetailPanel({ contactId, onClose, className }: ContactDet
   const { selectedContact, setSelectedContact } = useContactStore();
   const { data: contact, isPending, isError } = useContact(workspaceId ?? "", contactId);
 
-  const isShowingRequestedContact = selectedContact?.id === contactId;
+  const belongsToBrand = (value: typeof contact) =>
+    !!workspaceId && !!value && (!value.workspace_id || value.workspace_id === workspaceId);
+  const isShowingRequestedContact =
+    !isError && belongsToBrand(selectedContact ?? undefined) && selectedContact?.id === contactId;
 
   // Deep link / back-forward: adopt the fetched contact into the store so the
   // sidebar reflows in place for this id. Card clicks set the store first for
   // an instant paint; this effect covers cold loads and history navigation.
   useEffect(() => {
-    if (contact && selectedContact?.id !== contact.id) {
+    if (
+      workspaceId &&
+      contact &&
+      (!contact.workspace_id || contact.workspace_id === workspaceId) &&
+      selectedContact?.id !== contact.id
+    ) {
       setSelectedContact(contact);
     }
-  }, [contact, selectedContact, setSelectedContact]);
+  }, [contact, selectedContact, setSelectedContact, workspaceId]);
 
   return (
     <aside
@@ -73,7 +81,7 @@ export function ContactDetailPanel({ contactId, onClose, className }: ContactDet
           <ContactSidebar />
         ) : isPending ? (
           <PanelSkeleton />
-        ) : isError || !contact ? (
+        ) : isError || !belongsToBrand(contact) ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
             <p className="text-sm font-medium">Contact not found</p>
             <p className="text-sm text-muted-foreground">It may have been deleted.</p>

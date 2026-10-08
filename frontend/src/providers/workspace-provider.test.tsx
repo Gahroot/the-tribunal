@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NoWorkspaceGate } from "@/components/workspaces/no-workspace-gate";
 import type { WorkspaceWithMembership } from "@/lib/api/workspaces";
+import { queryKeys } from "@/lib/query-keys";
 import { WorkspaceProvider, useWorkspace } from "@/providers/workspace-provider";
 
 // --- Hoisted mocks -------------------------------------------------------
@@ -221,14 +222,15 @@ describe("WorkspaceProvider", () => {
     });
   });
 
-  it("switches the active workspace, persists it, and clears the query cache", async () => {
+  it("switches the active workspace, persists it, and removes only old-brand queries", async () => {
     useAuthMock.mockReturnValue({ isAuthenticated: true, user: null });
     listMock.mockResolvedValue(WORKSPACES);
 
     const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },
+      defaultOptions: { queries: { retry: false, gcTime: Infinity, staleTime: 0 } },
     });
-    const clearSpy = vi.spyOn(queryClient, "clear");
+    queryClient.setQueryData(queryKeys.contacts.all("ws_b"), { items: [] });
+    queryClient.setQueryData(queryKeys.contacts.all("ws_c"), { items: ["Brand C"] });
 
     renderWithProviders(queryClient);
 
@@ -241,7 +243,10 @@ describe("WorkspaceProvider", () => {
 
     expect(screen.getByTestId("current").textContent).toBe("ws_c");
     expect(window.localStorage.getItem("current_workspace_id")).toBe("ws_c");
-    expect(clearSpy).toHaveBeenCalled();
+    expect(queryClient.getQueryData(queryKeys.contacts.all("ws_b"))).toBeUndefined();
+    expect(queryClient.getQueryData(queryKeys.contacts.all("ws_c"))).toEqual({
+      items: ["Brand C"],
+    });
   });
 
   it("shows an outage with retry, not a create prompt, when the initial list request fails", async () => {
@@ -314,7 +319,7 @@ describe("WorkspaceProvider", () => {
       expect(screen.getByTestId("current").textContent).toBe("ws_b");
     });
 
-    // Switching wipes the query cache and refetches the list; that refetch fails.
+    // Switching preserves the membership list; its background refresh fails.
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "switch" }));
 

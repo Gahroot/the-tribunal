@@ -68,9 +68,22 @@ function LoadingSkeleton() {
 }
 
 export function ConversationFeed(props: ConversationFeedProps | InboxThreadProps) {
-  // The inbox owns an exact thread. Contact pages retain their unified timeline.
-  if ("conversation" in props) return <InboxThread {...props} />;
-  return <ContactConversationFeed {...props} />;
+  const workspaceId = useWorkspaceId();
+  const { selectedContact } = useContactStore();
+  // Exact threads and contact composers both reset when their identity changes.
+  if ("conversation" in props && props.workspaceId !== workspaceId) return null;
+  if ("conversation" in props)
+    return <InboxThread key={`${workspaceId}:${props.conversation.id}`} {...props} />;
+  const contact = props.contact === undefined ? selectedContact : props.contact;
+  const scopedContact =
+    contact && (!contact.workspace_id || contact.workspace_id === workspaceId) ? contact : null;
+  return (
+    <ContactConversationFeed
+      key={`${workspaceId}:${scopedContact?.id}`}
+      {...props}
+      contact={scopedContact}
+    />
+  );
 }
 
 function ContactConversationFeed({
@@ -79,9 +92,16 @@ function ContactConversationFeed({
   enableAIDraft,
 }: ConversationFeedProps) {
   const { selectedContact: storeSelectedContact } = useContactStore();
-  const selectedContact = contact ?? storeSelectedContact;
+  const selectedContact = contact === undefined ? storeSelectedContact : contact;
   const workspaceId = useWorkspaceId();
   const queryClient = useQueryClient();
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
 
   // Fetch timeline via React Query (polls every 3s)
   const {
@@ -203,14 +223,14 @@ function ContactConversationFeed({
         workspaceId,
         contactConversation.id,
       );
+      if (!alive.current) return;
       setMessage(result.message);
       toast.success(messages.conversations.aiDraftInserted);
     } catch (error) {
-      toast.error(
-        getApiErrorMessage(error, messages.conversations.aiDraftFailed),
-      );
+      if (alive.current)
+        toast.error(getApiErrorMessage(error, messages.conversations.aiDraftFailed));
     } finally {
-      setIsDrafting(false);
+      if (alive.current) setIsDrafting(false);
     }
   };
 
@@ -240,15 +260,17 @@ function ContactConversationFeed({
       void queryClient.invalidateQueries({
         queryKey: queryKeys.conversations.all(workspaceId),
       });
-      toast.success(messages.conversations.sent);
+      if (alive.current) toast.success(messages.conversations.sent);
     } catch (error) {
-      // Restore the message if sending failed
+      // A completed old-brand operation must not restore a draft or announce
+      // an error in the newly mounted brand session.
+      if (!alive.current) return;
       setMessage(messageBody);
       const errorMessage =
         error instanceof Error ? error.message : "Failed to send message";
       toast.error(errorMessage);
     } finally {
-      setIsSending(false);
+      if (alive.current) setIsSending(false);
     }
   };
 

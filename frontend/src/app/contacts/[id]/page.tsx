@@ -29,7 +29,7 @@ export default function ConversationPage({ params }: PageProps) {
 
   // Set selected contact when loaded; redirect if not found
   useEffect(() => {
-    if (contact) {
+    if (workspaceId && contact && (!contact.workspace_id || contact.workspace_id === workspaceId)) {
       setSelectedContact(contact);
     } else if (!isLoadingContact && !contact) {
       router.push("/");
@@ -39,7 +39,11 @@ export default function ConversationPage({ params }: PageProps) {
   return (
     <AppSidebar>
       <div className="h-full overflow-hidden">
-        <ConversationLayout className="h-full" />
+        {contact &&
+        workspaceId &&
+        (!contact.workspace_id || contact.workspace_id === workspaceId) ? (
+          <ConversationLayout key={`${workspaceId}:${contactId}`} className="h-full" />
+        ) : null}
       </div>
     </AppSidebar>
   );
