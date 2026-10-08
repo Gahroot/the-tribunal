@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from app.api.deps import DB, CurrentUser
+from app.api.deps import DB, CurrentUser, get_workspace_admin
 from app.core.config import settings
 from app.core.encryption import decrypt_json, encrypt_json
 from app.models.workspace import WorkspaceIntegration, WorkspaceMembership
@@ -74,11 +74,15 @@ def _stripe_client() -> stripe.StripeClient:
     return stripe.StripeClient(settings.stripe_secret_key)
 
 
-async def _get_user_workspace_id(current_user: CurrentUser, db: DB) -> uuid.UUID:
-    """Resolve the user's default (or first) workspace ID.
+async def _get_user_workspace_id(current_user: CurrentUser, db: DB, request: Request) -> uuid.UUID:
+    """Resolve and authorize the same legacy workspace billing account.
 
     Several memberships can carry ``is_default``, so pick the oldest
     deterministically rather than failing with a 500 on multiple rows.
+    Selection is not authority: require owner/admin access on that exact
+    workspace, including its active state and API-key binding. Never fall back
+    to another account based on role. RF-031 must preserve this pairing when
+    explicit billing-account selection replaces the legacy default lookup.
     """
     result = await db.execute(
         select(WorkspaceMembership)
@@ -106,7 +110,8 @@ async def _get_user_workspace_id(current_user: CurrentUser, db: DB) -> uuid.UUID
             detail="No workspace found. Please create a workspace first.",
         )
 
-    return membership.workspace_id
+    workspace = await get_workspace_admin(request, membership.workspace_id, current_user, db)
+    return workspace.id
 
 
 async def _get_stripe_integration(workspace_id: uuid.UUID, db: DB) -> WorkspaceIntegration | None:
@@ -163,15 +168,16 @@ async def create_checkout(
     request: CheckoutRequest,
     current_user: CurrentUser,
     db: DB,
+    http_request: Request,
 ) -> CheckoutResponse:
     """Create a Stripe Checkout session for a new subscription."""
+    workspace_id = await _get_user_workspace_id(current_user, db, http_request)
     if not settings.stripe_secret_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Billing is not configured.",
         )
 
-    workspace_id = await _get_user_workspace_id(current_user, db)
     price_id = request.price_id or settings.stripe_price_id
 
     if not price_id:
@@ -226,15 +232,16 @@ async def create_checkout(
 async def create_portal(
     current_user: CurrentUser,
     db: DB,
+    request: Request,
 ) -> PortalResponse:
     """Create a Stripe Customer Portal session for subscription management."""
+    workspace_id = await _get_user_workspace_id(current_user, db, request)
     if not settings.stripe_secret_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Billing is not configured.",
         )
 
-    workspace_id = await _get_user_workspace_id(current_user, db)
     existing = await _get_stripe_integration(workspace_id, db)
     customer_id = _get_customer_id(existing)
 
@@ -275,6 +282,7 @@ async def create_portal(
 async def get_billing_status(
     current_user: CurrentUser,
     db: DB,
+    request: Request,
 ) -> BillingStatus:
     """Return the subscription status for the current workspace.
 
@@ -283,11 +291,11 @@ async def get_billing_status(
     failure is surfaced as a 502 rather than reported as "not subscribed",
     which would wrongly invite a paying customer to subscribe again.
     """
+    workspace_id = await _get_user_workspace_id(current_user, db, request)
     if not settings.stripe_secret_key:
         return BillingStatus(subscribed=False)
 
     checkout_available = bool(settings.stripe_price_id)
-    workspace_id = await _get_user_workspace_id(current_user, db)
     existing = await _get_stripe_integration(workspace_id, db)
     customer_id = _get_customer_id(existing)
 
