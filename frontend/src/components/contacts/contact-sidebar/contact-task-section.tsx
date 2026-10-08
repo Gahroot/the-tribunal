@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Calendar as CalendarIcon, Plus } from "lucide-react";
+import Link from "next/link";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 
@@ -44,7 +45,7 @@ export function ContactTaskSection({ workspaceId, contactId }: ContactTaskSectio
 
   // Default status filter (pending + sent) ordered by due date, so the first
   // item is the next open task.
-  const listParams = { contact_id: contactId, page: 1, page_size: 20 };
+  const listParams = { contact_id: contactId, status: "active" as const, page: 1, page_size: 1 };
   const { data, isPending } = useQuery({
     queryKey: queryKeys.nudges.list(workspaceId, listParams),
     queryFn: () => nudgesApi.list(workspaceId, listParams),
@@ -59,7 +60,8 @@ export function ContactTaskSection({ workspaceId, contactId }: ContactTaskSectio
   });
 
   const nextTask = data?.items[0];
-  const remainingCount = data ? Math.max(data.total - data.items.length, 0) : 0;
+  // Only one task is rendered, regardless of how many rows the API fetched.
+  const remainingCount = data ? Math.max(data.total - (nextTask ? 1 : 0), 0) : 0;
 
   const updateMutation = useMutation({
     mutationFn: (variables: { id: string; data: UpdateNudgeRequest }) =>
@@ -191,9 +193,12 @@ export function ContactTaskSection({ workspaceId, contactId }: ContactTaskSectio
             </Select>
           </div>
           {remainingCount > 0 ? (
-            <p className="text-xs text-muted-foreground">
+            <Link
+              href={`/nudges?contact_id=${contactId}&workspace_id=${encodeURIComponent(workspaceId)}`}
+              className="text-xs text-muted-foreground hover:underline"
+            >
               +{remainingCount} more open {remainingCount === 1 ? "task" : "tasks"}
-            </p>
+            </Link>
           ) : null}
         </div>
       ) : (
@@ -201,6 +206,7 @@ export function ContactTaskSection({ workspaceId, contactId }: ContactTaskSectio
       )}
 
       <CreateFollowupTaskDialog
+        key={`${workspaceId}:${contactId}`}
         workspaceId={workspaceId}
         contactId={contactId}
         open={createOpen}

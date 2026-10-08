@@ -1,15 +1,15 @@
 "use client";
 
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+
 import { Button } from "@/components/ui/button";
 import { PageErrorState } from "@/components/ui/page-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useWorkspaceId } from "@/hooks/useWorkspaceId";
 
 import { NudgeCard } from "./nudge-card";
-import {
-  STATUS_TABS,
-  activeNudgeCount,
-  countForFilter,
-} from "./nudge-presentation";
+import { STATUS_TABS, activeNudgeCount, countForFilter } from "./nudge-presentation";
 import { NudgeEmptyState, NudgeListSkeleton } from "./nudge-states";
 import { useNudgesController } from "./use-nudges-controller";
 
@@ -18,6 +18,30 @@ import { useNudgesController } from "./use-nudges-controller";
 export { NudgeCard };
 
 export function NudgesPage() {
+  const workspaceId = useWorkspaceId();
+  const search = useSearchParams();
+  const rawContactId = search.get("contact_id");
+  const contactId = rawContactId === null ? undefined : Number(rawContactId);
+  // A stale bookmark must never apply another brand's contact to this brand.
+  if (
+    rawContactId !== null &&
+    (!Number.isSafeInteger(contactId) ||
+      (contactId ?? 0) <= 0 ||
+      search.get("workspace_id") !== workspaceId)
+  ) {
+    return (
+      <div className="p-6">
+        <p>This contact backlog is not available in the current brand.</p>
+        <Link href="/nudges" className="text-sm underline">
+          Open this brand&apos;s Inbox
+        </Link>
+      </div>
+    );
+  }
+  return <NudgesList key={`${workspaceId}:${contactId ?? "all"}`} contactId={contactId} />;
+}
+
+function NudgesList({ contactId }: { contactId?: number }) {
   const {
     stats,
     nudgeList,
@@ -34,11 +58,16 @@ export function NudgesPage() {
     snooze,
     isActing,
     isDismissing,
-  } = useNudgesController();
+  } = useNudgesController(contactId);
 
-  const openCount = activeNudgeCount(stats);
+  const openCount =
+    contactId === undefined
+      ? activeNudgeCount(stats)
+      : statusFilter === "active"
+        ? (nudgeList?.total ?? 0)
+        : 0;
   // Only claim the workspace is truly empty once stats confirm it.
-  const hasAnyNudges = stats ? stats.total > 0 : undefined;
+  const hasAnyNudges = contactId === undefined && stats ? stats.total > 0 : undefined;
 
   return (
     <div className="h-full overflow-y-auto">
@@ -48,19 +77,21 @@ export function NudgesPage() {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Inbox</h1>
             <p className="text-sm text-muted-foreground">
-              Relationship reminders and follow-up prompts
+              {contactId === undefined
+                ? "Relationship reminders and follow-up prompts"
+                : `Tasks for contact #${contactId}`}
             </p>
+            {contactId !== undefined && (
+              <Link href={`/contacts/${contactId}`} className="text-sm underline">
+                Back to contact
+              </Link>
+            )}
           </div>
           {openCount > 0 && (
             <div className="flex items-center gap-2 rounded-full border bg-muted px-3 py-1">
-              <span
-                aria-hidden
-                className="size-2 rounded-full bg-warning"
-              />
+              <span aria-hidden className="size-2 rounded-full bg-warning" />
               <span className="text-sm font-medium text-muted-foreground">
-                {openCount === 1
-                  ? "1 nudge needs attention"
-                  : `${openCount} nudges need attention`}
+                {openCount === 1 ? "1 nudge needs attention" : `${openCount} nudges need attention`}
               </span>
             </div>
           )}
@@ -73,7 +104,7 @@ export function NudgesPage() {
         >
           <TabsList>
             {STATUS_TABS.map((tab) => {
-              const count = countForFilter(stats, tab.value);
+              const count = contactId === undefined ? countForFilter(stats, tab.value) : 0;
               return (
                 <TabsTrigger key={tab.value} value={tab.value}>
                   {tab.label}

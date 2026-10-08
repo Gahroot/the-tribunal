@@ -7,6 +7,8 @@ import { ContactStoreContext, createContactStore } from "@/lib/contact-store";
 
 /** Workspace is the persisted brand container, not an organization (ORG-001). */
 export function brandSwitchDestination(pathname: string, search: string): string {
+  // RF-027: contact backlog links are brand-owned, like contact detail routes.
+  if (pathname === "/nudges" && new URLSearchParams(search).has("contact_id")) return "/nudges";
   if (pathname.startsWith("/contacts/") || pathname === "/contacts") return "/contacts";
   if (pathname === "/conversations" || pathname.startsWith("/conversations/"))
     return "/conversations";
@@ -50,7 +52,9 @@ export function BrandSwitchBoundary({
   // new-brand fetch using the old route while Next's replace is outstanding.
   if (previousId !== workspaceId) {
     setPreviousId(workspaceId);
-    setDestination(switchDestination ?? (previousId ? brandSwitchDestination(pathname, search) : null));
+    setDestination(
+      switchDestination ?? (previousId ? brandSwitchDestination(pathname, search) : null),
+    );
   }
 
   if (destination && destination === location) setDestination(null);

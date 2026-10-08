@@ -259,6 +259,21 @@ describe("RF-029 brand sessions", () => {
     expect(screen.queryByLabelText("Draft")).not.toBeInTheDocument();
   });
 
+  it("clears contact backlog URL context before rendering the new brand", async () => {
+    mocks.pathname = "/nudges";
+    mocks.search = "contact_id=7&workspace_id=A";
+    const { user, refresh } = setup();
+    await screen.findByTestId("sidebar");
+    await user.click(screen.getByText("Brand B"));
+    expect(mocks.replace).toHaveBeenCalledWith("/nudges", { scroll: false });
+    expect(screen.queryByTestId("sidebar")).not.toBeInTheDocument();
+    expect(mocks.getContact).not.toHaveBeenCalledWith("B", 7);
+    mocks.search = "";
+    refresh();
+    await waitFor(() => expect(screen.getByTestId("brand")).toHaveTextContent("B"));
+    expect(brandSwitchDestination("/nudges", "contact_id=7&workspace_id=A")).toBe("/nudges");
+  });
+
   it("hides the old contact route until replace finishes, without fetching B for the old id", async () => {
     mocks.pathname = "/contacts/7";
     mocks.search = "contact=7&filters=private";

@@ -206,6 +206,39 @@ def _status_where_sql(mock_paginate: AsyncMock) -> str:
 class TestListNudgesScope:
     """The working list is unresolved work: delivery (sent) is not completion."""
 
+    @pytest.mark.parametrize("total", [0, 1, 2, 5, 25])
+    async def test_contact_next_task_keeps_scoped_total_on_a_single_row_page(
+        self, client: AsyncClient, total: int
+    ) -> None:
+        """Seeded ASGI fixture: totals count open contact work, not page rows."""
+        task = _make_mock_nudge(nudge_type="follow_up")
+        task.assigned_to_user_id = 7
+        page = PaginationResult(
+            items=[task] if total else [], total=total, page=1, page_size=1,
+            pages=max(1, total),
+        )
+        with patch("app.api.v1.nudges.paginate", new_callable=AsyncMock) as paginate:
+            paginate.return_value = page
+            response = await client.get(
+                f"/api/v1/workspaces/{WS_ID}/nudges"
+                "?contact_id=1&status=active&page=1&page_size=1"
+            )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total"] == total
+        assert body["page_size"] == 1
+        assert len(body["items"]) == min(1, total)
+        where = _status_where_sql(paginate)
+        assert str(WS_ID) in where
+        assert "human_nudges.contact_id = 1" in where
+        assert "human_nudges.status IN ('pending', 'sent')" in where
+        assert paginate.await_args.kwargs == {"page": 1, "page_size": 1, "unique": True}
+        if total:
+            assert body["items"][0]["assigned_to_user_id"] == 7
+            assert datetime.fromisoformat(body["items"][0]["due_date"]) == task.due_date
+
+
     @pytest.mark.parametrize("query_string", ["", "?status=active"])
     async def test_default_and_active_scope_include_pending_and_sent(
         self, client: AsyncClient, query_string: str

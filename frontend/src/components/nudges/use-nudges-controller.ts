@@ -13,7 +13,7 @@ import type { NudgeListFilter } from "@/types/nudge";
 
 import { DEFAULT_NUDGE_FILTER, PAGE_SIZE } from "./nudge-presentation";
 
-export function useNudgesController() {
+export function useNudgesController(contactId?: number) {
   const workspaceId = useWorkspaceId();
   const queryClient = useQueryClient();
   // Default to unresolved work (pending + sent) so delivered nudges that still
@@ -27,7 +27,7 @@ export function useNudgesController() {
       if (!workspaceId) throw new Error("No workspace");
       return nudgesApi.getStats(workspaceId);
     },
-    enabled: !!workspaceId,
+    enabled: !!workspaceId && contactId === undefined,
   });
 
   const {
@@ -38,12 +38,15 @@ export function useNudgesController() {
   } = useQuery({
     queryKey: queryKeys.nudges.list(workspaceId ?? "", {
       status: statusFilter,
+      contact_id: contactId,
       page,
+      page_size: PAGE_SIZE,
     }),
     queryFn: () => {
       if (!workspaceId) throw new Error("No workspace");
       return nudgesApi.list(workspaceId, {
         status: statusFilter,
+        contact_id: contactId,
         page,
         page_size: PAGE_SIZE,
       });
@@ -62,20 +65,12 @@ export function useNudgesController() {
   };
 
   const actMutation = useMutation({
-    mutationFn: ({
-      nudgeId,
-      actionTaken,
-    }: {
-      nudgeId: string;
-      actionTaken?: string;
-    }) => {
+    mutationFn: ({ nudgeId, actionTaken }: { nudgeId: string; actionTaken?: string }) => {
       if (!workspaceId) throw new Error("No workspace");
       return nudgesApi.act(workspaceId, nudgeId, actionTaken);
     },
     onSuccess: (_data, variables) => {
-      toast.success(
-        variables.actionTaken === "send_card" ? "Card sent!" : "Marked as done",
-      );
+      toast.success(variables.actionTaken === "send_card" ? "Card sent!" : "Marked as done");
       invalidateNudges();
     },
     onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed")),
@@ -90,18 +85,11 @@ export function useNudgesController() {
       toast.success("Dismissed");
       invalidateNudges();
     },
-    onError: (err: unknown) =>
-      toast.error(getApiErrorMessage(err, "Failed to dismiss")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to dismiss")),
   });
 
   const snoozeMutation = useMutation({
-    mutationFn: ({
-      nudgeId,
-      snoozeUntil,
-    }: {
-      nudgeId: string;
-      snoozeUntil: string;
-    }) => {
+    mutationFn: ({ nudgeId, snoozeUntil }: { nudgeId: string; snoozeUntil: string }) => {
       if (!workspaceId) throw new Error("No workspace");
       return nudgesApi.snooze(workspaceId, nudgeId, snoozeUntil);
     },
@@ -109,8 +97,7 @@ export function useNudgesController() {
       toast.success(`Snoozed until ${formatDayMonth(variables.snoozeUntil)}`);
       invalidateNudges();
     },
-    onError: (err: unknown) =>
-      toast.error(getApiErrorMessage(err, "Failed to snooze")),
+    onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to snooze")),
   });
 
   const totalPages = nudgeList ? Math.ceil(nudgeList.total / PAGE_SIZE) : 0;
@@ -140,8 +127,7 @@ export function useNudgesController() {
     page,
     setPage,
     totalPages,
-    act: (nudgeId: string, actionTaken?: string) =>
-      actMutation.mutate({ nudgeId, actionTaken }),
+    act: (nudgeId: string, actionTaken?: string) => actMutation.mutate({ nudgeId, actionTaken }),
     dismiss: (nudgeId: string) => dismissMutation.mutate(nudgeId),
     snooze: (nudgeId: string, date: Date) =>
       snoozeMutation.mutate({ nudgeId, snoozeUntil: date.toISOString() }),
