@@ -44,12 +44,16 @@ export async function register(data: RegisterData): Promise<User> {
 /**
  * Fetch the signed-in user. With `optional: true` a missing/expired session
  * rejects quietly instead of redirecting to /login (used on public pages that
- * merely want to recognize a signed-in visitor).
+ * merely want to recognize a signed-in visitor). `skipAuthRedirect` also lets
+ * the protected-route provider own recovery and final signed-out navigation.
  */
-export async function getCurrentUser(options?: { optional?: boolean }): Promise<User> {
+export async function getCurrentUser(options?: {
+  optional?: boolean;
+  skipAuthRedirect?: boolean;
+}): Promise<User> {
   return apiGet<User>(
     "/api/v1/auth/me",
-    options?.optional ? { skipAuthRedirect: true } : undefined
+    options?.optional || options?.skipAuthRedirect ? { skipAuthRedirect: true } : undefined
   );
 }
 

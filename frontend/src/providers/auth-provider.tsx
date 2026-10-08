@@ -11,7 +11,8 @@ import {
   type ReactNode,
 } from "react";
 
-import { api } from "@/lib/api";
+import { PageErrorState, PageLoadingState } from "@/components/ui/page-state";
+import { api, isUnauthorizedError } from "@/lib/api";
 import { getCurrentUser, login as loginApi, type User, type LoginCredentials } from "@/lib/api/auth";
 import { RETURN_TO_PARAM, buildLoginHref, getSafeReturnTo } from "@/lib/auth/return-to";
 
@@ -53,12 +54,16 @@ function currentReturnTo(): string | null {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSessionUnavailable, setIsSessionUnavailable] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
   const isAuthenticated = user !== null;
 
   const fetchUser = useCallback(async () => {
+    setIsLoading(true);
+    setIsSessionUnavailable(false);
+    setUser(null);
     // Invitation pages are public but must recognize a signed-in visitor so
     // they can offer "Accept" directly. Probe quietly: a signed-out visitor
     // just stays signed out instead of being bounced to /login.
@@ -88,10 +93,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // probe /auth/me; if the cookie is missing or expired the response
     // interceptor will attempt a refresh, and a final 401 means signed-out.
     try {
-      const userData = await getCurrentUser();
+      const userData = await getCurrentUser({ skipAuthRedirect: true });
       setUser(userData);
-    } catch {
+    } catch (error) {
       setUser(null);
+      setIsSessionUnavailable(!isUnauthorizedError(error));
     } finally {
       setIsLoading(false);
     }
@@ -106,7 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchUser]);
 
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || isSessionUnavailable) return;
 
     const isPublicPath = isPublicPathname(pathname);
 
@@ -118,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // invitation returns there instead of landing on the dashboard.
       router.replace(currentReturnTo() ?? "/");
     }
-  }, [isAuthenticated, isLoading, pathname, router]);
+  }, [isAuthenticated, isLoading, isSessionUnavailable, pathname, router]);
 
   const login = useCallback(async (
     credentials: LoginCredentials,
@@ -130,6 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await loginApi(credentials);
     const userData = await getCurrentUser();
     setUser(userData);
+    setIsSessionUnavailable(false);
     router.replace(getSafeReturnTo(options?.redirectTo) ?? "/");
   }, [router]);
 
@@ -137,6 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Backend clears both auth cookies.
     api.post("/api/v1/auth/logout").catch(() => {});
     setUser(null);
+    setIsSessionUnavailable(false);
     router.replace(buildLoginHref(options?.redirectTo));
   }, [router]);
 
@@ -152,7 +160,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user, isLoading, isAuthenticated, login, logout]
   );
 
-  return <AuthContext value={value}>{children}</AuthContext>;
+  // Do not mount protected consumers (including query-cache readers) until
+  // authorization succeeds. Public pages remain usable without a session.
+  let content = children;
+  if (!isPublicPathname(pathname)) {
+    if (isLoading || !isAuthenticated) {
+      content = isSessionUnavailable && !isLoading ? (
+        <PageErrorState
+          className="min-h-screen"
+          role="alert"
+          message="Service temporarily unavailable. We couldn't check your session. Check your connection and try again."
+          onRetry={() => { void fetchUser(); }}
+          retryLabel="Retry session check"
+        />
+      ) : (
+        <PageLoadingState className="min-h-screen" role="status" message="Checking your session…" />
+      );
+    }
+  }
+
+  return <AuthContext value={value}>{content}</AuthContext>;
 }
 
 export function useAuth() {

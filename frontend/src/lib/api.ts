@@ -2,6 +2,11 @@ import axios, { type AxiosRequestConfig } from "axios";
 
 import { getBackendUrl } from "@/lib/utils/backend-url";
 
+/** Only a final unauthorized response confirms that a session is unusable. */
+export function isUnauthorizedError(error: unknown): boolean {
+  return axios.isAxiosError(error) && error.response?.status === 401;
+}
+
 declare module "axios" {
   interface AxiosRequestConfig {
     /**
@@ -61,7 +66,7 @@ let failedQueue: Array<{
   reject: (reason?: unknown) => void;
 }> = [];
 
-const processQueue = (error: Error | null = null) => {
+const processQueue = (error: unknown = null) => {
   failedQueue.forEach((promise) => {
     if (error) {
       promise.reject(error);
@@ -83,7 +88,8 @@ api.interceptors.response.use(
     const isRefreshCall = requestUrl.includes("/api/v1/auth/refresh");
 
     // If 401 and we haven't tried to refresh yet
-    if (error.response?.status === 401 && !originalRequest._retry && !isRefreshCall) {
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isRefreshCall) {
+      originalRequest._retry = true;
       if (isRefreshing) {
         // If already refreshing, queue this request
         return new Promise((resolve, reject) => {
@@ -97,7 +103,6 @@ api.interceptors.response.use(
           });
       }
 
-      originalRequest._retry = true;
       isRefreshing = true;
 
       try {
@@ -112,14 +117,11 @@ api.interceptors.response.use(
         // Retry original request — the browser will attach the new access cookie.
         return api(originalRequest);
       } catch (refreshError) {
-        // Refresh failed — most common cause is an unauthenticated visit
-        // (no refresh cookie present), e.g. first paint of /login while the
-        // AuthProvider probes /auth/me. Drain the queue, redirect, and emit
-        // a debug-level log so we don't trip the Next.js dev error overlay
-        // (it promotes console.error to a visible overlay).
-        processQueue(error);
+        // A network/service failure does not prove the refresh cookie expired.
+        // Preserve it and propagate the actual refresh error to every caller.
+        processQueue(refreshError);
         isRefreshing = false;
-        if (!originalRequest?.skipAuthRedirect) {
+        if (isUnauthorizedError(refreshError) && !originalRequest?.skipAuthRedirect) {
           if (process.env.NODE_ENV !== "production") {
             console.warn("[auth] token refresh failed — redirecting to /login");
           }

@@ -1,10 +1,13 @@
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { AxiosError } from "axios";
 import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LoginClient } from "@/app/login/login-client";
 import type { User } from "@/lib/api/auth";
+import { queryKeys } from "@/lib/query-keys";
 import { AuthProvider, useAuth } from "@/providers/auth-provider";
 
 const { getCurrentUserMock, loginApiMock, registerApiMock, pathnameRef, mockRouter } = vi.hoisted(() => ({
@@ -30,6 +33,7 @@ vi.mock("@/lib/api/auth", () => ({
 
 vi.mock("@/lib/api", () => ({
   api: { post: vi.fn(() => Promise.resolve({})) },
+  isUnauthorizedError: (error: unknown) => error instanceof AxiosError && error.response?.status === 401,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -90,6 +94,79 @@ beforeEach(() => {
 
 afterEach(() => {
   visit("/");
+});
+
+describe("Protected session recovery (RF-004)", () => {
+  it("mounts protected content only after a successful probe", async () => {
+    visit("/today");
+    let complete!: (user: User) => void;
+    getCurrentUserMock.mockReturnValue(new Promise<User>((resolve) => { complete = resolve; }));
+    renderProvider();
+    expect(screen.queryByTestId("user")).not.toBeInTheDocument();
+    await waitFor(() => expect(getCurrentUserMock).toHaveBeenCalledWith({ skipAuthRedirect: true }));
+    await act(async () => complete(USER));
+    expect(await screen.findByTestId("user")).toHaveTextContent(USER.email);
+    expect(router().replace).not.toHaveBeenCalled();
+  });
+
+  it("immediately unmounts protected content on explicit sign-out", async () => {
+    visit("/today");
+    getCurrentUserMock.mockResolvedValue(USER);
+    renderProvider();
+    expect(await screen.findByTestId("user")).toHaveTextContent(USER.email);
+    act(() => auth!.logout());
+    expect(screen.queryByTestId("user")).not.toBeInTheDocument();
+    expect(router().replace).toHaveBeenCalledWith("/login");
+  });
+
+  it("does not render cached protected data while session verification fails", async () => {
+    visit("/today");
+    const client = new QueryClient();
+    const queryKey = queryKeys.contacts.all("fixture-workspace");
+    client.setQueryData(queryKey, "Cached customer data");
+    const read = vi.fn();
+    function CachedContent() {
+      read();
+      const { data } = useQuery({ queryKey, enabled: false });
+      return <div>{String(data)}</div>;
+    }
+    getCurrentUserMock.mockRejectedValue(new TypeError("Network failure"));
+    render(<QueryClientProvider client={client}><AuthProvider><CachedContent /></AuthProvider></QueryClientProvider>);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Service temporarily unavailable");
+    expect(screen.queryByText("Cached customer data")).not.toBeInTheDocument();
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("redirects a confirmed final 401 without mounting protected content", async () => {
+    visit("/today");
+    getCurrentUserMock.mockRejectedValue(new AxiosError("Expired", undefined, undefined, undefined, {
+      status: 401, data: {}, headers: {}, statusText: "Unauthorized", config: {} as never,
+    }));
+    renderProvider();
+    await waitFor(() => expect(router().replace).toHaveBeenCalledWith("/login"));
+    expect(screen.queryByTestId("user")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it.each([new TypeError("Failed to fetch"), new AxiosError("Unavailable", undefined, undefined, undefined, {
+    status: 503, data: {}, headers: {}, statusText: "Unavailable", config: {} as never,
+  })])("blocks protected content and recovers on explicit retry: %s", async (error) => {
+    visit("/today");
+    let complete!: (user: User) => void;
+    getCurrentUserMock.mockRejectedValueOnce(error).mockImplementationOnce(() => new Promise<User>((resolve) => { complete = resolve; }));
+    renderProvider();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Service temporarily unavailable");
+    expect(screen.queryByTestId("user")).not.toBeInTheDocument();
+    expect(router().replace).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Retry session check" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Checking your session");
+    expect(screen.queryByTestId("user")).not.toBeInTheDocument();
+    await act(async () => complete(USER));
+    expect(await screen.findByTestId("user")).toHaveTextContent(USER.email);
+    expect(getCurrentUserMock).toHaveBeenCalledTimes(2);
+    expect(loginApiMock).not.toHaveBeenCalled();
+    expect(router().replace).not.toHaveBeenCalled();
+  });
 });
 
 describe("AuthProvider on invitation pages (RF-003)", () => {

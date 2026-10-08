@@ -27,6 +27,9 @@ test.describe("Authentication", () => {
   });
 
   test("invalid credentials surface an inline error", async ({ page }) => {
+    await page.route("**/api/v1/**", (route) => route.fulfill({
+      status: 401, contentType: "application/json", body: JSON.stringify({ detail: "Invalid credentials" }),
+    }));
     await page.goto("/login");
     await page.getByLabel(/email/i).fill(`nobody-${uniqueSuffix()}@example.com`);
     await page.getByLabel(/password/i).fill("definitely-wrong-password");
@@ -98,6 +101,56 @@ test.describe("Authentication", () => {
     expect(accepted).toBe(true);
     expect(writes.filter((path) => path.endsWith("/accept"))).toEqual([`/api/v1/invitations/${token}/accept`]);
     await expect.poll(() => page.evaluate(() => localStorage.getItem("current_workspace_id"))).toBe(workspaceId);
+  });
+
+  for (const failure of ["network", "service", "refresh-service"] as const) {
+    test(`RF-004: ${failure} failure blocks protected access and retries without login`, async ({ page }) => {
+      let recovered = false;
+      let probes = 0;
+      const calls: string[] = [];
+      await page.route("**/api/v1/**", async (route) => {
+        const path = new URL(route.request().url()).pathname;
+        calls.push(path);
+        const json = (body: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+        if (path === "/api/v1/auth/me") {
+          probes++;
+          if (!recovered) {
+            if (failure === "network") return route.abort("failed");
+            return json({ detail: "Unavailable" }, failure === "refresh-service" ? 401 : 503);
+          }
+          return json({ id: 704, email: "rf004@example.com", full_name: "Fixture Operator", is_active: true, default_workspace_id: null });
+        }
+        if (path === "/api/v1/auth/refresh") return json({ detail: "Unavailable" }, 503);
+        if (path === "/api/v1/workspaces") return json([]);
+        return json({});
+      });
+      await page.goto("/onboarding");
+      await expect(page.getByRole("alert").filter({ hasText: "Service temporarily unavailable" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Finish setup", exact: true })).toHaveCount(0);
+      expect(calls.every((path) => path === "/api/v1/auth/me" || path === "/api/v1/auth/refresh")).toBe(true);
+      await expect(page).toHaveURL(/\/onboarding$/);
+      recovered = true;
+      // Exercise the retry with the keyboard as well as asserting its outcome.
+      await page.getByRole("button", { name: "Retry session check" }).focus();
+      await page.keyboard.press("Enter");
+      await expect(page.getByRole("heading", { name: "Finish setup", exact: true })).toBeAttached();
+      await expect(page).toHaveURL(/\/onboarding$/);
+      expect(probes).toBe(2);
+      expect(calls).not.toContain("/api/v1/auth/logout");
+      expect(calls).not.toContain("/api/v1/auth/login");
+    });
+  }
+
+  test("RF-004: missing refresh session redirects to login", async ({ page }) => {
+    const calls: string[] = [];
+    await page.route("**/api/v1/**", (route) => {
+      calls.push(new URL(route.request().url()).pathname);
+      return route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ detail: "Session expired" }) });
+    });
+    await page.goto("/onboarding");
+    await expect(page).toHaveURL(/\/login$/);
+    await expect(page.getByText("Welcome back", { exact: true })).toBeVisible();
+    expect(calls).toEqual(["/api/v1/auth/me", "/api/v1/auth/refresh"]);
   });
 
   test("seeded user can log in and reach an authenticated page", async ({

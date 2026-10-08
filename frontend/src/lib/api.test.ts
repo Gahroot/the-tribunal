@@ -3,6 +3,7 @@ import { AxiosHeaders } from "axios";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api, apiGet, logout } from "@/lib/api";
+import { getCurrentUser } from "@/lib/api/auth";
 
 // --- Test helpers --------------------------------------------------------
 
@@ -102,6 +103,19 @@ describe("api response interceptor", () => {
       "POST /api/v1/auth/refresh",
       "GET /api/v1/health",
     ]);
+  });
+
+  it("restores an expired access-cookie probe using the refresh cookie", async () => {
+    let probes = 0;
+    const user = { id: 704, email: "fixture@example.com" };
+    installAdapter((config) => {
+      expect(config.withCredentials).toBe(true);
+      if (config.url === "/api/v1/auth/refresh") return makeResponse(config, 200);
+      if (++probes === 1) throw makeAxiosError(config, 401);
+      return makeResponse(config, 200, user);
+    });
+    await expect(getCurrentUser({ skipAuthRedirect: true })).resolves.toEqual(user);
+    expect(probes).toBe(2);
   });
 
   it("queues concurrent 401s while a refresh is in flight, then drains them", async () => {
@@ -214,6 +228,43 @@ describe("api response interceptor", () => {
     expect(calls.some((c) => c.includes("/api/v1/auth/refresh"))).toBe(true);
     expect(calls.some((c) => c.includes("/api/v1/auth/logout"))).toBe(false);
     expect(hrefSetter).not.toHaveBeenCalled();
+  });
+
+  it.each(["network", 503] as const)("preserves cookies and propagates refresh failure to queued probes: %s", async (failure) => {
+    const calls: string[] = [];
+    let failRefresh!: (error: unknown) => void;
+    let refreshError: Error;
+    const refresh = new Promise<AxiosResponse>((_resolve, reject) => { failRefresh = reject; });
+    installAdapter((config) => {
+      calls.push(config.url ?? "");
+      if (config.url === "/api/v1/auth/refresh") {
+        refreshError = failure === "network" ? new TypeError("Network failure") : makeAxiosError(config, failure);
+        return refresh;
+      }
+      throw makeAxiosError(config, 401);
+    });
+    // Ordinary requests must not log out on temporary refresh failures either.
+    const first = apiGet("/api/v1/protected");
+    const second = getCurrentUser({ optional: true });
+    const results = Promise.allSettled([first, second]);
+    await vi.waitFor(() => expect(calls.filter((url) => url.endsWith("/refresh"))).toHaveLength(1));
+    failRefresh(refreshError!);
+    expect(await results).toEqual([
+      { status: "rejected", reason: refreshError! },
+      { status: "rejected", reason: refreshError! },
+    ]);
+    expect(calls).not.toContain("/api/v1/auth/logout");
+  });
+
+  it("returns a final 401 after a successful refresh without looping", async () => {
+    const calls: string[] = [];
+    installAdapter((config) => {
+      calls.push(config.url ?? "");
+      if (config.url === "/api/v1/auth/refresh") return makeResponse(config, 200);
+      throw makeAxiosError(config, 401);
+    });
+    await expect(getCurrentUser({ skipAuthRedirect: true })).rejects.toMatchObject({ response: { status: 401 } });
+    expect(calls).toEqual(["/api/v1/auth/me", "/api/v1/auth/refresh", "/api/v1/auth/me"]);
   });
 
   it("does not attempt to refresh when the refresh endpoint itself returns 401", async () => {
