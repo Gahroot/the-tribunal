@@ -92,6 +92,12 @@ export function ScheduleStep({
         </div>
       </div>
 
+      <p className="text-sm text-muted-foreground">
+        Start and end dates use your device timezone ({Intl.DateTimeFormat().resolvedOptions().timeZone}).
+        Starting or resuming a campaign will not send before its start date.
+        Sending days and hours still apply.
+      </p>
+
       <Separator />
 
       <div className="space-y-4">

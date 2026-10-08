@@ -181,7 +181,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
       return campaignsApi.start(workspaceId, campaignId);
     },
     onSuccess: (result) => {
-      toast.success("Campaign started!", { description: result.message });
+      toast.success("Campaign launch accepted", { description: result.message });
       invalidateCampaign();
     },
     onError: (err: unknown) => {
@@ -221,7 +221,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
       return campaignsApi.resume(workspaceId, campaignId);
     },
     onSuccess: (result) => {
-      toast.success("Campaign resumed!", { description: result.message });
+      toast.success("Campaign resume accepted", { description: result.message });
       invalidateCampaign();
     },
     onError: (err: unknown) => {
@@ -282,7 +282,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-2">
               <h1 className="text-2xl font-bold">{campaign.name}</h1>
-              <CampaignStatusBadge status={campaign.status} />
+              <CampaignStatusBadge status={campaign.status} schedule={campaign} />
             </div>
             <p className="text-sm text-muted-foreground">
               Created {formatDate(campaign.created_at)}

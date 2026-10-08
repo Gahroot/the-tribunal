@@ -13,6 +13,7 @@ from app.services.campaigns.recipient_eligibility import (
     RecipientEligibility,
     RecipientEligibilityService,
 )
+from app.services.campaigns.sending_window import as_utc, has_scheduled_start_arrived
 
 
 class CampaignLifecycleError(Exception):
@@ -142,6 +143,14 @@ async def start_campaign(
         )
         message = _eligibility_message("Campaign started", eligibility)
 
+    if not has_scheduled_start_arrived(campaign):
+        assert campaign.scheduled_start is not None
+        message = (
+            f"Campaign scheduled; no sends before {as_utc(campaign.scheduled_start).isoformat()}. "
+            "Sending days/hours and recipient safeguards still apply. "
+            + message.replace("Campaign started", "Campaign armed")
+        )
+
     campaign.status = CampaignStatus.RUNNING
     campaign.started_at = datetime.now(UTC)
     if campaign.guarantee_target and campaign.guarantee_target > 0:
@@ -192,6 +201,14 @@ async def resume_campaign(
             db, campaign, eligibility_service, require_eligible=False
         )
         message = _eligibility_message("Campaign resumed", eligibility)
+
+    if not has_scheduled_start_arrived(campaign):
+        assert campaign.scheduled_start is not None
+        message = (
+            f"Campaign scheduled; no sends before {as_utc(campaign.scheduled_start).isoformat()}. "
+            "Sending days/hours and recipient safeguards still apply. "
+            + message.replace("Campaign resumed", "Campaign armed")
+        )
 
     campaign.status = CampaignStatus.RUNNING
     return CampaignLifecycleResult(

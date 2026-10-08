@@ -54,8 +54,12 @@ export function mapScheduleToRequest(
   data: ScheduleFields,
 ): ScheduleRequestFields {
   return {
-    scheduled_start: data.scheduled_start || undefined,
-    scheduled_end: data.scheduled_end || undefined,
+    scheduled_start: data.scheduled_start
+      ? new Date(data.scheduled_start).toISOString()
+      : undefined,
+    scheduled_end: data.scheduled_end
+      ? new Date(data.scheduled_end).toISOString()
+      : undefined,
     sending_hours_start: data.sending_hours_enabled
       ? data.sending_hours_start
       : "00:00",

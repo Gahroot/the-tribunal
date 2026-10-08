@@ -46,6 +46,7 @@ def _make_campaign(status: CampaignStatus = CampaignStatus.DRAFT) -> MagicMock:
     campaign.sms_fallbacks_sent = 0
     campaign.guarantee_target = None
     campaign.guarantee_status = None
+    campaign.scheduled_start = None
     campaign.started_at = None
     campaign.completed_at = None
     return campaign

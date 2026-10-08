@@ -23,7 +23,11 @@ from app.models.campaign import (
     CampaignType,
 )
 from app.services.ai.campaign_report_service import CampaignReportService
-from app.services.campaigns.sending_window import is_within_sending_window
+from app.services.campaigns.sending_window import (
+    as_utc,
+    has_scheduled_start_arrived,
+    is_within_sending_window,
+)
 from app.workers.base import BaseWorker
 from app.workers.retryable import RetryableWorker
 
@@ -105,7 +109,8 @@ class BaseCampaignWorker(RetryableWorker, BaseWorker):
             campaign_name=campaign.name,
         )
 
-        if campaign.scheduled_end and datetime.now(UTC) > campaign.scheduled_end:
+        now = datetime.now(UTC)
+        if campaign.scheduled_end and now > as_utc(campaign.scheduled_end):
             log.info("Campaign scheduled end reached, completing")
             campaign.status = CampaignStatus.COMPLETED
             campaign.completed_at = datetime.now(UTC)
@@ -113,7 +118,14 @@ class BaseCampaignWorker(RetryableWorker, BaseWorker):
             await db.commit()
             return
 
-        if not self._is_within_sending_hours(campaign):
+        if not has_scheduled_start_arrived(campaign, now):
+            log.debug(
+                "Campaign waiting for scheduled start",
+                scheduled_start=str(campaign.scheduled_start),
+            )
+            return
+
+        if not self._is_within_sending_hours(campaign, now):
             log.debug("Outside sending hours")
             return
 

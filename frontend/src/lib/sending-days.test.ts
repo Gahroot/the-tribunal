@@ -56,6 +56,18 @@ describe("sending_days encoding", () => {
     expect(WEEKDAY_SENDING_DAYS).toEqual([0, 1, 2, 3, 4]);
   });
 
+  it("serializes local date inputs as explicit instants for both campaign channels", () => {
+    const value = "2026-10-09T09:00";
+    const request = mapScheduleToRequest({
+      ...initialScheduleFields,
+      scheduled_start: value,
+      scheduled_end: value,
+    });
+    expect(request.scheduled_start).toBe(new Date(value).toISOString());
+    expect(request.scheduled_end).toBe(new Date(value).toISOString());
+    expect(request.scheduled_start).toMatch(/Z$/);
+  });
+
   it("summarises weekend and single-day schedules in Monday-first order", () => {
     expect(formatSendingDays([6, 5])).toBe("Sat, Sun");
     expect(formatSendingDays([2])).toBe("Wed");

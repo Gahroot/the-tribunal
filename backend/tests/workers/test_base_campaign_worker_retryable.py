@@ -113,6 +113,7 @@ WEEK_OF_MONDAY = date(2026, 10, 5)
 
 def _schedule(days: list[int] | None, tz: str = "America/New_York") -> SimpleNamespace:
     return SimpleNamespace(
+        scheduled_start=None,
         sending_days=days,
         sending_hours_start=time(0, 0),
         sending_hours_end=time(23, 59),

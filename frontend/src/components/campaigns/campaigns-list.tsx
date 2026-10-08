@@ -106,9 +106,9 @@ export function CampaignsList() {
       if (!workspaceId) throw new Error("Workspace not loaded");
       return campaignsApi.start(workspaceId, id);
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.campaigns.all(workspaceId ?? "") });
-      toast.success("Campaign started");
+      toast.success("Campaign launch accepted", { description: result.message });
     },
     onError: (err: unknown) => toast.error(getApiErrorMessage(err, "Failed to start campaign")),
   });
@@ -352,7 +352,7 @@ export function CampaignsList() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <CampaignStatusBadge status={campaign.status} />
+                        <CampaignStatusBadge status={campaign.status} schedule={campaign} />
                       </TableCell>
                       <TableCell>
                         <div className="space-y-1">

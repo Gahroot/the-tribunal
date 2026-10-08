@@ -1,7 +1,8 @@
 import { Badge } from "@/components/ui/badge";
+import { futureCampaignStart } from "@/lib/campaign-schedule";
 import { campaignStatusDotColors } from "@/lib/status-colors";
 import { cn } from "@/lib/utils";
-import type { CampaignStatus } from "@/types";
+import type { Campaign, CampaignStatus } from "@/types";
 
 const statusLabels: Record<CampaignStatus, string> = {
   draft: "Draft",
@@ -18,18 +19,25 @@ const statusLabels: Record<CampaignStatus, string> = {
  */
 export function CampaignStatusBadge({
   status,
+  schedule,
   className,
 }: {
   status: CampaignStatus;
+  schedule?: Campaign;
   className?: string;
 }) {
+  const start = schedule ? futureCampaignStart(schedule) : null;
+  const displayStatus = start ? "scheduled" : status;
   return (
-    <Badge variant="outline" className={cn("gap-1.5", className)}>
-      <span
-        aria-hidden="true"
-        className={cn("size-1.5 shrink-0 rounded-full", campaignStatusDotColors[status])}
-      />
-      {statusLabels[status]}
-    </Badge>
+    <span className="inline-flex flex-col items-start gap-1">
+      <Badge variant="outline" className={cn("gap-1.5", className)}>
+        <span
+          aria-hidden="true"
+          className={cn("size-1.5 shrink-0 rounded-full", campaignStatusDotColors[displayStatus])}
+        />
+        {statusLabels[displayStatus]}
+      </Badge>
+      {start && <span className="text-xs text-muted-foreground">{start}</span>}
+    </span>
   );
 }
