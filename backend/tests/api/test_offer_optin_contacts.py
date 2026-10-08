@@ -15,6 +15,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from typing import Any, cast
 from unittest.mock import MagicMock
 
@@ -24,7 +25,9 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from tribunal_lead_capture import service as lead_magnet_delivery
 from tribunal_offers.router import get_public_router as get_block_public_router
+from tribunal_offers.router import get_router as get_block_router
 
+from app.api.deps import get_current_user, get_workspace
 from app.api.v1 import offers as live_offers
 from app.core.encryption import hash_phone, hash_value
 from app.db.session import get_db
@@ -82,6 +85,14 @@ class FakeSession:
         params = dict(statement.compile().params)
         values = set(params.values())
         if "from offers" in sql:
+            if "offers.workspace_id =" in sql:
+                assert "offers.id =" in sql
+                return _scalars(
+                    [o for o in self.offers if o.workspace_id in values and o.id in values]
+                )
+            assert "offers.public_slug =" in sql
+            assert "offers.is_public is true" in sql
+            assert "offers.is_active is true" in sql
             return _scalars(
                 [o for o in self.offers if o.public_slug in values and o.is_public and o.is_active]
             )
@@ -103,13 +114,21 @@ class FakeSession:
         raise AssertionError(f"unexpected query: {sql}")
 
     def add(self, obj: Any) -> None:
-        if isinstance(obj, Contact):
+        if isinstance(obj, Offer):
+            obj.id = uuid.uuid4()
+            obj.created_at = obj.updated_at = datetime.now(UTC)
+            obj.page_views = obj.opt_ins = 0
+            self.offers.append(obj)
+        elif isinstance(obj, Contact):
             obj.id = self._next_contact_id
             self._next_contact_id += 1
             self.contacts.append(obj)
         elif isinstance(obj, LeadMagnetLead):
             obj.id = uuid.uuid4()
             self.leads.append(obj)
+
+    async def refresh(self, obj: Any) -> None:
+        assert obj in self.offers
 
     async def flush(self) -> None:
         return None
@@ -136,6 +155,7 @@ def _offer(
         require_email=True,
         require_phone=require_phone,
         require_name=require_name,
+        page_views=0,
         opt_ins=0,
     )
 
@@ -187,6 +207,7 @@ def speed_to_lead_jobs(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
 def _live_router() -> APIRouter:
     router = APIRouter()
     router.include_router(live_offers.public_router, prefix="/p/offers")
+    router.include_router(live_offers.router, prefix="/workspaces/{workspace_id}/offers")
     return router
 
 
@@ -194,6 +215,8 @@ def _live_router() -> APIRouter:
 def make_client(request: pytest.FixtureRequest) -> Any:
     """Exercise both the mounted route and the extracted block's copy."""
     router = _live_router() if request.param == "live" else get_block_public_router()
+    if request.param == "block":
+        router.include_router(get_block_router())
 
     def _make(session: FakeSession) -> AsyncClient:
         app = FastAPI(lifespan=_noop_lifespan)
@@ -202,7 +225,16 @@ def make_client(request: pytest.FixtureRequest) -> Any:
         async def _db() -> AsyncIterator[FakeSession]:
             yield session
 
+        async def _user() -> MagicMock:
+            return MagicMock()
+
+        async def _workspace(workspace_id: uuid.UUID) -> Workspace:
+            assert workspace_id in (WS_A, WS_B)
+            return Workspace(id=workspace_id, name="Fixture workspace")
+
         app.dependency_overrides[get_db] = _db
+        app.dependency_overrides[get_current_user] = _user
+        app.dependency_overrides[get_workspace] = _workspace
         return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
     return _make
@@ -422,6 +454,123 @@ async def test_unknown_or_unpublished_offer_is_404(make_client: Any) -> None:
 
     assert response.status_code == 404
     assert session.contacts == []
+
+
+# ── publication contract (RF-020) ────────────────────────────────────────────
+
+
+async def test_publication_settings_survive_create_read_update_and_optin(
+    make_client: Any, sent_emails: list[dict[str, Any]], speed_to_lead_jobs: list[Any]
+) -> None:
+    session = FakeSession()
+    path = f"/api/v1/workspaces/{WS_A}/offers"
+    publishing = {
+        "is_public": True,
+        "public_slug": "phone-and-name-fixture",
+        "require_email": False,
+        "require_phone": True,
+        "require_name": True,
+    }
+    async with make_client(session) as client:
+        created = await client.post(path, json={"name": "Fixture offer", **publishing})
+        assert created.status_code == 201
+        offer_id = created.json()["id"]
+        for key, value in publishing.items():
+            assert created.json()[key] == value
+            assert getattr(session.offers[0], key) == value
+
+        for suffix in ("", "/with-lead-magnets"):
+            reopened = await client.get(f"{path}/{offer_id}{suffix}")
+            assert reopened.status_code == 200
+            assert {key: reopened.json()[key] for key in publishing} == publishing
+
+        foreign_path = f"/api/v1/workspaces/{WS_B}/offers/{offer_id}"
+        assert (await client.get(foreign_path)).status_code == 404
+        assert (await client.put(foreign_path, json={"is_public": False})).status_code == 404
+
+        public_path = f"/api/v1/p/offers/{publishing['public_slug']}"
+        public = await client.get(public_path)
+        assert public.status_code == 200
+        assert {k: public.json()[k] for k in publishing if k.startswith("require_")} == {
+            "require_email": False,
+            "require_phone": True,
+            "require_name": True,
+        }
+        private_keys = {"workspace_id", "is_public", "public_slug", "terms", "id"}
+        assert not private_keys & public.json().keys()
+
+        for body, detail in (
+            ({"name": "Fixture Visitor"}, "Phone number is required"),
+            ({"phone_number": "+14155550101", "name": "  "}, "Name is required"),
+        ):
+            rejected = await client.post(f"{public_path}/opt-in", json=body)
+            assert rejected.status_code == 400
+            assert rejected.json()["detail"] == detail
+        assert session.contacts == []
+        accepted = await client.post(
+            f"{public_path}/opt-in",
+            json={"phone_number": "+14155550101", "name": "Fixture Visitor"},
+        )
+        assert accepted.status_code == 200
+        assert session.contacts[0].workspace_id == WS_A
+        assert session.contacts[0].email is None
+
+        publishing.update(
+            public_slug="email-fixture", require_email=True, require_phone=False, require_name=False
+        )
+        updated = await client.put(f"{path}/{offer_id}", json=publishing)
+        assert updated.status_code == 200
+        reopened = await client.get(f"{path}/{offer_id}")
+        assert {key: reopened.json()[key] for key in publishing} == publishing
+        assert (await client.get(public_path)).status_code == 404
+        public_path = "/api/v1/p/offers/email-fixture"
+        public = await client.get(public_path)
+        assert public.status_code == 200
+        assert {k: public.json()[k] for k in publishing if k.startswith("require_")} == {
+            "require_email": True,
+            "require_phone": False,
+            "require_name": False,
+        }
+        rejected = await client.post(f"{public_path}/opt-in", json={"phone_number": "+14155550102"})
+        assert rejected.status_code == 400
+        assert rejected.json()["detail"] == "Email is required"
+        accepted = await client.post(
+            f"{public_path}/opt-in", json={"email": "fixture@example.test"}
+        )
+        assert accepted.status_code == 200
+
+        # An unrelated partial update must not reset publication choices.
+        renamed = await client.put(f"{path}/{offer_id}", json={"name": "Renamed fixture"})
+        assert {key: renamed.json()[key] for key in publishing} == publishing
+        for disabled in ({"is_public": False}, {"is_public": True, "is_active": False}):
+            assert (await client.put(f"{path}/{offer_id}", json=disabled)).status_code == 200
+            assert (await client.get(public_path)).status_code == 404
+            assert (
+                await client.post(f"{public_path}/opt-in", json={"email": "fixture@example.test"})
+            ).status_code == 404
+    assert sent_emails == []
+
+
+async def test_publication_defaults_and_validation(make_client: Any) -> None:
+    session = FakeSession()
+    path = f"/api/v1/workspaces/{WS_A}/offers"
+    async with make_client(session) as client:
+        created = await client.post(path, json={"name": "Private fixture"})
+        assert created.status_code == 201
+        body = created.json()
+        assert body["is_public"] is False
+        assert body["public_slug"] is None
+        assert body["require_email"] is True
+        assert body["require_phone"] is False
+        assert body["require_name"] is False
+        for invalid in ({"public_slug": "x" * 101}, {"require_phone": "invalid"}):
+            rejected = await client.post(path, json={"name": "Invalid fixture", **invalid})
+            assert rejected.status_code == 422
+            rejected = await client.put(f"{path}/{body['id']}", json=invalid)
+            assert rejected.status_code == 422
+        assert len(session.offers) == 1
+    # Globally unique slugs still guard the anonymous lookup across workspaces.
+    assert Offer.__table__.c.public_slug.unique is True
 
 
 # ── service-level ────────────────────────────────────────────────────────────

@@ -14701,6 +14701,11 @@ export interface components {
              * @default true
              */
             is_active: boolean;
+            /**
+             * Is Public
+             * @default false
+             */
+            is_public: boolean;
             /** Name */
             name: string;
             /** Negotiation Sequence */
@@ -14709,8 +14714,25 @@ export interface components {
             offer_price?: number | null;
             /** Package Options */
             package_options?: components["schemas"]["OfferPack"][] | null;
+            /** Public Slug */
+            public_slug?: string | null;
             /** Regular Price */
             regular_price?: number | null;
+            /**
+             * Require Email
+             * @default true
+             */
+            require_email: boolean;
+            /**
+             * Require Name
+             * @default false
+             */
+            require_name: boolean;
+            /**
+             * Require Phone
+             * @default false
+             */
+            require_phone: boolean;
             /** Savings Amount */
             savings_amount?: number | null;
             /** Scarcity Count */
@@ -14822,6 +14844,11 @@ export interface components {
              * @default true
              */
             is_active: boolean;
+            /**
+             * Is Public
+             * @default false
+             */
+            is_public: boolean;
             /** Name */
             name: string;
             /** Negotiation Sequence */
@@ -14840,8 +14867,25 @@ export interface components {
              * @default 0
              */
             page_views: number;
+            /** Public Slug */
+            public_slug?: string | null;
             /** Regular Price */
             regular_price?: number | null;
+            /**
+             * Require Email
+             * @default true
+             */
+            require_email: boolean;
+            /**
+             * Require Name
+             * @default false
+             */
+            require_name: boolean;
+            /**
+             * Require Phone
+             * @default false
+             */
+            require_phone: boolean;
             /** Savings Amount */
             savings_amount?: number | null;
             /** Scarcity Count */
@@ -14915,6 +14959,11 @@ export interface components {
              */
             is_active: boolean;
             /**
+             * Is Public
+             * @default false
+             */
+            is_public: boolean;
+            /**
              * Lead Magnets
              * @default []
              */
@@ -14937,8 +14986,25 @@ export interface components {
              * @default 0
              */
             page_views: number;
+            /** Public Slug */
+            public_slug?: string | null;
             /** Regular Price */
             regular_price?: number | null;
+            /**
+             * Require Email
+             * @default true
+             */
+            require_email: boolean;
+            /**
+             * Require Name
+             * @default false
+             */
+            require_name: boolean;
+            /**
+             * Require Phone
+             * @default false
+             */
+            require_phone: boolean;
             /** Savings Amount */
             savings_amount?: number | null;
             /** Scarcity Count */

@@ -183,6 +183,13 @@ class OfferBase(BaseModel):
     valid_until: datetime | None = None
     is_active: bool = True
 
+    # Public landing page fields (shared by create and authenticated responses)
+    is_public: bool = False
+    public_slug: str | None = Field(default=None, max_length=100)
+    require_email: bool = True
+    require_phone: bool = False
+    require_name: bool = False
+
     # Hormozi-style fields
     headline: str | None = Field(default=None, max_length=500)
     subheadline: str | None = None

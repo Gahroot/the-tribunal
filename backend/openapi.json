@@ -18924,6 +18924,11 @@
             "title": "Is Active",
             "type": "boolean"
           },
+          "is_public": {
+            "default": false,
+            "title": "Is Public",
+            "type": "boolean"
+          },
           "name": {
             "maxLength": 255,
             "minLength": 1,
@@ -18970,6 +18975,18 @@
             ],
             "title": "Package Options"
           },
+          "public_slug": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Slug"
+          },
           "regular_price": {
             "anyOf": [
               {
@@ -18981,6 +18998,21 @@
               }
             ],
             "title": "Regular Price"
+          },
+          "require_email": {
+            "default": true,
+            "title": "Require Email",
+            "type": "boolean"
+          },
+          "require_name": {
+            "default": false,
+            "title": "Require Name",
+            "type": "boolean"
+          },
+          "require_phone": {
+            "default": false,
+            "title": "Require Phone",
+            "type": "boolean"
           },
           "savings_amount": {
             "anyOf": [
@@ -19380,6 +19412,11 @@
             "title": "Is Active",
             "type": "boolean"
           },
+          "is_public": {
+            "default": false,
+            "title": "Is Public",
+            "type": "boolean"
+          },
           "name": {
             "maxLength": 255,
             "minLength": 1,
@@ -19436,6 +19473,18 @@
             "title": "Page Views",
             "type": "integer"
           },
+          "public_slug": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Slug"
+          },
           "regular_price": {
             "anyOf": [
               {
@@ -19447,6 +19496,21 @@
               }
             ],
             "title": "Regular Price"
+          },
+          "require_email": {
+            "default": true,
+            "title": "Require Email",
+            "type": "boolean"
+          },
+          "require_name": {
+            "default": false,
+            "title": "Require Name",
+            "type": "boolean"
+          },
+          "require_phone": {
+            "default": false,
+            "title": "Require Phone",
+            "type": "boolean"
           },
           "savings_amount": {
             "anyOf": [
@@ -19698,6 +19762,11 @@
             "title": "Is Active",
             "type": "boolean"
           },
+          "is_public": {
+            "default": false,
+            "title": "Is Public",
+            "type": "boolean"
+          },
           "lead_magnets": {
             "default": [],
             "items": {
@@ -19762,6 +19831,18 @@
             "title": "Page Views",
             "type": "integer"
           },
+          "public_slug": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Slug"
+          },
           "regular_price": {
             "anyOf": [
               {
@@ -19773,6 +19854,21 @@
               }
             ],
             "title": "Regular Price"
+          },
+          "require_email": {
+            "default": true,
+            "title": "Require Email",
+            "type": "boolean"
+          },
+          "require_name": {
+            "default": false,
+            "title": "Require Name",
+            "type": "boolean"
+          },
+          "require_phone": {
+            "default": false,
+            "title": "Require Phone",
+            "type": "boolean"
           },
           "savings_amount": {
             "anyOf": [
