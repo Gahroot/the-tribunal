@@ -8,6 +8,10 @@ import { formatNumber } from "@/lib/utils/number";
 
 export interface OnboardingLaunchSummary {
   source: "csv" | "fub";
+  campaignId?: string | null;
+  campaignStatus?: string | null;
+  launchStatus?: string;
+  message?: string;
   imported: number;
   skipped: number;
   failed: number;
@@ -20,16 +24,23 @@ export interface OnboardingLaunchSummary {
 interface LaunchResultViewProps {
   summary: OnboardingLaunchSummary;
   onGoToDashboard: () => void;
+  onRetry?: () => void;
 }
 
-export function LaunchResultView({
-  summary,
-  onGoToDashboard,
-}: LaunchResultViewProps) {
-  const { source, imported, skipped, failed, estimated, workspaceName } =
-    summary;
+export function LaunchResultView({ summary, onGoToDashboard, onRetry }: LaunchResultViewProps) {
+  const { source, imported, skipped, failed, estimated, workspaceName } = summary;
   const hasFailures = failed > 0;
+  const blocked = summary.launchStatus === "blocked" || !summary.campaignId;
   const importedNone = imported === 0;
+  const title = blocked
+    ? "Campaign blocked"
+    : summary.launchStatus === "deferred"
+      ? "Campaign deferred"
+      : summary.launchStatus === "scheduled"
+        ? "Campaign scheduled"
+        : summary.launchStatus === "running"
+          ? "Campaign launched"
+          : `Campaign ${summary.campaignStatus ?? "not launched"}`;
 
   // Only surface a reconciliation note when the parsed estimate is meaningfully
   // off from what the API actually processed (e.g. malformed CSV rows). The
@@ -39,40 +50,34 @@ export function LaunchResultView({
     source === "csv" &&
     estimated !== null &&
     totalProcessed > 0 &&
-    Math.abs(estimated - totalProcessed) / Math.max(estimated, totalProcessed) >
-      0.1;
+    Math.abs(estimated - totalProcessed) / Math.max(estimated, totalProcessed) > 0.1;
 
   return (
     <div className="space-y-6 p-8">
       <div className="flex flex-col items-center text-center gap-3">
         <div
           className={`flex items-center justify-center w-14 h-14 rounded-full ${
-            importedNone ? "text-warning" : "text-success"
+            blocked ? "text-warning" : "text-success"
           }`}
         >
-          {importedNone ? (
-            <AlertTriangle className="w-7 h-7" />
-          ) : (
-            <CheckCircle2 className="w-7 h-7" />
-          )}
+          {blocked ? <AlertTriangle className="w-7 h-7" /> : <CheckCircle2 className="w-7 h-7" />}
         </div>
         <div>
-          <h2 className="text-2xl font-bold">
-            {importedNone ? "No leads were imported" : "Campaign launched"}
-          </h2>
+          <h2 className="text-2xl font-bold">{title}</h2>
           <p className="text-muted-foreground mt-1">
-            {importedNone
-              ? "Review the results below before continuing."
-              : `${formatNumber(imported)} lead${
-                  imported !== 1 ? "s" : ""
-                } are now being contacted.`}
+            {summary.message ??
+              (importedNone
+                ? "Review the results below before continuing."
+                : "Campaign created. Delivery follows consent and sending-window checks.")}
           </p>
+          {summary.campaignId && (
+            <p className="text-sm text-muted-foreground mt-1">
+              Campaign ID: {summary.campaignId} ({summary.campaignStatus})
+            </p>
+          )}
           {workspaceName && (
             <p className="text-sm text-muted-foreground mt-1">
-              Workspace:{" "}
-              <span className="font-medium text-foreground">
-                {workspaceName}
-              </span>
+              Workspace: <span className="font-medium text-foreground">{workspaceName}</span>
             </p>
           )}
         </div>
@@ -82,23 +87,19 @@ export function LaunchResultView({
         <CardContent className="p-5 space-y-3">
           <div className="grid grid-cols-3 gap-3 text-center">
             <div>
-              <p className={imported > 0 ? "text-2xl font-bold text-success" : "text-2xl font-bold"}>
+              <p
+                className={imported > 0 ? "text-2xl font-bold text-success" : "text-2xl font-bold"}
+              >
                 {formatNumber(imported)}
               </p>
               <p className="text-xs text-muted-foreground">Imported</p>
             </div>
             <div>
               <p className="text-2xl font-bold">{formatNumber(skipped)}</p>
-              <p className="text-xs text-muted-foreground">
-                Skipped (duplicates)
-              </p>
+              <p className="text-xs text-muted-foreground">Skipped (duplicates)</p>
             </div>
             <div>
-              <p
-                className={`text-2xl font-bold ${
-                  hasFailures ? "text-destructive" : ""
-                }`}
-              >
+              <p className={`text-2xl font-bold ${hasFailures ? "text-destructive" : ""}`}>
                 {formatNumber(failed)}
               </p>
               <p className="text-xs text-muted-foreground">Failed</p>
@@ -109,22 +110,29 @@ export function LaunchResultView({
             <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-background p-3 text-sm text-destructive">
               <XCircle className="size-4 shrink-0 mt-0.5" />
               <span>
-                {formatNumber(failed)} row{failed !== 1 ? "s" : ""} could not be
-                imported (missing or invalid name/phone). Fix those rows in your
-                CSV and re-upload from Contacts to add them.
+                {formatNumber(failed)} row{failed !== 1 ? "s" : ""} could not be imported (missing
+                or invalid name/phone).{" "}
+                {source === "fub"
+                  ? "Fix those leads in Follow Up Boss and import again."
+                  : "Fix those rows in your CSV and re-upload from Contacts to add them."}
               </span>
             </div>
           )}
 
           {estimateDiverges && (
             <p className="text-xs text-muted-foreground">
-              Heads up: your file looked like ~{formatNumber(estimated ?? 0)}{" "}
-              rows, but {formatNumber(totalProcessed)} were actually processed.
+              Heads up: your file looked like ~{formatNumber(estimated ?? 0)} rows, but{" "}
+              {formatNumber(totalProcessed)} were actually processed.
             </p>
           )}
         </CardContent>
       </Card>
 
+      {blocked && onRetry && (
+        <Button className="w-full" size="lg" onClick={onRetry}>
+          Review and retry launch
+        </Button>
+      )}
       <Button className="w-full" size="lg" onClick={onGoToDashboard}>
         Go to dashboard
         <ArrowRight className="size-4 ml-2" />

@@ -5097,6 +5097,11 @@
             ],
             "title": "Api Key"
           },
+          "auto_enroll_drip": {
+            "default": true,
+            "title": "Auto Enroll Drip",
+            "type": "boolean"
+          },
           "contact_ids": {
             "anyOf": [
               {
@@ -11838,6 +11843,82 @@
         "title": "EscalationRuleMandate",
         "type": "object"
       },
+      "FUBCampaignRequest": {
+        "description": "Launch the single guided-setup campaign using imported workspace contacts.",
+        "properties": {
+          "campaign_name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Campaign Name",
+            "type": "string"
+          },
+          "contact_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 50000,
+            "minItems": 1,
+            "title": "Contact Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "contact_ids",
+          "campaign_name"
+        ],
+        "title": "FUBCampaignRequest",
+        "type": "object"
+      },
+      "FUBCampaignResponse": {
+        "description": "Authoritative launch outcome; an import alone is never a launch.",
+        "properties": {
+          "campaign_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Id"
+          },
+          "campaign_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Status"
+          },
+          "launch_status": {
+            "enum": [
+              "running",
+              "scheduled",
+              "deferred",
+              "blocked"
+            ],
+            "title": "Launch Status",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "campaign_id",
+          "campaign_status",
+          "launch_status",
+          "message"
+        ],
+        "title": "FUBCampaignResponse",
+        "type": "object"
+      },
       "FUBConnectRequest": {
         "description": "Request body for verifying and saving a FUB key on a workspace.",
         "properties": {
@@ -12005,6 +12086,14 @@
       "FUBImportResponse": {
         "description": "Result of importing FUB contacts.\n\n``skipped`` counts people already present in the workspace (a re-run of the\nsame import skips everything it imported before). ``failures`` lists up to\nthe first 50 failed rows with a reason.",
         "properties": {
+          "contact_ids": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Contact Ids",
+            "type": "array"
+          },
           "failed": {
             "title": "Failed",
             "type": "integer"
@@ -56047,6 +56136,65 @@
           }
         ],
         "summary": "Create Realtor Campaign Workspace",
+        "tags": [
+          "Realtor Onboarding"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/realtor/campaigns/fub": {
+      "post": {
+        "description": "Launch or recover the workspace's guided FUB campaign without reimporting.",
+        "operationId": "launch_realtor_fub_campaign_api_v1_workspaces__workspace_id__realtor_campaigns_fub_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FUBCampaignRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FUBCampaignResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Launch Realtor Fub Campaign",
         "tags": [
           "Realtor Onboarding"
         ]

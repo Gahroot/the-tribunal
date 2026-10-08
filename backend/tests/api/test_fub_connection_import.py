@@ -239,6 +239,7 @@ async def test_verify_save_import_lands_in_selected_workspace() -> None:
     body = imported.json()
     assert (body["imported"], body["skipped"], body["failed"]) == (2, 0, 1)
     assert body["failures"] == [{"fub_id": 103, "reason": "missing_phone"}]
+    assert body["contact_ids"] == [1, 2]
     assert {c.workspace_id for c in db.contacts} == {SELECTED_WS}
     assert {c.phone_number for c in db.contacts} == {"+14155550101", "+14155550102"}
 
@@ -262,6 +263,22 @@ async def test_repeat_import_skips_existing_contacts() -> None:
     assert first.json()["imported"] == 2
     assert (second.json()["imported"], second.json()["skipped"]) == (0, 2)
     assert len(db.contacts) == 2
+    assert first.json()["contact_ids"] == second.json()["contact_ids"] == [1, 2]
+
+
+async def test_guided_partial_import_does_not_auto_enroll_drip() -> None:
+    db = FakeSession({SELECTED_WS: "owner"})
+    async with _client(db) as client:
+        await client.put(_url(SELECTED_WS, "fub-connection"), json={"api_key": GOOD_KEY})
+        result = await client.post(
+            _url(SELECTED_WS, "import-fub-contacts"),
+            json={"import_all": True, "auto_enroll_drip": False},
+        )
+    assert result.status_code == 200
+    assert result.json()["contact_ids"] == [1, 2]
+    assert result.json()["failed"] == 1
+    assert all(c.sms_consent_status != "opted_in" for c in db.contacts)
+    fub_module.auto_create_drip_for_imports.assert_not_awaited()
 
 
 async def test_save_failure_is_not_reported_connected() -> None:

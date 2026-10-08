@@ -166,8 +166,9 @@ async def _import_single_fub_contact(
             .where(Contact.workspace_id == workspace_id, or_(*conditions))
             .limit(1)
         )
-        if existing.scalar_one_or_none() is not None:
-            return "skipped", None, None
+        existing_id = existing.scalar_one_or_none()
+        if existing_id is not None:
+            return "skipped", existing_id, None
 
     # Contacts require a phone number (SMS reactivation is the whole point).
     if not phone:
@@ -279,6 +280,7 @@ async def _import_fub_contacts(
     db: AsyncSession,
     contact_ids: list[int] | None,
     import_all: bool,
+    auto_enroll_drip: bool = True,
 ) -> FUBImportResponse:
     integration = await _get_fub_integration(workspace_id, db)
 
@@ -306,9 +308,12 @@ async def _import_fub_contacts(
         counts = {"imported": 0, "skipped": 0, "failed": 0}
         failures: list[FUBImportFailure] = []
         imported_contact_ids: list[int] = []
+        audience_ids: set[int] = set()
         for p in people_to_import:
             result, contact_id, reason = await _import_single_fub_contact(db, workspace_id, p)
             counts[result] += 1
+            if contact_id is not None:
+                audience_ids.add(contact_id)
             if result == "imported" and contact_id is not None:
                 imported_contact_ids.append(contact_id)
             elif result == "failed" and len(failures) < MAX_REPORTED_FAILURES:
@@ -321,7 +326,7 @@ async def _import_fub_contacts(
                 )
 
         # Auto-create drip campaign for imported contacts
-        if imported_contact_ids:
+        if auto_enroll_drip and imported_contact_ids:
             await auto_create_drip_for_imports(db, workspace_id, imported_contact_ids)
 
         await db.commit()
@@ -330,7 +335,7 @@ async def _import_fub_contacts(
             workspace_id=str(workspace_id),
             **counts,
         )
-        return FUBImportResponse(**counts, failures=failures)
+        return FUBImportResponse(**counts, failures=failures, contact_ids=sorted(audience_ids))
     finally:
         await client.close()
 
@@ -437,6 +442,7 @@ async def import_fub_contacts_workspace(
     contact_ids: list[int] | None = Body(None),
     import_all: bool = Body(False),
     api_key: str | None = Body(None, min_length=1),
+    auto_enroll_drip: bool = Body(True),
 ) -> FUBImportResponse:
     """Import Follow Up Boss contacts into the selected workspace.
 
@@ -451,6 +457,7 @@ async def import_fub_contacts_workspace(
         db=db,
         contact_ids=contact_ids,
         import_all=import_all,
+        auto_enroll_drip=auto_enroll_drip,
     )
 
 

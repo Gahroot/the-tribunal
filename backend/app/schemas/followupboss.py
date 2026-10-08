@@ -82,3 +82,5 @@ class FUBImportResponse(BaseModel):
     skipped: int
     failed: int
     failures: list[FUBImportFailure] = []
+    # Workspace IDs for successfully imported or already-present people.
+    contact_ids: list[int] = []

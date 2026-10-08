@@ -13,6 +13,7 @@ import { WizardContainer } from "@/components/wizard/wizard-container";
 import type { WizardStepDef } from "@/hooks/useWizard";
 import {
   createCampaignFromCsv,
+  launchFubCampaign,
   onboard,
   parseCalcomUrl,
 } from "@/lib/api/realtor";
@@ -29,15 +30,9 @@ import {
 } from "./_state";
 import { CalcomStep } from "./_steps/calcom-step";
 import { FubStep } from "./_steps/fub-step";
-import {
-  LaunchResultView,
-  type OnboardingLaunchSummary,
-} from "./_steps/launch-result";
+import { LaunchResultView, type OnboardingLaunchSummary } from "./_steps/launch-result";
 import { LeadsStep } from "./_steps/leads-step";
-import {
-  OnboardingExtrasProvider,
-  useOnboardingExtras,
-} from "./_steps/onboarding-context";
+import { OnboardingExtrasProvider, useOnboardingExtras } from "./_steps/onboarding-context";
 import { ReviewStep } from "./_steps/review-step";
 
 const STEPS = [
@@ -57,15 +52,12 @@ function OnboardingFlow() {
   // targets it explicitly, so agent, credentials, phone, leads and campaign
   // all land in the same workspace even if the selection changes elsewhere
   // mid-flow (finding RF-005).
-  const [targetWorkspaceId, setTargetWorkspaceId] = useState<string | null>(
-    currentWorkspaceId
-  );
+  const [targetWorkspaceId, setTargetWorkspaceId] = useState<string | null>(currentWorkspaceId);
   if (targetWorkspaceId === null && currentWorkspaceId) {
     setTargetWorkspaceId(currentWorkspaceId);
   }
   const targetWorkspaceName =
-    workspaces?.find((w) => w.workspace.id === targetWorkspaceId)?.workspace
-      .name ?? null;
+    workspaces?.find((w) => w.workspace.id === targetWorkspaceId)?.workspace.name ?? null;
 
   const form = useForm<OnboardingFormValues>({
     resolver: zodResolver(onboardingSchema),
@@ -73,11 +65,9 @@ function OnboardingFlow() {
     mode: "onTouched",
   });
 
-  const [currentStepId, setCurrentStepId] =
-    useState<OnboardingStepId>("fub");
+  const [currentStepId, setCurrentStepId] = useState<OnboardingStepId>("fub");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [launchSummary, setLaunchSummary] =
-    useState<OnboardingLaunchSummary | null>(null);
+  const [launchSummary, setLaunchSummary] = useState<OnboardingLaunchSummary | null>(null);
   // Skip re-running onboarding on a retry after the no-phone warning. The
   // backend is also idempotent per workspace (it reuses the realtor agent and
   // an existing SMS number), so a retry after a partial failure is safe.
@@ -93,7 +83,7 @@ function OnboardingFlow() {
 
   const currentStepIndex = useMemo(
     () => STEPS.findIndex((s) => s.id === currentStepId),
-    [currentStepId]
+    [currentStepId],
   );
   const isFirstStep = currentStepIndex === 0;
   const isLastStep = currentStepIndex === STEPS.length - 1;
@@ -112,16 +102,14 @@ function OnboardingFlow() {
       }
       if (stepId === "leads") {
         if (!extras.csvFile && extras.fubImportResult === null) {
-          extras.setLeadsError(
-            "Import leads from Follow Up Boss or upload a CSV file."
-          );
+          extras.setLeadsError("Import leads from Follow Up Boss or upload a CSV file.");
           return false;
         }
         extras.setLeadsError(null);
       }
       return true;
     },
-    [form, extras]
+    [form, extras],
   );
 
   const goToStep = useCallback(
@@ -132,7 +120,7 @@ function OnboardingFlow() {
       }
       setCurrentStepId(stepId);
     },
-    [currentStepId, currentStepIndex, canLeaveStep]
+    [currentStepId, currentStepIndex, canLeaveStep],
   );
 
   const goNext = useCallback(async () => {
@@ -164,7 +152,7 @@ function OnboardingFlow() {
         const { event_type_id } = await parseCalcomUrl(
           workspaceId,
           values.calcom_booking_url,
-          values.calcom_api_key
+          values.calcom_api_key,
         );
 
         const onboardResult = await onboard(workspaceId, {
@@ -196,22 +184,16 @@ function OnboardingFlow() {
       // missing.
       if (extras.csvFile && !phoneProvisionedRef.current && !showPhoneWarning) {
         setShowPhoneWarning(true);
-        toast.error(
-          "We couldn't get you an SMS number automatically. Add one to start texting."
-        );
+        toast.error("We couldn't get you an SMS number automatically. Add one to start texting.");
         return;
       }
 
       let summary: OnboardingLaunchSummary;
       if (extras.csvFile) {
-        const result = await createCampaignFromCsv(
-          workspaceId,
-          extras.csvFile,
-          {
-            skipDuplicates: true,
-            areaCode: values.area_code || undefined,
-          }
-        );
+        const result = await createCampaignFromCsv(workspaceId, extras.csvFile, {
+          skipDuplicates: true,
+          areaCode: values.area_code || undefined,
+        });
         summary = {
           source: "csv",
           imported: result.contacts_imported,
@@ -219,17 +201,32 @@ function OnboardingFlow() {
           failed: result.contacts_failed,
           estimated: extras.csvRowCount,
           workspaceName: targetWorkspaceName,
+          campaignId: result.campaign_id,
+          campaignStatus: result.campaign_status,
+          launchStatus: result.campaign_status,
         };
       } else {
         const fubResult = extras.fubImportResult;
+        if (!fubResult?.contact_ids?.length) {
+          throw new Error(
+            "No imported contacts are available to launch. Go back and import again.",
+          );
+        }
+        const result = await launchFubCampaign(
+          workspaceId,
+          fubResult.contact_ids,
+          "Lead Reactivation",
+        );
         summary = {
           source: "fub",
           imported: fubResult?.imported ?? 0,
           skipped: fubResult?.skipped ?? 0,
           failed: fubResult?.failed ?? 0,
-          estimated: fubResult
-            ? fubResult.imported + fubResult.skipped + fubResult.failed
-            : null,
+          campaignId: result.campaign_id,
+          campaignStatus: result.campaign_status,
+          launchStatus: result.launch_status,
+          message: result.message,
+          estimated: fubResult ? fubResult.imported + fubResult.skipped + fubResult.failed : null,
           workspaceName: targetWorkspaceName,
         };
       }
@@ -243,26 +240,22 @@ function OnboardingFlow() {
       ]
         .filter(Boolean)
         .join(" · ");
-      if (summary.failed > 0 || summary.imported === 0) {
-        toast.warning(`Campaign launched: ${toastDetail}`);
+      const outcome = summary.launchStatus === "running" ? "launched" : summary.launchStatus;
+      if (summary.failed > 0 || summary.launchStatus !== "running") {
+        toast.warning(`Campaign ${outcome}: ${toastDetail}`);
       } else {
         toast.success(`Campaign launched: ${toastDetail}`);
       }
       setShowPhoneWarning(false);
       setLaunchSummary(summary);
     } catch (err) {
-      const message = getApiErrorMessage(
-        err,
-        "Launch failed. Please try again."
-      );
+      const message = getApiErrorMessage(err, "Launch failed. Please try again.");
       // Backend hard-fails the CSV launch when no SMS number exists; translate
       // that into the same actionable warning rather than a cryptic toast.
       if (/SMS-enabled phone number/i.test(message)) {
         phoneProvisionedRef.current = false;
         setShowPhoneWarning(true);
-        toast.error(
-          "We couldn't get you an SMS number automatically. Add one to start texting."
-        );
+        toast.error("We couldn't get you an SMS number automatically. Add one to start texting.");
       } else {
         toast.error(message);
       }
@@ -290,6 +283,10 @@ function OnboardingFlow() {
         <div className="w-full max-w-2xl border rounded-xl overflow-hidden shadow-xl bg-card flex flex-col">
           <LaunchResultView
             summary={launchSummary}
+            onRetry={() => {
+              setLaunchSummary(null);
+              setCurrentStepId("review");
+            }}
             onGoToDashboard={goToDashboard}
           />
         </div>
@@ -321,13 +318,9 @@ function OnboardingFlow() {
             submittingLabel="Launching..."
             submitIcon={Rocket}
           >
-            {currentStepId === "fub" && (
-              <FubStep workspaceId={targetWorkspaceId} onSkip={goNext} />
-            )}
+            {currentStepId === "fub" && <FubStep workspaceId={targetWorkspaceId} onSkip={goNext} />}
             {currentStepId === "calcom" && <CalcomStep />}
-            {currentStepId === "leads" && (
-              <LeadsStep workspaceId={targetWorkspaceId} />
-            )}
+            {currentStepId === "leads" && <LeadsStep workspaceId={targetWorkspaceId} />}
             {currentStepId === "review" && (
               <ReviewStep
                 showPhoneWarning={showPhoneWarning}

@@ -20,6 +20,7 @@ from app.api.deps import get_current_user, get_db
 from app.api.v1.integrations import followupboss as fub_module
 from app.api.v1.onboarding import realtor_setup as realtor_module
 from app.models.workspace import Workspace, WorkspaceMembership
+from app.services.onboarding.fub_launch import FUBLaunchResult
 from app.services.onboarding.workspace_setup import (
     RealtorCampaignResult,
     RealtorOnboardingResult,
@@ -182,6 +183,34 @@ async def test_campaign_rejects_non_member(campaign_spy: AsyncMock) -> None:
 
     assert resp.status_code == 404
     campaign_spy.assert_not_awaited()
+
+
+async def test_fub_launch_returns_real_campaign_and_rejects_foreign_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    campaign_id = uuid.uuid4()
+    launch = AsyncMock(
+        return_value=FUBLaunchResult(campaign_id, "running", "deferred", "Outside sending hours")
+    )
+    monkeypatch.setattr(realtor_module, "launch_fub_campaign", launch)
+    db = _membership_db({SELECTED_WS})
+    body = {"contact_ids": [11, 12], "campaign_name": "Selected campaign"}
+    async with await _client(_app(db)) as client:
+        success = await client.post(
+            f"/api/v1/workspaces/{SELECTED_WS}/realtor/campaigns/fub", json=body
+        )
+        denied = await client.post(
+            f"/api/v1/workspaces/{FOREIGN_WS}/realtor/campaigns/fub", json=body
+        )
+    assert success.status_code == 200
+    assert success.json() == {
+        "campaign_id": str(campaign_id),
+        "campaign_status": "running",
+        "launch_status": "deferred",
+        "message": "Outside sending hours",
+    }
+    assert denied.status_code == 404
+    launch.assert_awaited_once_with(db, SELECTED_WS, [11, 12], "Selected campaign")
 
 
 async def test_legacy_fub_import_enforces_membership() -> None:

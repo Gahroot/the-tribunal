@@ -6008,6 +6008,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/realtor/campaigns/fub": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Launch Realtor Fub Campaign
+         * @description Launch or recover the workspace's guided FUB campaign without reimporting.
+         */
+        post: operations["launch_realtor_fub_campaign_api_v1_workspaces__workspace_id__realtor_campaigns_fub_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/realtor/fub-connection": {
         parameters: {
             query?: never;
@@ -9353,6 +9373,11 @@ export interface components {
         Body_import_fub_contacts_workspace_api_v1_workspaces__workspace_id__realtor_import_fub_contacts_post: {
             /** Api Key */
             api_key?: string | null;
+            /**
+             * Auto Enroll Drip
+             * @default true
+             */
+            auto_enroll_drip: boolean;
             /** Contact Ids */
             contact_ids?: number[] | null;
             /**
@@ -11899,6 +11924,33 @@ export interface components {
             label: string;
         };
         /**
+         * FUBCampaignRequest
+         * @description Launch the single guided-setup campaign using imported workspace contacts.
+         */
+        FUBCampaignRequest: {
+            /** Campaign Name */
+            campaign_name: string;
+            /** Contact Ids */
+            contact_ids: number[];
+        };
+        /**
+         * FUBCampaignResponse
+         * @description Authoritative launch outcome; an import alone is never a launch.
+         */
+        FUBCampaignResponse: {
+            /** Campaign Id */
+            campaign_id: string | null;
+            /** Campaign Status */
+            campaign_status: string | null;
+            /**
+             * Launch Status
+             * @enum {string}
+             */
+            launch_status: "running" | "scheduled" | "deferred" | "blocked";
+            /** Message */
+            message: string;
+        };
+        /**
          * FUBConnectRequest
          * @description Request body for verifying and saving a FUB key on a workspace.
          */
@@ -11964,6 +12016,11 @@ export interface components {
          *     the first 50 failed rows with a reason.
          */
         FUBImportResponse: {
+            /**
+             * Contact Ids
+             * @default []
+             */
+            contact_ids: number[];
             /** Failed */
             failed: number;
             /**
@@ -31948,6 +32005,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RealtorCampaignResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    launch_realtor_fub_campaign_api_v1_workspaces__workspace_id__realtor_campaigns_fub_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FUBCampaignRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FUBCampaignResponse"];
                 };
             };
             /** @description Validation Error */

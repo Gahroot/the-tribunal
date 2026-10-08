@@ -511,6 +511,7 @@ async def create_realtor_campaign(
     phone_record: PhoneNumber,
     campaign_name: str | None,
     now: Callable[[], datetime],
+    campaign_id: uuid.UUID | None = None,
 ) -> Campaign:
     """Create the Campaign row for a realtor lead-reactivation launch."""
     defaults = get_realtor_campaign_defaults()
@@ -518,6 +519,7 @@ async def create_realtor_campaign(
     resolved_name = campaign_name or f"Lead Reactivation - {date_str}"
 
     campaign = Campaign(
+        id=campaign_id or uuid.uuid4(),
         workspace_id=workspace_id,
         agent_id=agent.id,
         from_phone_number=phone_record.phone_number,

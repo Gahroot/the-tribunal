@@ -1,14 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  CheckCircle2,
-  Database,
-  FileSpreadsheet,
-  Loader2,
-  Phone,
-  Users,
-} from "lucide-react";
+import { CheckCircle2, Database, FileSpreadsheet, Loader2, Phone, Users } from "lucide-react";
 import { useCallback, useId, useState } from "react";
 import { useFormContext } from "react-hook-form";
 import { toast } from "sonner";
@@ -68,7 +61,7 @@ export function LeadsStep({ workspaceId }: LeadsStepProps) {
       };
       reader.readAsText(selected);
     },
-    [setCsvFile]
+    [setCsvFile],
   );
 
   const handleFubImport = useCallback(async () => {
@@ -81,15 +74,13 @@ export function LeadsStep({ workspaceId }: LeadsStepProps) {
     try {
       // Uses the connection already saved on this workspace. Re-running is
       // safe: leads already in the workspace are skipped, not duplicated.
-      const result = await importFubContacts(workspaceId, true);
+      const result = await importFubContacts(workspaceId, true, undefined, undefined, false);
       setFubImportResult(result);
       setLeadsError(null);
       void queryClient.invalidateQueries({
         queryKey: queryKeys.contacts.all(workspaceId),
       });
-      toast.success(
-        `Imported ${formatNumber(result.imported)} leads from Follow Up Boss`
-      );
+      toast.success(`Imported ${formatNumber(result.imported)} leads from Follow Up Boss`);
     } catch (err) {
       const message = getApiErrorMessage(err, "Failed to import leads.");
       setFubImportError(message);
@@ -111,9 +102,7 @@ export function LeadsStep({ workspaceId }: LeadsStepProps) {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Card
-          className={`relative overflow-hidden ${!fubConnected ? "opacity-50" : ""}`}
-        >
+        <Card className={`relative overflow-hidden ${!fubConnected ? "opacity-50" : ""}`}>
           <CardContent className="p-5 flex flex-col items-center text-center gap-3">
             <div className="flex items-center justify-center w-12 h-12 rounded-full text-muted-foreground">
               <Database className="w-6 h-6" />
@@ -128,21 +117,17 @@ export function LeadsStep({ workspaceId }: LeadsStepProps) {
                   </p>
                   {fubImportResult.skipped > 0 && (
                     <p className="text-muted-foreground">
-                      {formatNumber(fubImportResult.skipped)} already in this
-                      workspace
+                      {formatNumber(fubImportResult.skipped)} already in this workspace
                     </p>
                   )}
                   {fubImportResult.failed > 0 && (
                     <p className="text-destructive">
-                      {formatNumber(fubImportResult.failed)} couldn&apos;t be
-                      imported
+                      {formatNumber(fubImportResult.failed)} couldn&apos;t be imported
                     </p>
                   )}
                 </div>
               )}
-              {fubImportError && (
-                <p className="text-xs text-destructive mt-1">{fubImportError}</p>
-              )}
+              {fubImportError && <p className="text-xs text-destructive mt-1">{fubImportError}</p>}
               {connection.isChecking && (
                 <p className="text-xs text-muted-foreground mt-1">
                   Checking Follow Up Boss connection...
@@ -194,9 +179,7 @@ export function LeadsStep({ workspaceId }: LeadsStepProps) {
             </div>
             <div>
               <p className="font-semibold text-sm">Upload CSV</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Drag and drop or click to browse
-              </p>
+              <p className="text-xs text-muted-foreground mt-1">Drag and drop or click to browse</p>
             </div>
           </CardContent>
         </Card>
@@ -231,8 +214,7 @@ export function LeadsStep({ workspaceId }: LeadsStepProps) {
       {leadsError && <p className="text-sm text-destructive">{leadsError}</p>}
 
       <p className="text-xs text-muted-foreground">
-        CSV needs at least:{" "}
-        <span className="font-mono font-medium">first_name</span> (or{" "}
+        CSV needs at least: <span className="font-mono font-medium">first_name</span> (or{" "}
         <span className="font-mono font-medium">name</span>),{" "}
         <span className="font-mono font-medium">phone</span>. Email is optional.
       </p>
@@ -256,8 +238,7 @@ export function LeadsStep({ workspaceId }: LeadsStepProps) {
           />
         </div>
         <p className="text-xs text-muted-foreground">
-          Preferred area code for your texting number. Leave blank for any US
-          number.
+          Preferred area code for your texting number. Leave blank for any US number.
         </p>
       </div>
     </div>

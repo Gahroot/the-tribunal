@@ -86,6 +86,7 @@ export interface ImportFubContactsResponse {
   skipped: number;
   failed: number;
   failures?: FubImportFailure[];
+  contact_ids?: number[];
 }
 
 // ---- API Functions ----
@@ -95,12 +96,8 @@ export function verifyFub(apiKey: string): Promise<VerifyFubResponse> {
 }
 
 /** Read the workspace's saved FUB connection (no call to Follow Up Boss). */
-export function getFubConnection(
-  workspaceId: string
-): Promise<FubConnectionStatus> {
-  return apiGet<FubConnectionStatus>(
-    `/api/v1/workspaces/${workspaceId}/realtor/fub-connection`
-  );
+export function getFubConnection(workspaceId: string): Promise<FubConnectionStatus> {
+  return apiGet<FubConnectionStatus>(`/api/v1/workspaces/${workspaceId}/realtor/fub-connection`);
 }
 
 /**
@@ -108,25 +105,20 @@ export function getFubConnection(
  * workspace. Resolves only after the connection is persisted; a rejected or
  * unreachable check leaves any existing connection untouched.
  */
-export function connectFub(
-  workspaceId: string,
-  apiKey: string
-): Promise<FubConnectionStatus> {
-  return apiPut<FubConnectionStatus>(
-    `/api/v1/workspaces/${workspaceId}/realtor/fub-connection`,
-    { api_key: apiKey }
-  );
+export function connectFub(workspaceId: string, apiKey: string): Promise<FubConnectionStatus> {
+  return apiPut<FubConnectionStatus>(`/api/v1/workspaces/${workspaceId}/realtor/fub-connection`, {
+    api_key: apiKey,
+  });
 }
 
 export function getFubContacts(
   workspaceId: string,
   limit = 100,
-  offset = 0
+  offset = 0,
 ): Promise<FubContactsResponse> {
-  return apiGet<FubContactsResponse>(
-    `/api/v1/workspaces/${workspaceId}/realtor/fub-contacts`,
-    { params: { limit, offset } }
-  );
+  return apiGet<FubContactsResponse>(`/api/v1/workspaces/${workspaceId}/realtor/fub-contacts`, {
+    params: { limit, offset },
+  });
 }
 
 export function importFubContacts(
@@ -134,7 +126,8 @@ export function importFubContacts(
   importAll: boolean,
   contactIds?: number[],
   /** When set, stored on this workspace before importing (guided setup). */
-  apiKey?: string
+  apiKey?: string,
+  autoEnrollDrip = true,
 ): Promise<ImportFubContactsResponse> {
   return apiPost<ImportFubContactsResponse>(
     `/api/v1/workspaces/${workspaceId}/realtor/import-fub-contacts`,
@@ -142,8 +135,27 @@ export function importFubContacts(
       import_all: importAll,
       contact_ids: contactIds,
       api_key: apiKey || undefined,
-    }
+      auto_enroll_drip: autoEnrollDrip,
+    },
   );
+}
+
+export interface FubCampaignResponse {
+  campaign_id: string | null;
+  campaign_status: string | null;
+  launch_status: "running" | "scheduled" | "deferred" | "blocked";
+  message: string;
+}
+
+export function launchFubCampaign(
+  workspaceId: string,
+  contactIds: number[],
+  campaignName: string,
+): Promise<FubCampaignResponse> {
+  return apiPost<FubCampaignResponse>(`/api/v1/workspaces/${workspaceId}/realtor/campaigns/fub`, {
+    contact_ids: contactIds,
+    campaign_name: campaignName,
+  });
 }
 
 export function getRealtorStats(workspaceId: string): Promise<RealtorStats> {
@@ -159,23 +171,20 @@ export function verifyCalcom(apiKey: string): Promise<VerifyCalcomResponse> {
 export function parseCalcomUrl(
   workspaceId: string,
   url: string,
-  apiKey?: string
+  apiKey?: string,
 ): Promise<ParseCalcomUrlResponse> {
   return apiPost<ParseCalcomUrlResponse>(
     `/api/v1/workspaces/${workspaceId}/realtor/parse-calcom-url`,
-    { url, api_key: apiKey }
+    { url, api_key: apiKey },
   );
 }
 
 /** Idempotent: retries reuse the workspace's realtor agent and SMS number. */
 export function onboard(
   workspaceId: string,
-  data: RealtorOnboardRequest
+  data: RealtorOnboardRequest,
 ): Promise<RealtorOnboardResponse> {
-  return apiPost<RealtorOnboardResponse>(
-    `/api/v1/workspaces/${workspaceId}/realtor/onboard`,
-    data
-  );
+  return apiPost<RealtorOnboardResponse>(`/api/v1/workspaces/${workspaceId}/realtor/onboard`, data);
 }
 
 export function createCampaignFromCsv(
@@ -185,7 +194,7 @@ export function createCampaignFromCsv(
     skipDuplicates?: boolean;
     campaignName?: string;
     areaCode?: string;
-  } = {}
+  } = {},
 ): Promise<RealtorCampaignResponse> {
   const formData = new FormData();
   formData.append("file", file);
@@ -203,7 +212,7 @@ export function createCampaignFromCsv(
     .post<RealtorCampaignResponse>(
       `/api/v1/workspaces/${workspaceId}/realtor/campaigns`,
       formData,
-      { headers: { "Content-Type": "multipart/form-data" } }
+      { headers: { "Content-Type": "multipart/form-data" } },
     )
     .then((r) => r.data);
 }

@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -61,6 +62,22 @@ class RealtorCampaignResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Cal.com helper schemas
 # ---------------------------------------------------------------------------
+
+
+class FUBCampaignRequest(BaseModel):
+    """Launch the single guided-setup campaign using imported workspace contacts."""
+
+    contact_ids: list[int] = Field(..., min_length=1, max_length=50000)
+    campaign_name: str = Field(..., min_length=1, max_length=255)
+
+
+class FUBCampaignResponse(BaseModel):
+    """Authoritative launch outcome; an import alone is never a launch."""
+
+    campaign_id: uuid.UUID | None
+    campaign_status: str | None
+    launch_status: Literal["running", "scheduled", "deferred", "blocked"]
+    message: str
 
 
 class ParseCalcomUrlRequest(BaseModel):

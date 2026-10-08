@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import asdict
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, status
@@ -16,6 +17,8 @@ from app.models.contact import Contact
 from app.models.conversation import Conversation, Message, MessageDirection
 from app.models.workspace import Workspace
 from app.schemas.realtor import (
+    FUBCampaignRequest,
+    FUBCampaignResponse,
     ParseCalcomUrlRequest,
     ParseCalcomUrlResponse,
     RealtorCampaignResponse,
@@ -29,6 +32,7 @@ from app.services.onboarding.external_checks import (
     resolve_calcom_event_type_id,
     verify_calcom_api_key,
 )
+from app.services.onboarding.fub_launch import launch_fub_campaign
 from app.services.onboarding.route_responses import (
     parse_calcom_url_response,
     raise_onboarding_http_error,
@@ -250,6 +254,18 @@ async def create_realtor_campaign_workspace(
         campaign_name=campaign_name,
         workspace_id=workspace.id,
     )
+
+
+@workspace_router.post("/campaigns/fub", response_model=FUBCampaignResponse)
+async def launch_realtor_fub_campaign(
+    request: FUBCampaignRequest,
+    current_user: CurrentUser,
+    db: DB,
+    workspace: Annotated[Workspace, Depends(get_workspace)],
+) -> FUBCampaignResponse:
+    """Launch or recover the workspace's guided FUB campaign without reimporting."""
+    result = await launch_fub_campaign(db, workspace.id, request.contact_ids, request.campaign_name)
+    return FUBCampaignResponse(**asdict(result))
 
 
 @router.post(
