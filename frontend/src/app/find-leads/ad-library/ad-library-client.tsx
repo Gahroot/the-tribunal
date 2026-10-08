@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Clock, Loader2 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { AdvertiserDetail } from "@/components/ad-library/advertiser-detail";
@@ -44,6 +44,7 @@ export function AdLibraryClient() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [notConfigured, setNotConfigured] = useState(false);
+  const refreshedJob = useRef<string | null>(null);
 
   const invalidateAdvertisers = useCallback(() => {
     if (workspaceId) {
@@ -121,13 +122,24 @@ export function AdLibraryClient() {
   // Poll the job while it runs so the user sees progress.
   const jobQuery = useQuery({
     ...adLibraryQueryOptions.job(workspaceId ?? "", job?.id ?? ""),
-    enabled:
-      Boolean(workspaceId) &&
-      Boolean(job?.id) &&
-      (job?.status === "pending" || job?.status === "running"),
+    enabled: (query) => {
+      if (!workspaceId || !job?.id || job.workspace_id !== workspaceId) return false;
+      const status = query.state.data?.status ?? job.status;
+      return status === "pending" || status === "running";
+    },
   });
 
-  const liveJob = jobQuery.data ?? job;
+  const liveJob = job?.workspace_id === workspaceId ? (jobQuery.data ?? job) : null;
+  const completedJobId = liveJob?.status === "succeeded" ? liveJob.id : null;
+
+  useEffect(() => {
+    if (!workspaceId || !completedJobId) return;
+    const completionKey = `${workspaceId}:${completedJobId}`;
+    if (refreshedJob.current === completionKey) return;
+    refreshedJob.current = completionKey;
+    // Refresh all advertiser filters in this workspace, not the job cache.
+    invalidateAdvertisers();
+  }, [workspaceId, completedJobId, invalidateAdvertisers]);
 
   const advertisersQuery = useQuery({
     ...adLibraryQueryOptions.advertisers(workspaceId ?? "", {
@@ -178,10 +190,24 @@ export function AdLibraryClient() {
             message="Couldn't load advertisers."
             onRetry={() => advertisersQuery.refetch()}
           />
+        ) : advertisers.length === 0 && liveJob &&
+          (liveJob.status === "failed" || liveJob.status === "cancelled") ? (
+          <PageErrorState
+            message={liveJob.last_error ?? "Search didn't complete. Run a new search above."}
+          />
+        ) : advertisers.length === 0 && liveJob &&
+          (liveJob.status === "pending" || liveJob.status === "running") ? (
+          <PageLoadingState message="Searching for advertisers…" />
+        ) : advertisers.length === 0 && liveJob?.status === "succeeded" && advertisersQuery.isFetching ? (
+          <PageLoadingState message="Loading discovered advertisers…" />
         ) : advertisers.length === 0 ? (
           <PageEmptyState
-            title="No tracked advertisers yet"
-            description="Run a search above to start tracking advertisers."
+            title={liveJob?.status === "succeeded" ? "No matching advertisers" : "No tracked advertisers yet"}
+            description={liveJob?.status === "succeeded"
+              ? onlyQualified && liveJob.discovered_count > 0
+                ? "No advertisers match the ICP filter. Switch to Show all to view discovered advertisers."
+                : "Try different search terms or filters."
+              : "Run a search above to start tracking advertisers."}
           />
         ) : (
           <AdvertiserTable
@@ -231,7 +257,7 @@ function JobStatusBanner({ job }: { job: AdLibraryJob }) {
               ? "Scanning the ad library. This can take a moment."
               : isDone
                 ? `Found ${job.discovered_count} advertiser${job.discovered_count === 1 ? "" : "s"}. View them below.`
-                : (job.last_error ?? "Search finished.")}
+                : (job.last_error ?? "Search didn't complete. Run a new search above.")}
           </p>
         </div>
       </CardContent>
