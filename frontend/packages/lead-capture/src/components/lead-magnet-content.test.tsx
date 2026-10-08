@@ -1,10 +1,12 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { useState } from "react";
+import { describe, expect, it, vi } from "vitest";
 
-import type { LeadMagnet } from "@/types";
+import type { LeadMagnet, ResultCTADestination } from "@/types";
 
 import { LeadMagnetContent } from "./lead-magnet-content";
+import { ResultCTAEditor } from "./result-cta";
 
 type Magnet = Pick<
   LeadMagnet,
@@ -20,6 +22,173 @@ const richMagnet = (content: unknown): Magnet => ({
   delivery_method: "email",
   content_url: "",
   content_data: { title: "Field guide", description: "A short overview", content },
+});
+
+const interactiveMagnet = (
+  kind: "quiz" | "calculator",
+  destination: ResultCTADestination,
+): Magnet => ({
+  ...richMagnet(undefined),
+  magnet_type: kind,
+  content_data:
+    kind === "quiz"
+      ? {
+          title: "Quiz",
+          questions: [
+            {
+              id: "q",
+              text: "Choose",
+              type: "single_choice",
+              options: [{ id: "a", text: "North", score: 7 }],
+            },
+          ],
+          results: [
+            { id: "wrong", min_score: 0, max_score: 0, title: "Wrong band", description: "" },
+            {
+              id: "r",
+              min_score: 7,
+              max_score: 7,
+              title: "Right band",
+              description: "",
+              cta_text: "Next step",
+              ...destination,
+            },
+          ],
+        }
+      : {
+          title: "Calculator",
+          inputs: [{ id: "amount", label: "Amount", type: "number", required: true }],
+          calculations: [],
+          outputs: [
+            {
+              id: "total",
+              label: "Total",
+              formula: "amount * 2",
+              format: "number",
+              highlight: true,
+            },
+          ],
+          cta: { text: "Next step", ...destination },
+        },
+});
+
+async function complete(kind: "quiz" | "calculator") {
+  if (kind === "quiz") {
+    await userEvent.click(screen.getByRole("radio", { name: "North" }));
+    await userEvent.click(screen.getByRole("button", { name: "See My Result" }));
+    expect(screen.getByText("Right band")).toBeVisible();
+    expect(screen.queryByText("Wrong band")).not.toBeInTheDocument();
+  } else {
+    await userEvent.type(screen.getByLabelText("Amount"), "6");
+    expect(screen.getByText("12")).toBeVisible();
+  }
+}
+
+describe.each(["quiz", "calculator"] as const)("%s result CTA", (kind) => {
+  it.each(["booking", "offer"] as const)(
+    "completes and activates an explicit %s parent action",
+    async (cta_action) => {
+      const callback = vi.fn();
+      render(
+        <LeadMagnetContent
+          magnet={interactiveMagnet(kind, { cta_action })}
+          onBooking={callback}
+          onOffer={callback}
+        />,
+      );
+      await complete(kind);
+      await userEvent.click(screen.getByRole("button", { name: "Next step" }));
+      expect(callback).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each(["https://example.com/book", "/p/offers/fixture-offer"])(
+    "preserves configured destination in preview and public: %s",
+    async (cta_url) => {
+      const callback = vi.fn();
+      const magnet = interactiveMagnet(kind, { cta_url });
+      const { rerender } = render(<LeadMagnetContent magnet={magnet} />);
+      await complete(kind);
+      expect(screen.getByRole("link", { name: "Next step" })).toHaveAttribute("href", cta_url);
+      rerender(<LeadMagnetContent magnet={magnet} onOffer={callback} />);
+      expect(screen.getByRole("link", { name: "Next step" })).toHaveAttribute("href", cta_url);
+      expect(callback).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    undefined,
+    "javascript:untrusted",
+    "http:example.com",
+    "https:///example.com",
+    "//example.com",
+    "https://user:password@example.com",
+    "/appointments",
+    "https://example.com/\\\\bad",
+    "https://example.com/\npath",
+  ])("disables absent or unsafe destinations, even with a host callback: %j", async (cta_url) => {
+    const callback = vi.fn();
+    render(
+      <LeadMagnetContent
+        magnet={interactiveMagnet(kind, { cta_action: cta_url ? "offer" : "link", cta_url })}
+        onOffer={callback}
+      />,
+    );
+    await complete(kind);
+    expect(screen.getByRole("button", { name: "Next step" })).toBeDisabled();
+    expect(screen.getByText(/next step is currently unavailable/)).toBeVisible();
+    expect(screen.queryByRole("link", { name: "Next step" })).not.toBeInTheDocument();
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it("does not fake a booking in preview without a destination or callback", async () => {
+    render(<LeadMagnetContent magnet={interactiveMagnet(kind, { cta_action: "booking" })} />);
+    await complete(kind);
+    expect(screen.getByRole("button", { name: "Next step" })).toBeDisabled();
+  });
+
+  it("fails closed for unsupported stored actions", async () => {
+    render(
+      <LeadMagnetContent
+        magnet={interactiveMagnet(kind, {
+          cta_action: "payment" as ResultCTADestination["cta_action"],
+          cta_url: "https://example.com",
+        })}
+      />,
+    );
+    await complete(kind);
+    expect(screen.getByRole("button", { name: "Next step" })).toBeDisabled();
+  });
+});
+
+describe("Result CTA authoring", () => {
+  it("explains missing and invalid destinations and saves a working preview destination", async () => {
+    function AuthoringFixture() {
+      const [destination, setDestination] = useState<ResultCTADestination>({});
+      return (
+        <>
+          <ResultCTAEditor
+            destination={destination}
+            onChange={(updates) => setDestination((previous) => ({ ...previous, ...updates }))}
+          />
+          <LeadMagnetContent magnet={interactiveMagnet("quiz", destination)} />
+        </>
+      );
+    }
+    render(<AuthoringFixture />);
+    expect(screen.getByText(/Configure a destination to enable this CTA/)).toBeVisible();
+    await userEvent.selectOptions(screen.getByLabelText("CTA action"), "booking");
+    await userEvent.type(screen.getByLabelText("CTA destination URL"), "javascript:untrusted");
+    expect(screen.getByText(/Unsafe destinations are disabled/)).toBeVisible();
+    await complete("quiz");
+    expect(screen.getByRole("button", { name: "Next step" })).toBeDisabled();
+    await userEvent.clear(screen.getByLabelText("CTA destination URL"));
+    await userEvent.type(screen.getByLabelText("CTA destination URL"), "https://example.com/book");
+    expect(screen.getByRole("link", { name: "Next step" })).toHaveAttribute(
+      "href",
+      "https://example.com/book",
+    );
+  });
 });
 
 describe("LeadMagnetContent", () => {

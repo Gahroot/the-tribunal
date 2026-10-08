@@ -41,6 +41,8 @@ import type {
 
 import { useLeadCaptureAdapter, type GenerateCalculatorRequest } from "../adapter";
 
+import { ResultCTAEditor } from "./result-cta";
+
 interface CalculatorBuilderProps {
   workspaceId: string;
   value: CalculatorContent;
@@ -551,6 +553,12 @@ export function CalculatorBuilder({ workspaceId, value, onChange }: CalculatorBu
         {/* CTA */}
         <div className="space-y-4">
           <Label className="text-base">Call to Action</Label>
+          <ResultCTAEditor
+            destination={value.cta ?? {}}
+            onChange={(updates) =>
+              onChange({ ...value, cta: { ...value.cta, text: value.cta?.text ?? "", ...updates } })
+            }
+          />
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label className="text-sm">Button Text</Label>
@@ -566,7 +574,7 @@ export function CalculatorBuilder({ workspaceId, value, onChange }: CalculatorBu
                 placeholder="e.g., Talk to an expert about your results"
                 value={value.cta?.description || ""}
                 onChange={(e) =>
-                  onChange({ ...value, cta: { text: value.cta?.text || "", description: e.target.value } })
+                  onChange({ ...value, cta: { ...value.cta, text: value.cta?.text || "", description: e.target.value } })
                 }
               />
             </div>

@@ -49,7 +49,12 @@ export interface QuizQuestion {
   weight?: number;
 }
 
-export interface QuizResult {
+export interface ResultCTADestination {
+  cta_action?: "link" | "booking" | "offer";
+  cta_url?: string;
+}
+
+export interface QuizResult extends ResultCTADestination {
   id: string;
   min_score: number;
   max_score: number;
@@ -101,7 +106,7 @@ export interface CalculatorOutput {
   description?: string;
 }
 
-export interface CalculatorCTA {
+export interface CalculatorCTA extends ResultCTADestination {
   text: string;
   description?: string;
 }

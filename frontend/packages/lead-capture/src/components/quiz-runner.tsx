@@ -10,7 +10,9 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Slider } from "@/components/ui/slider";
 import type { QuizContent, QuizQuestion } from "@/types";
 
-interface QuizRunnerProps {
+import { ResultCTA, type ResultCTAContext } from "./result-cta";
+
+interface QuizRunnerProps extends ResultCTAContext {
   content: QuizContent;
 }
 
@@ -40,7 +42,7 @@ function scoreQuestion(question: QuizQuestion, answer: Answer | undefined): numb
  * Interactive quiz a prospect can actually take on a public page. Sums option
  * scores and maps the total to one of the configured result bands.
  */
-export function QuizRunner({ content }: QuizRunnerProps) {
+export function QuizRunner({ content, onBooking, onOffer }: QuizRunnerProps) {
   const [answers, setAnswers] = useState<Record<string, Answer>>({});
   const [submitted, setSubmitted] = useState(false);
 
@@ -91,9 +93,12 @@ export function QuizRunner({ content }: QuizRunnerProps) {
         )}
         <div className="flex flex-wrap items-center gap-3 pt-1">
           {result.cta_text && (
-            <Button size="sm" type="button">
-              {result.cta_text}
-            </Button>
+            <ResultCTA
+              text={result.cta_text}
+              destination={result}
+              onBooking={onBooking}
+              onOffer={onOffer}
+            />
           )}
           <Button
             size="sm"

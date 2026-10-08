@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -16,7 +15,9 @@ import { formatCurrency, formatNumber } from "@/lib/utils/number";
 import { evaluateFormula } from "@/lib/utils/safe-formula";
 import type { CalculatorContent, CalculatorOutput } from "@/types";
 
-interface CalculatorRunnerProps {
+import { ResultCTA, type ResultCTAContext } from "./result-cta";
+
+interface CalculatorRunnerProps extends ResultCTAContext {
   content: CalculatorContent;
 }
 
@@ -39,7 +40,7 @@ function formatOutput(value: number | null, format: CalculatorOutput["format"]):
  * feed a safe arithmetic evaluator (no eval) that resolves calculations and
  * outputs live as the visitor types.
  */
-export function CalculatorRunner({ content }: CalculatorRunnerProps) {
+export function CalculatorRunner({ content, onBooking, onOffer }: CalculatorRunnerProps) {
   const inputs = content.inputs ?? [];
 
   const [values, setValues] = useState<Record<string, number>>(() => {
@@ -179,7 +180,12 @@ export function CalculatorRunner({ content }: CalculatorRunnerProps) {
 
       {content.cta && (
         <div className="space-y-1">
-          <Button type="button">{content.cta.text}</Button>
+          <ResultCTA
+            text={content.cta.text}
+            destination={content.cta}
+            onBooking={onBooking}
+            onOffer={onOffer}
+          />
           {content.cta.description && (
             <p className="text-xs text-muted-foreground">
               {content.cta.description}

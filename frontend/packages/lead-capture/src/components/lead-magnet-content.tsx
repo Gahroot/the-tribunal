@@ -7,9 +7,10 @@ import type { CalculatorContent, LeadMagnet, QuizContent, RichTextContent } from
 
 import { CalculatorRunner } from "./calculator-runner";
 import { QuizRunner } from "./quiz-runner";
+import type { ResultCTAContext } from "./result-cta";
 import { RichTextBody } from "./rich-text-body";
 
-interface LeadMagnetContentProps {
+interface LeadMagnetContentProps extends ResultCTAContext {
   magnet: Pick<
     LeadMagnet,
     "magnet_type" | "delivery_method" | "content_url" | "content_data" | "name"
@@ -39,15 +40,23 @@ function downloadLabel(magnet: LeadMagnetContentProps["magnet"]): {
  * creator-facing preview dialog. A standalone public renderer route is a
  * larger, separate effort; this makes attached magnets reachable today.
  */
-export function LeadMagnetContent({ magnet }: LeadMagnetContentProps) {
+export function LeadMagnetContent({ magnet, onBooking, onOffer }: LeadMagnetContentProps) {
   const { magnet_type, content_url, content_data } = magnet;
 
   if (magnet_type === "quiz" && content_data) {
-    return <QuizRunner content={content_data as QuizContent} />;
+    return (
+      <QuizRunner content={content_data as QuizContent} onBooking={onBooking} onOffer={onOffer} />
+    );
   }
 
   if (magnet_type === "calculator" && content_data) {
-    return <CalculatorRunner content={content_data as CalculatorContent} />;
+    return (
+      <CalculatorRunner
+        content={content_data as CalculatorContent}
+        onBooking={onBooking}
+        onOffer={onOffer}
+      />
+    );
   }
 
   if (magnet_type === "rich_text") {

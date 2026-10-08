@@ -29,6 +29,8 @@ import type { QuizContent, QuizQuestion, QuizOption, QuizResult } from "@/types"
 
 import { useLeadCaptureAdapter, type GenerateQuizRequest } from "../adapter";
 
+import { ResultCTAEditor } from "./result-cta";
+
 interface QuizBuilderProps {
   workspaceId: string;
   value: QuizContent;
@@ -442,6 +444,10 @@ export function QuizBuilder({ workspaceId, value, onChange }: QuizBuilderProps) 
                 placeholder="CTA button text (e.g., 'Book a Call')"
                 value={result.cta_text || ""}
                 onChange={(e) => updateResult(rIndex, { cta_text: e.target.value })}
+              />
+              <ResultCTAEditor
+                destination={result}
+                onChange={(updates) => updateResult(rIndex, updates)}
               />
             </CardContent>
           </Card>

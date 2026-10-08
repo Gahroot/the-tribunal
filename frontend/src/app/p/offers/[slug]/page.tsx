@@ -216,7 +216,10 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
                             {lm.description}
                           </p>
                         )}
-                        <LeadMagnetContent magnet={lm} />
+                        <LeadMagnetContent
+                          magnet={lm}
+                          onOffer={() => document.getElementById("offer-signup")?.focus()}
+                        />
                       </div>
                     </div>
                   ))}
@@ -287,7 +290,13 @@ export default function PublicOfferPage({ params }: PublicOfferPageProps) {
                 <Separator />
 
                 {/* Opt-in Form */}
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form
+                  id="offer-signup"
+                  tabIndex={-1}
+                  aria-label="Offer signup"
+                  onSubmit={handleSubmit}
+                  className="space-y-4"
+                >
                   {(offer.require_name || (!offer.require_email && !offer.require_phone)) && (
                     <div className="space-y-2">
                       <Label htmlFor="name">
