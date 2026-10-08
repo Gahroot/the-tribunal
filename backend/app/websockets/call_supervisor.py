@@ -98,9 +98,7 @@ async def _start_monitoring(
     """Subscribe this socket to call audio, respecting the listener cap."""
     queue = live_call.add_subscriber()
     if queue is None:
-        await websocket.send_json(
-            {"type": "error", "message": "Too many supervisors on this call"}
-        )
+        await websocket.send_json({"type": "error", "message": "Too many supervisors on this call"})
         return False, None
     audio_task = asyncio.create_task(
         _pump_audio_to_operator(websocket, queue, log),
@@ -111,9 +109,7 @@ async def _start_monitoring(
     return True, audio_task
 
 
-async def _forward_operator_audio(
-    live_call: LiveCall, data: Any, operator_user_id: int
-) -> None:
+async def _forward_operator_audio(live_call: LiveCall, data: Any, operator_user_id: int) -> None:
     """Discard malformed/oversized frames before forwarding to the caller."""
     if not isinstance(data, str) or len(data) > 32768:
         return
