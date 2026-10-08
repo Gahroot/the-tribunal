@@ -31,6 +31,9 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const PUBLIC_PATHS = ["/login", "/register"];
 const PUBLIC_PATH_PREFIXES = ["/invite/", "/p/"];
+// Only the existing visitor-facing embed pages bypass dashboard login. Do not
+// exempt arbitrary descendants (or a future private route under /embed).
+const PUBLIC_EMBED_PATH = /^\/embed\/[^/]+(?:\/(?:chat|both|fullpage))?\/?$/;
 // Public pages that still want to recognize an existing session (finding
 // RF-003): an invitation can be accepted in place by a signed-in teammate.
 const OPTIONAL_AUTH_PATH_PREFIXES = ["/invite/"];
@@ -38,7 +41,8 @@ const OPTIONAL_AUTH_PATH_PREFIXES = ["/invite/"];
 function isPublicPathname(pathname: string): boolean {
   return (
     PUBLIC_PATHS.includes(pathname) ||
-    PUBLIC_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+    PUBLIC_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix)) ||
+    PUBLIC_EMBED_PATH.test(pathname)
   );
 }
 
@@ -78,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Other public surfaces (login/register, /invite/, and all /p/ pages such as the
+    // Other public surfaces (login/register, embed pages, and all /p/ pages such as the
     // review rating-gate and offer landing pages) are visited by anonymous
     // users. Probing /auth/me there would 401 and trip the axios interceptor's
     // hard redirect to /login, breaking those public flows. Skip the probe and

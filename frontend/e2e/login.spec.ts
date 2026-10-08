@@ -15,6 +15,69 @@ import { hasTestUser, loginViaUI, uniqueSuffix } from "./helpers";
  * Invitation signup uses intercepted synthetic API data, never live accounts.
  */
 
+test.describe("Public embeds (RF-017)", () => {
+  for (const variant of ["", "/chat", "/both", "/fullpage"]) {
+    for (const framed of [false, true]) {
+      for (const availability of ["enabled", "disabled", "unknown", "blocked-domain"] as const) {
+        test(`${variant || "/voice"} ${framed ? "iframe" : "standalone"} ${availability} stays anonymous`, async ({ page }) => {
+          const publicId = `rf017-${availability}`;
+          const path = `/embed/${publicId}${variant}?theme=light`;
+          const calls: string[] = [];
+          const detail = availability === "blocked-domain"
+            ? "Origin not allowed"
+            : "Agent not found or embedding not enabled";
+          await page.route("**/api/v1/**", (route) => {
+            const request = route.request();
+            const apiPath = new URL(request.url()).pathname;
+            calls.push(apiPath);
+            // Every non-config request is rejected: no AI sessions, calls,
+            // tools, or private API requests can escape to a real backend.
+            const isConfig = apiPath === `/api/v1/p/embed/${publicId}/config` && request.method() === "GET";
+            return route.fulfill({
+              status: !isConfig ? 401 : availability === "enabled" ? 200 : availability === "blocked-domain" ? 403 : 404,
+              contentType: "application/json",
+              body: JSON.stringify(isConfig && availability === "enabled" ? {
+                public_id: publicId, name: "RF-017 Fixture", greeting_message: "Hello from the fixture",
+                button_text: "Open fixture", theme: "light", position: "bottom-right",
+                primary_color: "#6366f1", language: "en-US", voice: "ash", channel_mode: "both",
+              } : { detail }),
+            });
+          });
+          if (framed) {
+            await page.route("**/rf017-host", (route) => route.fulfill({
+              contentType: "text/html",
+              body: `<iframe title="Public embed" src="${path}" width="800" height="800" allow="microphone"></iframe>`,
+            }));
+            await page.goto("/rf017-host");
+          } else {
+            await page.goto(path);
+          }
+          const surface = framed ? page.frameLocator('iframe[title="Public embed"]') : page;
+          if (availability === "enabled") {
+            // Do not click voice controls or submit chat: configuration alone
+            // proves the anonymous surface mounted without paid providers.
+            if (variant === "" || variant === "/chat") {
+              await expect(surface.getByRole("button", { name: "Open fixture", exact: true })).toBeVisible();
+            } else {
+              await expect(surface.getByText("RF-017 Fixture", { exact: true })).toBeVisible();
+            }
+          } else {
+            await expect(surface.getByText(detail, { exact: true })).toBeVisible();
+          }
+          await expect.poll(() => calls.length).toBeGreaterThan(0);
+          expect(calls.every((call) => call === `/api/v1/p/embed/${publicId}/config`)).toBe(true);
+          await expect(surface.getByText("Welcome back", { exact: true })).toHaveCount(0);
+          if (framed) {
+            expect(page.frames().some((frame) => new URL(frame.url()).pathname === `/embed/${publicId}${variant}`)).toBe(true);
+          } else {
+            await expect(page).toHaveURL(path);
+          }
+        });
+      }
+    }
+  }
+});
+
 test.describe("Authentication", () => {
   test("login form is reachable", async ({ page }) => {
     await page.goto("/login");

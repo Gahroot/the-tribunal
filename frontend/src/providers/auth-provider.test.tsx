@@ -169,6 +169,59 @@ describe("Protected session recovery (RF-004)", () => {
   });
 });
 
+describe("Public embed route isolation (RF-017)", () => {
+  it.each([
+    "/embed/agent_public_id",
+    "/embed/agent_public_id/",
+    "/embed/agent_public_id/chat?theme=auto&autostart=true",
+    "/embed/agent_public_id/both?theme=dark",
+    "/embed/agent_public_id/fullpage?theme=light",
+    "/p/offers/some-offer",
+    "/login",
+    "/login?mode=register&redirect=%2Finvite%2Ftok_1",
+    "/register",
+  ])("renders anonymous public content without a session probe or redirect: %s", async (url) => {
+    visit(url);
+    renderProvider();
+    await waitFor(() => expect(screen.getByTestId("loading")).toHaveTextContent("no"));
+    expect(screen.getByTestId("user")).toHaveTextContent("none");
+    expect(getCurrentUserMock).not.toHaveBeenCalled();
+    expect(router().replace).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "/today",
+    "/agents/agent_public_id",
+    "/embed",
+    "/embed/",
+    "/embed/agent_public_id/settings",
+    "/embed/agent_public_id/chat/private",
+    "/embed/agent_public_id/fullpage/private",
+    "/embed/agent_public_id/both/private",
+    "/embed/agent_public_id/voice",
+    "/embedded/agent_public_id",
+  ])("protects non-public routes without mounting their consumers: %s", async (url) => {
+    visit(url);
+    getCurrentUserMock.mockRejectedValue(new AxiosError("Signed out", undefined, undefined, undefined, {
+      status: 401, data: {}, headers: {}, statusText: "Unauthorized", config: {} as never,
+    }));
+    renderProvider();
+    await waitFor(() => expect(router().replace).toHaveBeenCalledWith("/login"));
+    expect(getCurrentUserMock).toHaveBeenCalledWith({ skipAuthRedirect: true });
+    expect(screen.queryByTestId("user")).not.toBeInTheDocument();
+  });
+
+  it("blocks protected consumers when navigating from an anonymous embed", async () => {
+    visit("/embed/agent_public_id/chat");
+    const view = renderProvider();
+    await waitFor(() => expect(screen.getByTestId("loading")).toHaveTextContent("no"));
+    visit("/today");
+    view.rerender(<AuthProvider><div>Private dashboard data</div></AuthProvider>);
+    await waitFor(() => expect(router().replace).toHaveBeenCalledWith("/login"));
+    expect(screen.queryByText("Private dashboard data")).not.toBeInTheDocument();
+  });
+});
+
 describe("AuthProvider on invitation pages (RF-003)", () => {
   it("recognizes an existing session with a quiet probe", async () => {
     visit("/invite/tok_1");
