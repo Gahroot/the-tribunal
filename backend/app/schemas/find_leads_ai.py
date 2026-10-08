@@ -13,9 +13,15 @@ class AIImportLeadsRequest(BaseModel):
     leads: list[BusinessResult] = Field(..., min_length=1, description="Leads to import")
     default_status: str = Field(default="new", description="Default contact status")
     add_tags: list[str] | None = Field(default=None, description="Tags to add to imported contacts")
-    enable_enrichment: bool = Field(default=True, description="Enable website enrichment")
+    enable_enrichment: bool = Field(
+        default=True,
+        description="Enable website enrichment; when false, import eligible leads unscored",
+    )
     min_lead_score: int = Field(
-        default=80, ge=0, le=200, description="Minimum lead score threshold for import"
+        default=80,
+        ge=0,
+        le=200,
+        description="Minimum score for import; applied only when enrichment is enabled",
     )
 
 
@@ -27,7 +33,9 @@ class LeadImportDetail(BaseModel):
         description="imported | rejected_low_score | enrichment_failed"
         " | skipped_duplicate | skipped_no_phone"
     )
-    lead_score: int | None = None
+    lead_score: int | None = Field(
+        default=None, description="Lead quality score; null when imported without enrichment"
+    )
     revenue_tier: str | None = None
     decision_maker_name: str | None = None
     decision_maker_title: str | None = None
@@ -37,8 +45,12 @@ class AIImportLeadsResponse(BaseModel):
     """Response schema for AI-enhanced lead import."""
 
     total: int = Field(..., description="Total leads submitted")
-    imported: int = Field(default=0, description="Successfully imported count (score >= 80)")
-    rejected_low_score: int = Field(default=0, description="Leads rejected with score < 80")
+    imported: int = Field(
+        default=0, description="Successfully imported count, including unscored leads"
+    )
+    rejected_low_score: int = Field(
+        default=0, description="Leads rejected below the requested minimum with enrichment enabled"
+    )
     enrichment_failed: int = Field(default=0, description="Leads where enrichment failed")
     skipped_duplicates: int = Field(default=0, description="Skipped due to duplicate phone")
     skipped_no_phone: int = Field(default=0, description="Skipped due to missing phone")

@@ -3864,8 +3864,8 @@ export interface paths {
          *
          *     Enrichment happens synchronously during import:
          *     - Leads are enriched in parallel (up to 10 concurrent) before saving
-         *     - Only leads with a lead score >= min_lead_score are imported
-         *     - Leads below the threshold are rejected immediately
+         *     - With enrichment enabled, only scores >= min_lead_score are imported
+         *     - With enrichment disabled, otherwise eligible leads import unscored
          *     - No background processing for new imports
          */
         post: operations["import_leads_ai_api_v1_workspaces__workspace_id__find_leads_ai_import_post"];
@@ -7335,7 +7335,7 @@ export interface components {
             default_status: string;
             /**
              * Enable Enrichment
-             * @description Enable website enrichment
+             * @description Enable website enrichment; when false, import eligible leads unscored
              * @default true
              */
             enable_enrichment: boolean;
@@ -7346,7 +7346,7 @@ export interface components {
             leads: components["schemas"]["BusinessResult"][];
             /**
              * Min Lead Score
-             * @description Minimum lead score threshold for import
+             * @description Minimum score for import; applied only when enrichment is enabled
              * @default 80
              */
             min_lead_score: number;
@@ -7369,7 +7369,7 @@ export interface components {
             errors?: string[];
             /**
              * Imported
-             * @description Successfully imported count (score >= 80)
+             * @description Successfully imported count, including unscored leads
              * @default 0
              */
             imported: number;
@@ -7386,7 +7386,7 @@ export interface components {
             queued_for_enrichment: number;
             /**
              * Rejected Low Score
-             * @description Leads rejected with score < 80
+             * @description Leads rejected below the requested minimum with enrichment enabled
              * @default 0
              */
             rejected_low_score: number;
@@ -13451,7 +13451,10 @@ export interface components {
             decision_maker_name?: string | null;
             /** Decision Maker Title */
             decision_maker_title?: string | null;
-            /** Lead Score */
+            /**
+             * Lead Score
+             * @description Lead quality score; null when imported without enrichment
+             */
             lead_score?: number | null;
             /** Name */
             name: string;

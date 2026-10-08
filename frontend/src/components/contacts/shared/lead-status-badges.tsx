@@ -15,7 +15,7 @@ export function EnrichmentStatusBadge({ status }: { status: string | null | unde
     pending: { label: "Enriching...", dotClass: "bg-warning" },
     enriched: { label: "Enriched", dotClass: "bg-success" },
     failed: { label: "Failed", dotClass: "bg-destructive" },
-    skipped: { label: "No website", dotClass: "bg-muted-foreground" },
+    skipped: { label: "Unscored", dotClass: "bg-muted-foreground" },
   };
 
   const config = statusConfig[status];

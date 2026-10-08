@@ -21,6 +21,10 @@ export function AIImportResultBanner({
   showDetails,
   onToggleDetails,
 }: AIImportResultBannerProps) {
+  const unscoredCount = result.lead_details.filter(
+    (lead) => lead.status === "imported" && lead.lead_score == null,
+  ).length;
+
   return (
     <Card>
       <CardContent className="p-4">
@@ -37,6 +41,7 @@ export function AIImportResultBanner({
                 : "No leads imported"}
             </p>
             <div className="flex gap-4 text-sm text-muted-foreground flex-wrap">
+              {unscoredCount > 0 && <span>{unscoredCount} imported unscored</span>}
               {result.rejected_low_score > 0 && (
                 <span className="flex items-center gap-1">
                   <XCircle className="h-3 w-3" />
@@ -103,6 +108,11 @@ export function AIImportResultBanner({
                     {detail.revenue_tier && (
                       <Badge variant="outline" className="text-[10px] px-1 py-0">
                         {detail.revenue_tier}
+                      </Badge>
+                    )}
+                    {detail.status === "imported" && detail.lead_score == null && (
+                      <Badge variant="outline" className="text-[10px] px-1 py-0">
+                        Unscored
                       </Badge>
                     )}
                     {detail.lead_score != null && (

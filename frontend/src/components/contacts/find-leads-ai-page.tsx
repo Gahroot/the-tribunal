@@ -99,9 +99,13 @@ export function FindLeadsAIPage() {
           data.rejected_low_score > 0
             ? ` (${data.rejected_low_score} rejected below quality threshold)`
             : "";
+        const unscoredCount = data.lead_details.filter(
+          (lead) => lead.status === "imported" && lead.lead_score == null,
+        ).length;
+        const unscoredMsg = unscoredCount > 0 ? ` (${unscoredCount} unscored)` : "";
         return {
           type: "success",
-          message: `Successfully imported ${data.imported} leads${rejectedMsg}`,
+          message: `Successfully imported ${data.imported} leads${unscoredMsg}${rejectedMsg}`,
         };
       }
       const reasons: string[] = [];
@@ -296,12 +300,19 @@ export function FindLeadsAIPage() {
                 </Label>
               </div>
               <div className="flex items-center gap-2">
-                <Label className="text-sm">Min quality:</Label>
+                <Label htmlFor="min-lead-score" className="text-sm">
+                  Min quality:
+                </Label>
                 <Select
                   value={minLeadScore.toString()}
                   onValueChange={(v) => setMinLeadScore(parseInt(v))}
+                  disabled={!enableEnrichment}
                 >
-                  <SelectTrigger className="w-28 h-8">
+                  <SelectTrigger
+                    id="min-lead-score"
+                    className="w-28 h-8"
+                    aria-describedby="import-scoring-help"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -339,6 +350,12 @@ export function FindLeadsAIPage() {
                 Import {selectedCount} Lead{selectedCount !== 1 ? "s" : ""}
               </Button>
             </div>
+
+            <p id="import-scoring-help" className="text-sm text-muted-foreground">
+              {enableEnrichment
+                ? `Only leads scoring ${minLeadScore}+ will import. Enrichment failures are not imported.`
+                : "Enrichment is off. Eligible leads import unscored; minimum quality does not apply."}
+            </p>
 
             <LeadResultsList
               results={filteredResults}

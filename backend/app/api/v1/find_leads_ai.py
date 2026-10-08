@@ -109,8 +109,8 @@ async def import_leads_ai(  # noqa: PLR0912, PLR0915
 
     Enrichment happens synchronously during import:
     - Leads are enriched in parallel (up to 10 concurrent) before saving
-    - Only leads with a lead score >= min_lead_score are imported
-    - Leads below the threshold are rejected immediately
+    - With enrichment enabled, only scores >= min_lead_score are imported
+    - With enrichment disabled, otherwise eligible leads import unscored
     - No background processing for new imports
     """
 
@@ -226,12 +226,17 @@ async def import_leads_ai(  # noqa: PLR0912, PLR0915
             )
             continue
 
-        lead_score: int = enrichment_result["lead_score"]
+        # Only an explicit opt-out bypasses scoring, never an enrichment failure.
+        lead_score: int | None = (
+            enrichment_result["lead_score"] if request.enable_enrichment else None
+        )
         revenue_tier: str | None = enrichment_result.get("revenue_tier")
         dm_name: str | None = enrichment_result.get("decision_maker_name")
         dm_title: str | None = enrichment_result.get("decision_maker_title")
 
-        if lead_score < request.min_lead_score:
+        if request.enable_enrichment and (
+            lead_score is None or lead_score < request.min_lead_score
+        ):
             rejected_low_score += 1
             lead_details.append(
                 LeadImportDetail(
@@ -267,7 +272,8 @@ async def import_leads_ai(  # noqa: PLR0912, PLR0915
                 linkedin_url=enrichment_result["linkedin_url"],
                 enrichment_status=enrichment_result["enrichment_status"],
                 business_intel=enrichment_result["business_intel"],
-                lead_score=lead_score,
+                # Contacts use zero as the storage sentinel for skipped enrichment.
+                lead_score=lead_score if lead_score is not None else 0,
                 enriched_at=(
                     None
                     if enrichment_result["enrichment_status"] == "skipped"

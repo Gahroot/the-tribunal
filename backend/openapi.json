@@ -27,7 +27,7 @@
           },
           "enable_enrichment": {
             "default": true,
-            "description": "Enable website enrichment",
+            "description": "Enable website enrichment; when false, import eligible leads unscored",
             "title": "Enable Enrichment",
             "type": "boolean"
           },
@@ -42,7 +42,7 @@
           },
           "min_lead_score": {
             "default": 80,
-            "description": "Minimum lead score threshold for import",
+            "description": "Minimum score for import; applied only when enrichment is enabled",
             "maximum": 200.0,
             "minimum": 0.0,
             "title": "Min Lead Score",
@@ -74,7 +74,7 @@
           },
           "imported": {
             "default": 0,
-            "description": "Successfully imported count (score >= 80)",
+            "description": "Successfully imported count, including unscored leads",
             "title": "Imported",
             "type": "integer"
           },
@@ -94,7 +94,7 @@
           },
           "rejected_low_score": {
             "default": 0,
-            "description": "Leads rejected with score < 80",
+            "description": "Leads rejected below the requested minimum with enrichment enabled",
             "title": "Rejected Low Score",
             "type": "integer"
           },
@@ -15518,6 +15518,7 @@
                 "type": "null"
               }
             ],
+            "description": "Lead quality score; null when imported without enrichment",
             "title": "Lead Score"
           },
           "name": {
@@ -46855,7 +46856,7 @@
     },
     "/api/v1/workspaces/{workspace_id}/find-leads-ai/import": {
       "post": {
-        "description": "Import selected leads as contacts with parallel AI enrichment.\n\nEnrichment happens synchronously during import:\n- Leads are enriched in parallel (up to 10 concurrent) before saving\n- Only leads with a lead score >= min_lead_score are imported\n- Leads below the threshold are rejected immediately\n- No background processing for new imports",
+        "description": "Import selected leads as contacts with parallel AI enrichment.\n\nEnrichment happens synchronously during import:\n- Leads are enriched in parallel (up to 10 concurrent) before saving\n- With enrichment enabled, only scores >= min_lead_score are imported\n- With enrichment disabled, otherwise eligible leads import unscored\n- No background processing for new imports",
         "operationId": "import_leads_ai_api_v1_workspaces__workspace_id__find_leads_ai_import_post",
         "parameters": [
           {
