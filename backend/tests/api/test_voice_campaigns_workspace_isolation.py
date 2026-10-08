@@ -19,6 +19,7 @@ from app.models.agent import Agent
 from app.models.campaign import Campaign, CampaignStatus, CampaignType
 from app.models.contact import Contact
 from app.models.phone_number import PhoneNumber
+from app.services.campaigns.campaign_lifecycle import settings
 
 WS_ID = uuid.uuid4()
 CAMPAIGN_ID = uuid.uuid4()
@@ -352,13 +353,11 @@ async def test_start_voice_campaign_rejects_missing_voice_sender(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     campaign = _make_campaign()
-    agent = _make_agent(agent_id=campaign.voice_agent_id)
-    monkeypatch.setattr(voice_campaigns_module.settings, "telnyx_api_key", "")
+    monkeypatch.setattr(settings, "telnyx_api_key", "")
     mock_db.execute = AsyncMock(
         side_effect=[
             _scalar_result(campaign),
             _count_result(3),
-            _scalar_result(agent),
             _scalar_result(None),
         ]
     )
@@ -369,7 +368,7 @@ async def test_start_voice_campaign_rejects_missing_voice_sender(
     assert "voice-enabled Telnyx number" in response.json()["detail"]
     assert campaign.status == CampaignStatus.DRAFT
     mock_db.commit.assert_not_awaited()
-    _assert_scoped_query(mock_db.execute.await_args_list[3].args[0], "phone_numbers")
+    _assert_scoped_query(mock_db.execute.await_args_list[2].args[0], "phone_numbers")
 
 
 async def test_start_voice_campaign_rejects_unconfigured_telnyx(
@@ -378,13 +377,11 @@ async def test_start_voice_campaign_rejects_unconfigured_telnyx(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     campaign = _make_campaign()
-    agent = _make_agent(agent_id=campaign.voice_agent_id)
-    monkeypatch.setattr(voice_campaigns_module.settings, "telnyx_api_key", "")
+    monkeypatch.setattr(settings, "telnyx_api_key", "")
     mock_db.execute = AsyncMock(
         side_effect=[
             _scalar_result(campaign),
             _count_result(3),
-            _scalar_result(agent),
             _scalar_result(_make_phone_number()),
         ]
     )
@@ -395,4 +392,4 @@ async def test_start_voice_campaign_rejects_unconfigured_telnyx(
     assert "TELNYX_API_KEY" in response.json()["detail"]
     assert campaign.status == CampaignStatus.DRAFT
     mock_db.commit.assert_not_awaited()
-    _assert_scoped_query(mock_db.execute.await_args_list[3].args[0], "phone_numbers")
+    _assert_scoped_query(mock_db.execute.await_args_list[2].args[0], "phone_numbers")

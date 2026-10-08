@@ -8,16 +8,92 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
+from app.db.scope import apply_workspace_scope
+from app.models.agent import Agent
 from app.models.campaign import Campaign, CampaignContact, CampaignStatus, CampaignType
+from app.models.phone_number import PhoneNumber, PhoneNumberProvider
+from app.schemas.voice_experiment import VoiceExperiment
+from app.services.ai.voice_session_factory import VoiceSessionFactory
 from app.services.campaigns.recipient_eligibility import (
     RecipientEligibility,
     RecipientEligibilityService,
 )
 from app.services.campaigns.sending_window import as_utc, has_scheduled_start_arrived
+from app.services.campaigns.voice_experiments import validate_provider
 
 
 class CampaignLifecycleError(Exception):
     """Raised when a campaign lifecycle transition is not allowed."""
+
+    def __init__(self, message: str, *, status_code: int = 400) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+async def validate_voice_campaign_sender(
+    db: AsyncSession, workspace_id: uuid.UUID, from_phone_number: str
+) -> None:
+    """Require the workspace's active voice-enabled Telnyx sender, not SMS."""
+    result = await db.execute(
+        apply_workspace_scope(select(PhoneNumber), PhoneNumber, workspace_id).where(
+            PhoneNumber.phone_number == from_phone_number,
+            PhoneNumber.provider == PhoneNumberProvider.TELNYX,
+            PhoneNumber.is_active.is_(True),
+            PhoneNumber.voice_enabled.is_(True),
+        )
+    )
+    if result.scalar_one_or_none() is None:
+        raise CampaignLifecycleError(
+            "Voice campaign sender phone number is not active or voice-enabled. "
+            "Assign an active voice-enabled Telnyx number to this workspace before starting."
+        )
+    if not settings.telnyx_api_key:
+        raise CampaignLifecycleError(
+            "Telnyx voice is not configured. Add TELNYX_API_KEY before starting voice campaigns.",
+            status_code=503,
+        )
+
+
+async def _validate_voice_readiness(db: AsyncSession, campaign: Campaign) -> None:
+    await validate_voice_campaign_sender(db, campaign.workspace_id, campaign.from_phone_number)
+    if not campaign.voice_agent_id:
+        raise CampaignLifecycleError("Select a voice agent before starting this campaign.")
+    result = await db.execute(
+        apply_workspace_scope(select(Agent), Agent, campaign.workspace_id).where(
+            Agent.id == campaign.voice_agent_id,
+            Agent.is_active.is_(True),
+        )
+    )
+    agent = result.scalar_one_or_none()
+    if agent is None or agent.channel_mode not in ("voice", "both"):
+        raise CampaignLifecycleError(
+            "Voice agent is missing, inactive, or does not support voice. "
+            "Select an active voice agent in this workspace, then try again."
+        )
+    factory = VoiceSessionFactory(settings)
+    provider = factory.get_provider_for_agent(agent)
+    if not factory.is_provider_available(provider):
+        required_keys = {
+            "openai": "OPENAI_API_KEY",
+            "grok": "XAI_API_KEY",
+            "elevenlabs": "ELEVENLABS_API_KEY and XAI_API_KEY",
+        }
+        recovery = required_keys.get(provider)
+        raise CampaignLifecycleError(
+            f"Voice provider '{provider}' is not configured. "
+            + (
+                f"Add {recovery}, then try again."
+                if recovery
+                else "Select a supported voice provider."
+            ),
+            status_code=503,
+        )
+    if campaign.voice_experiment:
+        try:
+            validate_provider(VoiceExperiment.model_validate(campaign.voice_experiment), provider)
+        except ValueError as exc:
+            raise CampaignLifecycleError(str(exc), status_code=422) from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +211,9 @@ async def start_campaign(
     if enrolled_count == 0:
         raise CampaignLifecycleError("Campaign has no contacts")
 
+    if campaign.campaign_type == CampaignType.VOICE_SMS_FALLBACK:
+        await _validate_voice_readiness(db, campaign)
+
     eligibility: RecipientEligibility | None = None
     message = f"Campaign started with {enrolled_count} contacts"
     if _is_sms_campaign(campaign):
@@ -193,6 +272,9 @@ async def resume_campaign(
     )
     if enrolled_count == 0:
         raise CampaignLifecycleError("Campaign has no contacts")
+
+    if campaign.campaign_type == CampaignType.VOICE_SMS_FALLBACK:
+        await _validate_voice_readiness(db, campaign)
 
     eligibility: RecipientEligibility | None = None
     message = "Campaign resumed"

@@ -6,12 +6,11 @@ from typing import Annotated
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DB, CurrentUser, get_workspace
-from app.core.config import settings
 from app.db.pagination import paginate
 from app.db.scope import apply_workspace_scope
 from app.models.agent import Agent
@@ -22,7 +21,6 @@ from app.models.campaign import (
     CampaignType,
 )
 from app.models.contact import Contact
-from app.models.phone_number import PhoneNumber, PhoneNumberProvider
 from app.models.workspace import Workspace
 from app.schemas.campaign import (
     CampaignContactAdd,
@@ -35,6 +33,16 @@ from app.schemas.campaign import (
     VoiceCampaignUpdate,
 )
 from app.schemas.voice_experiment import VoiceExperiment
+from app.services.campaigns.campaign_lifecycle import (
+    CampaignLifecycleError,
+    validate_voice_campaign_sender,
+)
+from app.services.campaigns.campaign_lifecycle import (
+    resume_campaign as resume_campaign_lifecycle,
+)
+from app.services.campaigns.campaign_lifecycle import (
+    start_campaign as start_campaign_lifecycle,
+)
 from app.services.campaigns.guarantee_tracker import check_guarantee_expiry
 from app.services.campaigns.voice_experiments import validate_provider, voice_results
 from app.utils.datetime import parse_time_string
@@ -71,33 +79,11 @@ async def _validate_voice_campaign_sender(
     workspace_id: uuid.UUID,
     from_phone_number: str,
 ) -> None:
-    """Ensure a voice campaign sender can place Telnyx voice calls."""
-    sender_result = await db.execute(
-        apply_workspace_scope(select(PhoneNumber), PhoneNumber, workspace_id).where(
-            PhoneNumber.phone_number == from_phone_number,
-            PhoneNumber.provider == PhoneNumberProvider.TELNYX,
-            PhoneNumber.is_active.is_(True),
-            PhoneNumber.voice_enabled.is_(True),
-        )
-    )
-    sender = sender_result.scalar_one_or_none()
-    if sender is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "Voice campaign sender phone number is not active or voice-enabled. "
-                "Assign an active voice-enabled Telnyx number to this workspace before starting."
-            ),
-        )
-
-    if not settings.telnyx_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=(
-                "Telnyx voice is not configured. "
-                "Add TELNYX_API_KEY before starting voice campaigns."
-            ),
-        )
+    """Expose the shared voice sender check for create/update readiness."""
+    try:
+        await validate_voice_campaign_sender(db, workspace_id, from_phone_number)
+    except CampaignLifecycleError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
 @router.get("", response_model=PaginatedVoiceCampaigns)
@@ -375,55 +361,13 @@ async def start_voice_campaign(
     """Start a voice campaign."""
     campaign = await _get_voice_campaign(db, campaign_id, workspace_id, lock=True)
 
-    if campaign.status not in ("draft", "paused", "scheduled"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot start campaign with status: {campaign.status}",
-        )
-
-    # Check if campaign has contacts
-    count_result = await db.execute(
-        select(func.count(CampaignContact.id)).where(CampaignContact.campaign_id == campaign_id)
-    )
-    contact_count = count_result.scalar() or 0
-
-    if contact_count == 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Campaign has no contacts",
-        )
-
-    # Verify voice agent is still valid
-    if campaign.voice_agent_id:
-        agent_result = await db.execute(
-            select(Agent).where(
-                Agent.id == campaign.voice_agent_id,
-                Agent.workspace_id == workspace_id,
-            )
-        )
-        agent = agent_result.scalar_one_or_none()
-        if not agent:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Voice agent no longer exists",
-            )
-        if campaign.voice_experiment:
-            try:
-                validate_provider(
-                    VoiceExperiment.model_validate(campaign.voice_experiment), agent.voice_provider
-                )
-            except ValueError as exc:
-                raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    await _validate_voice_campaign_sender(db, workspace_id, campaign.from_phone_number)
-
-    campaign.status = CampaignStatus.RUNNING
-    campaign.started_at = datetime.now(UTC)
-    if campaign.guarantee_target and campaign.guarantee_target > 0:
-        campaign.guarantee_status = "pending"
+    try:
+        result = await start_campaign_lifecycle(db, campaign)
+    except CampaignLifecycleError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     await db.commit()
 
-    return {"status": "running", "message": f"Voice campaign started with {contact_count} contacts"}
+    return {"status": result.status.value, "message": result.message}
 
 
 @router.post("/{campaign_id}/pause")
@@ -460,16 +404,13 @@ async def resume_voice_campaign(
     """Resume a paused voice campaign."""
     campaign = await _get_voice_campaign(db, campaign_id, workspace_id)
 
-    if campaign.status != "paused":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Can only resume paused campaigns",
-        )
-
-    campaign.status = CampaignStatus.RUNNING
+    try:
+        result = await resume_campaign_lifecycle(db, campaign)
+    except CampaignLifecycleError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     await db.commit()
 
-    return {"status": "running", "message": "Voice campaign resumed"}
+    return {"status": result.status.value, "message": result.message}
 
 
 @router.post("/{campaign_id}/cancel")

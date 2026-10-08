@@ -59,6 +59,11 @@ async def test_dispatch_waits_until_start(worker_class, transition, offset):
     if transition != "restart":
         with (
             patch("app.services.campaigns.campaign_lifecycle.datetime") as clock,
+            # Readiness is covered through the API; this test isolates scheduled dispatch.
+            patch(
+                "app.services.campaigns.campaign_lifecycle._validate_voice_readiness",
+                new=AsyncMock(),
+            ),
             patch("app.services.campaigns.sending_window.datetime") as schedule_clock,
         ):
             clock.now.return_value = START.astimezone(UTC) - timedelta(days=1)

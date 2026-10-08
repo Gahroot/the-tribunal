@@ -37,6 +37,7 @@ from app.services.campaigns.campaign_filters import apply_campaign_filters
 from app.services.campaigns.campaign_lifecycle import (
     CampaignLifecycleError,
     CampaignNotSendableError,
+    validate_voice_campaign_sender,
 )
 from app.services.campaigns.campaign_lifecycle import (
     pause_campaign as pause_campaign_lifecycle,
@@ -74,11 +75,14 @@ def _not_sendable_http_error(exc: CampaignNotSendableError) -> HTTPException:
     )
 
 
-async def _validate_campaign_sender(db: AsyncSession, from_phone_number: str) -> None:
+async def _validate_campaign_sender(
+    db: AsyncSession, workspace_id: uuid.UUID, from_phone_number: str
+) -> None:
     """Ensure a campaign sender has a usable text channel."""
     sender_result = await db.execute(
         select(PhoneNumber).where(
             PhoneNumber.phone_number == from_phone_number,
+            PhoneNumber.workspace_id == workspace_id,
             PhoneNumber.is_active.is_(True),
         )
     )
@@ -86,7 +90,10 @@ async def _validate_campaign_sender(db: AsyncSession, from_phone_number: str) ->
     if sender is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Campaign sender phone number is not active",
+            detail=(
+                "Campaign sender phone number is not active in this workspace. "
+                "Select an active number."
+            ),
         )
 
     if not sender.sms_enabled and not sender.imessage_enabled:
@@ -153,7 +160,7 @@ async def create_campaign(
                 detail="Agent not found",
             )
 
-    await _validate_campaign_sender(db, campaign_in.from_phone_number)
+    await _validate_campaign_sender(db, workspace_id, campaign_in.from_phone_number)
 
     # Convert time strings to datetime.time objects
     campaign_data = campaign_in.model_dump()
@@ -296,7 +303,15 @@ async def update_campaign(
     # Update fields
     update_data = campaign_in.model_dump(exclude_unset=True)
     if "from_phone_number" in update_data and update_data["from_phone_number"] is not None:
-        await _validate_campaign_sender(db, update_data["from_phone_number"])
+        if campaign.campaign_type == CampaignType.VOICE_SMS_FALLBACK:
+            try:
+                await validate_voice_campaign_sender(
+                    db, workspace_id, update_data["from_phone_number"]
+                )
+            except CampaignLifecycleError as exc:
+                raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        else:
+            await _validate_campaign_sender(db, workspace_id, update_data["from_phone_number"])
 
     # Convert time strings to datetime.time objects
     if "sending_hours_start" in update_data:
@@ -334,14 +349,15 @@ async def start_campaign(
     campaign = await get_or_404(db, Campaign, campaign_id, workspace_id=workspace_id)
 
     try:
-        await _validate_campaign_sender(db, campaign.from_phone_number)
+        if campaign.campaign_type == CampaignType.SMS:
+            await _validate_campaign_sender(db, workspace_id, campaign.from_phone_number)
         lifecycle_result = await start_campaign_lifecycle(db, campaign)
     except CampaignNotSendableError as exc:
         await db.rollback()
         raise _not_sendable_http_error(exc) from exc
     except CampaignLifecycleError as exc:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=exc.status_code,
             detail=str(exc),
         ) from exc
 
@@ -373,7 +389,7 @@ async def pause_campaign(
         lifecycle_result = await pause_campaign_lifecycle(campaign)
     except CampaignLifecycleError as exc:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=exc.status_code,
             detail=str(exc),
         ) from exc
 
@@ -394,10 +410,12 @@ async def resume_campaign(
     campaign = await get_or_404(db, Campaign, campaign_id, workspace_id=workspace_id)
 
     try:
+        if campaign.campaign_type == CampaignType.SMS:
+            await _validate_campaign_sender(db, workspace_id, campaign.from_phone_number)
         lifecycle_result = await resume_campaign_lifecycle(db, campaign)
     except CampaignLifecycleError as exc:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=exc.status_code,
             detail=str(exc),
         ) from exc
 

@@ -114,6 +114,12 @@ def _make_auth_test_app(
         campaigns_module.router,
         prefix="/api/v1/workspaces/{workspace_id}/campaigns",
     )
+    from app.api.v1 import voice_campaigns
+
+    app.include_router(
+        voice_campaigns.router,
+        prefix="/api/v1/workspaces/{workspace_id}/voice-campaigns",
+    )
     return app
 
 
@@ -394,7 +400,7 @@ class TestStartCampaign:
         with patch(
             "app.api.v1.campaigns.get_or_404",
             new=AsyncMock(return_value=running),
-        ):
+        ), patch("app.api.v1.campaigns._validate_campaign_sender", new=AsyncMock()):
             response = await client.post(
                 f"/api/v1/workspaces/{WS_ID}/campaigns/{CAMPAIGN_ID}/start"
             )
@@ -415,7 +421,7 @@ class TestStartCampaign:
         with patch(
             "app.api.v1.campaigns.get_or_404",
             new=AsyncMock(return_value=draft),
-        ):
+        ), patch("app.api.v1.campaigns._validate_campaign_sender", new=AsyncMock()):
             response = await client.post(
                 f"/api/v1/workspaces/{WS_ID}/campaigns/{CAMPAIGN_ID}/start"
             )
@@ -468,6 +474,166 @@ class TestStartCampaign:
         assert exclusion["contact_ids"] == [1, 2]
 
 
+class TestSharedCampaignReadiness:
+    """RF-011: exercise real start/resume and lifecycle, never a sending worker."""
+
+    @pytest.mark.parametrize("action", ["start", "resume"])
+    @pytest.mark.parametrize("route", ["campaigns", "voice-campaigns"])
+    @pytest.mark.parametrize(
+        "case, expected, message",
+        [
+            ("voice_only", 200, None),
+            ("non_voice", 400, "voice-enabled"),
+            ("inactive", 400, "voice-enabled"),
+            ("foreign_sender", 400, "this workspace"),
+            ("wrong_provider", 400, "Telnyx number"),
+            ("missing_agent", 400, "Select a voice agent"),
+            ("text_agent", 400, "active voice agent"),
+            ("foreign_agent", 400, "this workspace"),
+            ("inactive_agent", 400, "active voice agent"),
+            ("no_telnyx", 503, "TELNYX_API_KEY"),
+            ("no_openai", 503, "OPENAI_API_KEY"),
+            ("no_grok", 503, "XAI_API_KEY"),
+            ("no_elevenlabs", 503, "ELEVENLABS_API_KEY and XAI_API_KEY"),
+        ],
+    )
+    async def test_voice_readiness(self, client, mock_db, action, route, case, expected, message):
+        from app.models.agent import Agent
+        from app.models.campaign import Campaign, CampaignContact, CampaignType
+        from app.models.phone_number import PhoneNumber, PhoneNumberProvider
+        from app.services.campaigns.campaign_lifecycle import settings
+
+        campaign = _make_mock_campaign(status="paused" if action == "resume" else "draft")
+        campaign.campaign_type = CampaignType.VOICE_SMS_FALLBACK
+        campaign.voice_agent_id = None if case == "missing_agent" else uuid.uuid4()
+        campaign.voice_experiment = None
+        sender = PhoneNumber(
+            workspace_id=uuid.uuid4() if case == "foreign_sender" else WS_ID,
+            phone_number=campaign.from_phone_number,
+            provider=PhoneNumberProvider.MAC_RELAY
+            if case == "wrong_provider"
+            else PhoneNumberProvider.TELNYX,
+            is_active=case != "inactive",
+            voice_enabled=case != "non_voice",
+            sms_enabled=False,
+            imessage_enabled=False,
+        )
+        agent = Agent(
+            id=campaign.voice_agent_id,
+            workspace_id=uuid.uuid4() if case == "foreign_agent" else WS_ID,
+            is_active=case != "inactive_agent",
+            channel_mode="text" if case == "text_agent" else "voice",
+            voice_provider={"no_grok": "grok", "no_elevenlabs": "elevenlabs"}.get(case, "openai"),
+        )
+
+        async def execute(query):
+            # Honor the actual WHERE predicates; a missing tenant/channel filter fails tests.
+            from sqlalchemy.sql import operators
+            from sqlalchemy.sql.elements import BindParameter
+            from sqlalchemy.sql.visitors import iterate
+
+            model = query.column_descriptions[0]["entity"]
+            result = MagicMock()
+            if model is CampaignContact:
+                result.scalar.return_value = 1
+                return result
+            row = {Campaign: campaign, PhoneNumber: sender, Agent: agent}[model]
+            matches = True
+            for clause in iterate(query.whereclause):
+                if getattr(clause, "operator", None) not in (operators.eq, operators.is_):
+                    continue
+                value = (
+                    clause.right.value
+                    if isinstance(clause.right, BindParameter)
+                    else str(clause.right) == "true"
+                )
+                matches = matches and getattr(row, clause.left.key) == value
+            result.scalar_one_or_none.return_value = row if matches else None
+            return result
+
+        mock_db.execute.side_effect = execute
+        initial_status = campaign.status
+        with (
+            patch.object(settings, "telnyx_api_key", "" if case == "no_telnyx" else "test-key"),
+            patch.object(settings, "openai_api_key", "" if case == "no_openai" else "test-key"),
+            patch.object(settings, "openai_oauth_access_token", ""),
+            patch.object(settings, "xai_api_key", ""),
+            patch.object(settings, "elevenlabs_api_key", ""),
+        ):
+            response = await client.post(
+                f"/api/v1/workspaces/{WS_ID}/{route}/{CAMPAIGN_ID}/{action}"
+            )
+        assert response.status_code == expected, response.text
+        if expected == 200:
+            assert response.json()["status"] == "running"
+            if route == "campaigns":
+                assert response.json()["eligibility"] is None
+            assert campaign.status == "running"
+            mock_db.commit.assert_awaited_once()
+        else:
+            assert message in response.json()["detail"]
+            assert campaign.status == initial_status
+            mock_db.commit.assert_not_awaited()
+
+    @pytest.mark.parametrize("action", ["start", "resume"])
+    @pytest.mark.parametrize(
+        "sms, imessage, telnyx, relay, expected, message",
+        [
+            (False, False, True, True, 400, "SMS or iMessage"),
+            (True, False, False, True, 400, "Telnyx SMS"),
+            (False, True, True, False, 400, "iMessage relay"),
+            (True, False, True, False, 200, None),
+            (False, True, False, True, 200, None),
+        ],
+    )
+    async def test_text_checks_unchanged(
+        self, client, mock_db, action, sms, imessage, telnyx, relay, expected, message
+    ):
+        from datetime import UTC, datetime
+
+        from app.services.campaigns.recipient_eligibility import RecipientEligibility
+
+        campaign = _make_mock_campaign(status="paused" if action == "resume" else "draft")
+        sender_result = MagicMock()
+        sender_result.scalar_one_or_none.return_value = MagicMock(
+            sms_enabled=sms, imessage_enabled=imessage
+        )
+        count_result = MagicMock()
+        count_result.scalar.return_value = 1
+        mock_db.execute.side_effect = [sender_result, count_result]
+        eligibility = RecipientEligibility(
+            channel="sms" if sms else "imessage",
+            consent_required=sms,
+            checked_at=datetime.now(UTC),
+            selected_count=1,
+            eligible_count=1,
+        )
+        with (
+            patch("app.api.v1.campaigns.get_or_404", new=AsyncMock(return_value=campaign)),
+            patch.object(campaigns_module.settings, "telnyx_api_key", "test" if telnyx else ""),
+            patch.object(
+                campaigns_module.settings, "mac_relay_base_url", "http://stub" if relay else ""
+            ),
+            patch.object(campaigns_module.settings, "mac_relay_token", "test" if relay else ""),
+            patch(
+                "app.services.campaigns.campaign_lifecycle.RecipientEligibilityService"
+            ) as service,
+        ):
+            service.return_value.evaluate_campaign = AsyncMock(return_value=eligibility)
+            response = await client.post(
+                f"/api/v1/workspaces/{WS_ID}/campaigns/{CAMPAIGN_ID}/{action}"
+            )
+        assert response.status_code == expected, response.text
+        if expected == 400:
+            assert message in response.json()["detail"]
+            service.return_value.evaluate_campaign.assert_not_awaited()
+            mock_db.commit.assert_not_awaited()
+        else:
+            assert response.json()["eligibility"]["eligible_count"] == 1
+            service.return_value.evaluate_campaign.assert_awaited_once_with(mock_db, campaign)
+            mock_db.commit.assert_awaited_once()
+
+
 class TestPauseCampaign:
     """POST /campaigns/{id}/pause."""
 
@@ -518,7 +684,7 @@ class TestResumeCampaign:
         with patch(
             "app.api.v1.campaigns.get_or_404",
             new=AsyncMock(return_value=draft),
-        ):
+        ), patch("app.api.v1.campaigns._validate_campaign_sender", new=AsyncMock()):
             response = await client.post(
                 f"/api/v1/workspaces/{WS_ID}/campaigns/{CAMPAIGN_ID}/resume"
             )
