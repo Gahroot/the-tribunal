@@ -426,7 +426,7 @@ async def _trigger_ai_callback(*, call_control_id: str, log: Any) -> None:
     """Originate an AI callback to the voicemail caller (best-effort)."""
     from app.core.config import settings
     from app.models.phone_number import PhoneNumber
-    from app.services.telephony.telnyx_voice import TelnyxVoiceService
+    from app.services.telephony.telnyx_voice import TelnyxVoiceService, call_initiation_error
 
     if not settings.telnyx_api_key:
         log.warning("voicemail_ai_callback_no_api_key")
@@ -459,7 +459,7 @@ async def _trigger_ai_callback(*, call_control_id: str, log: Any) -> None:
         idem = derive_outbound_key("voicemail_callback", call_control_id)
         voice_service = TelnyxVoiceService(settings.telnyx_api_key)
         try:
-            await voice_service.initiate_call(
+            message = await voice_service.initiate_call(
                 to_number=conversation.contact_phone,
                 from_number=conversation.workspace_phone,
                 connection_id=None,
@@ -470,7 +470,10 @@ async def _trigger_ai_callback(*, call_control_id: str, log: Any) -> None:
                 agent_id=agent_id,
                 idempotency_key=idem,
             )
-            log.info("voicemail_ai_callback_initiated")
+            if error := call_initiation_error(message):
+                log.warning("voicemail_ai_callback_failed", reason=error)
+            else:
+                log.info("voicemail_ai_callback_initiated")
         finally:
             await voice_service.close()
 

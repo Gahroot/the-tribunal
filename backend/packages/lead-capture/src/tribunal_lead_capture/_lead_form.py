@@ -42,7 +42,7 @@ from app.services.sla.speed_to_lead import (
     get_speed_to_lead_settings,
 )
 from app.services.telephony.telnyx import TelnyxSMSService
-from app.services.telephony.telnyx_voice import TelnyxVoiceService
+from app.services.telephony.telnyx_voice import TelnyxVoiceService, call_initiation_error
 
 from .models import LeadSource
 from .schemas import LeadSubmitRequest, LeadSubmitResponse
@@ -158,7 +158,7 @@ async def _action_auto_call(lead_source: LeadSource, contact: Contact, db: DB) -
         api_base = settings.api_base_url or "https://example.com"
         agent_id_str = config.get("agent_id")
         idempotency_key = derive_outbound_key("lead_form_auto_call", lead_source.id, contact.id)
-        await voice_service.initiate_call(
+        message = await voice_service.initiate_call(
             to_number=contact_phone,
             from_number=from_number,
             connection_id=settings.telnyx_connection_id or None,
@@ -169,6 +169,8 @@ async def _action_auto_call(lead_source: LeadSource, contact: Contact, db: DB) -
             agent_id=uuid.UUID(agent_id_str) if agent_id_str else None,
             idempotency_key=idempotency_key,
         )
+        if error := call_initiation_error(message):
+            logger.warning("auto_call_failed", contact_id=contact.id, reason=error)
     except Exception:
         logger.exception("auto_call_failed", contact_id=contact.id)
     finally:

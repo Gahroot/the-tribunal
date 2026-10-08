@@ -91,10 +91,18 @@ export const callsApi = {
     workspaceId: string,
     data: InitiateCallRequest
   ): Promise<InitiateCallResponse> => {
-    return apiPost<InitiateCallResponse>(
+    const call = await apiPost<InitiateCallResponse>(
       `/api/v1/workspaces/${workspaceId}/calls`,
       data
     );
+    // HTTP success alone does not mean the provider accepted the call.
+    // Keep both manual callers in the error path so their inputs remain retryable.
+    if (!["initiated", "ringing", "answered", "completed"].includes(call.status)) {
+      throw new Error(
+        "Call was not accepted. Check the destination and voice-enabled phone number, then try again."
+      );
+    }
+    return call;
   },
 
   hangup: async (workspaceId: string, callId: string): Promise<{ success: boolean }> => {

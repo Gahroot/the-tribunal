@@ -23,7 +23,7 @@ from app.schemas.call import (
     PaginatedCalls,
 )
 from app.services.calls.live_call_registry import get_live_call_registry
-from app.services.telephony.telnyx_voice import TelnyxVoiceService
+from app.services.telephony.telnyx_voice import TelnyxVoiceService, call_initiation_error
 
 router = APIRouter()
 
@@ -92,6 +92,9 @@ async def initiate_call(
             contact_phone=call_data.contact_phone,
             agent_id=call_data.agent_id,
         )
+
+        if error := call_initiation_error(message):
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=error)
 
         return CallResponse(
             id=message.id,

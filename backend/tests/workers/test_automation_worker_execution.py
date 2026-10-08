@@ -261,6 +261,39 @@ async def test_failure_in_second_action_is_not_reported_as_success() -> None:
     assert execution.status == "failed"
 
 
+@pytest.mark.parametrize("call_status", ["failed", "ringing", "completed", "queued"])
+async def test_make_call_honors_returned_status(call_status: str) -> None:
+    """A returned failed Message is not an exception, but must fail execution."""
+    automation = _automation([{"type": "make_call", "config": {}}])
+    provider = SimpleNamespace(
+        initiate_call=AsyncMock(
+            return_value=SimpleNamespace(
+                status=call_status,
+                error_code="API_ERROR",
+                error_message="raw provider dump with credentials",
+            )
+        ),
+        close=AsyncMock(),
+    )
+    with (
+        patch("app.workers.automation_worker.settings.telnyx_api_key", "test-only"),
+        patch("app.workers.automation_worker.TelnyxVoiceService", return_value=provider),
+    ):
+        execution, _ = await _run(automation, _contact())
+
+    accepted = call_status in {"ringing", "completed"}
+    assert execution.status == ("completed" if accepted else "failed")
+    assert execution.executed_at is not None
+    if accepted:
+        assert execution.error is None
+    else:
+        assert "Call was not accepted" in execution.error
+        assert "try again" in execution.error
+        assert "credentials" not in execution.error
+    assert provider.initiate_call.await_args.kwargs["idempotency_key"] is not None
+    provider.close.assert_awaited_once()
+
+
 async def test_polling_skips_incomplete_automation() -> None:
     """Incomplete automations never fan out to (and burn) matching contacts."""
     worker = AutomationWorker()

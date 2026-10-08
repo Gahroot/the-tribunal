@@ -31,6 +31,27 @@ logger = structlog.get_logger()
 _call_control_app_id_cache: str | None = None
 
 
+def call_initiation_error(message: Message) -> str | None:
+    """Safe operator feedback; never forward provider detail or exception text.
+
+    Later accepted states also count on an idempotent replay. QUEUED means
+    the provider has not accepted the dial yet, not successful initiation.
+    """
+    if message.status in {
+        MessageStatus.INITIATED,
+        MessageStatus.RINGING,
+        MessageStatus.ANSWERED,
+        MessageStatus.COMPLETED,
+    }:
+        return None
+    if message.error_code == "RATE_LIMITED":
+        return "Call was not accepted: the calling service is busy. Wait a moment and try again."
+    return (
+        "Call was not accepted. Check the destination and voice-enabled phone number, "
+        "then try again. If it keeps failing, review the calling configuration."
+    )
+
+
 @dataclass
 class CallInfo:
     """Call information from Telnyx."""

@@ -23,7 +23,7 @@ from app.schemas.demo import (
 )
 from app.services.sla.speed_to_lead import enqueue_speed_to_lead_job
 from app.services.telephony.telnyx import TelnyxSMSService
-from app.services.telephony.telnyx_voice import TelnyxVoiceService
+from app.services.telephony.telnyx_voice import TelnyxVoiceService, call_initiation_error
 from app.utils.pii import mask_phone
 
 router = APIRouter()
@@ -166,7 +166,7 @@ async def trigger_demo_call(
         # Connection ID is optional - service auto-discovers if not provided
         connection_id = settings.telnyx_connection_id if settings.telnyx_connection_id else None
 
-        await voice_service.initiate_call(
+        message = await voice_service.initiate_call(
             to_number=demo_request.phone_number,
             from_number=settings.demo_from_phone_number,
             connection_id=connection_id,
@@ -176,6 +176,9 @@ async def trigger_demo_call(
             contact_phone=demo_request.phone_number,
             agent_id=uuid.UUID(settings.demo_agent_id),
         )
+
+        if error := call_initiation_error(message):
+            raise ValueError(error)
 
         demo_record.status = "initiated"
         await db.commit()
@@ -286,7 +289,7 @@ async def _trigger_demo_call(lead_request: LeadSubmitRequest, db: DB) -> bool:
     try:
         voice_service = TelnyxVoiceService(settings.telnyx_api_key)
         api_base = settings.api_base_url or "https://example.com"
-        await voice_service.initiate_call(
+        message = await voice_service.initiate_call(
             to_number=lead_request.phone_number,
             from_number=settings.demo_from_phone_number,
             connection_id=settings.telnyx_connection_id or None,
@@ -297,7 +300,7 @@ async def _trigger_demo_call(lead_request: LeadSubmitRequest, db: DB) -> bool:
             agent_id=uuid.UUID(settings.demo_agent_id),
         )
         await voice_service.close()
-        return True
+        return call_initiation_error(message) is None
     except Exception:
         logger.exception("demo_call_trigger_failed", phone=mask_phone(lead_request.phone_number))
         return False

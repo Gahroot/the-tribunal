@@ -82,7 +82,7 @@ from app.services.outbound.delivery import (
     OutboundDeliveryStatus,
 )
 from app.services.tags import TagService
-from app.services.telephony.telnyx_voice import TelnyxVoiceService
+from app.services.telephony.telnyx_voice import TelnyxVoiceService, call_initiation_error
 from app.services.telephony.text_provider import get_text_message_provider
 from app.workers.base import BaseWorker, WorkerRegistry
 from app.workers.retryable import RetryableWorker
@@ -761,7 +761,7 @@ class AutomationWorker(RetryableWorker, BaseWorker):
         voice_service = TelnyxVoiceService(settings.telnyx_api_key)
         idempotency_key = derive_outbound_key("automation_call", automation.id, contact.id)
         try:
-            await voice_service.initiate_call(
+            message = await voice_service.initiate_call(
                 to_number=contact.phone_number,
                 from_number=from_number,
                 connection_id=connection_id or None,
@@ -774,6 +774,8 @@ class AutomationWorker(RetryableWorker, BaseWorker):
             )
         finally:
             await voice_service.close()
+        if error := call_initiation_error(message):
+            raise AutomationActionError(error)
         self.logger.info(
             "Automation call initiated",
             contact_id=contact.id,

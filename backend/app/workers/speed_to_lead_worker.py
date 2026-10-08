@@ -65,7 +65,7 @@ from app.services.sla.speed_to_lead import (
     get_speed_to_lead_settings,
     normalize_first_touch_channels,
 )
-from app.services.telephony.telnyx_voice import TelnyxVoiceService
+from app.services.telephony.telnyx_voice import TelnyxVoiceService, call_initiation_error
 from app.workers.base import BaseWorker, WorkerRegistry
 from app.workers.retryable import RetryableWorker
 
@@ -474,6 +474,13 @@ class SpeedToLeadWorker(RetryableWorker, BaseWorker):
                 await db.commit()
             finally:
                 await voice_service.close()
+        # Keep the persisted attempt/idempotency rules, but do not log a
+        # rejected attempt as a started call.
+        if error := call_initiation_error(message):
+            self.logger.warning(
+                "speed_to_lead_dial_failed", message_id=str(message.id), reason=error
+            )
+            return message.id
         self.logger.info(
             "speed_to_lead_dial_started",
             workspace_id=str(workspace_id),

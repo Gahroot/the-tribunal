@@ -230,7 +230,7 @@ class PublicEmbedService:
             webhook_url = f"{api_base}/webhooks/telnyx/voice"
             connection_id = settings.telnyx_connection_id if settings.telnyx_connection_id else None
             idempotency_key = derive_outbound_key("embed_call", demo_record.id)
-            await voice_service.initiate_call(
+            message = await voice_service.initiate_call(
                 to_number=body.phone_number,
                 from_number=settings.demo_from_phone_number,
                 connection_id=connection_id,
@@ -241,6 +241,9 @@ class PublicEmbedService:
                 agent_id=agent.id,
                 idempotency_key=idempotency_key,
             )
+
+            if message.status not in {"initiated", "ringing", "answered", "completed"}:
+                raise ValueError("Call was not accepted. Please try again.")
 
             demo_record.status = "initiated"
             await self.db.commit()
