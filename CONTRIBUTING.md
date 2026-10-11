@@ -6,7 +6,7 @@ Thanks for your interest in contributing! This guide covers local setup, branchi
 
 - **Docker** + Docker Compose (for PostgreSQL 17 and Redis 7)
 - **Python 3.12+** and [`uv`](https://docs.astral.sh/uv/) for the backend
-- **Node.js 20+** and **npm** for the frontend
+- **Node.js 24.19.0** (pinned in `frontend/.nvmrc`; `frontend/package.json` requires **24.x**) and **npm 10+** (`packageManager`: `npm@10.9.0`) for the frontend
 - A `.env` file in `backend/` (see `backend/.env.example`) and `frontend/.env.local` (see `frontend/.env.example`)
 
 ## Development Setup
@@ -18,6 +18,7 @@ cd backend
 cp .env.example .env              # Configure backend secrets
 docker compose up -d              # PostgreSQL + Redis
 uv sync                           # Install Python dependencies
+until docker compose exec -T postgres pg_isready -h 127.0.0.1 -U aicrm -d aicrm; do sleep 1; done
 uv run alembic upgrade head       # Apply database migrations
 uv run uvicorn app.main:app --reload --port 8000
 ```
@@ -38,6 +39,7 @@ make ci.migrations
 
 ```bash
 cd frontend
+nvm use                           # If using nvm; otherwise select Node.js 24.19.0
 cp .env.example .env.local        # Configure frontend overrides
 npm ci                            # Clean install of locked dependencies
 npm run dev                       # Dev server on :3000
@@ -120,7 +122,7 @@ Install (one-time, from the repo root):
 
 ```bash
 cd frontend
-npm install                      # installs husky + lint-staged + prettier as devDeps
+npm ci                           # installs locked dependencies, including hook tools
 npm run prepare                  # wires git core.hooksPath to frontend/.husky
 ```
 
@@ -145,7 +147,7 @@ Run the relevant checks **before pushing**. CI delegates to these same root targ
 | `make ci.migrations` | Alembic upgrade/check/downgrade/upgrade round-trip against the configured database. |
 | `make ci.all` | All canonical CI parity targets. |
 
-For focused development loops, the shorter `make lint`, `make typecheck`, `make test.backend`, and `make test.frontend` targets are still available, along with direct single-test commands such as `cd backend && uv run pytest tests/api/test_contacts.py::test_list`.
+For focused development loops, the shorter `make lint`, `make typecheck`, `make test.backend`, and `make test.frontend` targets are still available, along with direct single-test commands such as `cd backend && uv run pytest tests/api/test_contacts.py::test_list`. In `frontend/`, use `npm run typecheck` (`tsc --noEmit`), `npm run format` (`prettier --write .`), or `npm run format:check` (`prettier --check .`, no changes).
 
 Fix **all** errors and warnings before opening a PR. There is zero tolerance for failing lint, type, test, codegen, migration, or build steps on `main`.
 

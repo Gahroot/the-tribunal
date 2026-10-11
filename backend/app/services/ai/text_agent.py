@@ -25,7 +25,7 @@ from app.models.conversation import Conversation, Message
 from app.models.prompt_version import PromptVersion
 from app.models.workspace import Workspace
 from app.services.ai.message_context_builder import build_message_context
-from app.services.ai.openai_credentials import get_openai_bearer_token
+from app.services.ai.openai_credentials import OpenAICredentialError, resolve_openai_credentials
 from app.services.ai.opt_out_detector import (
     classify_opt_out_intent,
     has_potential_opt_out_keywords,
@@ -69,7 +69,12 @@ async def process_inbound_with_ai(  # noqa: PLR0911
     log.info("processing_inbound_with_ai")
 
     # Get conversation with agent
-    result = await db.execute(select(Conversation).where(Conversation.id == conversation_id))
+    result = await db.execute(
+        select(Conversation).where(
+            Conversation.id == conversation_id,
+            Conversation.workspace_id == workspace_id,
+        )
+    )
     conversation = result.scalar_one_or_none()
 
     if not conversation:
@@ -85,18 +90,24 @@ async def process_inbound_with_ai(  # noqa: PLR0911
         return
 
     # Get agent
-    agent_result = await db.execute(select(Agent).where(Agent.id == conversation.assigned_agent_id))
+    agent_result = await db.execute(
+        select(Agent).where(
+            Agent.id == conversation.assigned_agent_id,
+            Agent.workspace_id == workspace_id,
+        )
+    )
     agent = agent_result.scalar_one_or_none()
 
     if not agent or not agent.is_active:
         log.info("agent_not_active")
         return
 
-    # TODO: Get OpenAI credential from workspace settings
-    openai_key = get_openai_bearer_token()
-    if not openai_key:
+    try:
+        credential_context = await resolve_openai_credentials(db, workspace_id)
+    except OpenAICredentialError:
         log.error("no_openai_credential")
         return
+    openai_key = credential_context.bearer_token
 
     # === AI-POWERED OPT-OUT DETECTION ===
     # Get last inbound message to check for opt-out intent

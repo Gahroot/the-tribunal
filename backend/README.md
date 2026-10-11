@@ -12,12 +12,18 @@ AI-powered CRM backend with voice agents, SMS campaigns, and Cal.com integration
 
 ## Setup
 
+Requires Python 3.12+, `uv`, and Docker Compose. From the repo root:
+
 ```bash
+cd backend
+cp .env.example .env   # configure backend secrets
+
 # Install dependencies
 uv sync
 
-# Start database
+# Start PostgreSQL + Redis and wait for Postgres to accept TCP connections
 docker compose up -d
+until docker compose exec -T postgres pg_isready -h 127.0.0.1 -U aicrm -d aicrm; do sleep 1; done
 
 # Run migrations
 uv run alembic upgrade head

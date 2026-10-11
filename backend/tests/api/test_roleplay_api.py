@@ -17,7 +17,6 @@ from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import get_current_user, get_db, get_workspace
 from app.api.v1 import roleplay as roleplay_module
-
 from app.services.ai.roleplay import roleplay_service as engine
 from app.services.ai.roleplay.report_scorer import RehearsalReport
 

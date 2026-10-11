@@ -83,7 +83,9 @@ def _make_app(db: AsyncMock) -> FastAPI:
 
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_current_user] = override_user
-    app.include_router(invitations_module.router, prefix="/api/v1/workspaces/{workspace_id}/invitations")
+    app.include_router(
+        invitations_module.router, prefix="/api/v1/workspaces/{workspace_id}/invitations"
+    )
     return app
 
 

@@ -156,3 +156,111 @@ async def test_expired_oauth_refresh_failure_does_not_fall_back_to_env() -> None
 
     with pytest.raises(OpenAICredentialError, match="refreshed"):
         await resolve_openai_credentials(db, integration.workspace_id)
+
+
+@pytest.mark.parametrize("use_workspace_key", [True, False])
+async def test_sms_uses_resolved_credentials_for_opt_out_and_response(
+    monkeypatch: pytest.MonkeyPatch,
+    use_workspace_key: bool,
+) -> None:
+    from app.models.agent import Agent
+    from app.models.conversation import Conversation, Message
+    from app.services.ai import text_agent
+
+    settings.openai_api_key = "test-global-key"
+    integration = _workspace_integration({"api_key": "test-workspace-key"})
+    workspace_id = integration.workspace_id
+    conversation = Conversation(
+        id=uuid.uuid4(),
+        workspace_id=workspace_id,
+        assigned_agent_id=uuid.uuid4(),
+        ai_enabled=True,
+        ai_paused=False,
+    )
+    agent = Agent(id=conversation.assigned_agent_id, workspace_id=workspace_id, is_active=True)
+    db = _AsyncDB(integration if use_workspace_key else None)
+    db.execute.side_effect = [
+        _ScalarResult(conversation),
+        _ScalarResult(agent),
+        _ScalarResult(db.integration),
+        _ScalarResult(Message(body="please stop kidding")),
+    ]
+    classifier = AsyncMock(return_value=False)
+    generator = AsyncMock(return_value="")
+    sender = AsyncMock()
+    monkeypatch.setattr(text_agent, "has_potential_opt_out_keywords", lambda _: True)
+    monkeypatch.setattr(text_agent, "build_message_context", AsyncMock(return_value=[]))
+    monkeypatch.setattr(text_agent, "classify_opt_out_intent", classifier)
+    monkeypatch.setattr(text_agent, "_active_prompt_version_id", AsyncMock(return_value=None))
+    monkeypatch.setattr(text_agent, "generate_text_response", generator)
+    monkeypatch.setattr(text_agent, "_send_ai_text_response_after_delay", sender)
+
+    await text_agent.process_inbound_with_ai(conversation.id, workspace_id, db)
+
+    expected_key = "test-workspace-key" if use_workspace_key else "test-global-key"
+    classifier.assert_awaited_once()
+    generator.assert_awaited_once()
+    assert classifier.await_args.kwargs["openai_api_key"] == expected_key
+    assert generator.await_args.kwargs["openai_api_key"] == expected_key
+    sender.assert_not_awaited()
+    for call, table in zip(
+        db.execute.await_args_list[:2], ["conversations", "agents"], strict=True
+    ):
+        query = call.args[0]
+        assert f"{table}.workspace_id =" in str(query)
+        assert query.compile().params["workspace_id_1"] == workspace_id
+
+
+@pytest.mark.parametrize("expired_workspace_oauth", [False, True])
+async def test_sms_stops_when_credentials_cannot_be_resolved(
+    monkeypatch: pytest.MonkeyPatch,
+    expired_workspace_oauth: bool,
+) -> None:
+    from app.models.agent import Agent
+    from app.models.conversation import Conversation
+    from app.services.ai import openai_credentials, text_agent
+
+    workspace_id = uuid.uuid4()
+    integration = None
+    if expired_workspace_oauth:
+        settings.openai_api_key = "test-global-key"
+        integration = _workspace_integration(
+            {
+                "access_token": "test-expired-token",
+                "refresh_token": "test-refresh-token",
+                "expires_at": int(time.time() * 1000) - 60_000,
+            }
+        )
+        workspace_id = integration.workspace_id
+    conversation = Conversation(
+        id=uuid.uuid4(),
+        workspace_id=workspace_id,
+        assigned_agent_id=uuid.uuid4(),
+        ai_enabled=True,
+        ai_paused=False,
+    )
+    agent = Agent(id=conversation.assigned_agent_id, workspace_id=workspace_id, is_active=True)
+    db = _AsyncDB(integration)
+    db.execute.side_effect = [
+        _ScalarResult(conversation),
+        _ScalarResult(agent),
+        _ScalarResult(integration),
+    ]
+    monkeypatch.setattr(
+        openai_credentials,
+        "refresh_openai_oauth_token",
+        AsyncMock(side_effect=OpenAICredentialError("OpenAI credentials could not be refreshed")),
+    )
+    classifier = AsyncMock()
+    generator = AsyncMock()
+    sender = AsyncMock()
+    monkeypatch.setattr(text_agent, "classify_opt_out_intent", classifier)
+    monkeypatch.setattr(text_agent, "generate_text_response", generator)
+    monkeypatch.setattr(text_agent, "_send_ai_text_response_after_delay", sender)
+
+    await text_agent.process_inbound_with_ai(conversation.id, workspace_id, db)
+
+    classifier.assert_not_awaited()
+    generator.assert_not_awaited()
+    sender.assert_not_awaited()
+    db.commit.assert_not_awaited()

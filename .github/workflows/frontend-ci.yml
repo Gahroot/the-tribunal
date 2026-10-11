@@ -24,16 +24,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Compare workflow Node version to frontend/.nvmrc
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: frontend/.nvmrc
+
+      - name: Compare selected Node version to frontend/.nvmrc
         run: |
           set -euo pipefail
           nvmrc_version="$(tr -d '[:space:]' < frontend/.nvmrc)"
-          nvmrc_major="${nvmrc_version%%.*}"
-          workflow_major="20"
-          echo "frontend/.nvmrc declares Node ${nvmrc_version} (major ${nvmrc_major})"
-          echo "Workflow pins Node major ${workflow_major}"
-          if [ "${nvmrc_major}" != "${workflow_major}" ]; then
-            echo "::error file=frontend/.nvmrc::Node major version drift: .nvmrc=${nvmrc_major} but frontend-ci.yml pins ${workflow_major}. Update both to match."
+          selected_version="$(node --version)"
+          echo "frontend/.nvmrc declares Node ${nvmrc_version}"
+          echo "Selected Node version is ${selected_version}"
+          if [ "${selected_version}" != "v${nvmrc_version#v}" ]; then
+            echo "::error file=frontend/.nvmrc::Selected Node version does not match frontend/.nvmrc."
             exit 1
           fi
 
@@ -49,7 +53,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "24"
+          node-version-file: frontend/.nvmrc
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -73,7 +77,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "24"
+          node-version-file: frontend/.nvmrc
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 

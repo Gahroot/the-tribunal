@@ -15,10 +15,10 @@ import pytest
 
 from app.services.ai.model_config import Selection
 from app.services.ai.roleplay import DEFAULT_PERSONAS
+from app.services.ai.roleplay.agent_responder import AgentGenerationError, generate_agent_reply
 from app.services.ai.roleplay.agent_responder import (
     _build_messages as build_agent_messages,
 )
-from app.services.ai.roleplay.agent_responder import AgentGenerationError, generate_agent_reply
 from app.services.ai.roleplay.prospect_simulator import (
     _build_messages as build_prospect_messages,
 )

@@ -1076,3 +1076,41 @@ async def test_booking_cancelled_webhook_stores_provider_reason(
 
     assert appt.status == AppointmentStatus.CANCELLED
     assert appt.cancellation_reason == "Host unavailable"
+
+
+@pytest.mark.parametrize(
+    "first_name", [r"Pat\Smith", r"Pat\1", r"Pat\g<name>", r"Pat\n", "Pat\\", "José", "{last_name}"]
+)
+def test_confirmation_template_inserts_customer_values_literally(first_name: str) -> None:
+    from app.api.webhooks.calcom_events import build_confirmation_body
+
+    contact = _make_contact()
+    contact.first_name = first_name
+    contact.last_name = r"Client\Family"
+    appointment = _make_appointment()
+    agent = MagicMock(
+        reminder_template="Hi {FIRST_NAME} {last_name}, {appointment_time}. {unknown}"
+    )
+    agent.calcom_event_type_id = None
+
+    body = build_confirmation_body(contact, appointment, None, agent)
+
+    assert body == (
+        f"Hi {first_name} {contact.last_name}, 3:00 PM. {{unknown}}"
+        " Reply C to confirm / R to reschedule."
+    )
+
+
+def test_confirmation_template_does_not_duplicate_reply_instructions() -> None:
+    from app.api.webhooks.calcom_events import build_confirmation_body
+
+    contact = _make_contact()
+    appointment = _make_appointment()
+    agent = MagicMock(
+        reminder_template="Hi {first_name}. Reply C to confirm / R to reschedule.",
+    )
+    agent.calcom_event_type_id = None
+
+    body = build_confirmation_body(contact, appointment, None, agent)
+
+    assert body == "Hi Test. Reply C to confirm / R to reschedule."

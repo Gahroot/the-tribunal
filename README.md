@@ -26,12 +26,17 @@ the-tribunal/
 
 ### One-shot: everything at once
 
-A root `Makefile` orchestrates both sides. From the repo root:
+A root `Makefile` orchestrates both sides. Use Node.js **24.19.0** (`frontend/.nvmrc`; `package.json` requires **24.x**) before installing — with `nvm`, run `cd frontend && nvm use`, then return to the repo root. You'll also need Docker Compose, Python 3.12+, and `uv`.
+
+From the repo root:
 
 ```bash
 make install                               # uv sync + npm ci
 cp backend/.env.example backend/.env       # configure backend secrets
 cp frontend/.env.example frontend/.env.local  # configure frontend overrides
+make dev.db                                # start Postgres + Redis
+# Wait for the postgres service to accept TCP connections before migrating:
+until docker compose -f backend/docker-compose.yml exec -T postgres pg_isready -h 127.0.0.1 -U aicrm -d aicrm; do sleep 1; done
 make migrate                               # alembic upgrade head
 make dev                                   # docker compose + backend uvicorn + frontend dev (parallel)
 ```
@@ -44,7 +49,7 @@ Run `make help` for the full list. Cheat sheet:
 
 | Target | What it does |
 | --- | --- |
-| `make dev` | Start db (detached) + backend + frontend in parallel. Ctrl-C stops all. |
+| `make dev` | Start db (detached) + backend + frontend in parallel. Ctrl-C stops app processes; use `make db.down` to stop db services. |
 | `make dev.backend` | FastAPI with `--reload` on :8000. |
 | `make dev.frontend` | Next.js dev server on :3000. |
 | `make dev.db` | `docker compose up -d` (Postgres + Redis). |
@@ -76,8 +81,9 @@ Run `make help` for the full list. Cheat sheet:
 ```bash
 cd backend
 uv sync
-docker compose up -d
 cp .env.example .env   # configure your secrets
+docker compose up -d
+until docker compose exec -T postgres pg_isready -h 127.0.0.1 -U aicrm -d aicrm; do sleep 1; done
 uv run alembic upgrade head
 uv run uvicorn app.main:app --reload --port 8000
 # Optional split mode: RUN_BACKGROUND_WORKERS=false uv run uvicorn ...
@@ -88,7 +94,8 @@ uv run uvicorn app.main:app --reload --port 8000
 
 ```bash
 cd frontend
-npm install
+nvm use   # if using nvm; otherwise select Node.js 24.19.0
+npm ci
 cp .env.example .env.local   # configure frontend overrides
 npm run dev
 ```

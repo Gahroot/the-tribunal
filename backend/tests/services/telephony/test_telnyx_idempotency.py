@@ -81,7 +81,7 @@ async def test_workspace_sms_account_selection(monkeypatch, state):
             )
             db = AsyncMock()
 
-            async def execute(statement):
+            async def execute(statement, brand=brand, record=record):
                 assert brand in statement.compile().params.values()
                 is_phone = "phone_numbers" in str(statement)
                 value = (None if state == "wrong_sender" else object()) if is_phone else record

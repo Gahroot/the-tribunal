@@ -265,13 +265,8 @@ def build_confirmation_body(
         "reschedule_link": reschedule_link,
     }
 
-    message = template
-    for placeholder, value in replacements.items():
-        try:
-            pattern = re.compile(rf"\{{{placeholder}\}}", re.IGNORECASE)
-            message = pattern.sub(value, message)
-        except Exception:
-            pass  # Non-fatal; leave placeholder as-is
+    pattern = re.compile(r"\{(" + "|".join(replacements) + r")\}", re.IGNORECASE)
+    message = pattern.sub(lambda match: replacements[match.group(1).lower()], template)
 
     if "Reply C to confirm / R to reschedule" not in message:
         message += " Reply C to confirm / R to reschedule."

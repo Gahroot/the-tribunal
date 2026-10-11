@@ -12,11 +12,11 @@ Next.js 16 dashboard for The Tribunal AI CRM. Provides the operator UI for manag
 
 ## Prerequisites
 
-- **Node.js 20.18.0** — pinned in [`.nvmrc`](./.nvmrc). With `nvm`:
+- **Node.js 24.19.0** — pinned in [`.nvmrc`](./.nvmrc); `package.json` requires **24.x**. With `nvm` (from `frontend/`):
   ```bash
   nvm use
   ```
-- **npm** (ships with Node)
+- **npm 10+** — `package.json` declares `npm@10.9.0` as the package manager
 - A running backend at `NEXT_PUBLIC_API_URL` (defaults to `http://localhost:8000`)
 
 ## Setup
@@ -25,7 +25,7 @@ Next.js 16 dashboard for The Tribunal AI CRM. Provides the operator UI for manag
 cd frontend
 nvm use
 npm ci
-cp .env.example .env.local   # if present; otherwise create .env.local (see below)
+cp .env.example .env.local   # configure frontend overrides
 npm run dev
 ```
 
@@ -43,9 +43,9 @@ The dev server runs on http://localhost:3000.
 | `npm run test:watch`    | Vitest in watch mode                                               |
 | `npm run test:coverage` | Vitest with coverage report                                        |
 | `npm run codegen`       | Regenerate `src/lib/api/_generated.ts` from `backend/openapi.json` |
-| `npx tsc --noEmit`      | Type-check without emitting (no dedicated script)                  |
-
-> Type checking and formatting are not separate scripts today — `npm run build` enforces types, and ESLint covers stylistic rules.
+| `npm run typecheck`     | Type-check without emitting (`tsc --noEmit`)                       |
+| `npm run format`        | Format with Prettier (`prettier --write .`)                        |
+| `npm run format:check`  | Check formatting without changes (`prettier --check .`)            |
 
 ## OpenAPI-Typed API Client
 
@@ -141,11 +141,11 @@ Deployed on **Vercel**.
 - **Install Command:** `npm ci`
 - **Build Command:** `npm run build`
 - **Output:** managed by Vercel's Next.js integration (no override needed)
-- **Node version:** 20.x (matches `.nvmrc` / `engines.node`)
+- **Node version:** 24.x (`engines.node`; `.nvmrc` pins 24.19.0)
 - **Environment variables:** set `NEXT_PUBLIC_API_URL` (and optionally `NEXT_PUBLIC_PLAN_PRICE`) per environment (Production / Preview / Development) in the Vercel dashboard.
 
 Preview deployments are created automatically for pull requests.
 
 ## Contributing
 
-See the repository-level [CONTRIBUTING.md](../CONTRIBUTING.md) for branch conventions, commit style, and the required `npm run lint && npm run build` gate before opening a PR.
+See the repository-level [CONTRIBUTING.md](../CONTRIBUTING.md) for branch conventions, commit style, and the required `make ci.frontend` gate (from the repo root) before opening a PR.
